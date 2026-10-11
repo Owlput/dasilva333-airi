@@ -292,7 +292,7 @@ export default {
   appImage: {
     artifactName: 'airi-dasilva333-${version}-linux-${arch}.${ext}',
   },
-  npmRebuild: true,
+  npmRebuild: false,
   publish: {
     provider: 'github',
     owner: 'dasilva333',
