@@ -1055,7 +1055,7 @@ export class SandboxManager {
     await this.bash.exec('mkdir -p /workspace/types')
 
     await this.bash.fs.writeFile('/workspace/types/airi-widget.d.ts', `// Project AIRI Generative UI Sidecar Contract
-export interface AiriWidgetSidecar {
+interface _AiriWidgetSidecar {
   session: {
     id: string
     activeSessionId?: string
@@ -1122,11 +1122,19 @@ export interface AiriWidgetSidecar {
   }
 }
 
-export interface AiriWidgetContext extends HTMLElement {
+interface _AiriWidgetContext extends HTMLElement {
   container: HTMLElement
-  sidecar: AiriWidgetSidecar
-  data: AiriWidgetSidecar
-  onUpdate: (callback: (updatedSidecar: AiriWidgetSidecar) => void) => () => void
+  sidecar: _AiriWidgetSidecar
+  data: _AiriWidgetSidecar
+  onUpdate: (callback: (updatedSidecar: _AiriWidgetSidecar) => void) => () => void
+}
+
+export type AiriWidgetSidecar = _AiriWidgetSidecar
+export type AiriWidgetContext = _AiriWidgetContext
+
+declare global {
+  type AiriWidgetSidecar = _AiriWidgetSidecar
+  type AiriWidgetContext = _AiriWidgetContext
 }
 `)
 

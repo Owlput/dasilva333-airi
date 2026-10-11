@@ -268,6 +268,18 @@ async function buildIframeSrcdoc(widget: MountedWidget): Promise<string> {
         if (prop in target) {
           return Reflect.get(target, prop, receiver);
         }
+        if (prop === 'querySelector') {
+          return (selector) => {
+            let el = root.querySelector(selector);
+            if (!el && typeof selector === 'string' && !selector.startsWith('#') && !selector.startsWith('.') && !selector.includes('[') && !selector.includes(':') && !selector.includes(' ') && !selector.includes('>')) {
+              el = root.querySelector('#' + selector);
+            }
+            return el;
+          };
+        }
+        if (prop === 'getElementById') {
+          return (id) => root.querySelector('#' + id);
+        }
         const val = Reflect.get(root, prop);
         if (typeof val === 'function') {
           return val.bind(root);
@@ -293,13 +305,33 @@ async function buildIframeSrcdoc(widget: MountedWidget): Promise<string> {
       const mod = await import(blobUrl);
       URL.revokeObjectURL(blobUrl);
 
+      // Resolve mount/init/render function across all standard ESM and object export patterns
+      let mountFn = null;
+      let renderFn = null;
+
       if (typeof mod.default === 'function') {
-        mod.default(context, context.sidecar);
-      } else if (typeof mod.mount === 'function') {
-        mod.mount(context, context.sidecar);
-      } else if (typeof mod.render === 'function') {
-        const res = mod.render(context, context.sidecar);
+        mountFn = mod.default;
+      } else if (mod.default && typeof mod.default === 'object') {
+        if (typeof mod.default.init === 'function') mountFn = mod.default.init;
+        else if (typeof mod.default.mount === 'function') mountFn = mod.default.mount;
+        else if (typeof mod.default.render === 'function') renderFn = mod.default.render;
+        else if (typeof mod.default.default === 'function') mountFn = mod.default.default;
+      }
+
+      if (!mountFn && !renderFn) {
+        if (typeof mod.mount === 'function') mountFn = mod.mount;
+        else if (typeof mod.init === 'function') mountFn = mod.init;
+        else if (typeof mod.render === 'function') renderFn = mod.render;
+      }
+
+      if (mountFn) {
+        const res = mountFn(context, context.sidecar);
         if (typeof res === 'string') root.innerHTML = res;
+      } else if (renderFn) {
+        const res = renderFn(context, context.sidecar);
+        if (typeof res === 'string') root.innerHTML = res;
+      } else {
+        throw new Error('No valid entrypoint found in widget module. Expected default function, { init }, { mount }, or render() export.');
       }
       setTimeout(reportH, 100);
     } catch (err) {

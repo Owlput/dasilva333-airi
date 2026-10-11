@@ -195,7 +195,7 @@ declare module "node:path" { export * from "path"; }
       if (!hasLib)
         tscArgs.push('--lib', 'es2022,dom')
       if (!hasModule)
-        tscArgs.push('--module', 'commonjs')
+        tscArgs.push('--module', 'es2022')
       tscArgs.push(...normalizedFlags)
 
       const res = spawnSync(tscBinPath, tscArgs, {
