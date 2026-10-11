@@ -6,6 +6,7 @@ export * from './ansi'
 export * from './compiler-bridge'
 export * from './manager'
 export * from './projections'
+export * from './srcdoc'
 export * from './types'
 
 let defaultSandboxInstance: SandboxManager | null = null

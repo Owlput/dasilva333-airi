@@ -1,5 +1,7 @@
 import type { CommandLogEntry, ExecResult, MountedWidget, SandboxChannelMessage, VirtualFileEntry } from './types'
 
+import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
+import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { Bash } from 'just-bash'
 
@@ -458,7 +460,7 @@ export class SandboxManager {
       if (!file) {
         return {
           stdout: '',
-          stderr: 'Usage: mount_widget <file.ts|file.js|file.html> [--title <title>] [--target sidepanel|inline|window]\n',
+          stderr: 'Usage: mount_widget <file.ts|file.js|file.html> [--title <title>] [--surface panel|widget]\n',
           exitCode: 1,
         }
       }
@@ -522,12 +524,23 @@ export class SandboxManager {
 
       const code = await ctx.fs.readFile(fullPath)
 
-      // Parse optional args
-      let target: 'sidepanel' | 'inline' | 'window' = 'sidepanel'
+      // Parse optional args: --surface panel|widget (default panel), --target legacy support
+      let surface: 'panel' | 'widget' = 'panel'
       let title: string | undefined
       for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--target' && args[i + 1]) {
-          target = args[++i] as any
+        if (args[i] === '--surface' && args[i + 1]) {
+          const val = args[++i].toLowerCase()
+          if (val === 'widget' || val === 'window')
+            surface = 'widget'
+          else
+            surface = 'panel'
+        }
+        else if (args[i] === '--target' && args[i + 1]) {
+          const val = args[++i].toLowerCase()
+          if (val === 'window' || val === 'widget')
+            surface = 'widget'
+          else
+            surface = 'panel'
         }
         else if (args[i] === '--title' && args[i + 1]) {
           title = args[++i]
@@ -537,11 +550,13 @@ export class SandboxManager {
         title = foundInRepo?.title || fullPath.split('/').pop() || 'Widget'
       }
 
+      const target: 'sidepanel' | 'inline' | 'window' = surface === 'widget' ? 'window' : 'sidepanel'
       const widget: MountedWidget = {
         id: foundInRepo?.id || `widget-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         path: fullPath,
         code,
         title,
+        surface,
         target,
         mountedAt: Date.now(),
       }
@@ -577,6 +592,7 @@ export class SandboxManager {
         sourcePath,
         sourceCode,
         code,
+        surface,
         target,
         isMounted: true,
         mountedAt: widget.mountedAt,
@@ -599,8 +615,36 @@ export class SandboxManager {
 
       this.notifyMountListeners(widget)
 
+      // If surface is standalone widget and Electron is available, pop out the standalone desktop window
+      if (surface === 'widget' && typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+        try {
+          const win = window as any
+          const { context } = createContext(win.electron.ipcRenderer as any)
+          const widgetsAddEventa = defineInvokeEventa<string | undefined, any>('eventa:invoke:electron:windows:widgets:add')
+          const invokeAddWidget = defineInvoke(context, widgetsAddEventa)
+          await invokeAddWidget({
+            componentName: 'generative',
+            componentProps: {
+              id: widget.id,
+              title: widget.title,
+              path: widget.path,
+              code: widget.code,
+            },
+            size: 'm',
+            ttlMs: 0,
+          })
+        }
+        catch (err) {
+          console.warn('[SandboxManager] Failed to invoke widgetsAdd for standalone widget window:', err)
+        }
+      }
+
+      const locationReminder = surface === 'panel'
+        ? `Widget "${title}" mounted in right side panel of the chatbox (if closed, open the widgets panel to view).`
+        : `Widget "${title}" mounted in new standalone widget window on the desktop.`
+
       return {
-        stdout: `[GEN_UI_MOUNT:${fullPath}]\n✨ Mounted ${title} (${fullPath}) to ${target} Generative UI Canvas\n`,
+        stdout: `[GEN_UI_MOUNT:${fullPath}]\n✨ ${locationReminder}\n`,
         stderr: '',
         exitCode: 0,
       }
@@ -1332,7 +1376,7 @@ declare global {
 In-Memory POSIX RAM disk. Zero host filesystem access.
 - Live system projections: /workspace/.airi/*.json
 - TypeScript compiler: tsc <file.ts>
-- Generative UI: mount_widget <file.ts|file.js>
+- Generative UI: mount_widget <file.ts|file.js> [--surface panel|widget]
 - Model Context Protocol: mcp list | mcp <server::tool> [json_args]
 - Micro-App Types: /workspace/types/airi-widget.d.ts
 `)

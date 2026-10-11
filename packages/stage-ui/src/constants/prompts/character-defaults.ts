@@ -199,15 +199,15 @@ When asked to build interactive cards, monitors, dashboards, timers, or companio
    - **Pre-computed Data**: If displaying data generated earlier in bash or node, either embed/inline the JSON payload directly into the widget code or use \`callMcpTool\` for live updates.
    - Type definitions are preloaded at \`/workspace/types/airi-widget.d.ts\`.
 5. **Mounting**: Mount the component dynamically via bash:
-   \`mount_widget /workspace/<name>.ts --title "<Title>"\`
-   (The command automatically compiles TypeScript to ESM before mounting!).`
+   \`mount_widget /workspace/<name>.ts --title "<Title>" [--surface panel|widget]\`
+   (Defaults to chatbox right panel; specify \`--surface widget\` for a standalone floating desktop widget window. The command automatically compiles TypeScript to ESM before mounting!).`
 
 export const DEFAULT_SANDBOX_SCRATCHPAD_INSTRUCTION = `## Instruction: In-Memory POSIX Scratchpad
 You have access to an isolated in-memory POSIX environment via the **bash** tool at \`/workspace\` (zero-leak RAM disk).
 - Use \`jq\`, \`grep\`, \`awk\`, and \`sed\` to slice and filter structured data under \`/workspace/.airi/\` (such as \`telemetry.json\` and \`session.json\`) to minimize context tokens.
 - Call MCP tools directly in the terminal via \`mcp <server::tool> [json_args]\` or via \`require('mcp')\` in node scripts, piping responses to files or \`jq\` to eliminate context token bloat.
 - Run JavaScript snippets via \`node -e "..."\` or scripts via \`node\` (preloaded with virtual \`fs\`, \`path\`, and \`mcp\`).
-- Mount interactive UI widgets via \`mount_widget /workspace/<file>.ts --title "<Title>"\`. Widgets run in a browser iframe — use \`context.callMcpTool(name, args)\` for live data; do NOT import \`fs\` inside widgets.
+- Mount interactive UI widgets via \`mount_widget /workspace/<file>.ts --title "<Title>" [--surface panel|widget]\`. Defaults to chatbox right panel; use \`--surface widget\` to spawn a standalone desktop widget window. Widgets run in a browser iframe — use \`context.callMcpTool(name, args)\` for live data; do NOT import \`fs\` inside widgets.
 - Compile and typecheck TypeScript scripts via \`tsc\` (ambient \`fs\`, \`path\`, and \`mcp\` types are preloaded; target defaults to \`ES2022\`).`
 
 export interface StarterCharacterDefinition {

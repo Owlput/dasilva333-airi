@@ -202,6 +202,7 @@ const Registry: Record<string, any> = {
   artistry: defineAsyncComponent(() => import('../widgets/artistry').then(m => m.Artistry)),
   comfy: defineAsyncComponent(() => import('../widgets/artistry').then(m => m.Artistry)),
   sticker: defineAsyncComponent(() => import('../widgets/sticker').then(m => m.Sticker)),
+  generative: defineAsyncComponent(() => import('../widgets/generative').then(m => m.GenerativeWidget)),
 }
 
 const GenericWidget = defineComponent({

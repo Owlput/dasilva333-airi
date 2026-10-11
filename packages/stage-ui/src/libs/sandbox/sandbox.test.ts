@@ -110,14 +110,37 @@ describe('sandbox subsystem & in-memory posix execution', () => {
 
       const mountRes = await sandbox.exec('mount_widget /workspace/counter.ts --title "Counter Gauge" --target sidepanel')
       expect(mountRes.exitCode).toBe(0)
-      expect(mountRes.stdout).toContain('Mounted Counter Gauge (/workspace/counter.js) to sidepanel')
+      expect(mountRes.stdout).toContain('Widget "Counter Gauge" mounted in right side panel of the chatbox (if closed, open the widgets panel to view).')
       expect(sandbox.mountedWidgets.length).toBe(1)
       expect(sandbox.mountedWidgets[0].title).toBe('Counter Gauge')
+      expect(sandbox.mountedWidgets[0].surface).toBe('panel')
       expect(sandbox.mountedWidgets[0].target).toBe('sidepanel')
 
       const unmountRes = await sandbox.exec('unmount_widget /workspace/counter.js')
       expect(unmountRes.exitCode).toBe(0)
       expect(sandbox.mountedWidgets.length).toBe(0)
+    })
+
+    it('supports --surface widget and --surface panel with explicit reminder messages', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/stock.js', 'export default function() {}')
+
+      // 1. Mount with --surface widget
+      const widgetRes = await sandbox.exec('mount_widget /workspace/stock.js --title "Market Ticker" --surface widget')
+      expect(widgetRes.exitCode).toBe(0)
+      expect(widgetRes.stdout).toContain('Widget "Market Ticker" mounted in new standalone widget window on the desktop.')
+      expect(sandbox.mountedWidgets.length).toBe(1)
+      expect(sandbox.mountedWidgets[0].surface).toBe('widget')
+      expect(sandbox.mountedWidgets[0].target).toBe('window')
+
+      // 2. Remount with --surface panel
+      const panelRes = await sandbox.exec('mount_widget /workspace/stock.js --title "Market Ticker" --surface panel')
+      expect(panelRes.exitCode).toBe(0)
+      expect(panelRes.stdout).toContain('Widget "Market Ticker" mounted in right side panel of the chatbox (if closed, open the widgets panel to view).')
+      expect(sandbox.mountedWidgets[0].surface).toBe('panel')
+      expect(sandbox.mountedWidgets[0].target).toBe('sidepanel')
     })
   })
 

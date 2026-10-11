@@ -7,6 +7,7 @@ export interface PersistedWidget {
   sourcePath?: string
   sourceCode?: string
   code: string
+  surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
   isMounted: boolean
   mountedAt: number
