@@ -207,8 +207,8 @@ steps:
       activeColor: 'Activo: {color}'
     perDeviceToggle: Mantener esta apariencia solo en este dispositivo (excluir de
       la sincronización)
-    companionGreeting: Let’s make this space feel like you. Choose your language, theme, and
-      accent color—you’ll see changes as you go.
+    companionGreeting: Let’s make this space feel like you. Choose your language,
+      theme, and accent color—you’ll see changes as you go.
 
   experience:
     label: Experiencia
@@ -307,9 +307,9 @@ steps:
         tools: Herramientas (Búsqueda web y MCP de escritorio)
     hideModules: Ocultar Módulos
     customizeModules: 'Avanzado: Personalizar Módulos'
-    companionGreeting: Choose an archetype that fits your style. Whether you prefer a quiet
-      observer, voice companion, or full stage performer, every capability can
-      be customized.
+    companionGreeting: Choose an archetype that fits your style. Whether you prefer
+      a quiet observer, voice companion, or full stage performer, every
+      capability can be customized.
 
   profile:
     label: Perfil
@@ -338,8 +338,8 @@ steps:
       label: Sobre ti (Contexto opcional)
       placeholder: Comparte tus pasatiempos, intereses o rutina diaria para que tu
         acompañante te conozca mejor.
-    companionGreeting: What should I call you? Choose a ready-made profile or tell me about
-      yourself, including how you’d like us to interact.
+    companionGreeting: What should I call you? Choose a ready-made profile or tell
+      me about yourself, including how you’d like us to interact.
 
   vessel:
     label: Recipiente físico
@@ -450,8 +450,8 @@ steps:
     subconsciousAsides: Murmullos espontáneos hablados (Needle 2 WASM)
     asidesDescription: Permite al personaje verbalizar pequeños pensamientos en voz
       baja mientras genera respuestas complejas.
-    companionGreeting: Tune how your companion pauses and speaks while thinking. Choose a cadence
-      that matches your model's reasoning speed.
+    companionGreeting: Tune how your companion pauses and speaks while thinking.
+      Choose a cadence that matches your model's reasoning speed.
 
   emotions:
     label: Emociones
@@ -614,3 +614,4 @@ quickStart:
   brain: Cerebro de pensamiento
   voice: Perfil de voz
   launch: Completar y lanzar
+  baseUrl: URL Base

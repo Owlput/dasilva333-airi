@@ -200,8 +200,8 @@ steps:
       activeColor: 'Đang chọn: {color}'
     perDeviceToggle: Chỉ lưu diện mạo này trên thiết bị hiện tại (không bị đồng bộ
       đám mây ghi đè)
-    companionGreeting: Let’s make this space feel like you. Choose your language, theme, and
-      accent color—you’ll see changes as you go.
+    companionGreeting: Let’s make this space feel like you. Choose your language,
+      theme, and accent color—you’ll see changes as you go.
 
   experience:
     label: Trải nghiệm
@@ -297,9 +297,9 @@ steps:
         tools: Công cụ (Tìm kiếm web và MCP máy tính)
     hideModules: Ẩn mô-đun
     customizeModules: 'Nâng cao: Tùy chỉnh mô-đun'
-    companionGreeting: Choose an archetype that fits your style. Whether you prefer a quiet
-      observer, voice companion, or full stage performer, every capability can
-      be customized.
+    companionGreeting: Choose an archetype that fits your style. Whether you prefer
+      a quiet observer, voice companion, or full stage performer, every
+      capability can be customized.
 
   profile:
     label: Hồ sơ
@@ -328,8 +328,8 @@ steps:
       label: Đôi nét về bạn (Bối cảnh tùy chọn)
       placeholder: Chia sẻ sở thích hoặc thói quen hàng ngày để bạn đồng hành thấu
         hiểu bạn sâu sắc hơn.
-    companionGreeting: What should I call you? Choose a ready-made profile or tell me about
-      yourself, including how you’d like us to interact.
+    companionGreeting: What should I call you? Choose a ready-made profile or tell
+      me about yourself, including how you’d like us to interact.
 
   vessel:
     label: Hiện thân
@@ -441,8 +441,8 @@ steps:
     subconsciousAsides: Lời độc thoại thì thầm (Needle 2 WASM)
     asidesDescription: Cho phép bạn đồng hành phát ra những lời lẩm bẩm suy nghĩ nội
       tâm trong khi soạn câu trả lời dài.
-    companionGreeting: Tune how your companion pauses and speaks while thinking. Choose a cadence
-      that matches your model's reasoning speed.
+    companionGreeting: Tune how your companion pauses and speaks while thinking.
+      Choose a cadence that matches your model's reasoning speed.
 
   emotions:
     label: Cảm xúc
@@ -606,3 +606,4 @@ quickStart:
   brain: Lõi tư duy
   voice: Giọng nói
   launch: Hoàn tất & Khởi chạy
+  baseUrl: URL gốc

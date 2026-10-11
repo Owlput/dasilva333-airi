@@ -199,8 +199,8 @@ steps:
       activeColor: 'Aktif: {color}'
     perDeviceToggle: Pertahankan tampilan lokal di perangkat ini (kecualikan dari
       sinkronisasi awan)
-    companionGreeting: Let’s make this space feel like you. Choose your language, theme, and
-      accent color—you’ll see changes as you go.
+    companionGreeting: Let’s make this space feel like you. Choose your language,
+      theme, and accent color—you’ll see changes as you go.
 
   experience:
     label: Experience
@@ -296,9 +296,9 @@ steps:
         tools: Tools (Web Search & Desktop MCP)
     hideModules: Hide Modules
     customizeModules: 'Advanced: Customize Modules'
-    companionGreeting: Choose an archetype that fits your style. Whether you prefer a quiet
-      observer, voice companion, or full stage performer, every capability can
-      be customized.
+    companionGreeting: Choose an archetype that fits your style. Whether you prefer
+      a quiet observer, voice companion, or full stage performer, every
+      capability can be customized.
 
   profile:
     label: User Profile
@@ -327,8 +327,8 @@ steps:
       label: About You (Optional Context)
       placeholder: Share your interests, hobbies, or daily routine so your companion
         can connect deeper.
-    companionGreeting: What should I call you? Choose a ready-made profile or tell me about
-      yourself, including how you’d like us to interact.
+    companionGreeting: What should I call you? Choose a ready-made profile or tell
+      me about yourself, including how you’d like us to interact.
 
   vessel:
     label: Physical Vessel
@@ -439,8 +439,8 @@ steps:
     subconsciousAsides: Subconscious Spoken Asides (Needle 2 WASM)
     asidesDescription: Permit companion to vocalize inner train-of-thought
       mutterings while generating complex answers.
-    companionGreeting: Tune how your companion pauses and speaks while thinking. Choose a cadence
-      that matches your model's reasoning speed.
+    companionGreeting: Tune how your companion pauses and speaks while thinking.
+      Choose a cadence that matches your model's reasoning speed.
 
   emotions:
     label: Emotions
@@ -596,3 +596,4 @@ quickStart:
   brain: Consciousness Brain
   voice: Voice Profile
   launch: Complete Setup & Launch
+  baseUrl: URL Dasar

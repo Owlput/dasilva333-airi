@@ -76,7 +76,7 @@ steps:
       restoreAll: Restore & Launch Stage
       backToOptions: Back to Options
       startFresh: Start fresh without restoring →
-      availableCount: "{count} Available"
+      availableCount: '{count} Available'
       deviceSyncDescription: Found {count} companion(s) in your Cloudflare R2 vault.
         Choose what to sync to this device.
     stepBadge: Architecture Triage · Step {current} of {total}
@@ -312,11 +312,11 @@ steps:
       fuchsia: Fuchsia
       magenta: Magenta
       rose: Rose
-    languageCount: "{count} languages"
+    languageCount: '{count} languages'
     companionGreeting: Let’s make this space feel like you. Choose your language,
       theme, and accent color—you’ll see changes as you go.
-    selectedLanguage: "Selected: {language}"
-    nextHint: "Next: Choose your companion style"
+    selectedLanguage: 'Selected: {language}'
+    nextHint: 'Next: Choose your companion style'
 
   experience:
     label: Experience
@@ -441,89 +441,89 @@ steps:
       tools:
         label: Action Tools
         description: Web search, local file access, and MCP servers
-    enabledAvailableSteps: "{length} enabled · {lengthValue} available · {totalSteps} steps"
+    enabledAvailableSteps: '{length} enabled · {lengthValue} available · {totalSteps} steps'
     capabilities:
       Hearing:
         title: Hearing
         description: Listens to your voice and turns speech into text for natural spoken
           conversation.
         bullets:
-          "0": Real-time speech transcription
-          "1": Voice activity / pause detection
-          "2": Continuous listening or push-to-talk
+          '0': Real-time speech transcription
+          '1': Voice activity / pause detection
+          '2': Continuous listening or push-to-talk
       Voice:
         title: Voice
         description: Lets your companion speak aloud with a natural, expressive voice.
         bullets:
-          "0": Neural text-to-speech
-          "1": Voice, speed, and pitch controls
-          "2": Captions and avatar lip-sync
+          '0': Neural text-to-speech
+          '1': Voice, speed, and pitch controls
+          '2': Captions and avatar lip-sync
       Pacing:
         title: Pacing
         description: Keeps conversations flowing naturally while responses are being
           prepared.
         bullets:
-          "0": Natural fillers and acknowledgements
-          "1": Brief transition phrases during longer responses
-          "2": Faster, smoother conversational turn-taking
+          '0': Natural fillers and acknowledgements
+          '1': Brief transition phrases during longer responses
+          '2': Faster, smoother conversational turn-taking
       Emotions:
         title: Emotions
         description: Turns conversational emotion into live avatar expressions and body
           language.
         bullets:
-          "0": Facial expressions and emotion cues
-          "1": Avatar gestures and body language
-          "2": Mood that can carry across the conversation
+          '0': Facial expressions and emotion cues
+          '1': Avatar gestures and body language
+          '2': Mood that can carry across the conversation
       Memory:
         title: Memory
         description: Carries useful context across conversations so your companion can
           remember past interactions.
         bullets:
-          "0": Daily summaries of recent conversations
-          "1": Searchable journal of important memories
-          "2": Connections between people, places, and topics
+          '0': Daily summaries of recent conversations
+          '1': Searchable journal of important memories
+          '2': Connections between people, places, and topics
       Vision:
         title: Vision
         description: Lets your companion understand images, photos, and screenshots you
           share.
         bullets:
-          "0": Image and scene understanding
-          "1": Object, text, and detail recognition
-          "2": Follow-up discussion about visual content
+          '0': Image and scene understanding
+          '1': Object, text, and detail recognition
+          '2': Follow-up discussion about visual content
       Presence:
         title: Presence
         description: Lets your companion check in and react on its own instead of always
           waiting for you to start the conversation.
         bullets:
-          "0": Scheduled routines and timers
-          "1": Proactive casual check-ins
-          "2": Context-aware commentary on screen activity
+          '0': Scheduled routines and timers
+          '1': Proactive casual check-ins
+          '2': Context-aware commentary on screen activity
       Visuals:
         title: Visuals
         description: Lets your companion create artwork and visual scenes as part of the
           conversation.
         bullets:
-          "0": AI image generation
-          "1": Visual-novel scenes and selfies
-          "2": Illustrated memory journal
+          '0': AI image generation
+          '1': Visual-novel scenes and selfies
+          '2': Illustrated memory journal
       Tools:
         title: Tools
         description: Lets your companion use external tools, browse information, and
           interact with your workspace.
         bullets:
-          "0": Web search and page reading
-          "1": Local workspace access
-          "2": Connected services and custom tools
+          '0': Web search and page reading
+          '1': Local workspace access
+          '2': Connected services and custom tools
       Text:
         title: Text
         description: Provides a lightweight, keyboard-first way to chat without voice
           features.
         bullets:
-          "0": Markdown and code formatting
-          "1": Streaming text responses
-          "2": Ideal for quiet or text-only use
+          '0': Markdown and code formatting
+          '1': Streaming text responses
+          '2': Ideal for quiet or text-only use
     summary:
-      selected: "Selected: {title}"
+      selected: 'Selected: {title}'
     companionGreeting: Choose an archetype that fits your style. Whether you prefer
       a quiet observer, voice companion, or full stage performer, every
       capability can be customized.
@@ -554,17 +554,17 @@ steps:
       details: Details
       lighterQuestion: Prefer a lighter resource footprint?
       switchQuiet: Switch to The Quiet Observer
-      webgpuLabel: "WebGPU Acceleration: "
-      fp16Label: "Shader FP16: "
-      gpuLabel: "Graphics Adapter: "
-      memoryLabel: "System Memory: "
+      webgpuLabel: 'WebGPU Acceleration: '
+      fp16Label: 'Shader FP16: '
+      gpuLabel: 'Graphics Adapter: '
+      memoryLabel: 'System Memory: '
       available: Available
       unavailable: Unavailable
       unknown: Unknown
       supported: Supported
       unsupported: Unsupported
-      advisoryNote: "Note: Guidance is advisory. You can configure CPU fallbacks,
-        separate local servers, or remote cloud providers at any step."
+      advisoryNote: 'Note: Guidance is advisory. You can configure CPU fallbacks,
+        separate local servers, or remote cloud providers at any step.'
       lowMemoryDescription: Approximately {memory} of system memory was detected.
         Running the entire local neural stack concurrently may encounter memory
         pressure. You can select lighter models or remote providers during
@@ -623,10 +623,10 @@ steps:
       non-binary: Non-Binary
     visualPrompt:
       label: Visual prompt tags
-      placeholder: ", short dark hair, spectacles, formal grey business suit"
+      placeholder: ', short dark hair, spectacles, formal grey business suit'
       help: Stable Diffusion / ComfyUI prompt tags injected when generating scene
         graphics representing you.
-    displayingAs: "Displaying as:"
+    displayingAs: 'Displaying as:'
     archetypes:
       rustic-craftsman:
         label: Rustic Craftsman
@@ -646,7 +646,7 @@ steps:
       creative-artist: {}
       studio-director: {}
     summary:
-      displayName: "Displaying as: {name}"
+      displayName: 'Displaying as: {name}'
     companionGreeting: What should I call you? Choose a ready-made profile or tell
       me about yourself, including how you’d like us to interact.
     quickTemplates: Quick templates
@@ -691,7 +691,7 @@ steps:
       previousModel: Previous Model
       nextModel: Next Model
     invalidModelFile: Invalid model file
-    failedToLoadAvatarValue: "Failed to load avatar: {messageInvalidmodelfile}"
+    failedToLoadAvatarValue: 'Failed to load avatar: {messageInvalidmodelfile}'
     loadedAvatarValue: Loaded avatar "{name}"!
     importingValue: Importing {name}...
     mountedValueAsCompanionVessel: Mounted {name} as companion vessel!
@@ -702,7 +702,7 @@ steps:
     supportsVrm00103dHumanoidsAndLive2dCubismModelZipPackages: Supports VRM 0.0/1.0 3D humanoids and Live2D Cubism model zip packages.
     chooseFile: Choose File
     downloadModel: Download model
-    visualStyleDescriptor: "Visual style descriptor"
+    visualStyleDescriptor: 'Visual style descriptor'
     localPresetModels:
       preset-live2d-2:
         description: Official Live2D Cubism 4 starter avatar with natural breathing, eye
@@ -724,7 +724,7 @@ steps:
       vrmStarterSource: VRM Starter Model
       communityDescription: Community-curated {format} avatar from {source}.
     summary:
-      selected: "Selected: {name}"
+      selected: 'Selected: {name}'
     selectedAvatar: Selected avatar
     selected: Selected
     browsing: Browsing…
@@ -788,9 +788,9 @@ steps:
     standardModel: Standard Model
     brainConnectionVerifiedValuemsTtftValue: Brain connection verified! ({elapsedMs}ms TTFT · {detail})
     failedToConnectProvider: Failed to connect provider
-    valueConnected: "{nameProvider} connected!"
+    valueConnected: '{nameProvider} connected!'
     localWebllmBrainReady: Local WebLLM brain ready!
-    coreAiDownloadFailedValue: "Core AI download failed: {coreAiErrorMessage}"
+    coreAiDownloadFailedValue: 'Core AI download failed: {coreAiErrorMessage}'
     appleCoreAiNeuralEngineModelReady: Apple Core AI Neural Engine model ready!
     selectConsciousnessLlm: Select Consciousness LLM
     freeCloudAi: Free Cloud AI
@@ -812,7 +812,7 @@ steps:
       High-speed neural dialogue on Apple Neural Engine (~45+ tok/s). 100%
       offline & private.
     14GbRam: ~1.4 GB RAM
-    selectedGemma4E2bItSpeculativeCoreml: "Selected: Gemma 4 E2B IT (Speculative CoreML)"
+    selectedGemma4E2bItSpeculativeCoreml: 'Selected: Gemma 4 E2B IT (Speculative CoreML)'
     downloadCompile: Download & Compile
     activeReady: Active & Ready
     retryDownload: Retry Download
@@ -830,14 +830,14 @@ steps:
     alphabeticalTapToSelect: Alphabetical · Tap to select
     enterYourApiCredentialsToLoadAiModels: Enter your API credentials to load AI models.
     getKey: Get Key
-    advancedCustomBaseUrl: "Advanced: Custom Base URL"
+    advancedCustomBaseUrl: 'Advanced: Custom Base URL'
     activeModelId: Active Model ID
     typeDirectlyOrPickBelow: Type directly or pick below
     eGGemini25FlashGpt4oMiniMistralLargeLatest: e.g. gemini-2.5-flash, gpt-4o-mini, mistral-large-latest
     discoveredModels: Discovered Models
     sayHelloAndIntroduceYourself: Say hello and introduce yourself!
     brainActiveVerified: Brain Active & Verified
-    brainConnectionFailed: "Brain Connection Failed:"
+    brainConnectionFailed: 'Brain Connection Failed:'
     brainConnectionVerifiedReadyToProceed: Brain connection verified! Ready to proceed.
     proceedWithoutAnAiBrain: Proceed Without an AI Brain?
     withoutAnActiveAiModelYourCompanionWillNotBeAbleToTalkThinkOrRe:
@@ -887,7 +887,7 @@ steps:
       configure: Configure {name}
     localModels:
       vram: ~{toFixed1} GB VRAM
-      selected: "Selected: {name}"
+      selected: 'Selected: {name}'
       descriptions:
         qwen3-5-0-8b-q4f16-1-mlc: Ultra-fast pre-filtering and event-log distillation;
           complements the web-rwkv salience gate.
@@ -908,7 +908,7 @@ steps:
         phi-4-mini-instruct-q4f32-1-mlc: Next-gen compact generalist running with standard WebGPU FP32 compute.
     verification:
       failed: Connection test failed. Check API key, model ID, and network.
-      latencyPlain: "{latency}ms TTFT"
+      latencyPlain: '{latency}ms TTFT'
       tokensPlain: ~{tokens} tokens
     assistantMessage: Let’s choose the brain behind our conversations. Use a free
       cloud model, run one locally, or connect your own provider—then try a
@@ -971,13 +971,13 @@ steps:
     pleaseUploadAnImageFilePngJpgWebp: Please upload an image file (PNG, JPG, WebP)
     clearedImportedCardRevertedToReluPreset: Cleared imported card; reverted to ReLU preset.
     mountedCustomCardValueToDraft: Mounted custom card "{importedName}" to draft!
-    importFailedValue: "Import failed: {importError}"
+    importFailedValue: 'Import failed: {importError}'
     openingCardPreviewForValue: Opening card preview for {name}...
     interceptedCharacterCardValue: Intercepted character card "{filename}"!
     aiCharacterCreator: AI Character Creator
-    personality: "Personality:"
-    scenario: "Scenario:"
-    automaticCardInterceptor: "Automatic Card Interceptor:"
+    personality: 'Personality:'
+    scenario: 'Scenario:'
+    automaticCardInterceptor: 'Automatic Card Interceptor:'
     dropASillytavernCharacterCardOrClickToBrowse: Drop a SillyTavern character card or click to browse
     supportsPngCharacterCardsWithEmbeddedTextCharaChunksOrCcv2Ccv3Json:
       Supports PNG character cards with embedded tEXt chara chunks or CCv2/CCv3
@@ -993,8 +993,8 @@ steps:
     searchCharactersByNameSeriesOrTags: Search characters by name, series, or tags...
     firstWordsSpokenByTheCompanion: First words spoken by the companion...
     rulesOfTheWorldAndCompanionDynamic: Rules of the world and companion dynamic...
-    soul: "Soul:"
-    body: "Body:"
+    soul: 'Soul:'
+    body: 'Body:'
     cardInterceptorActive: Card Interceptor Active
     closeBrowser: Close Browser
     hubSources:
@@ -1048,8 +1048,8 @@ steps:
       fan-service:
         label: Fan Servicey
     messages:
-      failedToParseCardValue: "Failed to parse card: {value0}"
-      nextHearingStt: "Next: Hearing (STT)"
+      failedToParseCardValue: 'Failed to parse card: {value0}'
+      nextHearingStt: 'Next: Hearing (STT)'
     presets:
       default:
         tag: Empathetic Companion
@@ -1091,15 +1091,15 @@ steps:
         description: A brightly optimistic, energetic companion who showers you with
           open affection, sweet encouragement, and uninhibited joy.
         summary: Bright, affectionate, and optimistic.
-      displayName: "{value0} ({value1})"
+      displayName: '{value0} ({value1})'
       cardCount: Starter Cards ({length})
     selection:
-      creator: "{name} (AI Character Creator)"
-      imported: "{name} (Imported)"
+      creator: '{name} (AI Character Creator)'
+      imported: '{name} (Imported)'
       customCompanion: Custom Companion
-    importHelp: "{emphasis} Browse any repository below and click to download any
+    importHelp: '{emphasis} Browse any repository below and click to download any
       SillyTavern V2 character PNG or JSON card. AIRI automatically captures the
-      download stream, parses the embedded metadata, and stages your companion."
+      download stream, parses the embedded metadata, and stages your companion.'
     source:
       active: Active
     creator: {}
@@ -1151,8 +1151,8 @@ steps:
     dreamingWithBrain: Dreaming up story ideas with {model}…
     variationEmptyHint: Pick a story direction on the left or generate tailored
       variations for {name}.
-    characterSummary: "Character: {name}"
-    personalitySummaryLine: "Selected personality: {name}"
+    characterSummary: 'Character: {name}'
+    personalitySummaryLine: 'Selected personality: {name}'
     createContinue: Create & continue
     activeLlm: Active LLM
     importedCardFallback: Imported Card
@@ -1179,7 +1179,7 @@ steps:
       whisper: Local Whisper (100% On-Device)
       browser: Web Speech API (Zero-Config)
     stopTest: Stop Test
-    valueConnected: "{nameProvider} connected!"
+    valueConnected: '{nameProvider} connected!'
     selectAnAudioInputDevice: Select an audio input device
     activeMicrophoneInput: Active Microphone Input
     rescanAudioDevices: Rescan audio devices
@@ -1204,7 +1204,7 @@ steps:
     pickALockKeyToToggleTheMicrophoneHandsFree: Pick a lock key to toggle the microphone hands-free.
     keyDetected: Key detected
     hearingYou: Hearing you…
-    finalTranscription: "Final transcription:"
+    finalTranscription: 'Final transcription:'
     noTranscriptionYetStartTheTestAndSpeakIntoYourMicrophone: No transcription yet. Start the test and speak into your microphone.
     earVerifiedReadyToProceed: Ear verified! Ready to proceed.
     speakIntoYourMicrophoneNextUnlocksOnceWeHearYou: Speak into your microphone — Next unlocks once we hear you.
@@ -1317,7 +1317,7 @@ steps:
     engineInitializedReady: Engine Initialized & Ready
     forceReDownloadWeights: Force re-download weights
     reDownload: Re-download
-    downloadFailed: "Download Failed:"
+    downloadFailed: 'Download Failed:'
     companionVoice: Companion Voice
     refreshVoiceCatalog: Refresh voice catalog
     loadVoices: Load Voices
@@ -1333,16 +1333,16 @@ steps:
     enterUserSampleSpeechToPreview: Enter user sample speech to preview...
     huggingFaceTokenRequired: Hugging Face Token Required
     thisVoiceIsBehindAGatedModel: This voice is behind a gated model
-    skipTheTokenFreeOfflineStarterVoices: "Skip the token: Free offline starter voices"
+    skipTheTokenFreeOfflineStarterVoices: 'Skip the token: Free offline starter voices'
     theseVoicesRun100LocallyWithZeroShotCloningNoHfAccountOrTokenNee:
-      "These voices run 100% locally with zero-shot cloning — no HF account or
-      token needed:"
+      'These voices run 100% locally with zero-shot cloning — no HF account or
+      token needed:'
     reluEmpathetic: ★ ReLU (Empathetic)
     sakuraJapanese: ★ Sakura (Japanese 🇯🇵)
     agreeAndAccessRepository: '"Agree and access repository"'
     requiredWithoutAcceptingTheGateHfBlocksAccessEvenWithAValidToken:
-      "⚠️ Required: Without accepting the gate, HF blocks access even with a
-      valid token."
+      '⚠️ Required: Without accepting the gate, HF blocks access even with a
+      valid token.'
     userAccessToken: User Access Token
     read: Read
     pasteTokenHere: Paste Token Here
@@ -1452,15 +1452,15 @@ steps:
       shortHint: Please check that the full token was pasted.
       valid: Valid token format
       validHint: Ensure you clicked "Agree and access repository" on kyutai/pocket-tts.
-    offlineStarterTip: "Tip: All {emphasis} (such as ★ Sakura and ★ ReLU) run 100%
-      offline without needing any HF token."
+    offlineStarterTip: 'Tip: All {emphasis} (such as ★ Sakura and ★ ReLU) run 100%
+      offline without needing any HF token.'
     accessTokenInstructions: Generate a {emphasis} with {emphasis2} role at {link}
       (token starts with {code})
     gatedVoiceDescription: The voice you selected ({emphasis}) is hosted on a gated
       Hugging Face repository. To use it, you need a free Hugging Face account,
       accept the model gate, and paste your access token below.
     repositoryInstructions: Visit {repository} and click {action}.
-    provider: { localFallback: Local TTS, cloudFallback: Cloud TTS }
+    provider: {localFallback: Local TTS, cloudFallback: Cloud TTS}
     download:
       progress: Downloading Weights ({downloadProgress}%)...
       pocket: Downloading Pocket TTS weights...
@@ -1556,8 +1556,8 @@ steps:
         label: Anime Girl (Energetic)
       chatterboxDefault:
         label: Chatterbox Default
-    engineCalibrated: "{provider} engine ready · Voice calibrated"
-    providerSelected: "{provider} selected"
+    engineCalibrated: '{provider} engine ready · Voice calibrated'
+    providerSelected: '{provider} selected'
     createAccountInstruction: Create an account at {link}
 
   thinking:
@@ -1594,7 +1594,7 @@ steps:
       truncate internal chain-of-thought.
     responseLengthResetToDefaults: Response length reset to defaults
     hardwareBenchmarkFailedCheckNetworkApiKey: Hardware benchmark failed. Check network & API key.
-    hardwareBenchmarkedValuemsTtftValue: "Hardware benchmarked: {elapsedMs}ms TTFT ({detail})"
+    hardwareBenchmarkedValuemsTtftValue: 'Hardware benchmarked: {elapsedMs}ms TTFT ({detail})'
     noConsciousnessBrainModelConfiguredInStep8Yet: No Consciousness Brain Model configured in Step 8 yet.
     tokens: tokens
     onlySetIfKnown: Only set if known
@@ -1634,13 +1634,13 @@ steps:
     benchmark:
       reasoningModel: Reasoning Model
       standardModel: Standard Stream
-      lastTest: "Last first-token test: {latency}"
+      lastTest: 'Last first-token test: {latency}'
     voiceSources: {}
     prewarm:
       synthesisProgress: Synthesizing fillers ({completed}/{total})...
       progress: Pre-warming fillers ({completed}/{total})...
       synthesizing: Synthesizing...
-      cacheReady: "Cache primed: {count} fillers ready"
+      cacheReady: 'Cache primed: {count} fillers ready'
     simulation:
       brainRequired: Please configure a Brain Model in Step 8 (Consciousness) first.
       failed: Simulation failed. Check provider credentials.
@@ -1666,13 +1666,13 @@ steps:
     audioNotPrepared: Audio clips not prepared
     timingDetails: Timing details
     contextWidthThreshold: Context width threshold
-    reasoningLengthTitle: "Response length stays flexible on reasoning models:"
+    reasoningLengthTitle: 'Response length stays flexible on reasoning models:'
     reasoningLengthDescription: Thinking models spend tokens on internal
       deliberation before replying, so hard limits stay off to avoid cutting
       thoughts short.
     enforceReplyLength: Enforce reply length
     replyBudgetDescription: Guide reply brevity and maximum token budget
-    tokenCeilingLabel: "Token ceiling:"
+    tokenCeilingLabel: 'Token ceiling:'
     customTokenCeilingLabel: Custom token ceiling
     replyGuidance: Reply guidance
     editGuidance: Edit guidance
@@ -1710,8 +1710,8 @@ steps:
       noChat: Provider "{providerId}" does not expose chat completions.
       initializationFailed: Unable to initialize provider "{providerId}".
     preview:
-      latency: "{latency}ms TTFT"
-      sentences: "{count} sentences"
+      latency: '{latency}ms TTFT'
+      sentences: '{count} sentences'
 
   emotions:
     label: Emotions
@@ -1779,30 +1779,30 @@ steps:
       cf-meta-llama-4-scout-17b-16e-instruct:
         description: Frontier 17B MoE (16 experts). Ultra-fast visual perception & high
           reasoning depth.
-        badge: "Flagship MoE · Speed: 11/11"
+        badge: 'Flagship MoE · Speed: 11/11'
       cf-mistralai-mistral-small-3-1-24b-instruct:
         description: Deep conversational wit, high reasoning intelligence & in-character
           visual banter.
-        badge: "Rank #20 Intel · 128k"
+        badge: 'Rank #20 Intel · 128k'
       cf-qwen-qwen3-8-27b:
         description: Alibaba Qwen visual reasoning with step-by-step visual
           chain-of-thought analysis.
         badge: 27B · Visual CoT
     hop2SDialogue: Hop 2 · {characterName}'s Dialogue
     summary:
-      model: "Model: {model}"
+      model: 'Model: {model}'
     providers:
-      available: "{count} Available"
+      available: '{count} Available'
     simulator:
-      latency: "{latency}ms"
+      latency: '{latency}ms'
       errors:
         imageRequired: Please attach or drop an image first.
         modelRequired: Please select a Vision Provider and Model first.
-        emptyResponse: "[No character response generated]"
-        brainRequired: "[Consciousness provider/model not configured yet. Complete Step
-          8 Consciousness to preview character reactions.]"
+        emptyResponse: '[No character response generated]'
+        brainRequired: '[Consciousness provider/model not configured yet. Complete Step
+          8 Consciousness to preview character reactions.]'
         failed: Vision simulation failed.
-        brainError: "[Hop 2 Consciousness Error: {error}]"
+        brainError: '[Hop 2 Consciousness Error: {error}]'
     routing: {}
     pageTitle: Vision & Image Understanding
     assistantMessage: Choose how I’ll understand images, then send a picture to try it.
@@ -1828,7 +1828,7 @@ steps:
     testVision: Test vision
     chooseImage: Choose an image to start.
     noProvider: No provider
-    noVisualDescription: "[No visual description generated]"
+    noVisualDescription: '[No visual description generated]'
     dropImage: Drop an image or {action}
     providerInitError: Unable to initialize vision provider "{provider}".
 
@@ -1862,15 +1862,15 @@ steps:
     howReactionsArePresented: (How reactions are presented)
     perceptionEngineTier: Perception Engine Tier
     screenSamplingCadence: Screen Sampling Cadence
-    status: "Status:"
+    status: 'Status:'
     screenIntervalPresets:
-      "1000":
+      '1000':
         label: 1s (High)
-      "2000":
+      '2000':
         label: 2s (Balanced)
-      "5000":
+      '5000':
         label: 5s (Gentle)
-      "10000":
+      '10000':
         label: 10s (Eco)
     reactionModes:
       voice-and-bubble:
@@ -1915,15 +1915,15 @@ steps:
     scheduleFrom: Sleep From
     scheduleTo: Wake Up At
     screenIntervalPresets:
-      "1000": {}
-      "2000": {}
-      "5000": {}
-      "10000": {}
+      '1000': {}
+      '2000': {}
+      '5000': {}
+      '10000': {}
     heartbeatIntervalPresets:
-      "2": {}
-      "5": {}
-      "10": {}
-      "20": {}
+      '2': {}
+      '5': {}
+      '10': {}
+      '20': {}
     engine: {}
     reactionModes:
       voice-and-bubble: {}
@@ -1952,7 +1952,7 @@ steps:
       commentDeliveryHint: Applies to comments prompted by screen activity.
       scheduleHint: Timing also follows your character's operating schedule.
       fineTuneLater: Fine-tune later in Character Settings
-      checkInFrequency: "{number}. Check-in frequency"
+      checkInFrequency: '{number}. Check-in frequency'
       fineTuneHint: Advanced settings like quiet hours, tripwires, and sensitivity can
         be customized in Character Settings.
     sources:
@@ -1996,13 +1996,13 @@ steps:
       external:
         title: Configured vision provider
         description: Uses the provider chosen in Vision.
-        unconfigured: "Notice: No provider configured in Vision step."
-        active: "Active: {provider}"
+        unconfigured: 'Notice: No provider configured in Vision step.'
+        active: 'Active: {provider}'
       processingLocation: Processing location depends on your vision, classifier, and
         brain settings.
       downloading: Downloading model ({percent}%)...
       downloadSuccess: Local scene understanding model downloaded and ready!
-      downloadFailure: "Failed to download vision model: {error}"
+      downloadFailure: 'Failed to download vision model: {error}'
     adjustLater: You can adjust this later in Character Settings.
     setUpLater: Set up later
     companionGreeting: Choose when I chime in, and how I stay aware of your day.
@@ -2023,7 +2023,7 @@ steps:
       voice-and-bubble: Voice & bubble
       bubble-only: Bubble only
       voice-only: Voice only
-    checkInMinutes: "{minutes} min"
+    checkInMinutes: '{minutes} min'
 
   artistry:
     label: Artistry
@@ -2043,7 +2043,7 @@ steps:
       renderingCharacterStyleSample: Rendering character style sample...
       tryAgain: Try Again
       characterStylePreview: Character Style Preview
-      provider: "Provider:"
+      provider: 'Provider:'
       reRoll: 🔄 Re-roll
       doneClose: Done / Close
       messages:
@@ -2080,7 +2080,7 @@ steps:
       saveWorkflow: SAVE WORKFLOW
       cancel: Cancel
       empty: No workflows uploaded yet (Upload workflow_api.json above)
-      option: "{name} ({count} exposed fields)"
+      option: '{name} ({count} exposed fields)'
       textToImageOnly: (None - Text to Image Only)
     synthesizerModel: Synthesizer Model
     pollinationsApiKeyPollenToken: Pollinations API Key / Pollen Token
@@ -2105,13 +2105,13 @@ steps:
     promptFocus: Prompt Focus
     evaluatesUserSIncomingMessageImmediatelyBeforeTheCompanionSpeaks: Evaluates user's incoming message immediately before the companion speaks.
     comfyuiWorkflowOptions:
-      "": {}
+      '': {}
     messages:
       connectedValue: Connected — {value0}
-      failedValue: "Failed: {value0}"
-      invalidJsonValue: "Invalid JSON: {value0}"
-    reactionDescription: "Evaluates what the companion replied: {code}. Best for
-      natural scene reactivity."
+      failedValue: 'Failed: {value0}'
+      invalidJsonValue: 'Invalid JSON: {value0}'
+    reactionDescription: 'Evaluates what the companion replied: {code}. Best for
+      natural scene reactivity.'
     style:
       preview: Preview
     providers:
@@ -2132,14 +2132,14 @@ steps:
       freeRouter: Free Router (Pollinations Auto)
     connection:
       connected: Connected — {gpu}{vram}
-      vram: " ({size} VRAM)"
+      vram: ' ({size} VRAM)'
       fallbackGpu: GPU
       connectedLabel: Connected
     assistantMessage: Choose how I create images, and when I bring our stories to life.
     imageGeneration: Image generation
     serviceDescription: Choose the service that creates your images.
-    comfyServerLabel: "ComfyUI server:"
-    workflowLabel: "Workflow:"
+    comfyServerLabel: 'ComfyUI server:'
+    workflowLabel: 'Workflow:'
     workflowHint: Use an API-format workflow exported from ComfyUI.
     characterStyle: Character visual style
     styleDescription: Keep your companion’s appearance consistent across generated images.
@@ -2211,7 +2211,7 @@ steps:
       recentContext: Recent context · {window}
     window:
       oneDay: 1 day
-      days: "{count} days"
+      days: '{count} days'
     companionGreeting: Choose what I remember, and how I carry our conversations forward.
 
   tools:
@@ -2250,14 +2250,14 @@ steps:
       skeletal animations and dances in real time from conversation via
       Procedural LLM keyframing and FlowMDM WebGPU neural diffusion.
     noteYourSelectedVesselLive2dSpineUses2dAnimationChannelsSwitchToA:
-      "Note: Your selected vessel (Live2D/Spine) uses 2D animation channels.
-      Switch to a VRM vessel in Step 5 for full 3D motion playback."
+      'Note: Your selected vessel (Live2D/Spine) uses 2D animation channels.
+      Switch to a VRM vessel in Step 5 for full 3D motion playback.'
     activeDesktopToolbelt: Active Desktop Toolbelt
     webSearch0Key: web_search (0-Key)
     filesystemDesktopMcp: filesystem (Desktop MCP)
     generateMotion3dVrma: generate_motion (3D VRMA)
     noExternalToolsEnabledSafeSandboxedMode: No external tools enabled (safe sandboxed mode).
-    toolGranted: "{count} Tool Granted | {count} Tools Granted"
+    toolGranted: '{count} Tool Granted | {count} Tools Granted'
     webSearchDescription: Equips the companion with real-time web search and page
       markdown extraction via {code} (DuckDuckGo, Bing, Brave, Baidu) without
       requiring paid API keys or subscription tokens.
@@ -2267,7 +2267,7 @@ steps:
     motionOutputDescription: Output motions compile directly to VRMA binary tracks
       and play live on Stage. {emphasis}
     motion:
-      status: "Engine Status: {status}"
+      status: 'Engine Status: {status}'
 
   finale:
     label: Stage Finale
@@ -2293,7 +2293,7 @@ steps:
     animateVrm: Animate VRM
     none: None
     replay: Replay
-    failedToCreateCompanionCardValue: "Failed to create companion card: {msg}"
+    failedToCreateCompanionCardValue: 'Failed to create companion card: {msg}'
     companionReadyOnStage: Companion ready on stage!
     speechIsDisabledForThisCompanionSilentMode: Speech is disabled for this companion (Silent Mode).
     motionGenerationFailed: Motion generation failed.
@@ -2304,11 +2304,11 @@ steps:
     resetAvatarPosition: Reset Avatar Position
     resetPos: Reset Pos
     silentMode: Silent Mode
-    manifest: "Manifest:"
-    soul: "Soul:"
-    vessel: "Vessel:"
-    brain: "Brain:"
-    voice: "Voice:"
+    manifest: 'Manifest:'
+    soul: 'Soul:'
+    vessel: 'Vessel:'
+    brain: 'Brain:'
+    voice: 'Voice:'
     preFlightReadinessHonestyMatrix: Pre-Flight Readiness Honesty Matrix
     kinetic3dMotionLivePlayground: Kinetic 3D Motion Live Playground
     typeHowYouWantHerToMoveEGWaveHelloGracefulBow: Type how you want her to move (e.g. wave hello, graceful bow)...
@@ -2351,25 +2351,25 @@ steps:
       filesystem: Filesystem
       motions: 3D Motions
     summary:
-      microphone: "{provider} · Mic Active"
+      microphone: '{provider} · Mic Active'
       memoryActive: Memory Active
-      memoryList: "{count} Active: {names}"
+      memoryList: '{count} Active: {names}'
       toolsActive: Toolbelt Armed
       sandbox: Safe Sandboxed
-      toolList: "{count} Granted: {names}"
+      toolList: '{count} Granted: {names}'
       noTools: No external tools
       artReady: Art Engine Ready
-      artProvider: "{provider}{director}"
+      artProvider: '{provider}{director}'
       sensoryActive: Sensory Active
       screenWatching: Screen Watching ({mode})
-      directorActive: " · Director Active"
+      directorActive: ' · Director Active'
     clipboard:
       compiled: Compiled Card JSON copied to clipboard
       draft: Raw Draft State JSON copied to clipboard
     compiler:
       close: Done
     verification:
-      count: "{length} Faculties Verified"
+      count: '{length} Faculties Verified'
     audition:
       playing: Playing...
     motion:
@@ -2408,7 +2408,7 @@ steps:
     framesAreContinuouslyHashedWithPhashOnlyFramesWithMeaningfulVisualD:
       Frames are continuously hashed with pHash. Only frames with meaningful
       visual deltas trigger OCR or model evaluation.
-    theVisualPushSentinelSilentByDefault: "The Visual Push Sentinel: Silent by Default"
+    theVisualPushSentinelSilentByDefault: 'The Visual Push Sentinel: Silent by Default'
     proactiveHeartbeatsSleepSchedule: Proactive Heartbeats & Sleep Schedule
     periodicBackgroundTimerCheckInsEvaluatingWhetherToSpeakBoundToYour:
       Periodic background timer check-ins evaluating whether to speak. Bound to
@@ -2421,7 +2421,7 @@ steps:
       companion will not make unprompted comments.
     wakeUpTime: Wake Up Time
     bedtimeQuietHours: Bedtime (Quiet Hours)
-    sleepScheduleAppliesToBothScreenWatchingHeartbeats: "Sleep Schedule: Applies to Both Screen Watching & Heartbeats"
+    sleepScheduleAppliesToBothScreenWatchingHeartbeats: 'Sleep Schedule: Applies to Both Screen Watching & Heartbeats'
     both: both
     100DisplayPrivacy: 100% display privacy
     pauseWhenAwayFromComputerAfkGate: Pause When Away from Computer (AFK Gate)
@@ -2444,7 +2444,7 @@ steps:
     cpuSystemLoad: CPU & System Load
     usageMetrics: Usage Metrics
     attachUnifiedEventLedgerStream: Attach Unified Event Ledger Stream
-    sampleLast: "Sample Last:"
+    sampleLast: 'Sample Last:'
     events: Events
     liveSensorLedgerIngestionPreview: Live Sensor & Ledger Ingestion Preview
     thisBlockIsAppendedAtTheTailOfTheLlmPromptToPreserveKvPrefixCac:
@@ -2453,22 +2453,22 @@ steps:
     previous: ← Previous
     confirmContinue: Confirm & Continue →
     screenIntervalPresets:
-      "1000":
+      '1000':
         label: 1s (High)
-      "2000":
+      '2000':
         label: 2s (Balanced)
-      "5000":
+      '5000':
         label: 5s (Gentle)
-      "10000":
+      '10000':
         label: 10s (Eco)
     heartbeatIntervalPresets:
-      "2":
+      '2':
         label: 2 min
-      "5":
+      '5':
         label: 5 min (Recommended)
-      "10":
+      '10':
         label: 10 min
-      "20":
+      '20':
         label: 20 min
     screenSilenceDescription: Whenever screen shifts occur, your companion evaluates
       whether the change is genuinely noteworthy. If you are typing mundane
@@ -2487,7 +2487,7 @@ steps:
       evaluation until wake-up time.
     ambient:
       sectionLabel: AMBIENT PULL
-      intervalLabel: "{interval}ms ticker"
+      intervalLabel: '{interval}ms ticker'
     reactionModes:
       voice-and-bubble:
         title: Voice & Bubble
@@ -2670,7 +2670,7 @@ quickStart:
   hearingDescription: Let {companionName} hear your voice.
   readyTitle: Ready to meet {companionName}
   preparingCompanion: Preparing {companionName}...
-  calibratedPacing: "Calibrated: {label} ({ttft})"
+  calibratedPacing: 'Calibrated: {label} ({ttft})'
   preparation:
     downloadingWeights: Downloading WebLLM model weights...
     warmingUp: Compiling WebGPU shaders & warming up...
@@ -2690,7 +2690,7 @@ quickStart:
     speechConnected: Connected {provider} speech provider
     speechMuted: Vocal synthesis muted
     seedingPersona: Seeding {name}'s soul & stage card...
-    stageReady: "{name} is alive and ready on Stage!"
+    stageReady: '{name} is alive and ready on Stage!'
   greetingDefaultName: there
   connection:
     connected: Connected! {elapsed}ms TTFT
@@ -2702,3 +2702,4 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+  baseUrl: Base URL

@@ -180,23 +180,28 @@ function selectCompanion(c: StarterCompanion) {
 // ==========================================
 const isIOSNative = computed(() => isApplePlatform() || NativeAI.isNative())
 
-// Chat Providers dynamically from registry
+// Chat Providers dynamically from registry, sorted alphabetically
 const allChatProviders = computed(() => {
   const list = (providersStore.allChatProvidersMetadata || []) as any[]
-  if (list.length > 0)
-    return list
+  const source = list.length > 0
+    ? list
+    : [
+        { id: 'web-llm', name: 'WebLLM (WebGPU On-Device)' },
+        { id: 'openai', name: 'OpenAI' },
+        { id: 'openai-compatible', name: 'OpenAI Compatible' },
+        { id: 'gemini', name: 'Google Gemini' },
+        { id: 'anthropic', name: 'Anthropic Claude' },
+        { id: 'groq', name: 'Groq Cloud' },
+        { id: 'deepseek', name: 'DeepSeek' },
+        { id: 'ollama', name: 'Ollama Local' },
+        { id: 'apple-core-ai', name: 'Apple Core AI (Neural Engine)' },
+      ]
 
-  // Fallback defaults if registry hasn't populated yet
-  return [
-    { id: 'web-llm', name: 'WebLLM (WebGPU On-Device)' },
-    { id: 'openai', name: 'OpenAI' },
-    { id: 'gemini', name: 'Google Gemini' },
-    { id: 'anthropic', name: 'Anthropic Claude' },
-    { id: 'groq', name: 'Groq Cloud' },
-    { id: 'deepseek', name: 'DeepSeek' },
-    { id: 'ollama', name: 'Ollama Local' },
-    { id: 'apple-core-ai', name: 'Apple Core AI (Neural Engine)' },
-  ]
+  return [...source].sort((a, b) => {
+    const nameA = (a.name || a.id || '').toLowerCase()
+    const nameB = (b.name || b.id || '').toLowerCase()
+    return nameA.localeCompare(nameB)
+  })
 })
 
 // Initial default provider based on platform business rules
@@ -214,6 +219,33 @@ function getInitialProvider(): string {
   return allChatProviders.value[0]?.id || 'openai'
 }
 
+const isGenericOpenAI = computed(() => llmProvider.value === 'openai-compatible')
+
+const isBaseUrlVisible = computed(() => isGenericOpenAI.value)
+
+const baseUrlPlaceholder = computed(() => {
+  if (isGenericOpenAI.value)
+    return 'https://api.openai.com/v1'
+  return 'https://api.example.com/v1'
+})
+
+const baseUrl = computed({
+  get: () => {
+    if (draftStore.state.llmBaseUrl !== undefined && draftStore.state.llmBaseUrl !== '')
+      return draftStore.state.llmBaseUrl
+    const currentProvider = llmProvider.value
+    const persisted = providersStore.providers[currentProvider]?.baseUrl as string | undefined
+    if (persisted)
+      return persisted
+    if (currentProvider === 'openai-compatible')
+      return 'https://api.openai.com/v1'
+    return ''
+  },
+  set: (val: string) => {
+    draftStore.setConsciousness({ baseUrl: val })
+  },
+})
+
 const llmProvider = computed({
   get: () => draftStore.state.llmProvider || getInitialProvider(),
   set: (val) => {
@@ -222,6 +254,17 @@ const llmProvider = computed({
     const models = providersStore.getModelsForProvider(val) || []
     if (models.length > 0 && models[0]?.id) {
       draftStore.setConsciousness({ model: models[0].id })
+    }
+    // Sync baseUrl
+    const persistedBaseUrl = providersStore.providers[val]?.baseUrl as string | undefined
+    if (persistedBaseUrl) {
+      draftStore.setConsciousness({ baseUrl: persistedBaseUrl })
+    }
+    else if (val === 'openai-compatible') {
+      draftStore.setConsciousness({ baseUrl: 'https://api.openai.com/v1' })
+    }
+    else {
+      draftStore.setConsciousness({ baseUrl: '' })
     }
   },
 })
@@ -268,8 +311,8 @@ const benchmarkDurationMs = ref<number | null>(null)
 const benchmarkElapsedSeconds = ref('0.0s')
 let benchmarkTimer: ReturnType<typeof setInterval> | null = null
 
-// Reset connection status if provider, model, or API key changes
-watch([llmProvider, apiKey, llmModel], () => {
+// Reset connection status if provider, model, baseUrl, or API key changes
+watch([llmProvider, apiKey, baseUrl, llmModel], () => {
   if (connectionStatus.value !== 'testing') {
     connectionStatus.value = 'idle'
     benchmarkDurationMs.value = null
@@ -295,7 +338,7 @@ async function testConnection() {
   if (isTestingConnection.value)
     return
 
-  if (!isLocalLlmProvider.value && !apiKey.value.trim()) {
+  if (!isLocalLlmProvider.value && !isGenericOpenAI.value && !apiKey.value.trim()) {
     toast.error(t('onboarding.quickStart.pleaseEnterAnApiKeyBeforeTestingConnection'))
     connectionStatus.value = 'idle'
     return
@@ -312,13 +355,19 @@ async function testConnection() {
   }, 50)
 
   try {
-    if (apiKey.value.trim()) {
+    const effectiveApiKey = apiKey.value.trim() || (isGenericOpenAI.value ? 'sk-no-key-required' : '')
+    const effectiveBaseUrl = baseUrl.value.trim() || (isGenericOpenAI.value ? 'https://api.openai.com/v1' : '')
+
+    if (effectiveApiKey || effectiveBaseUrl) {
       providersStore.providers[llmProvider.value] = {
         ...providersStore.providers[llmProvider.value],
-        apiKey: apiKey.value.trim(),
+        ...(effectiveApiKey ? { apiKey: effectiveApiKey } : {}),
+        ...(effectiveBaseUrl ? { baseUrl: effectiveBaseUrl } : {}),
       }
       providersStore.markProviderAdded(llmProvider.value)
     }
+
+    await providersStore.disposeProviderInstance(llmProvider.value)
 
     const providerInstance = await providersStore.getProviderInstance(llmProvider.value)
     if (!providerInstance || typeof (providerInstance as any).chat !== 'function') {
@@ -735,14 +784,18 @@ async function handleStartChatting() {
     }
     else {
       prepSteps.value[0].desc = t('onboarding.quickStart.preparation.configuringProvider', { provider: llmProvider.value })
-      if (apiKey.value) {
+      const effectiveApiKey = apiKey.value.trim() || (isGenericOpenAI.value ? 'sk-no-key-required' : '')
+      const effectiveBaseUrl = baseUrl.value.trim() || (isGenericOpenAI.value ? 'https://api.openai.com/v1' : '')
+      if (effectiveApiKey || effectiveBaseUrl) {
         providersStore.providers[llmProvider.value] = {
           ...providersStore.providers[llmProvider.value],
-          apiKey: apiKey.value,
+          ...(effectiveApiKey ? { apiKey: effectiveApiKey } : {}),
+          ...(effectiveBaseUrl ? { baseUrl: effectiveBaseUrl } : {}),
           model: llmModel.value,
         }
         providersStore.markProviderAdded(llmProvider.value)
       }
+      await providersStore.disposeProviderInstance(llmProvider.value)
       await new Promise(resolve => setTimeout(resolve, 280))
     }
     prepSteps.value[0].desc = t('onboarding.quickStart.preparation.brainReady')
@@ -894,6 +947,8 @@ async function handleStartChatting() {
     draftStore.state.vesselDisplayModelId = activeCompanion.value.vesselModelId || 'preset-live2d-2'
     draftStore.state.llmProvider = llmProvider.value
     draftStore.state.llmModel = llmModel.value
+    draftStore.state.llmApiKey = apiKey.value
+    draftStore.state.llmBaseUrl = baseUrl.value
     draftStore.state.ttsProvider = normSpeechId
     draftStore.state.ttsModel = ttsModel.value
     draftStore.state.ttsVoiceId = charRawVoice
@@ -1017,6 +1072,17 @@ async function handleStartChatting() {
             </select>
           </div>
 
+          <!-- Base URL Input (Required/customizable for OpenAI Compatible) -->
+          <div v-if="isBaseUrlVisible" :class="['flex items-center justify-between gap-3']">
+            <span :class="['text-neutral-500 dark:text-neutral-400 w-20 shrink-0']">{{ t('onboarding.quickStart.baseUrl') }}</span>
+            <input
+              v-model="baseUrl"
+              type="text"
+              :placeholder="baseUrlPlaceholder"
+              :class="['flex-1 h-8 px-2.5 rounded-xl border border-neutral-300/80 dark:border-white/10 bg-white dark:bg-neutral-800/90 text-neutral-800 dark:text-neutral-200 font-mono text-[11px] focus:outline-none']"
+            >
+          </div>
+
           <!-- API Key Input (Hidden for local on-device providers) -->
           <div v-if="!isLocalLlmProvider" :class="['flex items-center justify-between gap-3']">
             <span :class="['text-neutral-500 dark:text-neutral-400 w-20 shrink-0']">{{ t('onboarding.quickStart.apiKey') }}</span>
@@ -1024,7 +1090,7 @@ async function handleStartChatting() {
               <input
                 v-model="apiKey"
                 :type="showApiKey ? 'text' : 'password'"
-                placeholder="sk-..."
+                :placeholder="isGenericOpenAI ? 'sk-... (optional)' : 'sk-...'"
                 :class="['w-full h-8 pl-2.5 pr-8 rounded-xl border border-neutral-300/80 dark:border-white/10 bg-white dark:bg-neutral-800/90 text-neutral-800 dark:text-neutral-200 font-mono text-[11px] focus:outline-none']"
               >
               <button
@@ -1101,7 +1167,7 @@ async function handleStartChatting() {
               <span>{{ t('onboarding.quickStart.failed') }}</span>
             </div>
             <div
-              v-else-if="!isLocalLlmProvider && !apiKey.trim()"
+              v-else-if="!isLocalLlmProvider && !isGenericOpenAI && !apiKey.trim()"
               :class="['flex items-center gap-1.5 text-[11px] font-medium text-neutral-400 font-mono']"
             >
               <span :class="['w-2 h-2 rounded-full bg-neutral-300 dark:bg-neutral-600']" />

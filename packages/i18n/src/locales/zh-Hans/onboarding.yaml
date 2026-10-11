@@ -278,7 +278,7 @@ steps:
       fuchsia: 紫红色
       magenta: 洋红
       rose: 玫瑰色
-    languageCount: "{count} 种语言"
+    languageCount: '{count} 种语言'
     selectedLanguage: 已选择：{language}
     nextHint: 下一步：选择伙伴的互动风格
     companionGreeting: 让这里更像你的空间吧。选择语言、主题和强调色，调整时就能看到变化。
@@ -393,78 +393,78 @@ steps:
       tools:
         label: 操作工具
         description: 网页搜索、本地文件访问与 MCP 服务器
-    enabledAvailableSteps: "{length} 项已启用 · {lengthValue} 项可用 · {totalSteps} 个步骤"
+    enabledAvailableSteps: '{length} 项已启用 · {lengthValue} 项可用 · {totalSteps} 个步骤'
     capabilities:
       Hearing:
         title: 听觉
         description: 聆听你的声音并将语音转成文字，让口头交流更自然。
         bullets:
-          "0": 实时语音转文字
-          "1": 语音活动与停顿检测
-          "2": 持续监听或按键说话
+          '0': 实时语音转文字
+          '1': 语音活动与停顿检测
+          '2': 持续监听或按键说话
       Voice:
         title: 语音
         description: 让伴侣用自然、富有表现力的声音说话。
         bullets:
-          "0": 神经网络语音合成
-          "1": 声音、语速和音调控制
-          "2": 字幕与角色口型同步
+          '0': 神经网络语音合成
+          '1': 声音、语速和音调控制
+          '2': 字幕与角色口型同步
       Pacing:
         title: 对话节奏
         description: 在准备回复时保持自然的交流节奏。
         bullets:
-          "0": 自然的应答语和确认语
-          "1": 较长回复中的简短过渡语
-          "2": 更快、更流畅的对话衔接
+          '0': 自然的应答语和确认语
+          '1': 较长回复中的简短过渡语
+          '2': 更快、更流畅的对话衔接
       Emotions:
         title: 情绪
         description: 将对话中的情绪转化为角色的实时表情和肢体语言。
         bullets:
-          "0": 面部表情与情绪提示
-          "1": 角色动作与肢体语言
-          "2": 在对话中延续的情绪状态
+          '0': 面部表情与情绪提示
+          '1': 角色动作与肢体语言
+          '2': 在对话中延续的情绪状态
       Memory:
         title: 记忆
         description: 在不同对话之间保留有用的上下文，让伴侣记住过去的互动。
         bullets:
-          "0": 近期对话的每日摘要
-          "1": 可检索的重要记忆日志
-          "2": 人物、地点和话题之间的关联
+          '0': 近期对话的每日摘要
+          '1': 可检索的重要记忆日志
+          '2': 人物、地点和话题之间的关联
       Vision:
         title: 视觉
         description: 让伴侣理解你分享的图片、照片和截图。
         bullets:
-          "0": 图片与场景理解
-          "1": 物体、文字和细节识别
-          "2": 围绕视觉内容继续交流
+          '0': 图片与场景理解
+          '1': 物体、文字和细节识别
+          '2': 围绕视觉内容继续交流
       Presence:
         title: 主动陪伴
         description: 让伴侣主动问候并作出反应，无需总是由你开启对话。
         bullets:
-          "0": 作息安排与定时任务
-          "1": 主动发起日常问候
-          "2": 结合上下文回应屏幕活动
+          '0': 作息安排与定时任务
+          '1': 主动发起日常问候
+          '2': 结合上下文回应屏幕活动
       Visuals:
         title: 视觉创作
         description: 让伴侣在对话中创作图片和视觉场景。
         bullets:
-          "0": AI 图片生成
-          "1": 视觉小说场景与自拍
-          "2": 带插图的记忆日志
+          '0': AI 图片生成
+          '1': 视觉小说场景与自拍
+          '2': 带插图的记忆日志
       Tools:
         title: 工具
         description: 让伴侣使用外部工具、浏览信息并与你的工作区互动。
         bullets:
-          "0": 网页搜索与阅读
-          "1": 本地工作区访问
-          "2": 已连接的服务与自定义工具
+          '0': 网页搜索与阅读
+          '1': 本地工作区访问
+          '2': 已连接的服务与自定义工具
       Text:
         title: 文字
         description: 提供轻量的键盘聊天方式，无需语音功能。
         bullets:
-          "0": Markdown 与代码格式
-          "1": 流式文字回复
-          "2": 适合安静场景或纯文字交流
+          '0': Markdown 与代码格式
+          '1': 流式文字回复
+          '2': 适合安静场景或纯文字交流
     summary:
       selected: 已选择：{title}
     hardware:
@@ -702,7 +702,7 @@ steps:
     standardModel: 标准模型
     brainConnectionVerifiedValuemsTtftValue: 大脑连接验证成功！（首词元延迟：{elapsedMs} 毫秒 · {detail}）
     failedToConnectProvider: 连接服务商失败
-    valueConnected: "{nameProvider} 已连接！"
+    valueConnected: '{nameProvider} 已连接！'
     localWebllmBrainReady: 本地 WebLLM 意识核心已就绪！
     coreAiDownloadFailedValue: Core AI 下载失败：{coreAiErrorMessage}
     appleCoreAiNeuralEngineModelReady: Apple Core AI 神经引擎模型已就绪！
@@ -971,14 +971,14 @@ steps:
         tag: 元气甜心
         description: 一个乐观开朗、充满活力的伴侣，用坦率的爱意、温柔的鼓励和毫不掩饰的快乐陪伴你。
         summary: 开朗、热情，积极乐观。
-      displayName: "{value0}（{value1}）"
+      displayName: '{value0}（{value1}）'
       cardCount: 入门角色卡（{length}）
     selection:
-      creator: "{name}（AI 角色创作）"
-      imported: "{name}（已导入）"
+      creator: '{name}（AI 角色创作）'
+      imported: '{name}（已导入）'
       customCompanion: 自定义伴侣
-    importHelp: "{emphasis} 浏览下方任意角色卡站点，下载 SillyTavern V2 的 PNG 或 JSON 角色卡。AIRI
-      会自动捕获下载、解析角色信息，并将其加入伴侣配置。"
+    importHelp: '{emphasis} 浏览下方任意角色卡站点，下载 SillyTavern V2 的 PNG 或 JSON 角色卡。AIRI
+      会自动捕获下载、解析角色信息，并将其加入伴侣配置。'
     source:
       active: 启用
     creator: {}
@@ -1054,7 +1054,7 @@ steps:
       whisper: 本地 Whisper (100% 离线运行)
       browser: Web Speech API (免配置浏览器原生)
     stopTest: 停止测试
-    valueConnected: "{nameProvider} 已连接！"
+    valueConnected: '{nameProvider} 已连接！'
     selectAnAudioInputDevice: 选择音频输入设备
     activeMicrophoneInput: 当前麦克风输入
     rescanAudioDevices: 重新扫描音频设备
@@ -1316,7 +1316,7 @@ steps:
     accessTokenInstructions: 在 {link} 创建 {emphasis}，选择 {emphasis2} 权限（令牌以 {code} 开头）。
     gatedVoiceDescription: 你选择的声音（{emphasis}）来自需要访问许可的 Hugging Face 仓库。请注册免费账户、接受模型访问条件，并在下方粘贴访问令牌。
     repositoryInstructions: 访问 {repository}，点击 {action}。
-    provider: { localFallback: 本地 TTS, cloudFallback: 云端 TTS }
+    provider: {localFallback: 本地 TTS, cloudFallback: 云端 TTS}
     download:
       progress: 正在下载权重（{downloadProgress}%）...
       pocket: 正在下载 Pocket TTS 权重…
@@ -1325,9 +1325,9 @@ steps:
       failed: 下载语音合成权重失败
       engineProgress: 正在下载引擎权重（{progress}%）…
     companionVoiceProfile:
-      personaTitle: "{companionName}的声音角色"
+      personaTitle: '{companionName}的声音角色'
     userVoiceProfile:
-      profileTitle: "{userName}的声音配置"
+      profileTitle: '{userName}的声音配置'
     cloning: 正在克隆…
     assistantMessage: 来找一个合适的声音吧。选择引擎、调整声音，再听听试听片段。
     speechEngine: 语音引擎
@@ -1410,7 +1410,7 @@ steps:
         label: 动漫少女（活力）
       chatterboxDefault:
         label: Chatterbox 默认
-    engineCalibrated: "{provider} 引擎已就绪 · 声音已校准"
+    engineCalibrated: '{provider} 引擎已就绪 · 声音已校准'
     providerSelected: 已选择 {provider}
     createAccountInstruction: 在 {link} 注册账号
 
@@ -1547,7 +1547,7 @@ steps:
       initializationFailed: 无法初始化提供方“{providerId}”。
     preview:
       latency: 首 token 用时 {latency} 毫秒
-      sentences: "{count} 句"
+      sentences: '{count} 句'
     companionGreeting: 调整伴侣思考时的停顿与说话方式，选择适合模型推理速度的交流节奏。
 
   emotions:
@@ -1622,16 +1622,16 @@ steps:
     summary:
       model: 模型：{model}
     providers:
-      available: "{count} 可用"
+      available: '{count} 可用'
     simulator:
-      latency: "{latency}毫秒"
+      latency: '{latency}毫秒'
       errors:
         imageRequired: 请先添加或拖入图片。
         modelRequired: 请先选择视觉提供商和模型。
-        emptyResponse: "[未生成角色回复]"
-        brainRequired: "[尚未配置意识核心提供商或模型，请完成第 8 步后再预览角色反应。]"
+        emptyResponse: '[未生成角色回复]'
+        brainRequired: '[尚未配置意识核心提供商或模型，请完成第 8 步后再预览角色反应。]'
         failed: 视觉模拟失败。
-        brainError: "[第二步意识核心错误：{error}]"
+        brainError: '[第二步意识核心错误：{error}]'
     routing: {}
     pageTitle: 视觉与图像理解
     assistantMessage: 选择我理解图像的方式，再发送一张图片试试看。
@@ -1657,7 +1657,7 @@ steps:
     testVision: 测试视觉
     chooseImage: 选择图片以开始。
     noProvider: 未选择服务商
-    noVisualDescription: "[未生成视觉描述]"
+    noVisualDescription: '[未生成视觉描述]'
     dropImage: 拖入图片或{action}
     providerInitError: 无法初始化视觉服务商“{provider}”。
 
@@ -1690,13 +1690,13 @@ steps:
     screenSamplingCadence: 屏幕采样频率
     status: 状态：
     screenIntervalPresets:
-      "1000":
+      '1000':
         label: 1 秒（高频）
-      "2000":
+      '2000':
         label: 2 秒（均衡）
-      "5000":
+      '5000':
         label: 5 秒（低频）
-      "10000":
+      '10000':
         label: 10 秒（节能）
     reactionModes:
       voice-and-bubble:
@@ -1737,15 +1737,15 @@ steps:
     scheduleFrom: 入睡时间
     scheduleTo: 醒来时间
     screenIntervalPresets:
-      "1000": {}
-      "2000": {}
-      "5000": {}
-      "10000": {}
+      '1000': {}
+      '2000': {}
+      '5000': {}
+      '10000': {}
     heartbeatIntervalPresets:
-      "2": {}
-      "5": {}
-      "10": {}
-      "20": {}
+      '2': {}
+      '5': {}
+      '10': {}
+      '20': {}
     engine: {}
     reactionModes:
       voice-and-bubble: {}
@@ -1773,7 +1773,7 @@ steps:
       commentDeliveryHint: 适用于屏幕活动触发的点评。
       scheduleHint: 时间安排还会遵循角色的作息设置。
       fineTuneLater: 稍后可在角色设置中微调
-      checkInFrequency: "{number}. 问候频率"
+      checkInFrequency: '{number}. 问候频率'
       fineTuneHint: 安静时段、触发条件和灵敏度等高级选项可以在角色设置中自定义。
     sources:
       title: 屏幕或窗口
@@ -1842,7 +1842,7 @@ steps:
       voice-and-bubble: 语音与气泡
       bubble-only: 仅气泡
       voice-only: 仅语音
-    checkInMinutes: "{minutes} 分钟"
+    checkInMinutes: '{minutes} 分钟'
 
   artistry:
     label: 艺术创作
@@ -1893,7 +1893,7 @@ steps:
       saveWorkflow: 保存工作流
       cancel: 取消
       empty: 尚未上传工作流（请在上方上传 workflow_api.json）
-      option: "{name}（{count} 个可配置字段）"
+      option: '{name}（{count} 个可配置字段）'
       textToImageOnly: （无，仅文字生成图片）
     synthesizerModel: 图像生成模型
     pollinationsApiKeyPollenToken: Pollinations API 密钥 / Pollen 令牌
@@ -1918,7 +1918,7 @@ steps:
     promptFocus: 关注用户输入
     evaluatesUserSIncomingMessageImmediatelyBeforeTheCompanionSpeaks: 在伴侣回复之前，立即评估用户发来的消息。
     comfyuiWorkflowOptions:
-      "": {}
+      '': {}
     messages:
       connectedValue: 已连接 — {value0}
       failedValue: 失败：{value0}
@@ -2016,7 +2016,7 @@ steps:
       recentContext: 近期上下文 · {window}
     window:
       oneDay: 1 天
-      days: "{count} 天"
+      days: '{count} 天'
     companionGreeting: 选择我该记住什么，以及如何延续我们的对话。
 
   tools:
@@ -2055,7 +2055,7 @@ steps:
     filesystemDesktopMcp: 文件系统（filesystem · 桌面 MCP）
     generateMotion3dVrma: 动作生成（generate_motion · 3D VRMA）
     noExternalToolsEnabledSafeSandboxedMode: 未启用外部工具（安全沙盒模式）。
-    toolGranted: "已授权 {count} 项工具"
+    toolGranted: '已授权 {count} 项工具'
     webSearchDescription: 通过 {code}（支持 DuckDuckGo、Bing、Brave、百度）为伴侣提供实时网页搜索和
       Markdown 内容提取，无需付费 API 密钥或订阅令牌。
     filesystemDescription: 通过 {code}让伴侣读取、列出和搜索指定项目目录中的文件，读取范围由用户设置。
@@ -2142,7 +2142,7 @@ steps:
       filesystem: 文件系统
       motions: 3D 动作
     summary:
-      microphone: "{provider} · 麦克风已启用"
+      microphone: '{provider} · 麦克风已启用'
       memoryActive: 记忆已启用
       memoryList: 已启用 {count} 项：{names}
       toolsActive: 工具已启用
@@ -2150,17 +2150,17 @@ steps:
       toolList: 已授权 {count} 项：{names}
       noTools: 未启用外部工具
       artReady: 绘图引擎已就绪
-      artProvider: "{provider}{director}"
+      artProvider: '{provider}{director}'
       sensoryActive: 感知已启用
       screenWatching: 屏幕观察（{mode}）
-      directorActive: " · 导演已启用"
+      directorActive: ' · 导演已启用'
     clipboard:
       compiled: 已将编译后的角色卡 JSON 复制到剪贴板
       draft: 已将原始草稿状态 JSON 复制到剪贴板
     compiler:
       close: 完成
     verification:
-      count: "{length} 项能力已验证"
+      count: '{length} 项能力已验证'
     audition:
       playing: 正在播放…
     motion:
@@ -2228,22 +2228,22 @@ steps:
     previous: ← 上一步
     confirmContinue: 确认并继续 →
     screenIntervalPresets:
-      "1000":
+      '1000':
         label: 1 秒（高频）
-      "2000":
+      '2000':
         label: 2 秒（均衡）
-      "5000":
+      '5000':
         label: 5 秒（低频）
-      "10000":
+      '10000':
         label: 10 秒（节能）
     heartbeatIntervalPresets:
-      "2":
+      '2':
         label: 2 分钟
-      "5":
+      '5':
         label: 5 分钟（推荐）
-      "10":
+      '10':
         label: 10 分钟
-      "20":
+      '20':
         label: 20 分钟
     screenSilenceDescription: 屏幕变化时，伴侣会判断是否值得回应。对于日常打字、浏览静态页面或普通视频画面，模型会静默输出 {code}，不打断你的活动。
     smartSilenceDescription: 自动将避免无意义发言的指令加入伴侣的系统提示词。定时心跳或屏幕变化只检测到日常活动时，模型会静默输出 {code}，避免频繁发出无用的主动消息。
@@ -2253,7 +2253,7 @@ steps:
       {emphasis2}（休息时不观察屏幕），后台心跳定时器也会停止评估，直到起床时间。
     ambient:
       sectionLabel: 定时关怀
-      intervalLabel: "{interval}毫秒采样间隔"
+      intervalLabel: '{interval}毫秒采样间隔'
     reactionModes:
       voice-and-bubble:
         title: 语音与气泡
@@ -2338,7 +2338,7 @@ quickStart:
     lupin:
       tag: 🛡️ 坚定的守护者
       personality: 警觉的守护者，沉着而忠诚
-      greeting: "[点头] 我一直在观察周围。一切安全，{name}。"
+      greeting: '[点头] 我一直在观察周围。一切安全，{name}。'
   availableTtsModels:
     q4:
       label: Kokoro Q4（快速 CPU WASM · 推荐）
@@ -2451,7 +2451,7 @@ quickStart:
     speechConnected: 已连接 {provider} 语音提供商
     speechMuted: 语音合成已静音
     seedingPersona: 正在初始化 {name} 的人格与舞台角色卡…
-    stageReady: "{name} 已就绪，可以登上舞台了！"
+    stageReady: '{name} 已就绪，可以登上舞台了！'
   greetingDefaultName: 朋友
   connection:
     connected: 连接成功！首字延迟 {elapsed} 毫秒
@@ -2463,3 +2463,4 @@ quickStart:
     speaking: 正在说话…
   hearing:
     listening: 正在聆听…
+  baseUrl: 基础 URL
