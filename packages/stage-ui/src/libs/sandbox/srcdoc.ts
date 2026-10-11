@@ -98,20 +98,38 @@ export async function buildWidgetIframeSrcdoc(
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100%;
+      height: auto;
+      min-height: 0;
       overflow-x: hidden;
+    }
+    #root {
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      display: block;
     }
   </style>
 </head>
 <body class="antialiased">
-  <div id="root" class="w-full min-h-full">${widget.code}</div>
+  <div id="root" class="w-full">${widget.code}</div>
   <${'script'}>
+    const root = document.getElementById('root');
+    let lastH = 0;
     function reportH() {
-      const h = document.getElementById('root')?.scrollHeight || document.body.scrollHeight;
-      window.parent.postMessage({ type: 'widget-resize', height: h }, '*');
+      if (!root) return;
+      let h = root.scrollHeight || document.body.scrollHeight || 0;
+      if (root.firstElementChild) {
+        const child = root.firstElementChild;
+        h = Math.max(h, child.scrollHeight, child.offsetHeight);
+      }
+      h = Math.ceil(h);
+      if (h > 0 && Math.abs(h - lastH) > 2) {
+        lastH = h;
+        window.parent.postMessage({ type: 'widget-resize', height: h }, '*');
+      }
     }
-    window.addEventListener('load', reportH);
-    if (window.ResizeObserver) new ResizeObserver(reportH).observe(document.body);
+    window.addEventListener('load', () => setTimeout(reportH, 20));
+    if (window.ResizeObserver && root) new ResizeObserver(reportH).observe(root);
   </${'script'}>
 </body>
 </html>`
@@ -132,28 +150,40 @@ export async function buildWidgetIframeSrcdoc(
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100%;
+      height: auto;
+      min-height: 0;
       overflow-x: hidden;
     }
     #root {
       width: 100%;
-      min-height: 100%;
+      height: auto;
+      min-height: 0;
       display: block;
     }
   </style>
 </head>
 <body class="antialiased">
-  <div id="root" class="w-full min-h-full"></div>
+  <div id="root" class="w-full"></div>
   <${'script'} type="module">
     const sidecarData = ${JSON.stringify(sidecar)};
     const root = document.getElementById('root');
 
+    let lastH = 0;
     function reportH() {
-      const h = root.scrollHeight || document.body.scrollHeight;
-      window.parent.postMessage({ type: 'widget-resize', height: h }, '*');
+      if (!root) return;
+      let h = root.scrollHeight || document.body.scrollHeight || 0;
+      if (root.firstElementChild) {
+        const child = root.firstElementChild;
+        h = Math.max(h, child.scrollHeight, child.offsetHeight);
+      }
+      h = Math.ceil(h);
+      if (h > 0 && Math.abs(h - lastH) > 2) {
+        lastH = h;
+        window.parent.postMessage({ type: 'widget-resize', height: h }, '*');
+      }
     }
-    window.addEventListener('load', reportH);
-    if (window.ResizeObserver) new ResizeObserver(reportH).observe(document.body);
+    window.addEventListener('load', () => setTimeout(reportH, 20));
+    if (window.ResizeObserver && root) new ResizeObserver(reportH).observe(root);
 
     const baseContext = {
       container: root,

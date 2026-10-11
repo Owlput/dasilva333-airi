@@ -10,7 +10,7 @@ import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&u
 import { BackgroundProvider } from '@proj-airi/stage-layouts/components/Backgrounds/index'
 import { useBackgroundThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
 import { useBackgroundStore } from '@proj-airi/stage-layouts/stores/background'
-import { ControlStrip } from '@proj-airi/stage-ui/components'
+import { ControlStrip, FloatingWidgetsLayer } from '@proj-airi/stage-ui/components'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
 import { createVoiceInputBinding } from '@proj-airi/stage-ui/libs/audio'
@@ -287,6 +287,8 @@ onUnmounted(() => {
             dockedEdge === 'left' ? 'right-6' : 'left-6',
           ]"
         />
+        <!-- In-Page Floating Generative Widgets Layer -->
+        <FloatingWidgetsLayer />
         <MobileWhisperSheet v-if="isPortraitMobile" @settings-open="handleSettingsOpen" />
       </div>
     </div>

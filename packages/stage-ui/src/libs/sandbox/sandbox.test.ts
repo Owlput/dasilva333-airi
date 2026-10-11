@@ -8,6 +8,7 @@ import { useNan0Store } from '../../stores/modules/nan0'
 import { createBashTool, executeBashCommand } from '../../stores/modules/tools/bash'
 import { ansiToHtml, stripAnsi } from './ansi'
 import { SandboxManager } from './manager'
+import { buildWidgetIframeSrcdoc } from './srcdoc'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -569,6 +570,24 @@ console.log('SUM:' + res.sum);
       const evalRes = await sandbox.exec('node -e "const res = await mcp.callTool(\'calc::add\', { a: 100, b: 200 }); console.log(\'EVAL_SUM:\' + res.sum);"')
       expect(evalRes.exitCode).toBe(0)
       expect(evalRes.stdout).toContain('EVAL_SUM:300')
+    })
+  })
+
+  describe('widget iframe srcdoc packaging & height stabilization', () => {
+    it('packages ESM widgets with auto-height styles and threshold-governed ResizeObserver', async () => {
+      const srcdoc = await buildWidgetIframeSrcdoc({
+        path: '/workspace/test.js',
+        code: 'export default function mount({ container }) { container.innerHTML = "<div>test</div>"; }',
+        title: 'Test Widget',
+      })
+
+      // Iframe must use auto-height to prevent feedback loop expansion
+      expect(srcdoc).toContain('height: auto')
+      expect(srcdoc).toContain('min-height: 0')
+      expect(srcdoc).not.toContain('min-h-full')
+      expect(srcdoc).toContain('observe(root)')
+      expect(srcdoc).toContain('Math.abs(h - lastH) > 2')
+      expect(srcdoc).toContain('type: \'widget-resize\'')
     })
   })
 })

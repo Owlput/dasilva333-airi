@@ -104,6 +104,14 @@ export function useSandbox() {
     }
   }
 
+  async function setWidgetSurface(idOrPath: string, surface: 'panel' | 'widget'): Promise<void> {
+    await init()
+    if (sandbox.value) {
+      await sandbox.value.setWidgetSurface(idOrPath, surface)
+      mountedWidgets.value = [...sandbox.value.mountedWidgets]
+    }
+  }
+
   async function mountPersistedWidget(idOrPath: string): Promise<void> {
     await init()
     if (sandbox.value) {
@@ -143,6 +151,7 @@ export function useSandbox() {
     reset,
     unmountWidget,
     clearWidgets,
+    setWidgetSurface,
     mountPersistedWidget,
     getPersistedWidgets,
     deletePersistedWidget,

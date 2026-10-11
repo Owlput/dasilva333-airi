@@ -365,6 +365,26 @@ export class SandboxManager {
     this.notifyMountListeners()
   }
 
+  async setWidgetSurface(idOrPath: string, surface: 'panel' | 'widget'): Promise<void> {
+    const w = this.mountedWidgetsList.find(x => x.id === idOrPath || x.path === idOrPath)
+    if (w) {
+      w.surface = surface
+      w.target = surface === 'widget' ? 'window' : 'sidepanel'
+      await widgetsRepo.saveWidget({
+        ...w,
+        title: w.title || 'Widget',
+        isMounted: true,
+        updatedAt: Date.now(),
+      }).catch((err) => {
+        console.warn('[SandboxManager] Failed to update widget surface in widgetsRepo:', err)
+      })
+      if (this.channel) {
+        this.channel.postMessage({ type: 'widget-mount', widget: w })
+      }
+      this.notifyMountListeners(w)
+    }
+  }
+
   clearWidgets(): void {
     this.mountedWidgetsList = []
     if (this.channel) {

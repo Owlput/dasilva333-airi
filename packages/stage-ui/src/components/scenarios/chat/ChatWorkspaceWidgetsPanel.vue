@@ -17,6 +17,7 @@ const {
   mountedWidgets,
   unmountWidget,
   clearWidgets,
+  setWidgetSurface,
   readFile,
   mountPersistedWidget,
   getPersistedWidgets,
@@ -116,6 +117,12 @@ function formatDate(timestamp?: number): string {
   })
 }
 
+async function popoutActiveWidget() {
+  if (!activeWidget.value)
+    return
+  await setWidgetSurface(activeWidget.value.id, 'widget')
+}
+
 const iframeSrcdoc = ref('')
 
 async function refreshActiveWidget() {
@@ -139,7 +146,12 @@ async function refreshActiveWidget() {
 
 function handleIframeMessage(e: MessageEvent) {
   if (e.data?.type === 'widget-resize' && typeof e.data.height === 'number') {
-    iframeHeight.value = Math.max(160, Math.min(e.data.height + 8, 520))
+    if (!props.fillContainer) {
+      const targetHeight = Math.max(160, Math.min(Math.ceil(e.data.height), 520))
+      if (Math.abs(iframeHeight.value - targetHeight) > 2) {
+        iframeHeight.value = targetHeight
+      }
+    }
   }
   else if (e.data?.type === 'mcp-call') {
     const { id, name, args } = e.data
@@ -249,6 +261,19 @@ onUnmounted(() => {
           @click="refreshActiveWidget"
         >
           <span class="i-solar:refresh-linear text-sm" :class="{ 'animate-spin': isLoading }" />
+        </button>
+
+        <button
+          v-if="activeWidget"
+          title="Pop out into floating widget"
+          type="button"
+          :class="[
+            'flex items-center justify-center rounded-lg p-1.5 text-neutral-500 hover:text-primary-600 dark:text-neutral-400 dark:hover:text-primary-400',
+            'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
+          ]"
+          @click="popoutActiveWidget"
+        >
+          <span class="i-solar:square-top-down-broken text-sm" />
         </button>
 
         <button
