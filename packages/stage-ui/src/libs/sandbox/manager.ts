@@ -1242,6 +1242,8 @@ Examples:
     await this.bash.exec('mkdir -p /workspace/types')
 
     await this.bash.fs.writeFile('/workspace/types/airi-widget.d.ts', `// Project AIRI Generative UI Sidecar Contract
+// NOTICE: Widgets execute in a sandboxed browser iframe DOM (HTML5 & native browser ESM).
+// Do NOT import 'fs' or Node modules. Use context.callMcpTool(name, args) to fetch live external data.
 interface _AiriWidgetSidecar {
   session: {
     id: string
