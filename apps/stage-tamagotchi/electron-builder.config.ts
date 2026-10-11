@@ -186,6 +186,8 @@ export default {
     // Node-only image backend and has no packaged main-process consumer.
     '!**/node_modules/sharp{,/**}',
     '!**/node_modules/@img{,/**}',
+    '!**/node_modules/node-liblzma{,/**}',
+    '!**/node_modules/@mongodb-js{,/**}',
     // uiohook-napi loads the selected prebuild. Its bundled libuiohook C source is
     // only used to build that binary and does not participate in runtime loading.
     '!**/node_modules/uiohook-napi/libuiohook{,/**}',
