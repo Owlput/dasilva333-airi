@@ -168,6 +168,10 @@ export function useControlStripAction() {
         controlStripStore.captionOpen = !controlStripStore.captionOpen
         break
 
+      case 'workspace':
+        controlStripStore.workspaceOpen = !controlStripStore.workspaceOpen
+        break
+
       case 'mic':
         settingsAudioDeviceStore.enabled = !settingsAudioDeviceStore.enabled
         break

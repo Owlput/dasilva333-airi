@@ -207,6 +207,11 @@ function selectAvatar(modelId: string) {
   activePopover.value = null
 }
 
+const isSandboxAllowed = computed(() => {
+  const tools = cardStore.activeCard?.extensions?.airi?.generation?.known?.allowedTools
+  return Boolean(tools && (tools.includes('bash') || tools.includes('mcp_bash')))
+})
+
 // Filter for active buttons
 const activeButtons = computed(() => {
   const isMobile = props.mode === 'mobile'
@@ -217,6 +222,8 @@ const activeButtons = computed(() => {
     if (!btn.enabled)
       return false
     if (isMobile && desktopOnlyMap.get(btn.id))
+      return false
+    if (btn.id === 'workspace' && !isSandboxAllowed.value)
       return false
     return true
   })
@@ -1421,6 +1428,9 @@ function getButtonIconColor(btnId: string): string {
     }
     return 'text-neutral-500 opacity-50'
   }
+  if (btnId === 'workspace') {
+    return controlStripStore.workspaceOpen ? 'text-primary-500 dark:text-primary-400' : 'text-neutral-500 opacity-70'
+  }
   return ''
 }
 
@@ -1537,6 +1547,7 @@ function getShortLabel(btnId: string): string {
     'actor-all-emotions': 'Mood',
     'actor-selfies': 'Self',
     'actor-macaron': 'Snack',
+    'workspace': 'Work',
     'theme-mode': 'Color',
     'caption-docking': settingsStore.captionDocking === 'none'
       ? 'None'
