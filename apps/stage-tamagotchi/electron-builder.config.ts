@@ -40,7 +40,7 @@ const nativeAddonFilePatterns = {
     '!**/node_modules/uiohook-napi/prebuilds/!(linux-${arch}){,/**}',
     '!**/node_modules/uiohook-napi/prebuilds/linux-arm64{,/**}',
     // Linux does not use electron-click-drag-plugin.
-    '!**/node_modules/electron-click-drag-plugin/build/Release/{darwin-arm64,darwin-x64,linux-x64,win32-x64}{,/**}',
+    '!**/node_modules/electron-click-drag-plugin{,/**}',
     '!**/node_modules/koffi/build/koffi/!(linux_${arch}){,/**}',
   ],
   win32: [
