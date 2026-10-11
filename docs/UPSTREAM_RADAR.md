@@ -20,6 +20,193 @@
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-11] Upstream Delta: `2efaa888..749d915f` (8 commits, 84 files, 19 PR update(s))
+
+### 🎯 Executive Highlights
+Upstream pushed 8 commits (2efaa888 ➔ 749d915f) and recorded 19 PR updates (11 new, 3 merged, 5 active discussions).
+
+- **Commercial Cloud Capacitor Store Landed (#2813, #2910, #2912)**: Upstream merged a massive 7,000+ line commercial cloud subscription & billing layer (Capacitor for Flux via RevenueCat/Stripe) spanning Drizzle schemas, billing webhooks, account deletion tests, and capacitor.vue. Strictly rejected under our offline-first BYOS architecture.
+- **Home Assistant Smart Home Security Guardrails (#2900)**: Bounded Home Assistant requests to strict safe endpoints (GET /api/states, POST /api/services/{domain}/{service}) to prevent arbitrary Jinja execution (POST /api/template) or state injection, and enforced token invalidation on address change.
+- **Config Persistence Root Isolation (#2913)**: Fixed throttled config writes in Electron (persistence.ts) where deferred saves wrote to wrong roots when userData paths shifted.
+- **Streamed Speech & Reasoning Sanitization (#2916, #2911)**: Two PRs targeting streamed response handling: PR #2916 prevents nested reasoning tags from regressing the stream cursor and leaking into speech; PR #2911 fixes whitespace literal dropping caused by .trim() checks on speech chunks.
+
+#### 💬 Discussion & Community Buzz
+- **#2903: feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches (+159 new comments, 174 total)**: Massive explosion of discussion regarding entity/device scoping and user consent for Home Assistant actions.
+- **#2904: fix(i18n): show the pipe in the Anthropic provider title (31 comments)**: Rapid debate and fix on vue-i18n choice separator parsing (Anthropic | Claude -> Anthropic {'|'} Claude) and CI locale table formatting.
+- **#2910: fix(api,auth,stage-ui): close the Capacitor follow-ups of #2813 (37 comments)**: High volume of post-merge adjustments for the new Flux Capacitor subscription service.
+- **#2913: fix(stage-tamagotchi): keep a deferred config write in its own root (26 comments)**: Deep review of Electron configuration race conditions.
+- **#2729: feat(stage-ui): add Push to Talk on the voice pipeline (+7 new comments, 11 total)**: Ongoing design discussions around voice input controls.
+
+#### 🍒 Squatted / Forward-Ported Upstream PRs (Applied to dasilva333/airi)
+1. **PR #2916: `fix(core-agent): exclude nested reasoning from streamed speech`** — 🟢 **SQUATTED**
+   - *Applied to*: `packages/stage-ui/src/composables/response-categoriser.ts` (line 764: `currentPos = Math.max(currentPos, segmentEnd)`).
+   - *Test added*: `packages/stage-ui/src/composables/response-categoriser.test.ts` (nested reasoning stream exclusion tests).
+   - *Impact*: Eliminates stream cursor regression when reasoning tags are nested, preventing hidden thoughts from leaking into speech.
+2. **PR #2911: `fix(core-agent): preserve whitespace in streamed speech literals`** — 🟢 **SQUATTED**
+   - *Applied to*: `packages/stage-ui/src/stores/chat.ts` (line 957) and `packages/stage-ui/src/stores/proactivity.ts` (line 807).
+   - *Impact*: Swapped `if (speechOnly.trim())` to `if (speechOnly)`, preserving standalone whitespace chunks and paragraph breaks across stream deltas.
+3. **PR #2905: `fix(stage-ui-three): preserve orbit gestures across native text drags`** — 🟢 **SQUATTED**
+   - *Applied to*: `packages/stage-ui-three/src/components/Controls/OrbitControls.vue`.
+   - *Impact*: Added canvas `dragstart` event listener that calls `event.preventDefault()` to preserve pointer capture and 3D camera rotation during active text selections.
+4. **PR #2904: `fix(i18n): show the pipe in the Anthropic provider title`** — 🟢 **SQUATTED**
+   - *Applied to*: All 10 locale files in `packages/i18n/src/locales/*/settings.yaml` (en, es, fr, id, ja, ko, ru, vi, zh-Hans, zh-Hant).
+   - *Impact*: Escaped literal pipe syntax as `title: Anthropic {'|'} Claude`, preventing `vue-i18n` from misinterpreting it as a plural choice delimiter.
+
+#### ⚠️ Divergence / Collision Warnings
+- **apps/stage-tamagotchi/src/main/libs/electron/persistence.ts (PR #2913)**: Upstream refactored createConfig path memoization and changed key hashing to include the resolved path. In dasilva333/airi, we have custom queuedSave, saveSequence, process.pid, and flush() logic. Do NOT directly apply upstream commit 749d915f28; cherry-pick the path memoization pattern manually if desired.
+- **server/apps/api and packages/stage-pages/src/pages/settings/capacitor.vue (#2813, #2910, #2912)**: Upstream introduced 7,000+ lines for hosted cloud subscription management (Capacitor). Zero collision risk, but permanent auto-reject for our local-first offline architecture.
+- **packages/core-agent vs packages/stage-ui**: Upstream writes agent logic in packages/core-agent, whereas dasilva333/airi maintains it in packages/stage-ui/src/stores/chat.ts and composables/response-categoriser.ts. Direct git patches to core-agent will not apply without porting to stage-ui.
+
+### 📋 Upstream Commits
+- `749d915f28` fix(stage-tamagotchi): keep a deferred config write in its own root (#2913) [#2913](https://github.com/moeru-ai/airi/pull/2913) _(凌莞~(=^▽^=), 2026-10-11)_
+- `0e64578ab1` fix(api,auth,stage-ui): close the Capacitor follow-ups of #2813 (#2910) [#2813](https://github.com/moeru-ai/airi/pull/2813) _(RainbowBird, 2026-10-11)_
+- `ec682e2413` fix(stage-tamagotchi): bound what a Home Assistant request may do (#2900) [#2900](https://github.com/moeru-ai/airi/pull/2900) _(凌莞~(=^▽^=), 2026-10-11)_
+- `48d05fa7a3` test(stage-ui): add the Capacitor fields to the speech sync Flux mock (#2912) [#2912](https://github.com/moeru-ai/airi/pull/2912) _(Neko, 2026-10-11)_
+- `e4da8e2a8b` chore(nix): update pnpmDeps hash (#2909) [#2909](https://github.com/moeru-ai/airi/pull/2909) _(Weathercold, 2026-10-10)_
+- `f677923036` feat(api,stage-ui): add the Capacitor, a subscription store of Flux (#2813) [#2813](https://github.com/moeru-ai/airi/pull/2813) _(Lulu, 2026-10-11)_
+- `8d2a1f71af` chore(nix): update pnpmDeps hash (#2906) [#2906](https://github.com/moeru-ai/airi/pull/2906) _(Weathercold, 2026-10-10)_
+- `5ec81372f5` chore(stage-tamagotchi-kirie): update Kirie to 0.10.0 (#2901) [#2901](https://github.com/moeru-ai/airi/pull/2901) _(LemonNeko, 2026-10-10)_
+
+### 🔬 Subsystem Breakdown
+#### Documentation & Scaffolding (`⚪ ignore`) — 3 file(s) (+26/-11)
+- `.github/workflows/deploy-cloudflare-workers-dev-server.yml` *(+1/-0)*
+- `.github/workflows/deploy-cloudflare-workers.yml` *(+1/-0)*
+- `docs/ai/adr/2026-10-06-home-assistant-integration.md` *(+24/-11)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 13 file(s) (+381/-116)
+- `apps/stage-tamagotchi-kirie/MIGRATION.md` *(+6/-6)*
+- `apps/stage-tamagotchi-kirie/README.md` *(+9/-8)*
+- `apps/stage-tamagotchi-kirie/StageTamagotchiKirie.csproj` *(+3/-2)*
+- `apps/stage-tamagotchi-kirie/docs/host-architecture.md` *(+1/-1)*
+- `apps/stage-tamagotchi-kirie/kirie.config.ts` *(+2/-0)*
+- `apps/stage-tamagotchi-kirie/package.json` *(+4/-4)*
+- `apps/stage-tamagotchi/src/main/libs/electron/persistence.test.ts` *(+82/-26)*
+- `apps/stage-tamagotchi/src/main/libs/electron/persistence.ts` *(+40/-12)*
+- `apps/stage-tamagotchi/src/main/services/airi/home-assistant/index.ts` *(+12/-14)*
+- `apps/stage-tamagotchi/src/main/services/airi/home-assistant/request.test.ts` *(+108/-22)*
+- `apps/stage-tamagotchi/src/main/services/airi/home-assistant/request.ts` *(+78/-16)*
+- `apps/stage-tamagotchi/src/renderer/pages/settings/modules/home-assistant.vue` *(+24/-5)*
+- `apps/stage-tamagotchi/src/shared/eventa/home-assistant.ts` *(+12/-0)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 10 file(s) (+679/-9)
+- `nix/pnpm-deps-hash.txt` *(+1/-1)*
+- `packages/stage-shared/src/env-vars.ts` *(+14/-0)*
+- `packages/stage-ui/src/composables/use-subscription.browser.test.ts` *(+230/-0)*
+- `packages/stage-ui/src/composables/use-subscription.test.ts` *(+90/-0)*
+- `packages/stage-ui/src/composables/use-subscription.ts` *(+301/-0)*
+- `packages/stage-ui/src/stores/auth.test.ts` *(+13/-0)*
+- `packages/stage-ui/src/stores/auth.ts` *(+17/-2)*
+- `packages/stage-ui/src/stores/modules/speech.browser.test.ts` *(+5/-0)*
+- `pnpm-workspace.yaml` *(+7/-6)*
+- `vite-env.d.ts` *(+1/-0)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 3 file(s) (+74/-4)
+- `packages/i18n/glossary/terms.yaml` *(+10/-0)*
+- `packages/i18n/src/locales/en/settings.yaml` *(+32/-2)*
+- `packages/i18n/src/locales/zh-Hans/settings.yaml` *(+32/-2)*
+
+#### Stage Layouts & Shells (`🔍 inspect`) — 1 file(s) (+26/-1)
+- `packages/stage-layouts/src/components/Layouts/HeaderAvatar.vue` *(+26/-1)*
+
+#### UI Primitives & Pages (`📦 import / inspect`) — 2 file(s) (+385/-0)
+- `packages/stage-pages/src/pages/settings/account/account-settings-page.vue` *(+22/-0)*
+- `packages/stage-pages/src/pages/settings/capacitor.vue` *(+363/-0)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 2 file(s) (+38/-26)
+- `packages/stage-ui/package.json` *(+1/-0)*
+- `pnpm-lock.yaml` *(+37/-26)*
+
+#### Cloud Services, Billing & Auth (`⚪ ignore / rejected in fork (offline-first architecture)`) — 50 file(s) (+6742/-88)
+- `server/apps/api/README.md` *(+41/-0)*
+- `server/apps/api/drizzle/0032_capacitor.sql` *(+9/-0)*
+- `server/apps/api/drizzle/meta/0032_snapshot.json` *(+4083/-0)*
+- `server/apps/api/drizzle/meta/_journal.json` *(+7/-0)*
+- `server/apps/api/src/app.test.ts` *(+2/-0)*
+- `server/apps/api/src/app.ts` *(+42/-3)*
+- `server/apps/api/src/libs/env.ts` *(+10/-0)*
+- `server/apps/api/src/routes/flux/index.ts` *(+16/-1)*
+- `server/apps/api/src/routes/flux/route.test.ts` *(+40/-5)*
+- `server/apps/api/src/routes/internal-auth.test.ts` *(+43/-2)*
+- `server/apps/api/src/routes/internal-auth.ts` *(+20/-0)*
+- `server/apps/api/src/routes/openai/v1/route.test.ts` *(+5/-5)*
+- `server/apps/api/src/routes/revenuecat/index.ts` *(+46/-0)*
+- `server/apps/api/src/routes/revenuecat/operations/webhook.ts` *(+131/-0)*
+- `server/apps/api/src/routes/revenuecat/route.test.ts` *(+284/-0)*
+- `server/apps/api/src/routes/stripe/checkout.test.ts` *(+1/-1)*
+- `server/apps/api/src/routes/stripe/payment-release.test.ts` *(+1/-1)*
+- `server/apps/api/src/schemas/flux-transaction.ts` *(+2/-0)*
+- `server/apps/api/src/schemas/flux.ts` *(+14/-1)*
+- `server/apps/api/src/services/adapters/config-kv/definitions.ts` *(+17/-1)*
+- `server/apps/api/src/services/adapters/config-kv/index.test.ts` *(+10/-0)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriber.test.ts` *(+221/-0)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriber.ts` *(+206/-0)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriptions.test.ts` *(+109/-0)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriptions.ts` *(+56/-0)*
+- `server/apps/api/src/services/domain/billing/billing-service.ts` *(+164/-19)*
+- `server/apps/api/src/services/domain/billing/flux-posting.ts` *(+137/-3)*
+- `server/apps/api/src/services/domain/billing/speech-billing.ts` *(+2/-2)*
+- `server/apps/api/src/services/domain/billing/tests/billing-service.test.ts` *(+1/-1)*
+- `server/apps/api/src/services/domain/billing/tests/capacitor.test.ts` *(+404/-0)*
+- `server/apps/api/src/services/domain/billing/tests/flux-usage-concurrency.test.ts` *(+1/-1)*
+- `server/apps/api/src/services/domain/billing/tests/flux-usage-migration.test.ts` *(+5/-3)*
+- `server/apps/api/src/services/domain/billing/tests/flux-usage.test.ts` *(+1/-1)*
+- `server/apps/api/src/services/domain/billing/tests/llm-billing.test.ts` *(+1/-1)*
+- `server/apps/api/src/services/domain/billing/wallet-initialization.ts` *(+22/-0)*
+- `server/apps/api/src/services/domain/flux-cache.ts` *(+7/-2)*
+- `server/apps/api/src/services/domain/flux-transaction.ts` *(+5/-3)*
+- `server/apps/api/src/services/domain/flux.test.ts` *(+59/-5)*
+- `server/apps/api/src/services/domain/flux.ts` *(+36/-21)*
+- `server/apps/api/src/services/domain/payment/tests/payment.test.ts` *(+1/-1)*
+- `server/apps/api/src/utils/error.ts` *(+8/-0)*
+- `server/apps/auth/src/auth.ts` *(+13/-1)*
+- `server/apps/auth/src/email.ts` *(+2/-2)*
+- `server/apps/auth/src/resource-api.ts` *(+28/-0)*
+- `server/apps/auth/src/tests/account-deletion.test.ts` *(+131/-0)*
+- `server/apps/auth/src/tests/auth.test.ts` *(+4/-1)*
+- `server/apps/auth/src/tests/resource-api.test.ts` *(+32/-0)*
+- `server/apps/auth/src/tests/social-authorization.test.ts` *(+1/-0)*
+- `server/docs/ai/adr/2026-10-04-flux-usage.md` *(+2/-1)*
+- `server/docs/ai/adr/2026-10-04-subscription-credits.md` *(+259/-0)*
+
+### 📬 Upstream PR Radar
+#### 🆕 New PRs Opened (11)
+- [#2904](https://github.com/moeru-ai/airi/pull/2904) `fix(i18n): show the pipe in the Anthropic provider title` by **@clansty** *(31 comments)*
+- [#2913](https://github.com/moeru-ai/airi/pull/2913) `fix(stage-tamagotchi): keep a deferred config write in its own root` by **@clansty** *(26 comments)*
+- [#2910](https://github.com/moeru-ai/airi/pull/2910) `fix(api,auth,stage-ui): close the Capacitor follow-ups of #2813` by **@luoling8192** *(37 comments)*
+- [#2916](https://github.com/moeru-ai/airi/pull/2916) `fix(core-agent): exclude nested reasoning from streamed speech` by **@xili-ytl** *(1 comments)*
+- [#2914](https://github.com/moeru-ai/airi/pull/2914) `chore(i18n): update translations` by **@github-actions** *(3 comments)*
+- [#2912](https://github.com/moeru-ai/airi/pull/2912) `test(stage-ui): add the Capacitor fields to the speech sync Flux mock` by **@nekomeowww** *(2 comments)*
+- [#2911](https://github.com/moeru-ai/airi/pull/2911) `fix(core-agent): preserve whitespace in streamed speech literals` by **@Gujiassh** *(4 comments)*
+- [#2909](https://github.com/moeru-ai/airi/pull/2909) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2908](https://github.com/moeru-ai/airi/pull/2908) `fix(stage-ui): stop a no-op state apply from firing a subscriber` by **@clansty** *(6 comments)*
+- [#2905](https://github.com/moeru-ai/airi/pull/2905) `fix(stage-ui-three): preserve orbit gestures across native text drags` by **@FlowerWater1019** *(5 comments)*
+- [#2906](https://github.com/moeru-ai/airi/pull/2906) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+
+#### 🔄 PR Status & Lifecycle Changes (3)
+- [#2900](https://github.com/moeru-ai/airi/pull/2900) `fix(stage-tamagotchi): bound what a Home Assistant request may do` — `OPEN` ➔ `MERGED`
+- [#2813](https://github.com/moeru-ai/airi/pull/2813) `feat(api,stage-ui): add the Capacitor, a subscription store of Flux` — `OPEN` ➔ `MERGED`
+- [#2901](https://github.com/moeru-ai/airi/pull/2901) `chore(stage-tamagotchi-kirie): update Kirie to 0.10.0` — `OPEN` ➔ `MERGED`
+
+#### 💬 Discussion Activity (5)
+- [#2903](https://github.com/moeru-ai/airi/pull/2903) `feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches` — *+159 comments (15 ➔ 174 total)*
+- [#2902](https://github.com/moeru-ai/airi/pull/2902) `feat(core-agent): add a generation-level tool policy` — *+1 comments (4 ➔ 5 total)*
+- [#2900](https://github.com/moeru-ai/airi/pull/2900) `fix(stage-tamagotchi): bound what a Home Assistant request may do` — *+9 comments (7 ➔ 16 total)*
+- [#2729](https://github.com/moeru-ai/airi/pull/2729) `feat(stage-ui): add Push to Talk on the voice pipeline` — *+7 comments (4 ➔ 11 total)*
+- [#2813](https://github.com/moeru-ai/airi/pull/2813) `feat(api,stage-ui): add the Capacitor, a subscription store of Flux` — *+23 comments (18 ➔ 41 total)*
+
+### 👁️ Watched PRs Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+
+---
 ## [2026-10-10] Upstream Delta: `a94e2055..2efaa888` (13 commits, 116 files, 27 PR update(s))
 
 ### 🛠️ Porting & Regression Protection Ledger (dasilva333/airi)

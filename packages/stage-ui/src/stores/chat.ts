@@ -954,7 +954,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             }
           }
 
-          if (speechOnly.trim()) {
+          // Preserve whitespace literals across stream delta boundaries (PR #2911)
+          if (speechOnly) {
             buildingMessage.content += speechOnly
             turnSpeechContent += speechOnly
 
