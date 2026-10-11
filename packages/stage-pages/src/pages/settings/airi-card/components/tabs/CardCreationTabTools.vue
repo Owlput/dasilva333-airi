@@ -122,7 +122,9 @@ const hasCustomMcp = computed({
 // Opt-in only: In-Memory POSIX Sandbox & Workstation (disabled by default)
 const hasSandbox = computed({
   get() {
-    return generationAllowedTools.value !== undefined && generationAllowedTools.value.includes('bash')
+    return generationAllowedTools.value !== undefined && (
+      generationAllowedTools.value.includes('bash') || generationAllowedTools.value.includes('mcp_bash')
+    )
   },
   set(checked) {
     const current = generationAllowedTools.value ?? ['text_journal', 'image_journal']
@@ -131,7 +133,7 @@ const hasSandbox = computed({
         generationAllowedTools.value = [...current, 'bash']
     }
     else {
-      generationAllowedTools.value = current.filter(t => t !== 'bash')
+      generationAllowedTools.value = current.filter(t => t !== 'bash' && t !== 'mcp_bash')
     }
   },
 })

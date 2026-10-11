@@ -40,3 +40,12 @@ export function createBashTool(): Promise<Tool> {
     parameters: bashParams,
   })
 }
+
+export function createMcpBashTool(): Promise<Tool> {
+  return tool({
+    name: 'mcp_bash',
+    description: 'Execute bash commands in the in-memory POSIX workstation (/workspace). Inspect live state in /workspace/.airi/*.json with jq/cat, compile TypeScript with tsc, evaluate code with node, call MCP tools with mcp, or mount generative widgets with mount_widget.',
+    execute: params => executeBashCommand(params as { command: string }),
+    parameters: bashParams,
+  })
+}

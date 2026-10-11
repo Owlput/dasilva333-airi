@@ -268,7 +268,7 @@ function filterToolsByAllowedTools(tools: Tool[] | undefined): Tool[] | undefine
       return allowedTools.includes('image_journal')
     }
     if (name.includes('bash')) {
-      return allowedTools.includes('bash')
+      return allowedTools.includes('bash') || allowedTools.includes('mcp_bash')
     }
     if (name.includes('mcp_') || name.startsWith('mcp')) {
       return allowedTools.includes('mcp')
