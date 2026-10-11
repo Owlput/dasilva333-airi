@@ -27,7 +27,7 @@ import ChatWorkspaceCoordinator from '../components/chat/ChatWorkspaceCoordinato
 import ChatWorkspaceTerminalPanel from '../components/chat/ChatWorkspaceTerminalPanel.vue'
 import ChatWorkspaceWidgetsPanel from '../components/chat/ChatWorkspaceWidgetsPanel.vue'
 
-import { electronApplySizePreset, electronOpenSettings, electronStageToggleVisibility } from '../../shared/eventa'
+import { electronApplySizePreset, electronOpenSettings, electronStageToggleVisibility, electronWindowSetTitle } from '../../shared/eventa'
 
 // Code-split workspace sub-surfaces to eliminate heavy initial bundle evaluation
 const chat_arcade = defineAsyncComponent(() => import('../components/chat/chat_arcade.vue'))
@@ -446,18 +446,23 @@ watch(activeCardId, () => {
 const chatOrchestrator = useChatOrchestratorStore()
 const { isUserTyping } = storeToRefs(chatOrchestrator)
 
+const reportWindowTitle = useElectronEventaInvoke(electronWindowSetTitle)
+
 watch(
   () => [activeSurface.value, isUserTyping.value] as const,
   ([surface, typing]) => {
+    let nextTitle = 'AIRI - Chat Window'
     if (surface === 'messages') {
-      document.title = typing
+      nextTitle = typing
         ? 'AIRI - Chat Window - User Typing...'
         : 'AIRI - Chat Window'
     }
     else {
       const label = SURFACE_LABELS[surface] || 'Chat View'
-      document.title = `AIRI - Chat Window - ${label}`
+      nextTitle = `AIRI - Chat Window - ${label}`
     }
+    document.title = nextTitle
+    void reportWindowTitle({ title: nextTitle })
   },
   { immediate: true },
 )
