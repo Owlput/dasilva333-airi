@@ -108,6 +108,12 @@ const PRONOUN_OPTIONS = [
   { id: 'non-binary' as const, label: 'they/them', icon: 'i-solar:users-group-two-rounded-bold' },
 ]
 
+const localizedArchetypes = computed(() => USER_ARCHETYPES.map(archetype => ({
+  ...archetype,
+  label: t(`onboarding.steps.profile.archetypes.${archetype.id}.label`),
+  subtitle: t(`onboarding.steps.profile.archetypes.${archetype.id}.subtitle`),
+})))
+
 function selectGender(gender: 'male' | 'female' | 'non-binary') {
   selectedGender.value = gender
   if (draft.state) {
@@ -176,17 +182,17 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
           <!-- Header -->
           <div>
             <h2 :class="['text-base sm:text-lg font-bold text-neutral-900 dark:text-white']">
-              Quick templates
+              {{ t('onboarding.steps.profile.quickTemplates') }}
             </h2>
             <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-              Select to fill your profile.
+              {{ t('onboarding.steps.profile.selectTemplateHint') }}
             </p>
           </div>
 
           <!-- Template Rows -->
           <div :class="['flex flex-col gap-2.5 mt-3.5']">
             <button
-              v-for="archetype in USER_ARCHETYPES"
+              v-for="archetype in localizedArchetypes"
               :key="archetype.id"
               type="button"
               :class="[
@@ -223,7 +229,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                         : 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
                     ]"
                   >
-                    {{ archetype.gender }}
+                    {{ t(`onboarding.steps.profile.gender.${archetype.gender}`) }}
                   </span>
                 </div>
                 <p :class="['truncate text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
@@ -243,7 +249,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
 
           <!-- Bottom Helper Note -->
           <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 italic mt-auto pt-4']">
-            Templates are a starting point. Edit any field.
+            {{ t('onboarding.steps.profile.templateEditingHint') }}
           </p>
         </div>
 
@@ -262,7 +268,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
           <!-- Title -->
           <div>
             <h2 :class="['text-base sm:text-lg font-bold text-neutral-900 dark:text-white']">
-              Your profile
+              {{ t('onboarding.steps.profile.yourProfile') }}
             </h2>
           </div>
 
@@ -283,7 +289,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                         'inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors cursor-pointer',
                         'rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500',
                       ]"
-                      aria-label="Name information"
+                      :aria-label="t('onboarding.steps.profile.nameInformation')"
                     >
                       <div :class="['i-solar:info-circle-linear h-3.5 w-3.5']" />
                     </PopoverTrigger>
@@ -298,7 +304,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                           'animate-in fade-in-0 zoom-in-95',
                         ]"
                       >
-                        The default nickname used by imported cards and creator story scripts unless overridden.
+                        {{ t('onboarding.steps.profile.userName.help') }}
                       </PopoverContent>
                     </PopoverPortal>
                   </PopoverRoot>
@@ -321,7 +327,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
               <div :class="['flex flex-col gap-1.5']">
                 <div :class="['flex items-center gap-1.5']">
                   <span :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-200']">
-                    Preferred pronouns
+                    {{ t('onboarding.steps.profile.pronouns.label') }}
                   </span>
                   <PopoverRoot>
                     <PopoverTrigger
@@ -330,7 +336,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                         'inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors cursor-pointer',
                         'rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500',
                       ]"
-                      aria-label="Pronouns information"
+                      :aria-label="t('onboarding.steps.profile.pronounsInformation')"
                     >
                       <div :class="['i-solar:info-circle-linear h-3.5 w-3.5']" />
                     </PopoverTrigger>
@@ -345,7 +351,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                           'animate-in fade-in-0 zoom-in-95',
                         ]"
                       >
-                        Shapes third-person narrative pronouns and relationship lore in companion card generation.
+                        {{ t('onboarding.steps.profile.pronouns.help') }}
                       </PopoverContent>
                     </PopoverPortal>
                   </PopoverRoot>
@@ -370,7 +376,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                     @click="selectGender(opt.id)"
                   >
                     <div :class="[opt.icon, 'h-3.5 w-3.5 shrink-0']" />
-                    <span>{{ opt.label }}</span>
+                    <span>{{ t(`onboarding.steps.profile.pronounLabels.${opt.id}`) }}</span>
                   </button>
                 </div>
               </div>
@@ -380,10 +386,10 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
             <div :class="['flex flex-col gap-1.5']">
               <div :class="['flex items-center gap-1.5']">
                 <label for="profile-user-bio" :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-200']">
-                  About you
+                  {{ t('onboarding.steps.profile.userBio.label') }}
                 </label>
                 <span :class="['text-[11px] text-neutral-400 dark:text-neutral-500 font-medium']">
-                  Optional
+                  {{ t('onboarding.steps.profile.optional') }}
                 </span>
                 <PopoverRoot>
                   <PopoverTrigger
@@ -392,7 +398,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                       'inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors cursor-pointer',
                       'rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500',
                     ]"
-                    aria-label="About you information"
+                    :aria-label="t('onboarding.steps.profile.aboutYouInformation')"
                   >
                     <div :class="['i-solar:info-circle-linear h-3.5 w-3.5']" />
                   </PopoverTrigger>
@@ -407,7 +413,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                         'animate-in fade-in-0 zoom-in-95',
                       ]"
                     >
-                      A short prose summary helping the cognitive/storyline models understand your role.
+                      {{ t('onboarding.steps.profile.userBio.help') }}
                     </PopoverContent>
                   </PopoverPortal>
                 </PopoverRoot>
@@ -429,7 +435,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
             <div :class="['flex flex-col gap-1.5']">
               <div :class="['flex items-center gap-1.5']">
                 <label for="profile-user-prompt" :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-200']">
-                  Visual prompt tags
+                  {{ t('onboarding.steps.profile.visualPrompt.label') }}
                 </label>
                 <PopoverRoot>
                   <PopoverTrigger
@@ -438,7 +444,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                       'inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors cursor-pointer',
                       'rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500',
                     ]"
-                    aria-label="Visual prompt tags information"
+                    :aria-label="t('onboarding.steps.profile.visualPromptInformation')"
                   >
                     <div :class="['i-solar:info-circle-linear h-3.5 w-3.5']" />
                   </PopoverTrigger>
@@ -453,7 +459,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
                         'animate-in fade-in-0 zoom-in-95',
                       ]"
                     >
-                      Stable Diffusion / ComfyUI prompt tags injected when generating scene graphics representing you.
+                      {{ t('onboarding.steps.profile.visualPrompt.help') }}
                     </PopoverContent>
                   </PopoverPortal>
                 </PopoverRoot>
@@ -471,7 +477,7 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
               />
 
               <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 italic mt-0.5']">
-                Used when generating images that represent you.
+                {{ t('onboarding.steps.profile.visualPromptHint') }}
               </p>
             </div>
           </div>
@@ -504,7 +510,11 @@ const displayName = computed(() => draft.state.userName?.trim() || 'Richie')
       </button>
 
       <div :class="['text-xs text-neutral-400 font-medium']">
-        Displaying as: <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ displayName }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.profile.summary.displayName" tag="span">
+          <template #name>
+            <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ displayName }}</span>
+          </template>
+        </i18n-t>
       </div>
 
       <Button

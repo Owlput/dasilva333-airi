@@ -57,25 +57,33 @@ const cloudflarePresets = [
     id: '@cf/meta/llama-3.3-70b-instruct',
     name: 'Meta LLaMA 3.3 70B',
     description: 'Frontier capability, fast & versatile',
+    descriptionKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-meta-llama-3-3-70b-instruct.description',
     badge: 'Frontier',
+    badgeKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-meta-llama-3-3-70b-instruct.badge',
   },
   {
     id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
     name: 'DeepSeek R1 Distill 32B',
     description: 'Deep chain-of-thought reasoning',
+    descriptionKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-deepseek-ai-deepseek-r1-distill-qwen-32b.description',
     badge: 'Reasoning',
+    badgeKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-deepseek-ai-deepseek-r1-distill-qwen-32b.badge',
   },
   {
     id: '@cf/zai-org/glm-4.7-flash',
     name: 'GLM-4.7 Flash',
     description: 'Fast thinking & bilingual dialogue',
+    descriptionKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-zai-org-glm-4-7-flash.description',
     badge: 'Fast CoT',
+    badgeKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-zai-org-glm-4-7-flash.badge',
   },
   {
     id: '@cf/qwen/qwen2.5-7b-instruct',
     name: 'Qwen 2.5 7B Instruct',
     description: 'Snappy everyday conversationalist',
+    descriptionKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-qwen-qwen2-5-7b-instruct.description',
     badge: 'Snappy',
+    badgeKey: 'onboarding.steps.consciousness.cloudflarePresets.cf-qwen-qwen2-5-7b-instruct.badge',
   },
 ]
 
@@ -84,16 +92,19 @@ const pollinationsPresets = [
     id: 'openai',
     name: 'GPT-4o Mini (Pollinations)',
     description: 'Standard smart conversationalist',
+    descriptionKey: 'onboarding.steps.consciousness.pollinationsPresets.openai.description',
   },
   {
     id: 'deepseek',
     name: 'DeepSeek V3 (Pollinations)',
     description: 'High-intelligence open weights',
+    descriptionKey: 'onboarding.steps.consciousness.pollinationsPresets.deepseek.description',
   },
   {
     id: 'mistral',
     name: 'Mistral Small (Pollinations)',
     description: 'Snappy reasoning & instruction following',
+    descriptionKey: 'onboarding.steps.consciousness.pollinationsPresets.mistral.description',
   },
 ]
 
@@ -178,8 +189,22 @@ const isLoadingActiveProviderModels = computed(() => providersStore.isLoadingMod
 const webgpuSupported = ref(false)
 const fp16Supported = ref(true)
 
+const localModelDescriptionKeys: Record<string, string> = {
+  'Qwen3.5-0.8B-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.qwen3-5-0-8b-q4f16-1-mlc',
+  'gemma3-1b-it-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.gemma3-1b-it-q4f16-1-mlc',
+  'Ministral-3-3B-Reasoning-2512-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.ministral-3-3b-reasoning-2512-q4f16-1-mlc',
+  'Phi-4-mini-instruct-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.phi-4-mini-instruct-q4f16-1-mlc',
+  'Qwen3.5-4B-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.qwen3-5-4b-q4f16-1-mlc',
+  'Hermes-3-Llama-3.2-3B-q4f32_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.hermes-3-llama-3-2-3b-q4f32-1-mlc',
+  'Phi-3.5-mini-instruct-q4f32_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.phi-3-5-mini-instruct-q4f32-1-mlc',
+  'Llama-3.2-1B-Instruct-q4f32_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.llama-3-2-1b-instruct-q4f32-1-mlc',
+  'Llama-3.2-3B-Instruct-q4f32_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.llama-3-2-3b-instruct-q4f32-1-mlc',
+  'Phi-4-mini-instruct-q4f32_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.phi-4-mini-instruct-q4f32-1-mlc',
+}
+
 const availableWebLlmModels = computed(() => {
-  return fp16Supported.value ? WEB_LLM_MODELS : WEB_LLM_MODELS.filter(m => !m.fp16)
+  const models = fp16Supported.value ? WEB_LLM_MODELS : WEB_LLM_MODELS.filter(m => !m.fp16)
+  return models.map(model => ({ ...model, descriptionKey: localModelDescriptionKeys[model.id] }))
 })
 
 onMounted(async () => {
@@ -260,7 +285,7 @@ function selectCoreAiModel() {
 async function startCoreAiDownload() {
   coreAiState.value = 'downloading'
   coreAiProgress.value = 0
-  coreAiStatusText.value = 'Preparing Apple Neural Engine model…'
+  coreAiStatusText.value = t('onboarding.steps.consciousness.messages.preparingAppleNeuralEngineModel')
   coreAiErrorMessage.value = ''
   try {
     await NativeAI.downloadModel(
@@ -272,15 +297,15 @@ async function startCoreAiDownload() {
         coreAiProgress.value = p.percentage || 0
         coreAiSpeedMBs.value = p.speedMBs || 0
         if (p.percentage >= 99 && !p.isCompleted) {
-          coreAiStatusText.value = 'Compiling neural graphs on Apple Neural Engine (takes ~60–90s on first run)…'
+          coreAiStatusText.value = t('onboarding.steps.consciousness.messages.compilingNeuralGraphsOnAppleNeuralEngineTakes6090sOnFirstRun')
         }
         else {
-          coreAiStatusText.value = p.speedMBs ? `Downloading model weights (${p.speedMBs.toFixed(1)} MB/s)…` : 'Downloading & compiling on-device model…'
+          coreAiStatusText.value = p.speedMBs ? t('onboarding.steps.consciousness.messages.downloadingModelWeightsValueMbS', { value0: p.speedMBs.toFixed(1) }) : t('onboarding.steps.consciousness.download.compiling')
         }
         if (p.isCompleted) {
           coreAiState.value = 'ready'
           coreAiProgress.value = 100
-          toast.success('Apple Core AI Neural Engine model ready!')
+          toast.success(t('onboarding.steps.consciousness.appleCoreAiNeuralEngineModelReady'))
         }
       },
     )
@@ -288,7 +313,7 @@ async function startCoreAiDownload() {
   catch (err: any) {
     coreAiState.value = 'error'
     coreAiErrorMessage.value = err?.message || String(err)
-    toast.error(`Core AI download failed: ${coreAiErrorMessage.value}`)
+    toast.error(t('onboarding.steps.consciousness.coreAiDownloadFailedValue', { coreAiErrorMessage: coreAiErrorMessage.value }))
   }
 }
 
@@ -347,7 +372,7 @@ async function startWebLlmDownload() {
   downloadAbort.value = controller
   downloadState.value = 'downloading'
   downloadProgress.value = 0
-  downloadStatusText.value = 'Preparing model…'
+  downloadStatusText.value = t('onboarding.steps.consciousness.messages.preparingModel')
   downloadErrorMessage.value = ''
   try {
     const { getWebLlmAdapter } = await import('../../../../../../libs/inference/adapters/web-llm')
@@ -363,13 +388,13 @@ async function startWebLlmDownload() {
           ? p.percent
           : (p && p.loaded && p.total ? (p.loaded / p.total) * 100 : 0)
         downloadProgress.value = Math.min(100, Math.max(0, percent))
-        downloadStatusText.value = (p as any)?.status || (p as any)?.file || 'Downloading weight shards…'
+        downloadStatusText.value = (p as any)?.status || (p as any)?.file || t('onboarding.steps.consciousness.download.shards')
       },
     })
     if (!controller.signal.aborted) {
       downloadState.value = 'ready'
       downloadProgress.value = 100
-      toast.success('Local WebLLM brain ready!')
+      toast.success(t('onboarding.steps.consciousness.localWebllmBrainReady'))
     }
   }
   catch (err) {
@@ -433,7 +458,7 @@ function getApiKeyPlaceholder(providerId: string): string {
     'together-ai': 'togetherapi-...',
     'xai': 'xai-...',
   }
-  return map[providerId] || 'Enter API Key'
+  return map[providerId] || t('onboarding.steps.consciousness.apiKeyPlaceholder')
 }
 
 function onSelectProvider(provider: ProviderMetadata) {
@@ -514,12 +539,12 @@ async function saveAndConnectInline() {
     providersStore.markProviderAdded(selectedProviderId.value)
 
     await fetchLiveModels()
-    toast.success(`${selectedChatProvider.value?.name || 'Provider'} connected!`)
+    toast.success(t('onboarding.steps.consciousness.valueConnected', { nameProvider: selectedChatProvider.value?.name || t('onboarding.steps.consciousness.provider.fallbackName') }))
     scrollToTarget()
   }
   catch (err: any) {
     console.error('[V3 Consciousness Save Credentials Error]:', err)
-    toast.error(err?.message || 'Failed to connect provider')
+    toast.error(err?.message || t('onboarding.steps.consciousness.failedToConnectProvider'))
   }
   finally {
     isSavingConfig.value = false
@@ -597,14 +622,14 @@ const effectiveConfigKey = computed(() => {
 
 const effectiveProviderLabel = computed(() => {
   if (isWebLlmSelected.value)
-    return 'Local WebLLM'
+    return t('onboarding.steps.consciousness.localWebllmShort')
   if (isCoreAiSelected.value)
     return 'Apple Core AI'
-  return selectedChatProvider.value?.name || selectedProviderId.value || 'No provider'
+  return selectedChatProvider.value?.name || selectedProviderId.value || t('onboarding.steps.consciousness.noProvider')
 })
 
 const effectiveModelLabel = computed(() => {
-  return (selectedModelId.value || '').trim() || 'No model'
+  return (selectedModelId.value || '').trim() || t('onboarding.steps.consciousness.noModel')
 })
 
 type VerificationDisplay = 'empty' | 'not-ready' | 'ready' | 'testing' | 'verified' | 'failed'
@@ -662,7 +687,7 @@ async function testBrainConnection() {
     if (requestId !== probeRequestId.value || effectiveConfigKey.value !== keyAtStart)
       return
     if (!providerInstance || typeof (providerInstance as any).chat !== 'function') {
-      throw new Error(`Provider "${selectedProviderId.value}" does not expose chat completions. Check credentials.`)
+      throw new Error(t('onboarding.steps.consciousness.providerChatUnavailable', { provider: selectedProviderId.value }))
     }
 
     probeState.value = 'inferencing'
@@ -720,11 +745,11 @@ async function testBrainConnection() {
       const recommendedPreset = isReasoning || elapsedMs > 2500 ? 'deep' : elapsedMs < 800 ? 'snappy' : 'balanced'
       draft.setThinking({ pacingPreset: recommendedPreset })
 
-      toast.success(`Brain connection verified! (${elapsedMs}ms TTFT · ${isReasoning ? 'Reasoning Model' : 'Standard Model'})`)
+      toast.success(t('onboarding.steps.consciousness.brainConnectionVerifiedValuemsTtftValue', { elapsedMs, detail: isReasoning ? t('onboarding.steps.consciousness.reasoningModel') : t('onboarding.steps.consciousness.standardModel') }))
       emit('verified')
     }
     else {
-      throw new Error('Empty response received from LLM.')
+      throw new Error(t('onboarding.steps.consciousness.emptyModelResponse'))
     }
   }
   catch (err: any) {
@@ -732,7 +757,7 @@ async function testBrainConnection() {
       return
     console.error('[V3 Consciousness] Probe failed:', err)
     probeState.value = 'error'
-    probeErrorMessage.value = err?.message || 'Connection test failed. Check API key, model ID, and network.'
+    probeErrorMessage.value = err?.message || t('onboarding.steps.consciousness.verification.failed')
     toast.error(probeErrorMessage.value)
   }
 }
@@ -850,7 +875,7 @@ onBeforeUnmount(() => {
         </div>
 
         <AssistantBubble
-          message="Let’s choose the brain behind our conversations. Use a free cloud model, run one locally, or connect your own provider—then try a quick conversation."
+          :message="t('onboarding.steps.consciousness.assistantMessage')"
           step-key="consciousness"
           sticker-id="airi-awkward"
           tone="primary"
@@ -875,19 +900,19 @@ onBeforeUnmount(() => {
           >
             <div :class="['flex items-center gap-3']">
               <span :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-200 whitespace-nowrap flex-shrink-0']">
-                Saved brains
+                {{ t('onboarding.steps.consciousness.savedBrains') }}
               </span>
               <div :class="['flex-1 min-w-0']">
                 <BrainModelPicker
                   v-model:provider="selectedProviderId"
                   v-model:model="selectedModelId"
                   variant="button"
-                  title="Select Consciousness LLM"
+                  :title="t('onboarding.steps.consciousness.selectConsciousnessLlm')"
                   side="bottom"
                   class="w-full"
                 />
                 <p v-if="!(configuredChatProvidersMetadata.length > 0 || selectedProviderId)" :class="['mt-1 text-[11px] text-neutral-400']">
-                  No saved brains yet — pick a route below to configure one.
+                  {{ t('onboarding.steps.consciousness.noSavedBrains') }}
                 </p>
               </div>
             </div>
@@ -905,8 +930,8 @@ onBeforeUnmount(() => {
                 @click="activeTab = 'free'"
               >
                 <div class="i-solar:cloud-bold-duotone h-4 w-4" />
-                <span>Free cloud AI</span>
-                <span class="rounded-full bg-amber-500/10 px-1.5 py-0.2 text-[9px] text-amber-600 font-bold hidden sm:inline-block dark:text-amber-400">No setup</span>
+                <span>{{ t('onboarding.steps.consciousness.freeCloudAi') }}</span>
+                <span class="rounded-full bg-amber-500/10 px-1.5 py-0.2 text-[9px] text-amber-600 font-bold hidden sm:inline-block dark:text-amber-400">{{ t('onboarding.steps.consciousness.noSetup') }}</span>
               </button>
 
               <button
@@ -920,8 +945,8 @@ onBeforeUnmount(() => {
                 @click="activeTab = 'local'"
               >
                 <div class="i-solar:cpu-bolt-bold-duotone h-4 w-4" />
-                <span>Local on-device</span>
-                <span class="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] text-emerald-600 font-bold hidden sm:inline-block dark:text-emerald-400">Offline</span>
+                <span>{{ t('onboarding.steps.consciousness.localOnDevice') }}</span>
+                <span class="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] text-emerald-600 font-bold hidden sm:inline-block dark:text-emerald-400">{{ t('onboarding.steps.consciousness.offline') }}</span>
               </button>
 
               <button
@@ -935,7 +960,7 @@ onBeforeUnmount(() => {
                 @click="activeTab = 'custom'"
               >
                 <div class="i-solar:key-minimalistic-square-bold-duotone h-4 w-4" />
-                <span>Custom API key</span>
+                <span>{{ t('onboarding.steps.consciousness.customApiKey') }}</span>
               </button>
             </div>
           </div>
@@ -954,10 +979,10 @@ onBeforeUnmount(() => {
                   <div class="flex flex-shrink-0 items-center gap-1.5">
                     <span v-if="isCloudflareConnected" class="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">
                       <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Connected
+                      {{ t('onboarding.steps.consciousness.connected') }}
                     </span>
                     <span v-else class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold dark:text-amber-400">
-                      Zero-Trust OAuth
+                      {{ t('onboarding.steps.consciousness.zeroTrustOauth') }}
                     </span>
                   </div>
                 </div>
@@ -990,24 +1015,24 @@ onBeforeUnmount(() => {
                         <div class="flex items-center justify-between gap-1">
                           <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-100">{{ preset.name }}</span>
                           <span class="flex-shrink-0 rounded bg-primary-500/10 px-1.5 py-0.2 text-[9px] text-primary-600 font-bold dark:text-primary-400">
-                            {{ preset.badge }}
+                            {{ t(preset.badgeKey) }}
                           </span>
                         </div>
                         <p class="line-clamp-1 mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">
-                          {{ preset.description }}
+                          {{ t(preset.descriptionKey) }}
                         </p>
                       </div>
                     </button>
                   </div>
 
                   <div class="flex items-center justify-between gap-2 pt-1 text-[11px] text-neutral-400">
-                    <span class="min-w-0 truncate">Connected account · <span class="text-neutral-600 font-mono dark:text-neutral-300">{{ cloudflareStore.activeAccountId }}</span></span>
+                    <span class="min-w-0 truncate"><i18n-t scope="global" keypath="onboarding.steps.consciousness.connectedAccountSummary" tag="span"><template #account><span class="text-neutral-600 font-mono dark:text-neutral-300">{{ cloudflareStore.activeAccountId }}</span></template></i18n-t></span>
                     <button
                       type="button"
                       class="flex-shrink-0 cursor-pointer text-primary-500 hover:underline"
                       @click="isConnectModalOpen = true"
                     >
-                      Switch account
+                      {{ t('onboarding.steps.consciousness.switchAccount') }}
                     </button>
                   </div>
                 </template>
@@ -1015,7 +1040,7 @@ onBeforeUnmount(() => {
                 <template v-else>
                   <div class="flex flex-col gap-3 border border-amber-500/20 rounded-xl bg-amber-500/5 p-3.5">
                     <p class="text-xs text-neutral-600 leading-relaxed dark:text-neutral-300">
-                      Connect your Cloudflare account to unlock high-speed LLaMA 3.3 70B, DeepSeek R1 32B, and GLM 4.7 Flash with generous free daily limits.
+                      {{ t('onboarding.steps.consciousness.connectYourCloudflareAccountToUnlockHighSpeedLlama3370bDeepseekR1') }}
                     </p>
                     <div class="flex items-center gap-2">
                       <Button
@@ -1024,7 +1049,7 @@ onBeforeUnmount(() => {
                         @click="isConnectModalOpen = true"
                       >
                         <div class="i-simple-icons:cloudflare text-sm" />
-                        <span>Connect Cloudflare Account</span>
+                        <span>{{ t('onboarding.steps.consciousness.connectCloudflareAccount') }}</span>
                       </Button>
                     </div>
                   </div>
@@ -1039,7 +1064,7 @@ onBeforeUnmount(() => {
                     <span class="truncate text-xs text-neutral-700 font-bold tracking-wider uppercase dark:text-neutral-300">Pollinations AI</span>
                   </div>
                   <span class="flex-shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">
-                    100% Free · No Sign-in
+                    {{ t('onboarding.steps.consciousness.100FreeNoSignIn') }}
                   </span>
                 </div>
 
@@ -1058,14 +1083,14 @@ onBeforeUnmount(() => {
                   >
                     <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-100">{{ preset.name }}</span>
                     <p class="line-clamp-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                      {{ preset.description }}
+                      {{ t(preset.descriptionKey) }}
                     </p>
                   </button>
                 </div>
 
                 <p :class="['flex items-center gap-2 text-[11px] text-neutral-400 dark:text-neutral-500']">
                   <span :class="['i-solar:info-circle-linear text-sm flex-shrink-0']" />
-                  <span>More models are available in the Free AI Hub in Settings.</span>
+                  <span>{{ t('onboarding.steps.consciousness.moreModelsInSettings') }}</span>
                 </p>
               </div>
             </div>
@@ -1079,8 +1104,8 @@ onBeforeUnmount(() => {
               >
                 <div class="flex items-center gap-2">
                   <div class="i-solar:cpu-bolt-bold-duotone h-4 w-4 text-primary-500" />
-                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Apple Core AI (Neural Engine)</span>
-                  <span class="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">ANE ACCELERATED · 100% OFFLINE</span>
+                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">{{ t('onboarding.steps.consciousness.appleCoreAiNeuralEngine') }}</span>
+                  <span class="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">{{ t('onboarding.steps.consciousness.aneAccelerated100Offline') }}</span>
                 </div>
 
                 <div class="grid grid-cols-1 gap-2">
@@ -1102,17 +1127,17 @@ onBeforeUnmount(() => {
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-sm text-neutral-800 font-bold dark:text-neutral-100">Gemma 4 E2B IT (Speculative CoreML)</span>
+                        <span class="text-sm text-neutral-800 font-bold dark:text-neutral-100">{{ t('onboarding.steps.consciousness.gemma4E2bItSpeculativeCoreml') }}</span>
                         <span class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold dark:text-amber-400">
-                          ⭐ RECOMMENDED ON-DEVICE
+                          {{ t('onboarding.steps.consciousness.recommendedOnDevice') }}
                         </span>
                       </div>
                       <p class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                        High-speed neural dialogue on Apple Neural Engine (~45+ tok/s). 100% offline & private.
+                        {{ t('onboarding.steps.consciousness.highSpeedNeuralDialogueOnAppleNeuralEngine45TokS100OfflinePrivate') }}
                       </p>
                     </div>
                     <span class="flex-shrink-0 rounded-md bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold font-mono dark:bg-neutral-800 dark:text-neutral-300">
-                      ~1.4 GB RAM
+                      {{ t('onboarding.steps.consciousness.14GbRam') }}
                     </span>
                   </button>
                 </div>
@@ -1122,10 +1147,10 @@ onBeforeUnmount(() => {
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0 flex-1 flex-col">
                       <span class="truncate text-xs text-neutral-800 font-semibold dark:text-neutral-200">
-                        Selected: Gemma 4 E2B IT (Speculative CoreML)
+                        {{ t('onboarding.steps.consciousness.selectedGemma4E2bItSpeculativeCoreml') }}
                       </span>
                       <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {{ coreAiState === 'ready' ? 'Model is compiled and ready to think on Apple Neural Engine.' : (coreAiState === 'downloading' ? 'Downloading CoreML weight bundle and compiling on device…' : 'Click to download and compile model on Apple Neural Engine.') }}
+                        {{ coreAiState === 'ready' ? t('onboarding.steps.consciousness.modelIsCompiledAndReadyToThinkOnAppleNeuralEngine') : (coreAiState === 'downloading' ? t('onboarding.steps.consciousness.downloadingCoremlWeightBundleAndCompilingOnDevice') : t('onboarding.steps.consciousness.clickToDownloadAndCompileModelOnAppleNeuralEngine')) }}
                       </span>
                     </div>
 
@@ -1138,7 +1163,7 @@ onBeforeUnmount(() => {
                         @click="startCoreAiDownload"
                       >
                         <div class="i-solar:cloud-download-bold-duotone text-base" />
-                        <span>Download & Compile</span>
+                        <span>{{ t('onboarding.steps.consciousness.downloadCompile') }}</span>
                       </Button>
 
                       <div
@@ -1146,7 +1171,7 @@ onBeforeUnmount(() => {
                         class="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-600 font-bold dark:text-emerald-400"
                       >
                         <div class="i-solar:check-circle-bold-duotone text-base" />
-                        <span>Active & Ready</span>
+                        <span>{{ t('onboarding.steps.consciousness.activeReady') }}</span>
                       </div>
 
                       <Button
@@ -1156,7 +1181,7 @@ onBeforeUnmount(() => {
                         @click="startCoreAiDownload"
                       >
                         <div class="i-solar:restart-bold-duotone text-base" />
-                        <span>Retry Download</span>
+                        <span>{{ t('onboarding.steps.consciousness.retryDownload') }}</span>
                       </Button>
                     </div>
                   </div>
@@ -1181,9 +1206,13 @@ onBeforeUnmount(() => {
                   <div class="flex items-start gap-2.5 border border-amber-500/20 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
                     <div class="i-solar:hourglass-line-bold-duotone mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
                     <div class="min-w-0 flex-1 space-y-0.5">
-                      <span class="font-bold">First-Launch On-Device Warmup Notice</span>
+                      <span class="font-bold">{{ t('onboarding.steps.consciousness.firstLaunchOnDeviceWarmupNotice') }}</span>
                       <p class="text-[11px] text-amber-800/90 leading-relaxed dark:text-amber-300/90">
-                        When starting the companion for the first time, Apple Neural Engine takes <strong>~60–90 seconds</strong> to compile model graphs and warm up memory buffers. Please be patient while it initializes — all subsequent chat replies run near-instantaneously (~45+ tok/s)!
+                        <i18n-t scope="global" keypath="onboarding.steps.consciousness.firstLaunchNotice" tag="span">
+                          <template #emphasis>
+                            <strong>{{ t('onboarding.steps.consciousness.6090Seconds') }}</strong>
+                          </template>
+                        </i18n-t>
                       </p>
                     </div>
                   </div>
@@ -1196,7 +1225,7 @@ onBeforeUnmount(() => {
                 class="flex flex-shrink-0 items-start gap-2 border border-amber-300/60 rounded-xl bg-amber-50/80 p-3 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300"
               >
                 <div class="i-solar:danger-triangle-bold-duotone mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>WebGPU isn't available in this browser. Pick a free or cloud provider below (e.g. OpenRouter, Gemini, Pollinations, MiMo) to power your companion.</span>
+                <span>{{ t('onboarding.steps.consciousness.webgpuIsnTAvailableInThisBrowserPickAFreeOrCloudProviderBelowEG') }}</span>
               </div>
 
               <!-- WebGPU FP32 Universal notice when shader-f16 is missing (Desktop/Web only) -->
@@ -1205,7 +1234,11 @@ onBeforeUnmount(() => {
                 class="flex flex-shrink-0 items-start gap-2 border border-blue-400/40 rounded-xl bg-blue-50/80 p-3 text-xs text-blue-900 dark:border-blue-700/60 dark:bg-blue-900/20 dark:text-blue-200"
               >
                 <div class="i-solar:info-circle-bold-duotone mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
-                <span>Legacy GPU / 32-bit WebGPU mode active (no <code>shader-f16</code> support). Showing universal FP32 models compatible with your hardware.</span>
+                <i18n-t scope="global" keypath="onboarding.steps.consciousness.legacyGpuNotice" tag="span">
+                  <template #code>
+                    <code>shader-f16</code>
+                  </template>
+                </i18n-t>
               </div>
 
               <!-- WebLLM Local Engine (Desktop / Web only) -->
@@ -1215,8 +1248,8 @@ onBeforeUnmount(() => {
               >
                 <div class="flex items-center gap-2">
                   <div class="i-solar:cpu-bolt-bold-duotone h-4 w-4 text-primary-500" />
-                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Local WebLLM (WebGPU Engine)</span>
-                  <span class="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">OFFLINE · LOCAL</span>
+                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">{{ t('onboarding.steps.consciousness.localWebllmWebgpuEngine') }}</span>
+                  <span class="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">{{ t('onboarding.steps.consciousness.offlineLocal') }}</span>
                 </div>
 
                 <div class="grid grid-cols-1 gap-2">
@@ -1247,15 +1280,15 @@ onBeforeUnmount(() => {
                           v-if="model.id === 'Qwen3.5-4B-q4f16_1-MLC' || (!fp16Supported && model.id === 'Hermes-3-Llama-3.2-3B-q4f32_1-MLC')"
                           class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold dark:text-amber-400"
                         >
-                          ⭐ RECOMMENDED
+                          {{ t('onboarding.steps.consciousness.recommended') }}
                         </span>
                       </div>
                       <p class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                        {{ model.description }}
+                        {{ t(model.descriptionKey) }}
                       </p>
                     </div>
                     <span class="flex-shrink-0 rounded-md bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold font-mono dark:bg-neutral-800 dark:text-neutral-300">
-                      ~{{ (model.vramMB / 1024).toFixed(1) }} GB VRAM
+                      {{ t('onboarding.steps.consciousness.localModels.vram', { toFixed1: (model.vramMB / 1024).toFixed(1) }) }}
                     </span>
                   </button>
                 </div>
@@ -1265,10 +1298,10 @@ onBeforeUnmount(() => {
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0 flex flex-1 flex-col">
                       <span class="truncate text-xs text-neutral-800 font-semibold dark:text-neutral-200">
-                        Selected: {{ WEB_LLM_MODELS.find(m => m.id === selectedLlmModel)?.name }}
+                        {{ t('onboarding.steps.consciousness.localModels.selected', { name: WEB_LLM_MODELS.find(m => m.id === selectedLlmModel)?.name }) }}
                       </span>
                       <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {{ downloadState === 'ready' ? 'Model is downloaded and ready to think.' : (downloadState === 'downloading' ? 'Downloading model shards into browser cache…' : 'Click to download and activate this model locally on WebGPU.') }}
+                        {{ downloadState === 'ready' ? t('onboarding.steps.consciousness.modelIsDownloadedAndReadyToThink') : (downloadState === 'downloading' ? t('onboarding.steps.consciousness.downloadingModelShardsIntoBrowserCache') : t('onboarding.steps.consciousness.clickToDownloadAndActivateThisModelLocallyOnWebgpu')) }}
                       </span>
                     </div>
 
@@ -1282,7 +1315,7 @@ onBeforeUnmount(() => {
                         @click="startWebLlmDownload"
                       >
                         <div class="i-solar:cloud-download-bold-duotone text-base" />
-                        <span>Download & Activate</span>
+                        <span>{{ t('onboarding.steps.consciousness.downloadActivate') }}</span>
                       </Button>
 
                       <Button
@@ -1292,7 +1325,7 @@ onBeforeUnmount(() => {
                         @click="cancelWebLlmDownload"
                       >
                         <div class="i-solar:close-circle-bold-duotone text-base" />
-                        <span>Cancel</span>
+                        <span>{{ t('onboarding.steps.consciousness.provider.cancel') }}</span>
                       </Button>
 
                       <div
@@ -1300,7 +1333,7 @@ onBeforeUnmount(() => {
                         class="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-600 font-bold dark:text-emerald-400"
                       >
                         <div class="i-solar:check-circle-bold-duotone text-base" />
-                        <span>Active & Ready</span>
+                        <span>{{ t('onboarding.steps.consciousness.activeReady') }}</span>
                       </div>
 
                       <Button
@@ -1310,7 +1343,7 @@ onBeforeUnmount(() => {
                         @click="startWebLlmDownload"
                       >
                         <div class="i-solar:restart-bold-duotone text-base" />
-                        <span>Retry Download</span>
+                        <span>{{ t('onboarding.steps.consciousness.retryDownload') }}</span>
                       </Button>
                     </div>
                   </div>
@@ -1339,8 +1372,8 @@ onBeforeUnmount(() => {
               <!-- Cloud / Local Provider Matrix -->
               <div :class="['p-4 sm:p-5 rounded-[20px]', 'bg-white/40 dark:bg-neutral-900/40', 'border border-neutral-200/60 dark:border-neutral-800/80', 'backdrop-blur-md', 'flex flex-col gap-3']">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Choose an AI Brain Provider</span>
-                  <span class="flex-shrink-0 text-[10px] text-neutral-400">Alphabetical · Tap to select</span>
+                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">{{ t('onboarding.steps.consciousness.chooseAnAiBrainProvider') }}</span>
+                  <span class="flex-shrink-0 text-[10px] text-neutral-400">{{ t('onboarding.steps.consciousness.alphabeticalTapToSelect') }}</span>
                 </div>
                 <ProviderPickerGrid
                   :model-value="selectedProviderId"
@@ -1364,10 +1397,10 @@ onBeforeUnmount(() => {
                       </div>
                       <div class="min-w-0">
                         <h4 class="truncate text-sm text-neutral-800 font-bold dark:text-neutral-100">
-                          Configure {{ inlineConfigProvider.name }}
+                          {{ t('onboarding.steps.consciousness.provider.configure', { name: inlineConfigProvider.name }) }}
                         </h4>
                         <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
-                          Enter your API credentials to load AI models.
+                          {{ t('onboarding.steps.consciousness.enterYourApiCredentialsToLoadAiModels') }}
                         </p>
                       </div>
                     </div>
@@ -1378,7 +1411,7 @@ onBeforeUnmount(() => {
                       target="_blank"
                       class="flex flex-shrink-0 items-center gap-1 text-[11px] text-primary-500 font-semibold hover:underline"
                     >
-                      <span>Get Key</span>
+                      <span>{{ t('onboarding.steps.consciousness.getKey') }}</span>
                       <div class="i-solar:square-top-down-bold h-3.5 w-3.5" />
                     </a>
                   </div>
@@ -1386,7 +1419,7 @@ onBeforeUnmount(() => {
                   <!-- API Key Field -->
                   <div class="space-y-1.5">
                     <label class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">
-                      API Key <span class="text-red-500">*</span>
+                      {{ t('onboarding.steps.consciousness.apiKey') }} <span class="text-red-500">*</span>
                     </label>
                     <div class="relative flex items-center">
                       <input
@@ -1414,7 +1447,7 @@ onBeforeUnmount(() => {
                       @click="showBaseUrl = !showBaseUrl"
                     >
                       <div :class="showBaseUrl ? 'i-solar:alt-arrow-down-line-duotone' : 'i-solar:alt-arrow-right-line-duotone'" class="h-3.5 w-3.5" />
-                      <span>Advanced: Custom Base URL</span>
+                      <span>{{ t('onboarding.steps.consciousness.advancedCustomBaseUrl') }}</span>
                     </button>
                     <div v-if="showBaseUrl" class="pt-1">
                       <input
@@ -1433,7 +1466,7 @@ onBeforeUnmount(() => {
                       class="min-h-[44px] cursor-pointer border border-neutral-200 rounded-lg px-3 py-1.5 text-xs text-neutral-600 font-semibold dark:border-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
                       @click="handleCancelConfig"
                     >
-                      Cancel
+                      {{ t('onboarding.steps.consciousness.provider.cancel') }}
                     </button>
                     <button
                       type="button"
@@ -1442,7 +1475,7 @@ onBeforeUnmount(() => {
                       @click="saveAndConnectInline"
                     >
                       <div v-if="isSavingConfig" class="i-solar:restart-square-bold h-3.5 w-3.5 animate-spin" />
-                      <span>{{ isSavingConfig ? 'Connecting…' : 'Save & Connect' }}</span>
+                      <span>{{ isSavingConfig ? t('onboarding.steps.consciousness.connecting') : t('onboarding.steps.consciousness.saveConnect') }}</span>
                     </button>
                   </div>
                 </div>
@@ -1454,7 +1487,7 @@ onBeforeUnmount(() => {
                 >
                   <!-- Section Header -->
                   <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs text-neutral-500 font-bold uppercase dark:text-neutral-400">Model Selection</span>
+                    <span class="text-xs text-neutral-500 font-bold uppercase dark:text-neutral-400">{{ t('onboarding.steps.consciousness.model') }}</span>
                     <span v-if="selectedChatProvider" class="truncate text-[11px] text-neutral-400 font-semibold">
                       {{ selectedChatProvider.name }}
                     </span>
@@ -1464,14 +1497,14 @@ onBeforeUnmount(() => {
                   <div class="space-y-1.5">
                     <div class="flex items-center justify-between gap-2">
                       <label class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">
-                        Active Model ID <span class="text-red-500">*</span>
+                        {{ t('onboarding.steps.consciousness.activeModelId') }} <span class="text-red-500">*</span>
                       </label>
-                      <span class="text-[10px] text-neutral-400">Type directly or pick below</span>
+                      <span class="text-[10px] text-neutral-400">{{ t('onboarding.steps.consciousness.typeDirectlyOrPickBelow') }}</span>
                     </div>
                     <input
                       v-model="selectedModelId"
                       type="text"
-                      placeholder="e.g. gemini-2.5-flash, gpt-4o-mini, mistral-large-latest"
+                      :placeholder="t('onboarding.steps.consciousness.eGGemini25FlashGpt4oMiniMistralLargeLatest')"
                       class="min-h-[44px] w-full border border-neutral-200 rounded-lg bg-white px-3 py-2 text-sm text-neutral-800 font-mono outline-none transition dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-800 dark:text-neutral-100"
                     >
                   </div>
@@ -1480,7 +1513,7 @@ onBeforeUnmount(() => {
                   <div class="space-y-1.5">
                     <div class="flex items-center justify-between gap-2">
                       <label class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">
-                        Discovered Models
+                        {{ t('onboarding.steps.consciousness.discoveredModels') }}
                       </label>
                       <button
                         type="button"
@@ -1489,7 +1522,7 @@ onBeforeUnmount(() => {
                         @click="fetchLiveModels"
                       >
                         <div :class="[isLoadingActiveProviderModels ? 'animate-spin' : '', 'i-solar:restart-square-bold h-3.5 w-3.5']" />
-                        <span>{{ isLoadingActiveProviderModels ? 'Querying API…' : 'Get Models' }}</span>
+                        <span>{{ isLoadingActiveProviderModels ? t('onboarding.steps.consciousness.queryingApi') : t('onboarding.steps.consciousness.getModels') }}</span>
                       </button>
                     </div>
 
@@ -1501,7 +1534,7 @@ onBeforeUnmount(() => {
                         @change="onSelectModelFromDropdown"
                       >
                         <option value="" disabled selected>
-                          {{ isLoadingActiveProviderModels ? 'Querying API models…' : (providerModels.length > 0 ? 'Select a discovered model' : 'No Models Found') }}
+                          {{ isLoadingActiveProviderModels ? t('onboarding.steps.consciousness.queryingApiModels') : (providerModels.length > 0 ? t('onboarding.steps.consciousness.selectADiscoveredModel') : t('onboarding.steps.consciousness.noModelsFound')) }}
                         </option>
                         <option
                           v-for="model in providerModels"
@@ -1540,10 +1573,10 @@ onBeforeUnmount(() => {
             </div>
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Try your brain
+                {{ t('onboarding.steps.consciousness.tryBrain') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed']">
-                Send a message to check replies and connection speed.
+                {{ t('onboarding.steps.consciousness.testDescription') }}
               </p>
             </div>
           </div>
@@ -1553,7 +1586,7 @@ onBeforeUnmount(() => {
           <!-- Effective configuration summary (bound to committed selection) -->
           <div :class="['rounded-xl border border-neutral-200/70 dark:border-white/10 bg-neutral-50/70 dark:bg-black/20 px-3 py-2.5 flex flex-col gap-1']">
             <span :class="['text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500']">
-              Testing
+              {{ t('onboarding.steps.consciousness.testingLabel') }}
             </span>
             <span :title="effectiveModelLabel" :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-100 truncate']">
               {{ effectiveModelLabel }}
@@ -1566,12 +1599,12 @@ onBeforeUnmount(() => {
           <!-- Test message input -->
           <div :class="['flex flex-col gap-1.5']">
             <label :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">
-              Test message
+              {{ t('onboarding.steps.consciousness.testMessage') }}
             </label>
             <input
               v-model="testSimulationPrompt"
               type="text"
-              placeholder="Say hello and introduce yourself!"
+              :placeholder="t('onboarding.steps.consciousness.sayHelloAndIntroduceYourself')"
               :disabled="probeState === 'connecting' || probeState === 'inferencing'"
               :class="[
                 'w-full border border-neutral-200 rounded-xl bg-white px-3 py-2 text-sm text-neutral-800 outline-none transition',
@@ -1591,13 +1624,13 @@ onBeforeUnmount(() => {
             @click="testBrainConnection"
           >
             <div :class="[probeState === 'connecting' || probeState === 'inferencing' ? 'i-solar:refresh-circle-bold animate-spin h-4 w-4' : 'i-solar:play-bold h-4 w-4']" />
-            <span>{{ probeState === 'connecting' || probeState === 'inferencing' ? 'Testing…' : 'Simulate turn' }}</span>
+            <span>{{ probeState === 'connecting' || probeState === 'inferencing' ? t('onboarding.steps.consciousness.testing') : t('onboarding.steps.consciousness.simulateTurn') }}</span>
           </Button>
 
           <!-- Response area -->
           <div :class="['flex flex-col gap-1.5 min-w-0']">
             <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">
-              Response
+              {{ t('onboarding.steps.consciousness.response') }}
             </span>
 
             <div
@@ -1605,7 +1638,7 @@ onBeforeUnmount(() => {
               :class="['flex items-center gap-2 py-2 text-xs text-neutral-400 italic']"
             >
               <div :class="['i-solar:refresh-circle-bold h-4 w-4 animate-spin text-primary-500 flex-shrink-0']" />
-              <span>{{ probeState === 'connecting' ? 'Establishing provider connection…' : 'Generating in-character companion response…' }}</span>
+              <span>{{ probeState === 'connecting' ? t('onboarding.steps.consciousness.establishingProviderConnection') : t('onboarding.steps.consciousness.generatingInCharacterCompanionResponse') }}</span>
             </div>
 
             <div
@@ -1615,17 +1648,17 @@ onBeforeUnmount(() => {
               <div class="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/15 pb-2">
                 <div class="flex items-center gap-1.5 text-emerald-600 font-bold dark:text-emerald-400">
                   <span class="h-2 w-2 rounded-full bg-emerald-500" />
-                  <span>Brain Active & Verified</span>
+                  <span>{{ t('onboarding.steps.consciousness.brainActiveVerified') }}</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
                   <span v-if="probeBenchmarkMs !== null" class="rounded bg-emerald-500/15 px-2 py-0.5 text-emerald-700 font-bold dark:text-emerald-300">
-                    {{ probeBenchmarkMs }}ms TTFT
+                    {{ t('onboarding.steps.consciousness.verification.latencyPlain', { latency: probeBenchmarkMs }) }}
                   </span>
                   <span v-if="probeTokens !== null" class="rounded bg-primary-500/15 px-2 py-0.5 text-primary-700 font-bold dark:text-primary-300">
-                    ~{{ probeTokens }} tokens
+                    {{ t('onboarding.steps.consciousness.verification.tokensPlain', { tokens: probeTokens }) }}
                   </span>
                   <span :class="['px-2 py-0.5 rounded font-bold', probeHasReasoning ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300']">
-                    {{ probeHasReasoning ? 'Reasoning CoT' : 'Direct Stream' }}
+                    {{ probeHasReasoning ? t('onboarding.steps.consciousness.reasoningLabel') : t('onboarding.steps.consciousness.streamLabel') }}
                   </span>
                 </div>
               </div>
@@ -1640,7 +1673,7 @@ onBeforeUnmount(() => {
             >
               <div class="i-solar:danger-triangle-bold-duotone mt-0.5 h-4.5 w-4.5 flex-shrink-0 text-red-500" />
               <div class="min-w-0 flex-1">
-                <span class="font-bold">Brain Connection Failed:</span>
+                <span class="font-bold">{{ t('onboarding.steps.consciousness.brainConnectionFailed') }}</span>
                 <p class="mt-0.5 break-all text-[11px] leading-snug">
                   {{ probeErrorMessage }}
                 </p>
@@ -1653,7 +1686,7 @@ onBeforeUnmount(() => {
             >
               <div :class="['i-solar:chat-round-dots-linear h-7 w-7 text-neutral-300 dark:text-neutral-600']" />
               <span :class="['text-xs text-neutral-400 dark:text-neutral-500']">
-                Your companion’s reply will appear here.
+                {{ t('onboarding.steps.consciousness.responsePlaceholder') }}
               </span>
             </div>
           </div>
@@ -1662,27 +1695,27 @@ onBeforeUnmount(() => {
           <div :class="['flex items-center gap-1.5 text-xs font-semibold']">
             <span v-if="verificationDisplay === 'empty'" :class="['flex items-center gap-1.5 text-neutral-400']">
               <span :class="['h-2 w-2 rounded-full bg-neutral-300 dark:bg-neutral-600']" />
-              <span>Not configured</span>
+              <span>{{ t('onboarding.steps.consciousness.notConfigured') }}</span>
             </span>
             <span v-else-if="verificationDisplay === 'not-ready'" :class="['flex items-center gap-1.5 text-amber-600 dark:text-amber-400']">
               <span :class="['h-2 w-2 rounded-full bg-amber-500']" />
-              <span>Download required</span>
+              <span>{{ t('onboarding.steps.consciousness.downloadRequired') }}</span>
             </span>
             <span v-else-if="verificationDisplay === 'ready'" :class="['flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400']">
               <span :class="['h-2 w-2 rounded-full bg-emerald-500']" />
-              <span>Ready to test</span>
+              <span>{{ t('onboarding.steps.consciousness.readyToTest') }}</span>
             </span>
             <span v-else-if="verificationDisplay === 'testing'" :class="['flex items-center gap-1.5 text-primary-600 dark:text-primary-400']">
               <span :class="['h-2 w-2 rounded-full bg-primary-500 animate-pulse']" />
-              <span>Testing…</span>
+              <span>{{ t('onboarding.steps.consciousness.testing') }}</span>
             </span>
             <span v-else-if="verificationDisplay === 'verified'" :class="['flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400']">
               <span :class="['h-2 w-2 rounded-full bg-emerald-500']" />
-              <span>Brain verified</span>
+              <span>{{ t('onboarding.steps.consciousness.brainVerified') }}</span>
             </span>
             <span v-else :class="['flex items-center gap-1.5 text-red-600 dark:text-red-400']">
               <span :class="['h-2 w-2 rounded-full bg-red-500']" />
-              <span>Connection failed</span>
+              <span>{{ t('onboarding.steps.consciousness.connectionFailed') }}</span>
             </span>
           </div>
         </aside>
@@ -1711,10 +1744,10 @@ onBeforeUnmount(() => {
       <!-- Center Status Hint -->
       <div :class="['text-[11px] text-neutral-400 font-medium italic hidden sm:block text-center truncate max-w-sm min-w-0']">
         <span v-if="verified" class="text-emerald-500 font-semibold not-italic dark:text-emerald-400">
-          Brain connection verified! Ready to proceed.
+          {{ t('onboarding.steps.consciousness.brainConnectionVerifiedReadyToProceed') }}
         </span>
         <span v-else>
-          Choose a brain and test its connection.
+          {{ t('onboarding.steps.consciousness.chooseAndTest') }}
         </span>
       </div>
 
@@ -1757,11 +1790,11 @@ onBeforeUnmount(() => {
         <div class="flex items-center gap-3 text-amber-500">
           <div class="i-solar:danger-triangle-bold-duotone text-2xl" />
           <h3 class="text-sm text-neutral-800 font-bold dark:text-neutral-100">
-            Proceed Without an AI Brain?
+            {{ t('onboarding.steps.consciousness.proceedWithoutAnAiBrain') }}
           </h3>
         </div>
         <p class="text-xs text-neutral-600 leading-relaxed dark:text-neutral-300">
-          Without an active AI model, your companion will not be able to talk, think, or reply to your voice and chat messages.
+          {{ t('onboarding.steps.consciousness.withoutAnActiveAiModelYourCompanionWillNotBeAbleToTalkThinkOrRe') }}
         </p>
         <div class="flex flex-col gap-2 pt-2">
           <button
@@ -1769,14 +1802,14 @@ onBeforeUnmount(() => {
             class="min-h-[44px] w-full cursor-pointer rounded-xl bg-primary-500 py-2.5 text-xs text-white font-bold shadow-md transition hover:bg-primary-600"
             @click="showSkipWarning = false"
           >
-            Stay & Configure Brain (Recommended)
+            {{ t('onboarding.steps.consciousness.stayConfigureBrainRecommended') }}
           </button>
           <button
             type="button"
             class="min-h-[44px] w-full cursor-pointer border border-neutral-200 rounded-xl py-2 text-xs text-neutral-500 font-semibold transition dark:border-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
             @click="confirmSkipAnyway"
           >
-            Skip Anyway (Configure Later in Settings)
+            {{ t('onboarding.steps.consciousness.skipAnywayConfigureLaterInSettings') }}
           </button>
         </div>
       </div>

@@ -65,7 +65,9 @@ const cloudflareVisionPresets = [
     name: 'Llama 4 Scout 17B (CF)',
     type: 'Natively Multimodal MoE',
     description: 'Frontier 17B MoE (16 experts). Ultra-fast visual perception & high reasoning depth.',
+    descriptionKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-meta-llama-4-scout-17b-16e-instruct.description',
     badge: 'Flagship MoE · Speed: 11/11',
+    badgeKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-meta-llama-4-scout-17b-16e-instruct.badge',
     badgeColor: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
     recommendedStrategy: 'forward' as const,
     strategyLabel: 'Forward to Brain (2-HOP)',
@@ -77,7 +79,9 @@ const cloudflareVisionPresets = [
     name: 'Mistral Small 3.1 24B (CF)',
     type: 'Multi-Modal LLM',
     description: 'Deep conversational wit, high reasoning intelligence & in-character visual banter.',
+    descriptionKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-mistralai-mistral-small-3-1-24b-instruct.description',
     badge: 'Rank #20 Intel · 128k',
+    badgeKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-mistralai-mistral-small-3-1-24b-instruct.badge',
     badgeColor: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
     recommendedStrategy: 'direct' as const,
     strategyLabel: 'Direct VLM Stand-in (1-HOP)',
@@ -89,7 +93,9 @@ const cloudflareVisionPresets = [
     name: 'Qwen 3.8 27B (CF)',
     type: 'Multimodal Reasoning',
     description: 'Alibaba Qwen visual reasoning with step-by-step visual chain-of-thought analysis.',
+    descriptionKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-qwen-qwen3-8-27b.description',
     badge: '27B · Visual CoT',
+    badgeKey: 'onboarding.steps.vision.cloudflareVisionPresets.cf-qwen-qwen3-8-27b.badge',
     badgeColor: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
     recommendedStrategy: 'forward' as const,
     strategyLabel: 'Forward to Brain (2-HOP)',
@@ -128,11 +134,11 @@ function selectCloudflareVisionModel(modelId: string) {
 async function handleStartCloudflareAuth() {
   try {
     await cloudflareStore.authenticateWithCloudflare()
-    toast.success('Successfully connected to Cloudflare!')
+    toast.success(t('onboarding.steps.vision.successfullyConnectedToCloudflare'))
     selectCloudflareVisionModel(activeModel.value || cloudflareVisionPresets[0].id)
   }
   catch (err: any) {
-    toast.error(err?.message || 'Cloudflare authentication failed')
+    toast.error(err?.message || t('onboarding.steps.vision.cloudflareAuthenticationFailed'))
   }
 }
 
@@ -173,7 +179,7 @@ const promptShimForward = ref<string>(
 
 const activeProviderLabel = computed(() => {
   if (!activeProvider.value)
-    return 'No provider'
+    return t('onboarding.steps.vision.noProvider')
   if (activeProvider.value === 'cloudflare-workers-ai')
     return 'Cloudflare'
   return providersStore.getProviderMetadata(activeProvider.value)?.name || activeProvider.value
@@ -398,12 +404,12 @@ function fileToDataUrl(file: File): Promise<string> {
 
 async function runSimulation() {
   if (!testImageUrl.value || !testImageFile.value) {
-    simulationError.value = 'Please attach or drop an image first.'
+    simulationError.value = t('onboarding.steps.vision.simulator.errors.imageRequired')
     return
   }
 
   if (!activeProvider.value || !activeModel.value) {
-    simulationError.value = 'Please select a Vision Provider and Model first.'
+    simulationError.value = t('onboarding.steps.vision.simulator.errors.modelRequired')
     return
   }
 
@@ -421,7 +427,7 @@ async function runSimulation() {
   try {
     const vlmProvider = await providersStore.getProviderInstance<any>(activeProvider.value)
     if (!vlmProvider) {
-      throw new Error(`Unable to initialize vision provider "${activeProvider.value}".`)
+      throw new Error(t('onboarding.steps.vision.providerInitError', { provider: activeProvider.value }))
     }
 
     const question = simulatedUserQuestion.value || 'Hey, what do you think of this picture?'
@@ -473,7 +479,7 @@ async function runSimulation() {
         vlmMessages as any,
         vlmOptions,
       )
-      hop1Result.value = vlmResponse.text || '[No visual description generated]'
+      hop1Result.value = vlmResponse.text || t('onboarding.steps.vision.noVisualDescription')
     }
 
     hop1Latency.value = Math.round(performance.now() - hop1Start)
@@ -519,10 +525,10 @@ async function runSimulation() {
             consciousOptions,
           )
 
-          hop2Result.value = consciousnessResponse.text || '[No character response generated]'
+          hop2Result.value = consciousnessResponse.text || t('onboarding.steps.vision.simulator.errors.emptyResponse')
         }
         catch (err: any) {
-          hop2Result.value = `[Hop 2 Consciousness Error: ${err.message || String(err)}]`
+          hop2Result.value = t('onboarding.steps.vision.simulator.errors.brainError', { error: err.message || String(err) })
         }
         finally {
           hop2Latency.value = Math.round(performance.now() - hop2Start)
@@ -530,12 +536,12 @@ async function runSimulation() {
         }
       }
       else {
-        hop2Result.value = '[Consciousness provider/model not configured yet. Complete Step 8 Consciousness to preview character reactions.]'
+        hop2Result.value = t('onboarding.steps.vision.simulator.errors.brainRequired')
       }
     }
   }
   catch (err: any) {
-    simulationError.value = err.message || 'Vision simulation failed.'
+    simulationError.value = err.message || t('onboarding.steps.vision.simulator.errors.failed')
   }
   finally {
     isSimulating.value = false
@@ -559,12 +565,12 @@ async function runSimulation() {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Vision & Image Understanding
+            {{ t('onboarding.steps.vision.pageTitle') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Choose how I’ll understand images, then send a picture to try it."
+          :message="t('onboarding.steps.vision.assistantMessage')"
           step-key="vision"
           sticker-id="airi-surprised"
           tone="primary"
@@ -591,10 +597,10 @@ async function runSimulation() {
             </div>
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Vision setup
+                {{ t('onboarding.steps.vision.setupTitle') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                Choose a provider, model, and how image analysis should be handled.
+                {{ t('onboarding.steps.vision.setupDescription') }}
               </p>
             </div>
           </div>
@@ -626,7 +632,7 @@ async function runSimulation() {
               @click="setTab('local')"
             >
               <div :class="['i-solar:cpu-bolt-bold-duotone text-emerald-500 text-sm']" />
-              <span>Local</span>
+              <span>{{ t('onboarding.steps.vision.localTab') }}</span>
             </button>
 
             <button
@@ -640,7 +646,7 @@ async function runSimulation() {
               @click="setTab('custom')"
             >
               <div :class="['i-solar:key-minimalistic-square-bold-duotone text-indigo-500 text-sm']" />
-              <span>Cloud</span>
+              <span>{{ t('onboarding.steps.vision.cloudTab') }}</span>
             </button>
           </div>
 
@@ -712,7 +718,7 @@ async function runSimulation() {
                     {{ preset.name }}
                   </div>
                   <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug line-clamp-2 mt-0.5']">
-                    {{ preset.description }}
+                    {{ t(preset.descriptionKey) }}
                   </p>
                 </div>
 
@@ -727,10 +733,10 @@ async function runSimulation() {
           <div v-else-if="activeTab === 'local'" :class="['flex flex-col gap-3 min-w-0']">
             <div :class="['flex items-center justify-between']">
               <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                Local vision provider
+                {{ t('onboarding.steps.vision.localVisionProvider') }}
               </span>
               <span :class="['text-[11px] text-neutral-400 font-medium']">
-                {{ localVisionProviders.length }} available
+                {{ t('onboarding.steps.vision.providers.available', { count: localVisionProviders.length }) }}
               </span>
             </div>
 
@@ -763,10 +769,10 @@ async function runSimulation() {
           <div v-else-if="activeTab === 'custom'" :class="['flex flex-col gap-3 min-w-0']">
             <div :class="['flex items-center justify-between']">
               <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                Cloud vision provider
+                {{ t('onboarding.steps.vision.cloudVisionProvider') }}
               </span>
               <span :class="['text-[11px] text-neutral-400 font-medium']">
-                {{ customVisionProviders.length }} available
+                {{ t('onboarding.steps.vision.providers.available', { count: customVisionProviders.length }) }}
               </span>
             </div>
 
@@ -799,11 +805,11 @@ async function runSimulation() {
           <div v-if="activeTab !== 'cloudflare' && activeProvider" :class="['flex flex-col gap-3 animate-fadeIn']">
             <div :class="['flex items-center justify-between']">
               <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                Vision model
+                {{ t('onboarding.steps.vision.visionModel') }}
               </span>
               <span v-if="isLoadingActiveProviderModels" :class="['text-[11px] text-neutral-400 flex items-center gap-1']">
                 <div :class="['i-solar:refresh-line-duotone animate-spin text-xs']" />
-                Loading models...
+                {{ t('onboarding.steps.vision.loadingModels') }}
               </span>
             </div>
 
@@ -830,7 +836,7 @@ async function runSimulation() {
               <input
                 v-model="activeModel"
                 type="text"
-                placeholder="e.g. gpt-4o, claude-3-5-sonnet, moondream2"
+                :placeholder="t('onboarding.steps.vision.eGGpt4oClaude35SonnetMoondream2')"
                 :class="['w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-xs text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/40']"
               >
             </div>
@@ -839,7 +845,7 @@ async function runSimulation() {
           <!-- Image handling route -->
           <div :class="['flex flex-col gap-2.5']">
             <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-              How should images be handled?
+              {{ t('onboarding.steps.vision.routingTitle') }}
             </span>
 
             <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2.5']">
@@ -854,9 +860,9 @@ async function runSimulation() {
                 @click="strategy = 'direct'"
               >
                 <div :class="['flex-1 min-w-0 flex flex-col gap-1']">
-                  <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">Vision answers directly</span>
+                  <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">{{ t('onboarding.steps.vision.directTitle') }}</span>
                   <p :class="['text-[11px] text-neutral-400 leading-snug']">
-                    The vision model replies as your companion.
+                    {{ t('onboarding.steps.vision.directDescription') }}
                   </p>
                 </div>
                 <div :class="['w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5', strategy === 'direct' ? 'border-primary-500 bg-primary-500' : 'border-neutral-300 dark:border-neutral-700']">
@@ -875,9 +881,9 @@ async function runSimulation() {
                 @click="strategy = 'forward'"
               >
                 <div :class="['flex-1 min-w-0 flex flex-col gap-1']">
-                  <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">Pass to your brain</span>
+                  <span :class="['text-xs font-bold text-neutral-900 dark:text-white']">{{ t('onboarding.steps.vision.forwardTitle') }}</span>
                   <p :class="['text-[11px] text-neutral-400 leading-snug']">
-                    Your main brain uses the image analysis to reply.
+                    {{ t('onboarding.steps.vision.forwardDescription') }}
                   </p>
                 </div>
                 <div :class="['w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5', strategy === 'forward' ? 'border-primary-500 bg-primary-500' : 'border-neutral-300 dark:border-neutral-700']">
@@ -895,23 +901,23 @@ async function runSimulation() {
               >
                 <div :class="['i-solar:alt-arrow-right-line-duotone h-3.5 w-3.5 text-neutral-400 transition-transform', showResponseInstructions && 'rotate-90']" />
                 <span :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  Response instructions
+                  {{ t('onboarding.steps.vision.responseInstructions') }}
                 </span>
                 <span :class="['text-[11px] text-neutral-400 truncate']">
-                  Customize how direct replies stay in character.
+                  {{ t('onboarding.steps.vision.responseInstructionsDescription') }}
                 </span>
               </button>
               <div v-if="showResponseInstructions" :class="['px-3 pb-3 flex flex-col gap-1.5']">
                 <div :class="['flex items-center justify-between']">
                   <span :class="['text-[11px] font-semibold text-neutral-700 dark:text-neutral-300']">
-                    {{ strategy === 'forward' ? 'Perception Analysis Directive' : 'Stand-in Character Persona Directive' }}
+                    {{ strategy === 'forward' ? t('onboarding.steps.vision.perceptionAnalysisDirective') : t('onboarding.steps.vision.standInCharacterPersonaDirective') }}
                   </span>
                   <button
                     type="button"
                     :class="['text-[10px] text-neutral-400 hover:text-primary-500 cursor-pointer transition-colors']"
                     @click="resetActivePromptShim"
                   >
-                    Reset Default
+                    {{ t('onboarding.steps.vision.resetDefault') }}
                   </button>
                 </div>
                 <textarea
@@ -939,14 +945,14 @@ async function runSimulation() {
           <div :class="['flex items-start justify-between gap-2']">
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Try vision
+                {{ t('onboarding.steps.vision.tryVision') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                Send an image and ask a question.
+                {{ t('onboarding.steps.vision.tryVisionDescription') }}
               </p>
             </div>
             <span :title="`${activeProviderLabel} · ${strategy === 'direct' ? 'Direct reply' : 'Forward to brain'}`" :class="['shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full bg-primary-500/10 text-primary-600 dark:text-primary-400 truncate max-w-[45%]']">
-              {{ activeProviderLabel }} · {{ strategy === 'direct' ? 'Direct reply' : 'Forward to brain' }}
+              {{ activeProviderLabel }} · {{ strategy === 'direct' ? t('onboarding.steps.vision.directReply') : t('onboarding.steps.vision.forwardReply') }}
             </span>
           </div>
 
@@ -973,31 +979,35 @@ async function runSimulation() {
             <template v-if="testImageUrl">
               <img
                 :src="testImageUrl"
-                alt="Test Preview"
+                :alt="t('onboarding.steps.vision.testPreview')"
                 :class="['max-h-36 max-w-full rounded-lg object-contain shadow-xs border border-neutral-200 dark:border-neutral-800']"
               >
-              <span :class="['text-[10px] text-neutral-400 mt-2 hover:text-primary-500']">Click or drop to replace image</span>
+              <span :class="['text-[10px] text-neutral-400 mt-2 hover:text-primary-500']">{{ t('onboarding.steps.vision.clickOrDropToReplaceImage') }}</span>
             </template>
             <template v-else>
               <div :class="['h-10 w-10 rounded-xl bg-primary-500/10 text-primary-500 flex items-center justify-center text-lg mb-2']">
                 <div :class="['i-solar:gallery-add-bold-duotone text-xl']" />
               </div>
               <p :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">
-                Drop an image or <span :class="['text-primary-500']">choose a file</span>
+                <i18n-t scope="global" keypath="onboarding.steps.vision.dropImage" tag="span">
+                  <template #action>
+                    <span :class="['text-primary-500']">{{ t('onboarding.steps.vision.chooseFile') }}</span>
+                  </template>
+                </i18n-t>
               </p>
               <p :class="['text-[10px] text-neutral-400 mt-0.5']">
-                PNG, JPG or WebP
+                {{ t('onboarding.steps.vision.imageFormats') }}
               </p>
             </template>
           </div>
 
           <!-- Question -->
           <div :class="['flex flex-col gap-1.5']">
-            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">Your question</span>
+            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">{{ t('onboarding.steps.vision.questionLabel') }}</span>
             <input
               v-model="simulatedUserQuestion"
               type="text"
-              placeholder="What do you think of this picture?"
+              :placeholder="t('onboarding.steps.vision.whatDoYouThinkOfThisPicture')"
               :class="['w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-xs text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary-500']"
             >
           </div>
@@ -1013,10 +1023,10 @@ async function runSimulation() {
             >
               <div v-if="isSimulating" :class="['i-solar:refresh-line-duotone animate-spin text-sm']" />
               <div v-else :class="['i-solar:play-bold text-sm']" />
-              <span>{{ isSimulating ? 'Analyzing Scene...' : 'Test vision' }}</span>
+              <span>{{ isSimulating ? t('onboarding.steps.vision.analyzingScene') : t('onboarding.steps.vision.testVision') }}</span>
             </Button>
             <p v-if="!testImageUrl" :class="['text-[11px] text-neutral-400 text-center']">
-              Choose an image to start.
+              {{ t('onboarding.steps.vision.chooseImage') }}
             </p>
           </div>
 
@@ -1027,15 +1037,15 @@ async function runSimulation() {
 
           <!-- Reserved result area -->
           <div :class="['flex flex-col gap-2.5 min-h-[120px]']">
-            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">Response</span>
+            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">{{ t('onboarding.steps.vision.responseLabel') }}</span>
             <div v-if="hop1Result || hop2Result || isSimulating" :class="['flex flex-col gap-2.5']">
               <div :class="['p-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-900/60 flex flex-col gap-1']">
                 <div :class="['flex items-center justify-between text-[10px] font-mono']">
                   <span :class="['text-neutral-500 font-bold uppercase']">
-                    {{ strategy === 'direct' ? 'Hop 1 · Character Reply' : 'Hop 1 · Vision Scene Analysis' }}
+                    {{ strategy === 'direct' ? t('onboarding.steps.vision.hop1CharacterReply') : t('onboarding.steps.vision.hop1VisionSceneAnalysis') }}
                   </span>
-                  <span v-if="hop1Latency" :class="['text-emerald-500 font-bold']">{{ hop1Latency }}ms</span>
-                  <span v-else-if="hop1Processing" :class="['text-primary-500 animate-pulse']">Processing...</span>
+                  <span v-if="hop1Latency" :class="['text-emerald-500 font-bold']">{{ t('onboarding.steps.vision.simulator.latency', { latency: hop1Latency }) }}</span>
+                  <span v-else-if="hop1Processing" :class="['text-primary-500 animate-pulse']">{{ t('onboarding.steps.vision.processing') }}</span>
                 </div>
                 <p :class="['text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed whitespace-pre-wrap']">
                   {{ hop1Result || '...' }}
@@ -1044,9 +1054,9 @@ async function runSimulation() {
 
               <div v-if="strategy === 'forward'" :class="['p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex flex-col gap-1 animate-fadeIn']">
                 <div :class="['flex items-center justify-between text-[10px] font-mono']">
-                  <span :class="['text-indigo-500 font-bold uppercase']">Hop 2 · {{ characterName }}'s Dialogue</span>
-                  <span v-if="hop2Latency" :class="['text-emerald-500 font-bold']">{{ hop2Latency }}ms</span>
-                  <span v-else-if="hop2Processing" :class="['text-indigo-500 animate-pulse']">Thinking in character...</span>
+                  <span :class="['text-indigo-500 font-bold uppercase']">{{ t('onboarding.steps.vision.hop2SDialogue', { characterName }) }}</span>
+                  <span v-if="hop2Latency" :class="['text-emerald-500 font-bold']">{{ t('onboarding.steps.vision.simulator.latency', { latency: hop2Latency }) }}</span>
+                  <span v-else-if="hop2Processing" :class="['text-indigo-500 animate-pulse']">{{ t('onboarding.steps.vision.thinkingInCharacter') }}</span>
                 </div>
                 <p :class="['text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed whitespace-pre-wrap font-medium']">
                   {{ hop2Result || '...' }}
@@ -1078,7 +1088,11 @@ async function runSimulation() {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium truncate px-2 min-w-0']">
-        Model: <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ activeModel || 'None Selected' }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.vision.summary.model" tag="span">
+          <template #model>
+            <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ activeModel || t('onboarding.steps.vision.noneSelected') }}</span>
+          </template>
+        </i18n-t>
       </div>
 
       <div :class="['flex items-center gap-3 flex-shrink-0']">

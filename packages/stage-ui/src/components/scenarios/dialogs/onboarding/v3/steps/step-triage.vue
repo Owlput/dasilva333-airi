@@ -66,18 +66,18 @@ const selectedPath = computed<'local' | 'cloud'>({
 const localBullets = computed(() => [
   {
     icon: 'i-solar:disk-bold',
-    title: t('onboarding.steps.triage.local.bullets.storage.title', 'On-device storage'),
-    description: t('onboarding.steps.triage.local.bullets.storage.desc', 'Data stays in your local database.'),
+    title: t('onboarding.steps.triage.local.bullets.storage.title'),
+    description: t('onboarding.steps.triage.local.bullets.storage.desc'),
   },
   {
     icon: 'i-solar:user-rounded-bold',
-    title: t('onboarding.steps.triage.local.bullets.account.title', 'No account required'),
-    description: t('onboarding.steps.triage.local.bullets.account.desc', 'Start without signing in.'),
+    title: t('onboarding.steps.triage.local.bullets.account.title'),
+    description: t('onboarding.steps.triage.local.bullets.account.desc'),
   },
   {
     icon: 'i-solar:settings-minimalistic-bold',
-    title: t('onboarding.steps.triage.local.bullets.setup.title', 'Simple local setup'),
-    description: t('onboarding.steps.triage.local.bullets.setup.desc', 'Manage your companion on this device.'),
+    title: t('onboarding.steps.triage.local.bullets.setup.title'),
+    description: t('onboarding.steps.triage.local.bullets.setup.desc'),
   },
 ])
 
@@ -85,18 +85,18 @@ const localBullets = computed(() => [
 const cloudBullets = computed(() => [
   {
     icon: 'i-solar:cloud-upload-bold',
-    title: t('onboarding.steps.triage.cloud.bullets.sync.title', 'Backup & sync'),
-    description: t('onboarding.steps.triage.cloud.bullets.sync.desc', 'Keep companion data across devices.'),
+    title: t('onboarding.steps.triage.cloud.bullets.sync.title'),
+    description: t('onboarding.steps.triage.cloud.bullets.sync.desc'),
   },
   {
     icon: 'i-solar:stars-minimalistic-bold',
-    title: t('onboarding.steps.triage.cloud.bullets.ai.title', 'Hosted AI access'),
-    description: t('onboarding.steps.triage.cloud.bullets.ai.desc', 'Access daily edge AI credits.'),
+    title: t('onboarding.steps.triage.cloud.bullets.ai.title'),
+    description: t('onboarding.steps.triage.cloud.bullets.ai.desc'),
   },
   {
     icon: 'i-solar:users-group-rounded-bold',
-    title: t('onboarding.steps.triage.cloud.bullets.relay.title', 'Cloud relay'),
-    description: t('onboarding.steps.triage.cloud.bullets.relay.desc', 'Use your companion through Discord.'),
+    title: t('onboarding.steps.triage.cloud.bullets.relay.title'),
+    description: t('onboarding.steps.triage.cloud.bullets.relay.desc'),
   },
 ])
 
@@ -106,29 +106,29 @@ const localDetails = computed(() => [
     key: 'storage',
     icon: 'i-solar:database-bold',
     badge: 'IndexedDB & SQLite',
-    title: t('onboarding.steps.triage.local.details.storage.title', 'On-Device Database Storage'),
-    desc: t('onboarding.steps.triage.local.details.storage.desc', 'All companion cards, transcripts, and memory journals are stored strictly in your local IndexedDB and disk vaults. Zero data ever leaves your computer.'),
+    title: t('onboarding.steps.triage.local.details.storage.title'),
+    desc: t('onboarding.steps.triage.local.details.storage.desc'),
   },
   {
     key: 'telemetry',
     icon: 'i-solar:shield-check-bold',
-    badge: '100% Air-Gapped',
-    title: t('onboarding.steps.triage.local.details.telemetry.title', 'Zero Telemetry & Custody'),
-    desc: t('onboarding.steps.triage.local.details.telemetry.desc', 'No accounts, no email addresses, no tracking cookies, and no telemetry pingbacks. Complete anonymity and zero-custody data sovereignty.'),
+    badge: t('onboarding.steps.triage.local.details.telemetry.badge'),
+    title: t('onboarding.steps.triage.local.details.telemetry.title'),
+    desc: t('onboarding.steps.triage.local.details.telemetry.desc'),
   },
   {
     key: 'compute',
     icon: 'i-solar:cpu-bolt-bold',
-    badge: 'WebGPU & Local LLM',
-    title: t('onboarding.steps.triage.local.details.compute.title', 'Bring-Your-Own Compute'),
-    desc: t('onboarding.steps.triage.local.details.compute.desc', 'Run Kokoro TTS, Whisper STT, and Ollama / LM Studio / WebLLM completely offline using your device’s local CPU and GPU acceleration.'),
+    badge: t('onboarding.steps.triage.local.details.compute.badge'),
+    title: t('onboarding.steps.triage.local.details.compute.title'),
+    desc: t('onboarding.steps.triage.local.details.compute.desc'),
   },
   {
     key: 'export',
     icon: 'i-solar:card-2-bold',
-    badge: 'CCv3 / PNG Chunks',
-    title: t('onboarding.steps.triage.local.details.export.title', 'Portable Open Formats'),
-    desc: t('onboarding.steps.triage.local.details.export.desc', 'Export your companions and memories anytime as standard PNG chunks or raw JSON. No proprietary format lock-in or cloud dependencies.'),
+    badge: t('onboarding.steps.triage.local.details.export.badge'),
+    title: t('onboarding.steps.triage.local.details.export.title'),
+    desc: t('onboarding.steps.triage.local.details.export.desc'),
   },
 ])
 
@@ -138,36 +138,36 @@ const cloudDetails = computed(() => [
     key: 'storage',
     icon: 'i-solar:cloud-storage-bold-duotone',
     badge: 'Cloudflare R2',
-    title: t('onboarding.steps.triage.cloud.features.storage.title', '10 GB Free Object Storage'),
-    desc: t('onboarding.steps.triage.cloud.features.storage.whyItMatters', 'Generous free tier with zero egress fees. Safely backs up 3D/VRM vessels, Live2D assets, custom backgrounds, and entire memory hierarchies across devices.'),
+    title: t('onboarding.steps.triage.cloud.features.storage.title'),
+    desc: t('onboarding.steps.triage.cloud.features.storage.whyItMatters'),
   },
   {
     key: 'ai',
     icon: 'i-solar:cpu-bolt-bold-duotone',
     badge: 'Workers AI',
-    title: t('onboarding.steps.triage.cloud.features.ai.title', '10,000 Free Daily Edge AI Credits'),
-    desc: t('onboarding.steps.triage.cloud.features.ai.whyItMatters', 'Direct connection to Cloudflare’s global edge GPU fleet. Chat with DeepSeek-R1, Qwen 2.5, and Llama 3 without paid API keys or dedicated graphics cards.'),
+    title: t('onboarding.steps.triage.cloud.features.ai.title'),
+    desc: t('onboarding.steps.triage.cloud.features.ai.whyItMatters'),
   },
   {
     key: 'relay',
     icon: 'i-solar:chat-round-dots-bold-duotone',
     badge: '@proj-airi/stage-edge',
-    title: t('onboarding.steps.triage.cloud.features.relay.title', '24/7 Discord Serverless Relay'),
-    desc: t('onboarding.steps.triage.cloud.features.relay.whyItMatters', 'A serverless Cloudflare Worker keeps your companion awake in your Discord server 24/7, syncing conversations back to desktop when you reopen AIRI.'),
+    title: t('onboarding.steps.triage.cloud.features.relay.title'),
+    desc: t('onboarding.steps.triage.cloud.features.relay.whyItMatters'),
   },
   {
     key: 'sync',
     icon: 'i-solar:devices-bold-duotone',
-    badge: 'Edge Key Vault',
-    title: t('onboarding.steps.triage.cloud.features.sync.title', 'Multi-Device Sync & 1-Click Restore'),
-    desc: t('onboarding.steps.triage.cloud.features.sync.whyItMatters', 'Encrypted Edge Key Vault securely synchronizes Desktop, Web, and Mobile companions, enabling one-click instant recovery on any new machine.'),
+    badge: t('onboarding.steps.triage.cloud.details.sync.badge'),
+    title: t('onboarding.steps.triage.cloud.features.sync.title'),
+    desc: t('onboarding.steps.triage.cloud.features.sync.whyItMatters'),
   },
   {
     key: 'proxy',
     icon: 'i-solar:shield-check-bold-duotone',
-    badge: 'Edge Reverse Proxy',
-    title: t('onboarding.steps.triage.cloud.features.proxy.title', 'Private CORS Proxy & Zero-Custody'),
-    desc: t('onboarding.steps.triage.cloud.features.proxy.whyItMatters', 'Deploys a personal edge reverse proxy allowing Web and Pocket mobile stages to bypass browser CORS headers. Everything runs in your personal account.'),
+    badge: t('onboarding.steps.triage.cloud.details.proxy.badge'),
+    title: t('onboarding.steps.triage.cloud.features.proxy.title'),
+    desc: t('onboarding.steps.triage.cloud.features.proxy.whyItMatters'),
   },
 ])
 
@@ -224,7 +224,7 @@ async function restoreVaultCredentials() {
         syncStore.s3SecretAccessKey = vault.s3SecretAccessKey || ''
         syncStore.activeProvider = 's3'
         syncStore.syncEnabled = true
-        toast.info('Restored R2 Cloud Sync credentials from Edge Key Vault!')
+        toast.info(t('onboarding.steps.triage.restoredR2CloudSyncCredentialsFromEdgeKeyVault'))
       }
     }
     catch (e) {
@@ -244,7 +244,7 @@ async function handleStartOAuth() {
   try {
     await cloudflareStore.authenticateWithCloudflare()
     selectedPath.value = 'cloud'
-    toast.success('Successfully connected to Cloudflare!')
+    toast.success(t('onboarding.steps.triage.successfullyConnectedToCloudflare'))
     await restoreVaultCredentials()
     await probeRemoteCatalog()
     if (remoteCardsCount.value === 0) {
@@ -255,7 +255,7 @@ async function handleStartOAuth() {
     }
   }
   catch (err: any) {
-    toast.error(err?.message || 'Cloudflare authentication failed')
+    toast.error(err?.message || t('onboarding.steps.triage.cloudflareAuthenticationFailed'))
   }
 }
 
@@ -267,14 +267,14 @@ function handleCancelAuth() {
 async function handleConnectApiToken() {
   const clean = tokenInput.value.trim()
   if (!clean) {
-    toast.error('Please enter a valid Cloudflare API token')
+    toast.error(t('onboarding.steps.triage.pleaseEnterAValidCloudflareApiToken'))
     return
   }
   isValidatingToken.value = true
   try {
     await cloudflareStore.verifyAndSetApiToken(clean)
     selectedPath.value = 'cloud'
-    toast.success('Successfully connected Cloudflare API Token!')
+    toast.success(t('onboarding.steps.triage.successfullyConnectedCloudflareApiToken'))
     tokenInput.value = ''
     isTokenMode.value = false
     await restoreVaultCredentials()
@@ -287,7 +287,7 @@ async function handleConnectApiToken() {
     }
   }
   catch (err: any) {
-    toast.error(err?.message || 'Failed to verify Cloudflare API token')
+    toast.error(err?.message || t('onboarding.steps.triage.failedToVerifyCloudflareApiToken'))
   }
   finally {
     isValidatingToken.value = false
@@ -309,14 +309,14 @@ async function handleCloudContinue() {
 function handleDisconnect(e?: Event) {
   e?.stopPropagation()
   const confirmed = window.confirm(
-    'Are you sure you want to disconnect your Cloudflare account? Your local data will remain safe.',
+    t('onboarding.steps.triage.auth.disconnectConfirmation'),
   )
   if (!confirmed)
     return
   cloudflareStore.logout()
   selectedPath.value = 'local'
   remoteCardsCount.value = 0
-  toast.info('Disconnected from Cloudflare')
+  toast.info(t('onboarding.steps.triage.disconnectedFromCloudflare'))
 }
 
 // Route 4: Returning Restorer
@@ -336,7 +336,7 @@ async function handleRestoreAndLaunch() {
       }
     }
 
-    toast.info('Synchronizing companions and assets from Cloudflare R2...')
+    toast.info(t('onboarding.steps.triage.synchronizingCompanionsAndAssetsFromCloudflareR2'))
     await syncStore.triggerSync()
 
     await cardStore.loadCards()
@@ -348,13 +348,13 @@ async function handleRestoreAndLaunch() {
     }
 
     onboardingStore.markSetupCompleted()
-    toast.success('Companion restored and stage ready!')
+    toast.success(t('onboarding.steps.triage.companionRestoredAndStageReady'))
     emit('finish')
     props.onFinish?.()
   }
   catch (err: any) {
     console.error('[StepTriage] Restore and launch failed:', err)
-    toast.error(err?.message || 'Failed to restore companions')
+    toast.error(err?.message || t('onboarding.steps.triage.failedToRestoreCompanions'))
   }
   finally {
     isRestoring.value = false
@@ -378,16 +378,16 @@ async function handleRestoreAndBuildAnother() {
       }
     }
 
-    toast.info('Synchronizing companions and assets from Cloudflare R2...')
+    toast.info(t('onboarding.steps.triage.synchronizingCompanionsAndAssetsFromCloudflareR2'))
     await syncStore.triggerSync()
     await cardStore.loadCards()
 
-    toast.success('Companions restored! Proceeding to create your new companion.')
+    toast.success(t('onboarding.steps.triage.companionsRestoredProceedingToCreateYourNewCompanion'))
     props.onNext()
   }
   catch (err: any) {
     console.error('[StepTriage] Restore failed:', err)
-    toast.error(err?.message || 'Failed to restore companions')
+    toast.error(err?.message || t('onboarding.steps.triage.failedToRestoreCompanions'))
   }
   finally {
     isRestoring.value = false
@@ -410,10 +410,10 @@ async function handleRestoreAndBuildAnother() {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            {{ t('onboarding.steps.triage.title', 'Choose how AIRI saves your companion') }}
+            {{ t('onboarding.steps.triage.title') }}
           </h1>
           <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-lg mx-auto']">
-            {{ t('onboarding.steps.triage.description', 'Keep data on this device, or connect an account for cloud services.') }}
+            {{ t('onboarding.steps.triage.description') }}
           </p>
         </div>
 
@@ -451,10 +451,10 @@ async function handleRestoreAndBuildAnother() {
               </div>
               <div :class="['min-w-0']">
                 <h2 :class="['text-base sm:text-lg font-bold text-neutral-900 dark:text-white leading-tight']">
-                  {{ t('onboarding.steps.triage.local.title', 'Local only') }}
+                  {{ t('onboarding.steps.triage.local.title') }}
                 </h2>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-snug']">
-                  {{ t('onboarding.steps.triage.local.description', 'Keep companion cards, memories, and settings on this device.') }}
+                  {{ t('onboarding.steps.triage.local.description') }}
                 </p>
               </div>
             </div>
@@ -488,7 +488,7 @@ async function handleRestoreAndBuildAnother() {
                     type="button"
                     :class="['text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center gap-1 cursor-pointer transition-colors group']"
                   >
-                    <span :class="['group-hover:underline']">{{ t('onboarding.steps.triage.moreDetails', 'More details') }}</span>
+                    <span :class="['group-hover:underline']">{{ t('onboarding.steps.triage.moreDetails') }}</span>
                     <div :class="['i-solar:alt-arrow-right-line-duotone text-xs group-hover:translate-x-0.5 transition-transform']" />
                   </button>
                 </PopoverTrigger>
@@ -507,10 +507,10 @@ async function handleRestoreAndBuildAnother() {
                     <div :class="['pb-2.5 mb-2.5 border-b border-neutral-200/80 dark:border-neutral-800']">
                       <h4 :class="['text-xs font-bold text-neutral-900 dark:text-white flex items-center gap-1.5']">
                         <div :class="['i-solar:shield-check-bold text-sm text-[#46A758] dark:text-emerald-400']" />
-                        <span>Air-Gapped Local Architecture</span>
+                        <span>{{ t('onboarding.steps.triage.local.details.architectureTitle') }}</span>
                       </h4>
                       <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed']">
-                        100% on-device execution. Your companion stays completely private to this machine.
+                        {{ t('onboarding.steps.triage.local.details.architectureDescription') }}
                       </p>
                     </div>
                     <div :class="['space-y-2.5 max-h-[280px] overflow-y-auto pr-1']">
@@ -549,10 +549,10 @@ async function handleRestoreAndBuildAnother() {
               ]"
               @click="chooseLocal"
             >
-              <span>{{ t('onboarding.steps.triage.local.continueAction', 'Continue locally') }}</span>
+              <span>{{ t('onboarding.steps.triage.local.continueAction') }}</span>
             </button>
             <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400 text-center mt-2']">
-              {{ t('onboarding.steps.triage.local.noSignInNeeded', 'No sign-in needed.') }}
+              {{ t('onboarding.steps.triage.local.noSignInNeeded') }}
             </div>
           </div>
         </div>
@@ -572,10 +572,10 @@ async function handleRestoreAndBuildAnother() {
               </div>
               <div :class="['min-w-0']">
                 <h2 :class="['text-base sm:text-lg font-bold text-neutral-900 dark:text-white leading-tight']">
-                  {{ t('onboarding.steps.triage.cloud.title', 'Connected account') }}
+                  {{ t('onboarding.steps.triage.cloud.title') }}
                 </h2>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-snug']">
-                  {{ t('onboarding.steps.triage.cloud.description', 'Powered by Cloudflare · Use an account for backup, sync, and hosted services.') }}
+                  {{ t('onboarding.steps.triage.cloud.description') }}
                 </p>
               </div>
             </div>
@@ -609,7 +609,7 @@ async function handleRestoreAndBuildAnother() {
                     type="button"
                     :class="['text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center gap-1 cursor-pointer transition-colors group']"
                   >
-                    <span :class="['group-hover:underline']">{{ t('onboarding.steps.triage.moreDetails', 'More details') }}</span>
+                    <span :class="['group-hover:underline']">{{ t('onboarding.steps.triage.moreDetails') }}</span>
                     <div :class="['i-solar:alt-arrow-right-line-duotone text-xs group-hover:translate-x-0.5 transition-transform']" />
                   </button>
                 </PopoverTrigger>
@@ -628,10 +628,10 @@ async function handleRestoreAndBuildAnother() {
                     <div :class="['pb-2.5 mb-2.5 border-b border-neutral-200/80 dark:border-neutral-800']">
                       <h4 :class="['text-xs font-bold text-neutral-900 dark:text-white flex items-center gap-1.5']">
                         <div :class="['i-solar:cloud-bold text-sm text-[#46A758] dark:text-emerald-400']" />
-                        <span>Cloudflare Zero-Custody Architecture</span>
+                        <span>{{ t('onboarding.steps.triage.cloud.details.architectureTitle') }}</span>
                       </h4>
                       <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed']">
-                        Everything runs in your personal Cloudflare account. AIRI operates zero intermediate servers and never touches your data.
+                        {{ t('onboarding.steps.triage.cloud.details.architectureDescription') }}
                       </p>
                     </div>
                     <div :class="['space-y-2.5 max-h-[280px] overflow-y-auto pr-1']">
@@ -673,17 +673,17 @@ async function handleRestoreAndBuildAnother() {
                 @click="handleStartOAuth"
               >
                 <div :class="['i-solar:cloud-bold text-base']" />
-                <span>{{ t('onboarding.steps.triage.cloud.signInAction', 'Sign in & continue') }}</span>
+                <span>{{ t('onboarding.steps.triage.cloud.signInAction') }}</span>
               </button>
               <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400 text-center']">
-                {{ t('onboarding.steps.triage.cloud.signInHelp', 'Sign in with Cloudflare to continue.') }}
+                {{ t('onboarding.steps.triage.cloud.signInHelp') }}
               </div>
               <button
                 type="button"
                 :class="['text-[11px] text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer block mx-auto font-medium']"
                 @click="isTokenMode = true"
               >
-                {{ t('onboarding.steps.triage.cloud.useApiToken', 'Use API token') }}
+                {{ t('onboarding.steps.triage.cloud.useApiToken') }}
               </button>
             </div>
 
@@ -693,7 +693,7 @@ async function handleRestoreAndBuildAnother() {
                 <input
                   v-model="tokenInput"
                   type="password"
-                  :placeholder="t('onboarding.steps.triage.auth.tokenPlaceholder', 'Paste your Cloudflare API token...')"
+                  :placeholder="t('onboarding.steps.triage.auth.tokenPlaceholder')"
                   :class="[
                     'flex-1 px-3 py-2 rounded-xl border text-xs bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:border-emerald-500',
                   ]"
@@ -707,17 +707,17 @@ async function handleRestoreAndBuildAnother() {
                   ]"
                   @click="handleConnectApiToken"
                 >
-                  {{ isValidatingToken ? t('onboarding.steps.triage.auth.verifying', 'Verifying...') : t('onboarding.steps.triage.auth.verifyToken', 'Connect') }}
+                  {{ isValidatingToken ? t('onboarding.steps.triage.auth.verifying') : t('onboarding.steps.triage.auth.verifyToken') }}
                 </button>
               </div>
               <div :class="['flex items-center justify-between text-[10px] text-neutral-400']">
-                <span>Requires Workers KV and R2 read/write permissions.</span>
+                <span>{{ t('onboarding.steps.triage.requiresWorkersKvAndR2ReadWritePermissions') }}</span>
                 <button
                   type="button"
                   :class="['text-neutral-500 hover:text-neutral-800 dark:hover:text-white underline cursor-pointer']"
                   @click="isTokenMode = false"
                 >
-                  Cancel
+                  {{ t('onboarding.steps.triage.auth.cancel') }}
                 </button>
               </div>
             </div>
@@ -730,17 +730,17 @@ async function handleRestoreAndBuildAnother() {
                 ]"
               >
                 <div :class="['i-solar:refresh-line-duotone text-base animate-spin text-[#46A758] dark:text-emerald-400']" />
-                <span>{{ t('onboarding.steps.triage.cloud.waitingForSignIn', 'Waiting for sign-in...') }}</span>
+                <span>{{ t('onboarding.steps.triage.cloud.waitingForSignIn') }}</span>
               </div>
               <button
                 type="button"
                 :class="['text-[11px] text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer block mx-auto font-medium']"
                 @click="handleCancelAuth"
               >
-                {{ t('onboarding.steps.triage.cloud.cancelSignIn', 'Cancel sign-in') }}
+                {{ t('onboarding.steps.triage.cloud.cancelSignIn') }}
               </button>
               <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400 text-center']">
-                {{ t('onboarding.steps.triage.cloud.finishInBrowser', 'Finish signing in in your browser.') }}
+                {{ t('onboarding.steps.triage.cloud.finishInBrowser') }}
               </div>
             </div>
 
@@ -753,11 +753,11 @@ async function handleRestoreAndBuildAnother() {
                 ]"
                 @click="handleCloudContinue"
               >
-                <span>{{ t('onboarding.steps.triage.cloud.continueAction', 'Continue with connected account') }}</span>
+                <span>{{ t('onboarding.steps.triage.cloud.continueAction') }}</span>
               </button>
               <div :class="['flex items-center justify-center gap-1.5 text-xs text-[#46A758] dark:text-emerald-400 font-semibold']">
                 <div :class="['i-solar:check-circle-bold text-sm']" />
-                <span>{{ t('onboarding.steps.triage.auth.connected', 'Account connected') }}</span>
+                <span>{{ t('onboarding.steps.triage.auth.connected') }}</span>
                 <span v-if="cfAccountId" :class="['text-[10px] text-neutral-400 font-mono font-normal ml-1']">
                   ({{ cfAccountId.slice(0, 8) }}...)
                 </span>
@@ -768,7 +768,7 @@ async function handleRestoreAndBuildAnother() {
                   :class="['hover:text-neutral-900 dark:hover:text-white underline cursor-pointer transition-colors']"
                   @click="showHubDialog = true"
                 >
-                  {{ t('onboarding.steps.triage.cloud.manageConnection', 'Manage connection') }}
+                  {{ t('onboarding.steps.triage.cloud.manageConnection') }}
                 </button>
                 <span>·</span>
                 <button
@@ -776,7 +776,7 @@ async function handleRestoreAndBuildAnother() {
                   :class="['hover:text-red-600 dark:hover:text-red-400 underline cursor-pointer transition-colors']"
                   @click="handleDisconnect"
                 >
-                  {{ t('onboarding.steps.triage.auth.disconnect', 'Disconnect') }}
+                  {{ t('onboarding.steps.triage.auth.disconnect') }}
                 </button>
               </div>
             </div>
@@ -802,13 +802,13 @@ async function handleRestoreAndBuildAnother() {
               </div>
               <div>
                 <h2 :class="['text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2']">
-                  <span>{{ t('onboarding.steps.triage.restore.bannerTitle', 'Restore from Cloud Vault') }}</span>
+                  <span>{{ t('onboarding.steps.triage.restore.bannerTitle') }}</span>
                   <span :class="['px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400']">
-                    {{ remoteCardsCount }} Available
+                    {{ t('onboarding.steps.triage.restore.availableCount', { count: remoteCardsCount }) }}
                   </span>
                 </h2>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                  {{ t('onboarding.steps.triage.restore.bannerDesc', { count: remoteCardsCount }) }} Choose what to sync to this device.
+                  {{ t('onboarding.steps.triage.restore.deviceSyncDescription', { count: remoteCardsCount }) }}
                 </p>
               </div>
             </div>
@@ -819,7 +819,7 @@ async function handleRestoreAndBuildAnother() {
               @click="probeRemoteCatalog"
             >
               <div :class="['i-solar:refresh-linear text-xs', isLoadingCatalog ? 'animate-spin' : '']" />
-              <span>Refresh</span>
+              <span>{{ t('onboarding.steps.triage.refresh') }}</span>
             </button>
           </div>
 
@@ -840,7 +840,7 @@ async function handleRestoreAndBuildAnother() {
             @click="viewMode = 'cards'"
           >
             <div :class="['i-solar:alt-arrow-left-line-duotone text-sm']" />
-            <span>Back to Options</span>
+            <span>{{ t('onboarding.steps.triage.restore.backToOptions') }}</span>
           </button>
 
           <div :class="['flex items-center gap-3']">
@@ -849,7 +849,7 @@ async function handleRestoreAndBuildAnother() {
               :class="['text-xs text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white underline cursor-pointer transition-colors']"
               @click="props.onNext"
             >
-              Start fresh without restoring →
+              {{ t('onboarding.steps.triage.restore.startFresh') }}
             </button>
 
             <!-- Route 5: Restore and Build Another -->
@@ -864,7 +864,7 @@ async function handleRestoreAndBuildAnother() {
             >
               <div v-if="isRestoring" :class="['i-solar:refresh-line-duotone text-xs animate-spin']" />
               <div v-else :class="['i-solar:add-circle-bold text-xs text-emerald-500']" />
-              <span>{{ t('onboarding.steps.triage.restore.restoreAndBuild', 'Restore & Build Another') }}</span>
+              <span>{{ t('onboarding.steps.triage.restore.restoreAndBuild') }}</span>
             </button>
 
             <!-- Route 4: Restore All and Launch -->
@@ -880,7 +880,7 @@ async function handleRestoreAndBuildAnother() {
             >
               <div v-if="isRestoring" :class="['i-solar:refresh-line-duotone text-xs animate-spin']" />
               <div v-else :class="['i-solar:rocket-bold-duotone text-xs']" />
-              <span>{{ isRestoring ? t('onboarding.steps.triage.restore.restoring', 'Restoring...') : t('onboarding.steps.triage.restore.restoreAll', 'Restore & Launch Stage') }}</span>
+              <span>{{ isRestoring ? t('onboarding.steps.triage.restore.restoring') : t('onboarding.steps.triage.restore.restoreAll') }}</span>
             </Button>
           </div>
         </div>
@@ -903,11 +903,11 @@ async function handleRestoreAndBuildAnother() {
         @click="props.onPrevious"
       >
         <div :class="['i-solar:alt-arrow-left-line-duotone h-4 w-4']" />
-        <span>{{ t('onboarding.shell.previous', 'Back') }}</span>
+        <span>{{ t('onboarding.shell.previous') }}</span>
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium']">
-        {{ t('onboarding.steps.triage.changeLater', 'You can change this later.') }}
+        {{ t('onboarding.steps.triage.changeLater') }}
       </div>
     </div>
 

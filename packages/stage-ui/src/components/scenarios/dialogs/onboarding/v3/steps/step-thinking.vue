@@ -70,7 +70,7 @@ const hasBenchmarkReasoning = computed(() => draftStore.state.brainBenchmark?.ha
 
 const benchmarkLatencyLabel = computed(() => {
   if (benchmarkLatency.value == null)
-    return 'Not tested yet'
+    return t('onboarding.steps.thinking.notTested')
   if (benchmarkLatency.value >= 1000)
     return `${(benchmarkLatency.value / 1000).toFixed(1)} s`
   return `${benchmarkLatency.value}ms`
@@ -98,7 +98,7 @@ async function runBenchmarkProbe() {
   const providerId = currentProviderId.value
   const modelId = currentModelId.value
   if (!providerId || !modelId) {
-    toast.warning('No Consciousness Brain Model configured in Step 8 yet.')
+    toast.warning(t('onboarding.steps.thinking.noConsciousnessBrainModelConfiguredInStep8Yet'))
     return
   }
 
@@ -106,7 +106,7 @@ async function runBenchmarkProbe() {
   try {
     const providerInstance = await providersStore.getProviderInstance(providerId)
     if (!providerInstance || typeof (providerInstance as any).chat !== 'function') {
-      throw new Error(`Provider "${providerId}" does not expose chat completions.`)
+      throw new Error(t('onboarding.steps.thinking.provider.noChat', { providerId }))
     }
 
     const startTime = performance.now()
@@ -144,11 +144,11 @@ async function runBenchmarkProbe() {
     selectedProfile.value = recommendedPreset
     syncDraft()
 
-    toast.success(`Hardware benchmarked: ${elapsedMs}ms TTFT (${isReasoning ? 'Reasoning Model' : 'Standard Stream'})`)
+    toast.success(t('onboarding.steps.thinking.hardwareBenchmarkedValuemsTtftValue', { elapsedMs, detail: isReasoning ? t('onboarding.steps.thinking.benchmark.reasoningModel') : t('onboarding.steps.thinking.benchmark.standardModel') }))
   }
   catch (err: any) {
     console.error('[Step 10 Thinking] Probe error:', err)
-    toast.error(err?.message || 'Hardware benchmark failed. Check network & API key.')
+    toast.error(err?.message || t('onboarding.steps.thinking.hardwareBenchmarkFailedCheckNetworkApiKey'))
   }
   finally {
     isProbingBenchmark.value = false
@@ -187,6 +187,18 @@ const pacingCards = [
     icon: 'i-solar:soundwave-bold-duotone',
   },
 ]
+
+const pacingCardMessages = {
+  disabled: { name: 'onboarding.steps.thinking.pacingCards.disabled.name', desc: 'onboarding.steps.thinking.pacingCards.disabled.desc' },
+  snappy: { name: 'onboarding.steps.thinking.presets.snappy.title', desc: 'onboarding.steps.thinking.pacingCards.snappy.desc' },
+  balanced: { name: 'onboarding.steps.thinking.presets.balanced.title', desc: 'onboarding.steps.thinking.pacingCards.balanced.desc' },
+  deep: { name: 'onboarding.steps.thinking.pacingCards.deep.name', desc: 'onboarding.steps.thinking.pacingCards.deep.desc' },
+}
+const pacingCardOptions = computed(() => pacingCards.map(card => ({
+  ...card,
+  name: t(pacingCardMessages[card.id].name),
+  desc: t(pacingCardMessages[card.id].desc),
+})))
 
 // 2. 3-Tier Cascade State
 const tier1Enabled = ref<boolean>(draftStore.state.subconsciousTier1 ?? true)
@@ -286,6 +298,13 @@ const RESPONSE_LENGTH_TIERS: ResponseLengthTier[] = [
   },
 ]
 
+const responseLengthOptions = computed(() => RESPONSE_LENGTH_TIERS.map(tier => ({
+  ...tier,
+  title: t(`onboarding.steps.thinking.RESPONSE_LENGTH_TIERS.${tier.id}.title`),
+  tag: t(`onboarding.steps.thinking.RESPONSE_LENGTH_TIERS.${tier.id}.tag`),
+  desc: t(`onboarding.steps.thinking.RESPONSE_LENGTH_TIERS.${tier.id}.desc`),
+})))
+
 const overrideLimits = ref<boolean>(draftStore.state.overrideLimits ?? false)
 const contextWidth = ref<number | undefined>(draftStore.state.contextWidth)
 const selectedLengthTier = ref<ResponseLengthTierId>(
@@ -338,12 +357,12 @@ function handleResetToDefaults() {
   maxTokens.value = 200
   customProse.value = RESPONSE_LENGTH_TIERS[1].prose
   isProseEditing.value = false
-  toast.info('Response length reset to defaults')
+  toast.info(t('onboarding.steps.thinking.responseLengthResetToDefaults'))
 }
 
 function toggleOverrideLimits() {
   if (isReasoningModel.value) {
-    toast.warning('Response length cannot be enforced on reasoning models. Hard token limits truncate internal chain-of-thought.')
+    toast.warning(t('onboarding.steps.thinking.responseLengthCannotBeEnforcedOnReasoningModelsHardTokenLimitsTrunc'))
     return
   }
   overrideLimits.value = !overrideLimits.value
@@ -365,7 +384,7 @@ async function runCadenceSimulation() {
   const providerId = currentProviderId.value
   const modelId = currentModelId.value
   if (!providerId || !modelId) {
-    simulationError.value = 'Please configure a Brain Model in Step 8 (Consciousness) first.'
+    simulationError.value = t('onboarding.steps.thinking.simulation.brainRequired')
     return
   }
 
@@ -381,7 +400,7 @@ async function runCadenceSimulation() {
   try {
     const providerInstance = await providersStore.getProviderInstance(providerId) as any
     if (!providerInstance) {
-      throw new Error(`Unable to initialize provider "${providerId}".`)
+      throw new Error(t('onboarding.steps.thinking.provider.initializationFailed', { providerId }))
     }
 
     const messages = [
@@ -426,7 +445,7 @@ async function runCadenceSimulation() {
   }
   catch (err: any) {
     console.error('[Step 10 Cadence Simulation] Error:', err)
-    simulationError.value = err?.message || 'Simulation failed. Check provider credentials.'
+    simulationError.value = err?.message || t('onboarding.steps.thinking.simulation.failed')
   }
   finally {
     isSimulating.value = false
@@ -470,7 +489,7 @@ async function handlePrewarmAudioCache() {
   try {
     const providerInstance = await providersStore.getProviderInstance(ttsProvider)
     if (!providerInstance) {
-      toast.warning('Speech provider instance not ready for pre-warming yet. Skipping live synthesis.')
+      toast.warning(t('onboarding.steps.thinking.speechProviderInstanceNotReadyForPreWarmingYetSkippingLiveSynthesis'))
       prewarmSuccessCount.value = DEFAULT_PACING_FILLERS.length
       isPrewarming.value = false
       return
@@ -499,12 +518,12 @@ async function handlePrewarmAudioCache() {
     })
 
     prewarmSuccessCount.value = result.succeeded + result.cached
-    toast.success(`Pre-warmed ${prewarmSuccessCount.value} thinking fillers into audio cache!`)
+    toast.success(t('onboarding.steps.thinking.preWarmedValueThinkingFillersIntoAudioCache', { prewarmSuccessCount: prewarmSuccessCount.value }))
   }
   catch (err: any) {
     console.warn('[Step 10 Thinking] Prewarm notice:', err)
     prewarmSuccessCount.value = DEFAULT_PACING_FILLERS.length
-    toast.info('Audio cache initialized')
+    toast.info(t('onboarding.steps.thinking.audioCacheInitialized'))
   }
   finally {
     isPrewarming.value = false
@@ -594,12 +613,12 @@ function handleSkipPrewarmAndContinue() {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Thinking & Conversation
+            {{ t('onboarding.steps.thinking.conversationTitle') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Choose how I fill the pause, and how much I say when I’m ready."
+          :message="t('onboarding.steps.thinking.assistantMessage')"
           step-key="thinking"
           sticker-id="airi-awkward"
           tone="primary"
@@ -623,7 +642,7 @@ function handleSkipPrewarmAndContinue() {
             <div :class="['i-solar:cpu-bolt-bold-duotone h-4 w-4']" />
           </div>
           <span :title="currentModelId" :class="['font-bold text-neutral-900 dark:text-white truncate']">
-            {{ currentModelId || 'No model selected' }}
+            {{ currentModelId || t('onboarding.steps.thinking.noModelSelected') }}
           </span>
           <span
             v-if="currentProviderId"
@@ -638,14 +657,14 @@ function handleSkipPrewarmAndContinue() {
 
         <span :class="['flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400']">
           <div :class="['i-solar:document-text-bold-duotone h-4 w-4 shrink-0 text-neutral-400']" />
-          <span>{{ isReasoningModel ? 'Reasoning output detected' : 'Standard streaming output' }}</span>
+          <span>{{ isReasoningModel ? t('onboarding.steps.thinking.reasoningDetected') : t('onboarding.steps.thinking.standardOutput') }}</span>
         </span>
 
         <span :class="['hidden sm:inline w-px h-5 bg-neutral-200 dark:bg-white/10']" />
 
         <span :class="['flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400']">
           <div :class="['i-solar:clock-circle-bold-duotone h-4 w-4 shrink-0 text-neutral-400']" />
-          <span>Last first-token test: <span :class="['font-mono font-semibold text-neutral-700 dark:text-neutral-300']">{{ benchmarkLatencyLabel }}</span></span>
+          <i18n-t scope="global" keypath="onboarding.steps.thinking.benchmark.lastTest" tag="span"><template #latency><span :class="['font-mono font-semibold text-neutral-700 dark:text-neutral-300']">{{ benchmarkLatencyLabel }}</span></template></i18n-t>
         </span>
 
         <span :class="['flex-1']" />
@@ -657,7 +676,7 @@ function handleSkipPrewarmAndContinue() {
           @click="runBenchmarkProbe"
         >
           <div :class="[isProbingBenchmark ? 'i-solar:refresh-circle-bold animate-spin h-3.5 w-3.5' : 'i-solar:play-bold h-3.5 w-3.5']" />
-          <span>{{ isProbingBenchmark ? 'Testing…' : 'Test again' }}</span>
+          <span>{{ isProbingBenchmark ? t('onboarding.steps.thinking.testingBenchmark') : t('onboarding.steps.thinking.testAgain') }}</span>
         </button>
       </div>
 
@@ -676,7 +695,7 @@ function handleSkipPrewarmAndContinue() {
           ]"
         >
           <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-            Conversation settings
+            {{ t('onboarding.steps.thinking.conversationSettings') }}
           </h2>
 
           <!-- Settings tabs -->
@@ -691,7 +710,7 @@ function handleSkipPrewarmAndContinue() {
               ]"
               @click="activeSettingsTab = 'thinking'"
             >
-              While thinking
+              {{ t('onboarding.steps.thinking.whileThinking') }}
             </button>
             <button
               type="button"
@@ -703,22 +722,22 @@ function handleSkipPrewarmAndContinue() {
               ]"
               @click="activeSettingsTab = 'length'"
             >
-              Reply length
+              {{ t('onboarding.steps.thinking.replyLength') }}
             </button>
           </div>
 
           <!-- While thinking -->
           <div v-if="activeSettingsTab === 'thinking'" :class="['flex flex-col gap-4 min-w-0']">
             <div :class="['flex flex-col gap-1']">
-              <span :class="['text-sm font-bold text-neutral-900 dark:text-white']">Pacing</span>
+              <span :class="['text-sm font-bold text-neutral-900 dark:text-white']">{{ t('onboarding.steps.thinking.pacing') }}</span>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-                Choose how often spoken fillers can appear while waiting.
+                {{ t('onboarding.steps.thinking.pacingDescription') }}
               </p>
             </div>
 
             <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2.5']">
               <div
-                v-for="card in pacingCards"
+                v-for="card in pacingCardOptions"
                 :key="card.id"
                 :class="[
                   'p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 text-left min-w-0',
@@ -746,7 +765,7 @@ function handleSkipPrewarmAndContinue() {
             </div>
 
             <div :class="['flex flex-col gap-2']">
-              <span :class="['text-sm font-bold text-neutral-900 dark:text-white']">What fills the pause</span>
+              <span :class="['text-sm font-bold text-neutral-900 dark:text-white']">{{ t('onboarding.steps.thinking.pauseSources') }}</span>
 
               <div
                 v-if="selectedProfile === 'disabled'"
@@ -756,7 +775,7 @@ function handleSkipPrewarmAndContinue() {
                   <div :class="['i-solar:shield-check-bold w-4 h-4']" />
                 </div>
                 <p :class="['text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed']">
-                  Quiet mode is on — your companion waits in silence with zero background load.
+                  {{ t('onboarding.steps.thinking.quietModeDescription') }}
                 </p>
               </div>
 
@@ -772,10 +791,10 @@ function handleSkipPrewarmAndContinue() {
                   </div>
                   <div :class="['flex-1 min-w-0']">
                     <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                      Spoken asides
+                      {{ t('onboarding.steps.thinking.spokenAsides') }}
                     </div>
                     <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-snug']">
-                      In-character lines marked for speaking.
+                      {{ t('onboarding.steps.thinking.spokenAsidesDescription') }}
                     </p>
                   </div>
                 </label>
@@ -792,15 +811,15 @@ function handleSkipPrewarmAndContinue() {
                   <div :class="['flex-1 min-w-0']">
                     <div :class="['flex items-center justify-between gap-2']">
                       <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                        Reasoning cues
+                        {{ t('onboarding.steps.thinking.reasoningCues') }}
                       </div>
                       <span :class="['shrink-0 flex items-center gap-1 rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200/60 dark:border-white/10 px-2 py-0.5 text-[10px] font-medium text-neutral-500 dark:text-neutral-400']">
                         <span :class="['w-1.5 h-1.5 rounded-full bg-emerald-500']" />
-                        <span>Local model ready · 14 MB</span>
+                        <span>{{ t('onboarding.steps.thinking.localModelReady') }}</span>
                       </span>
                     </div>
                     <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-snug']">
-                      A local model picks out brief moments to voice.
+                      {{ t('onboarding.steps.thinking.reasoningCuesDescription') }}
                     </p>
                   </div>
                 </label>
@@ -817,10 +836,10 @@ function handleSkipPrewarmAndContinue() {
                   <div :class="['flex-1 min-w-0 flex flex-col gap-2']">
                     <div>
                       <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                        Casual fillers
+                        {{ t('onboarding.steps.thinking.casualFillers') }}
                       </div>
                       <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-snug']">
-                        Short phrases and vocal reactions.
+                        {{ t('onboarding.steps.thinking.casualFillersDescription') }}
                       </p>
                     </div>
                     <div
@@ -831,13 +850,13 @@ function handleSkipPrewarmAndContinue() {
                         <span :class="['w-1.5 h-1.5 rounded-full flex-shrink-0', prewarmSuccessCount ? 'bg-emerald-500' : isPrewarming ? 'bg-amber-500 animate-pulse' : 'bg-neutral-400 dark:bg-neutral-500']" />
                         <span class="truncate">
                           <template v-if="isPrewarming">
-                            Synthesizing fillers ({{ prewarmProgress?.completed || 0 }}/{{ prewarmProgress?.total || 9 }})...
+                            {{ t('onboarding.steps.thinking.prewarm.synthesisProgress', { completed: prewarmProgress?.completed || 0, total: prewarmProgress?.total || 9 }) }}
                           </template>
                           <template v-else-if="prewarmSuccessCount">
-                            Cache primed: {{ prewarmSuccessCount }} fillers ready
+                            {{ t('onboarding.steps.thinking.prewarm.cacheReady', { count: prewarmSuccessCount }) }}
                           </template>
                           <template v-else>
-                            Audio clips not prepared
+                            {{ t('onboarding.steps.thinking.audioNotPrepared') }}
                           </template>
                         </span>
                       </span>
@@ -848,7 +867,7 @@ function handleSkipPrewarmAndContinue() {
                         @click.stop.prevent="handlePrewarmAudioCache"
                       >
                         <div :class="[isPrewarming ? 'i-solar:refresh-circle-bold animate-spin w-3 h-3' : 'i-solar:bolt-bold w-3 h-3']" />
-                        <span>{{ isPrewarming ? 'Preparing…' : prewarmSuccessCount ? 'Re-warm' : 'Prepare audio clips' }}</span>
+                        <span>{{ isPrewarming ? t('onboarding.steps.thinking.preparingAudio') : prewarmSuccessCount ? t('onboarding.steps.thinking.reWarm') : t('onboarding.steps.thinking.prepareAudio') }}</span>
                       </button>
                     </div>
                   </div>
@@ -865,24 +884,24 @@ function handleSkipPrewarmAndContinue() {
               >
                 <span :class="['flex items-center gap-2 text-xs font-bold text-neutral-800 dark:text-neutral-200']">
                   <div :class="['i-solar:settings-bold-duotone w-4 h-4 text-neutral-400']" />
-                  <span>Timing details</span>
+                  <span>{{ t('onboarding.steps.thinking.timingDetails') }}</span>
                 </span>
                 <div :class="['i-solar:alt-arrow-down-line-duotone w-4 h-4 text-neutral-400 transition-transform', showTimingDetails && 'rotate-180']" />
               </button>
               <div v-if="showTimingDetails" :class="['px-3 pb-3 flex flex-col gap-1.5']">
                 <div :class="['flex items-center justify-between']">
                   <label :class="['text-[11px] text-neutral-500 font-bold uppercase tracking-wide dark:text-neutral-400']">
-                    Context width threshold
+                    {{ t('onboarding.steps.thinking.contextWidthThreshold') }}
                   </label>
                   <span :class="['text-[10px] text-neutral-400 italic']">
-                    Only set if known
+                    {{ t('onboarding.steps.thinking.onlySetIfKnown') }}
                   </span>
                 </div>
                 <div :class="['flex items-center gap-2']">
                   <input
                     v-model.number="contextWidth"
                     type="number"
-                    placeholder="e.g. 128000 (Optional)"
+                    :placeholder="t('onboarding.steps.thinking.eG128000Optional')"
                     :class="['w-44 border border-neutral-200 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-800 dark:text-neutral-200 outline-none focus:border-primary-400']"
                   >
                   <div :class="['flex gap-1.5']">
@@ -915,9 +934,9 @@ function handleSkipPrewarmAndContinue() {
               <div :class="['i-solar:lock-bold w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500']" />
               <p :class="['leading-relaxed text-[11px]']">
                 <span :class="['font-bold block text-xs mb-0.5']">
-                  Response length stays flexible on reasoning models:
+                  {{ t('onboarding.steps.thinking.reasoningLengthTitle') }}
                 </span>
-                Thinking models spend tokens on internal deliberation before replying, so hard limits stay off to avoid cutting thoughts short.
+                {{ t('onboarding.steps.thinking.reasoningLengthDescription') }}
               </p>
             </div>
 
@@ -929,8 +948,8 @@ function handleSkipPrewarmAndContinue() {
               @click="toggleOverrideLimits"
             >
               <div :class="['flex flex-col']">
-                <span :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">Enforce reply length</span>
-                <span :class="['text-[10px] text-neutral-400']">Guide reply brevity and maximum token budget</span>
+                <span :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">{{ t('onboarding.steps.thinking.enforceReplyLength') }}</span>
+                <span :class="['text-[10px] text-neutral-400']">{{ t('onboarding.steps.thinking.replyBudgetDescription') }}</span>
               </div>
               <div
                 :class="[
@@ -956,7 +975,7 @@ function handleSkipPrewarmAndContinue() {
             >
               <div :class="['flex items-center justify-between']">
                 <span :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  Reply length
+                  {{ t('onboarding.steps.thinking.replyLength') }}
                 </span>
                 <button
                   v-if="overrideLimits"
@@ -964,13 +983,13 @@ function handleSkipPrewarmAndContinue() {
                   :class="['text-[10px] text-red-500 font-bold hover:underline cursor-pointer']"
                   @click="handleResetToDefaults"
                 >
-                  Reset defaults
+                  {{ t('onboarding.steps.thinking.responseLength.reset') }}
                 </button>
               </div>
 
               <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2.5']">
                 <div
-                  v-for="tier in RESPONSE_LENGTH_TIERS"
+                  v-for="tier in responseLengthOptions"
                   :key="tier.id"
                   :class="[
                     'p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between text-left min-w-0',
@@ -997,9 +1016,9 @@ function handleSkipPrewarmAndContinue() {
                     </p>
                   </div>
                   <div :class="['mt-2.5 pt-2 border-t border-neutral-200/40 dark:border-white/5 flex items-center justify-between text-[10px] font-mono']">
-                    <span :class="['text-neutral-400']">Token ceiling:</span>
+                    <span :class="['text-neutral-400']">{{ t('onboarding.steps.thinking.tokenCeilingLabel') }}</span>
                     <span :class="['text-primary-500 font-bold']">
-                      {{ tier.id === 'custom' ? `~${maxTokens} tokens` : `~${tier.tokens} tokens` }}
+                      {{ t('onboarding.steps.thinking.responseLength.tokenEstimate', { tokens: tier.id === 'custom' ? maxTokens : tier.tokens }) }}
                     </span>
                   </div>
                 </div>
@@ -1010,7 +1029,7 @@ function handleSkipPrewarmAndContinue() {
                 :class="['p-3 rounded-xl border border-primary-500/30 bg-primary-500/5 flex flex-col gap-2']"
               >
                 <div :class="['flex items-center justify-between']">
-                  <span :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">Custom token ceiling</span>
+                  <span :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">{{ t('onboarding.steps.thinking.customTokenCeilingLabel') }}</span>
                   <div :class="['flex items-center gap-1.5']">
                     <input
                       v-model.number="maxTokens"
@@ -1020,7 +1039,7 @@ function handleSkipPrewarmAndContinue() {
                       step="10"
                       :class="['w-20 px-2 py-0.5 text-xs font-mono font-bold text-right border border-neutral-200 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 text-primary-600 dark:text-primary-400 focus:outline-none focus:border-primary-500']"
                     >
-                    <span :class="['text-[11px] font-mono text-neutral-400 font-medium']">tokens</span>
+                    <span :class="['text-[11px] font-mono text-neutral-400 font-medium']">{{ t('onboarding.steps.thinking.tokens') }}</span>
                   </div>
                 </div>
                 <input
@@ -1036,12 +1055,12 @@ function handleSkipPrewarmAndContinue() {
               <div :class="['flex flex-col gap-1.5 border-t border-neutral-200/40 dark:border-white/5 pt-2.5']">
                 <div :class="['flex items-center justify-between']">
                   <span :class="['text-[11px] text-neutral-500 font-bold uppercase tracking-wide dark:text-neutral-400']">
-                    Reply guidance
+                    {{ t('onboarding.steps.thinking.replyGuidance') }}
                   </span>
                   <button
                     type="button"
                     :class="['flex items-center justify-center rounded p-1 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors cursor-pointer']"
-                    title="Edit guidance"
+                    :title="t('onboarding.steps.thinking.editGuidance')"
                     @click="isProseEditing = !isProseEditing"
                   >
                     <div :class="[isProseEditing ? 'i-solar:check-read-linear text-xs text-green-500' : 'i-solar:pen-linear text-xs']" />
@@ -1078,19 +1097,19 @@ function handleSkipPrewarmAndContinue() {
         >
           <div :class="['min-w-0']">
             <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-              Try a conversation
+              {{ t('onboarding.steps.thinking.tryConversation') }}
             </h2>
             <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-              Uses your selected model and speech settings.
+              {{ t('onboarding.steps.thinking.testSettingsDescription') }}
             </p>
           </div>
 
           <div :class="['flex flex-col gap-1.5']">
-            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">Your message</span>
+            <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">{{ t('onboarding.steps.thinking.yourMessage') }}</span>
             <textarea
               v-model="testSimulationPrompt"
               rows="3"
-              placeholder="What do you think of this picture?"
+              :placeholder="t('onboarding.steps.vision.whatDoYouThinkOfThisPicture')"
               :disabled="isSimulating"
               :class="['w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 text-xs text-neutral-800 dark:text-neutral-100 outline-none transition focus:border-primary-500 disabled:opacity-50 leading-relaxed resize-y']"
             />
@@ -1104,10 +1123,10 @@ function handleSkipPrewarmAndContinue() {
               @click="runCadenceSimulation"
             >
               <div :class="[isSimulating ? 'i-solar:refresh-circle-bold animate-spin h-4 w-4' : 'i-solar:play-bold h-4 w-4']" />
-              <span>{{ isSimulating ? 'Simulating…' : 'Run conversation test' }}</span>
+              <span>{{ isSimulating ? t('onboarding.steps.thinking.simulating') : t('onboarding.steps.thinking.runConversationTest') }}</span>
             </Button>
             <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 text-center']">
-              This sends a test message to your model.
+              {{ t('onboarding.steps.thinking.testRequestNotice') }}
             </p>
           </div>
 
@@ -1115,7 +1134,7 @@ function handleSkipPrewarmAndContinue() {
 
           <div :class="['flex flex-col gap-2 min-w-0']">
             <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">
-              Conversation preview
+              {{ t('onboarding.steps.thinking.conversationPreview') }}
             </span>
 
             <div
@@ -1132,13 +1151,13 @@ function handleSkipPrewarmAndContinue() {
             >
               <div :class="['flex flex-wrap items-center gap-1.5 text-[10px] font-mono']">
                 <span v-if="simulationLatencyMs" :class="['rounded bg-neutral-100 dark:bg-white/5 px-1.5 py-0.5 text-neutral-600 dark:text-neutral-300']">
-                  {{ simulationLatencyMs }}ms TTFT
+                  {{ t('onboarding.steps.thinking.preview.latency', { latency: simulationLatencyMs }) }}
                 </span>
                 <span v-if="simulationTokens" :class="['rounded bg-primary-500/10 px-1.5 py-0.5 text-primary-600 dark:text-primary-400 font-bold']">
-                  ~{{ simulationTokens }} tokens
+                  {{ t('onboarding.steps.thinking.responseLength.tokenEstimate', { tokens: simulationTokens }) }}
                 </span>
                 <span v-if="simulationSentences" :class="['rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-600 dark:text-emerald-400']">
-                  {{ simulationSentences }} sentences
+                  {{ t('onboarding.steps.thinking.preview.sentences', { count: simulationSentences }) }}
                 </span>
               </div>
               <div
@@ -1146,7 +1165,7 @@ function handleSkipPrewarmAndContinue() {
                 :class="['flex items-center gap-2 text-xs text-neutral-400 italic py-2']"
               >
                 <div :class="['i-solar:refresh-circle-bold animate-spin w-4 h-4 text-primary-500']" />
-                <span>Generating response with your settings…</span>
+                <span>{{ t('onboarding.steps.thinking.generatingResponse') }}</span>
               </div>
               <p
                 v-else
@@ -1162,13 +1181,13 @@ function handleSkipPrewarmAndContinue() {
             >
               <div :class="['i-solar:chat-round-dots-linear h-7 w-7 text-neutral-300 dark:text-neutral-600']" />
               <span :class="['text-xs text-neutral-400 dark:text-neutral-500']">
-                Run a test to hear pauses, fillers, and the final reply.
+                {{ t('onboarding.steps.thinking.testEmptyHint') }}
               </span>
             </div>
           </div>
 
           <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 text-center']">
-            The same test uses both your pacing and reply settings.
+            {{ t('onboarding.steps.thinking.testSharedSettings') }}
           </p>
         </aside>
       </div>
@@ -1194,7 +1213,7 @@ function handleSkipPrewarmAndContinue() {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium hidden sm:block text-center truncate max-w-sm min-w-0']">
-        Tune the conversation, then try a turn.
+        {{ t('onboarding.steps.thinking.footerHint') }}
       </div>
 
       <Button
@@ -1224,16 +1243,26 @@ function handleSkipPrewarmAndContinue() {
 
           <div>
             <h3 :class="['text-base font-bold text-neutral-900 dark:text-white']">
-              Pre-warm Thinking Fillers?
+              {{ t('onboarding.steps.thinking.preWarmThinkingFillers') }}
             </h3>
             <p :class="['mt-2 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed text-left']">
-              You've enabled <strong>Casual Spoken Fillers</strong>, but the audio cache is currently empty.
+              <i18n-t scope="global" keypath="onboarding.steps.thinking.emptyCacheDescription" tag="span">
+                <template #emphasis>
+                  <strong>{{ t('onboarding.steps.thinking.casualSpokenFillers') }}</strong>
+                </template>
+              </i18n-t>
             </p>
             <p :class="['mt-2 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed text-left']">
-              To eliminate voice latency during reasoning pauses, AIRI needs to make <strong>9 quick synthesis requests</strong> to your configured voice provider (<span class="text-primary-600 font-semibold font-mono dark:text-primary-400">{{ ttsVoiceLabel }}</span>).
+              <i18n-t scope="global" keypath="onboarding.steps.thinking.prewarmRequestsDescription" tag="span">
+                <template #emphasis>
+                  <strong>{{ t('onboarding.steps.thinking.9QuickSynthesisRequests') }}</strong>
+                </template><template #emphasis2>
+                  <span class="text-primary-600 font-semibold font-mono dark:text-primary-400">{{ ttsVoiceLabel }}</span>
+                </template>
+              </i18n-t>
             </p>
             <p :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed text-left']">
-              Would you like to pre-generate these clips now, or continue and generate them on-demand later?
+              {{ t('onboarding.steps.thinking.wouldYouLikeToPreGenerateTheseClipsNowOrContinueAndGenerateThemO') }}
             </p>
 
             <!-- Prewarm progress indicator if running inside modal -->
@@ -1242,7 +1271,7 @@ function handleSkipPrewarmAndContinue() {
               :class="['mt-3 p-2.5 rounded-xl bg-primary-500/10 border border-primary-500/20 text-xs font-semibold text-primary-600 dark:text-primary-300 flex items-center justify-center gap-2']"
             >
               <div :class="['i-solar:refresh-circle-bold animate-spin h-4 w-4']" />
-              <span>Pre-warming fillers ({{ prewarmProgress?.completed || 0 }}/{{ prewarmProgress?.total || 9 }})...</span>
+              <span>{{ t('onboarding.steps.thinking.prewarm.progress', { completed: prewarmProgress?.completed || 0, total: prewarmProgress?.total || 9 }) }}</span>
             </div>
           </div>
 
@@ -1253,7 +1282,7 @@ function handleSkipPrewarmAndContinue() {
               :class="['w-full sm:flex-1 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-100 dark:bg-white/5 px-4 py-2.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed']"
               @click="handleSkipPrewarmAndContinue"
             >
-              Generate On-Demand Later
+              {{ t('onboarding.steps.thinking.generateOnDemandLater') }}
             </button>
             <button
               type="button"
@@ -1262,7 +1291,7 @@ function handleSkipPrewarmAndContinue() {
               @click="handleConfirmPrewarmAndContinue"
             >
               <div :class="[isPrewarming ? 'i-solar:refresh-circle-bold animate-spin w-4 h-4' : 'i-solar:bolt-bold w-4 h-4']" />
-              <span>{{ isPrewarming ? 'Synthesizing...' : '⚡ Pre-generate 9 Clips Now' }}</span>
+              <span>{{ isPrewarming ? t('onboarding.steps.thinking.prewarm.synthesizing') : t('onboarding.steps.thinking.preGenerate9ClipsNow') }}</span>
             </button>
           </div>
         </div>

@@ -70,7 +70,7 @@ const activeMicLabel = computed(() => {
   if (audioInputs.value.length > 0 && audioInputs.value[0].label) {
     return audioInputs.value[0].label
   }
-  return 'Default Microphone Input'
+  return t('onboarding.steps.hearing.defaultMicrophoneInput')
 })
 
 // --- Whisper WebGPU Management ---
@@ -79,7 +79,9 @@ const whisperDownloadState = ref<WhisperDL>('idle')
 const whisperProgress = ref(0)
 const whisperAbort = ref<AbortController>()
 const whisperErrorMessage = ref('')
-const whisperPhaseMessage = ref('Downloading model shards into local cache…')
+const whisperPhaseMessage = ref('')
+const whisperPhaseKey = ref('onboarding.steps.hearing.messages.downloadingModelShardsIntoLocalCache')
+const whisperPhaseDisplay = computed(() => whisperPhaseMessage.value || t(whisperPhaseKey.value))
 
 const isTamagotchi = isStageTamagotchi()
 const availableWhisperModels = computed(() => {
@@ -159,7 +161,8 @@ async function startWhisperDownload(force = false) {
   whisperDownloadState.value = 'downloading'
   whisperProgress.value = 0
   whisperErrorMessage.value = ''
-  whisperPhaseMessage.value = 'Downloading model shards into local cache…'
+  whisperPhaseMessage.value = ''
+  whisperPhaseKey.value = 'onboarding.steps.hearing.messages.downloadingModelShardsIntoLocalCache'
 
   const shardMap = new Map<string, { loaded: number, total: number }>()
   const expectedTotalBytes = selectedModelInfo.value?.downloadBytes || (800 * 1024 * 1024)
@@ -171,7 +174,8 @@ async function startWhisperDownload(force = false) {
       force,
       onProgress: (p: ProgressPayload) => {
         if (p.phase === 'warmup' || (p.message && p.message.includes('warm'))) {
-          whisperPhaseMessage.value = p.message || 'Compiling WebGPU shaders and warming up model…'
+          whisperPhaseMessage.value = p.message || ''
+          whisperPhaseKey.value = 'onboarding.steps.hearing.download.warmingUp'
           whisperProgress.value = 100
         }
         else if (p.file) {
@@ -206,7 +210,7 @@ async function startWhisperDownload(force = false) {
       whisperDownloadState.value = 'error'
       const rawMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
       const msg = rawMsg.includes('Aborted()') || rawMsg.includes('assertions')
-        ? 'Model allocation failed (Out of Memory). Please choose a lighter shard like Whisper Tiny.'
+        ? t('onboarding.steps.hearing.download.outOfMemory')
         : rawMsg
       whisperErrorMessage.value = msg
       console.error('[V3 Hearing] Whisper download failed:', msg, err)
@@ -279,7 +283,7 @@ function handleConfigured(config?: Record<string, unknown>) {
       ...config,
     }
     providersStore.markProviderAdded(selectedCloudProviderId.value)
-    toast.success(`${inlineConfigProvider.value?.name || 'Provider'} connected!`)
+    toast.success(t('onboarding.steps.hearing.valueConnected', { nameProvider: inlineConfigProvider.value?.name || t('onboarding.steps.hearing.provider.fallbackName') }))
   }
 }
 
@@ -319,15 +323,16 @@ const selectedHotkey = computed<MicToggleHotkey>({
 const lastPressAt = ref(0)
 let pressFlashTimer: ReturnType<typeof setTimeout> | undefined
 
-const hotkeyOptions: { id: MicToggleHotkey, label: string }[] = [
-  { id: 'Scroll', label: 'Scroll Lock' },
-  { id: 'Caps', label: 'Caps Lock' },
-  { id: 'Num', label: 'Num Lock' },
-]
+const hotkeyOptions = computed<{ id: MicToggleHotkey, label: string }[]>(() => [
+  { id: 'Scroll', label: t('onboarding.steps.hearing.hotkeyOptions.scroll.label') },
+  { id: 'Caps', label: t('onboarding.steps.hearing.hotkeyOptions.caps.label') },
+  { id: 'Num', label: t('onboarding.steps.hearing.hotkeyOptions.num.label') },
+])
 
 // --- Live Audio Test & Level Meter ---
 const isTesting = ref(false)
 const testStatusMessage = ref('')
+const testStatusDisplay = computed(() => testStatusMessage.value ? t(testStatusMessage.value) : '')
 const testError = ref('')
 const testStreamWasStarted = ref(false)
 
@@ -353,17 +358,17 @@ const canStartTest = computed(() => {
 // Effective engine summary for the listening-check panel (bound to committed draft state)
 const effectiveEngineLabel = computed(() => {
   if (isWebSpeechSelected.value)
-    return 'Web Speech API'
+    return t('onboarding.steps.hearing.webSpeechApi')
   if (isWhisperSelected.value)
-    return 'Local Whisper'
+    return t('onboarding.steps.hearing.localWhisper')
   const meta = allAudioTranscriptionProvidersMetadata.value.find(p => p.id === draft.state.sttProvider)
-  return meta?.name || draft.state.sttProvider || 'No engine'
+  return meta?.name || draft.state.sttProvider || t('onboarding.steps.hearing.noEngine')
 })
 
 const effectiveModelLabel = computed(() => {
   if (isWebSpeechSelected.value)
     return 'web-speech-api'
-  return (draft.state.sttModel || '').trim() || 'No model'
+  return (draft.state.sttModel || '').trim() || t('onboarding.steps.hearing.noModel')
 })
 
 type CheckStatus = 'empty' | 'not-ready' | 'ready' | 'listening' | 'heard' | 'verified' | 'failed'
@@ -420,18 +425,18 @@ async function startTest() {
   try {
     if (!stream.value) {
       testStreamWasStarted.value = true
-      testStatusMessage.value = 'Starting audio stream...'
+      testStatusMessage.value = 'onboarding.steps.hearing.messages.startingAudioStream'
       await startStream()
       testStatusMessage.value = ''
     }
 
     if (!stream.value)
-      throw new Error('Microphone stream unavailable. Check permissions.')
+      throw new Error(t('onboarding.steps.hearing.verification.microphoneUnavailable'))
 
     verification.value = 'listening'
 
     if (supportsStreamInput.value && stream.value) {
-      testStatusMessage.value = 'Listening for speech...'
+      testStatusMessage.value = 'onboarding.steps.hearing.messages.listeningForSpeech'
       await transcribeForMediaStream(stream.value, {
         providerId: draft.state.sttProvider,
         model: draft.state.sttModel,
@@ -446,7 +451,7 @@ async function startTest() {
           if (text) {
             transcribedText.value = text
             testStreamingText.value = ''
-            testStatusMessage.value = 'Transcription received.'
+            testStatusMessage.value = 'onboarding.steps.hearing.messages.transcriptionReceived'
           }
         },
         onError: (errMsg) => {
@@ -458,11 +463,11 @@ async function startTest() {
       })
     }
     else {
-      testStatusMessage.value = 'Recording 3 seconds...'
+      testStatusMessage.value = 'onboarding.steps.hearing.messages.recording3Seconds'
       await startRecord()
       setTimeout(async () => {
         await stopRecord()
-        testStatusMessage.value = 'Transcribing...'
+        testStatusMessage.value = 'onboarding.steps.hearing.messages.transcribing'
       }, 3000)
     }
   }
@@ -485,7 +490,7 @@ onStopRecord(async (recording) => {
     if (result)
       transcribedText.value = result
     else
-      testError.value = 'No transcription returned from provider. Please check microphone input volume and model status.'
+      testError.value = t('onboarding.steps.hearing.messages.noTranscriptionReturnedFromProviderPleaseCheckMicrophoneInputVolumeA')
   }
   catch (err) {
     testError.value = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
@@ -599,7 +604,7 @@ watch(selectedAudioInput, async () => {
         </div>
 
         <AssistantBubble
-          message="Choose how I’ll hear you, then test your microphone. Once your speech is recognized, you can continue."
+          :message="t('onboarding.steps.hearing.assistantMessage')"
           step-key="hearing"
           sticker-id="airi-confused"
           tone="primary"
@@ -618,10 +623,10 @@ watch(selectedAudioInput, async () => {
           >
             <FieldSelect
               v-model="selectedAudioInput"
-              label="Microphone"
-              description="Choose the microphone you’ll use to talk with your companion."
+              :label="t('onboarding.steps.hearing.microphone')"
+              :description="t('onboarding.steps.hearing.microphoneDescription')"
               :options="micOptions"
-              placeholder="Select an audio input device"
+              :placeholder="t('onboarding.steps.hearing.selectAnAudioInputDevice')"
               layout="vertical"
             />
           </div>
@@ -641,7 +646,7 @@ watch(selectedAudioInput, async () => {
               </div>
               <div :class="['flex flex-col min-w-0']">
                 <div :class="['flex items-center gap-2 font-bold text-xs text-neutral-800 dark:text-neutral-100']">
-                  <span>Active Microphone Input</span>
+                  <span>{{ t('onboarding.steps.hearing.activeMicrophoneInput') }}</span>
                   <span :class="['w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse']" />
                 </div>
                 <span :class="['text-xs text-neutral-500 dark:text-neutral-400 truncate font-mono']">
@@ -652,7 +657,7 @@ watch(selectedAudioInput, async () => {
 
             <button
               type="button"
-              title="Rescan audio devices"
+              :title="t('onboarding.steps.hearing.rescanAudioDevices')"
               :class="['p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer shrink-0']"
               @click="startStream"
             >
@@ -674,10 +679,10 @@ watch(selectedAudioInput, async () => {
               </div>
               <div :class="['flex flex-col min-w-0']">
                 <span :class="['font-bold text-xs text-amber-900 dark:text-amber-200']">
-                  Microphone Access Required
+                  {{ t('onboarding.steps.hearing.microphoneAccessRequired') }}
                 </span>
                 <span :class="['text-[11px] text-amber-700/80 dark:text-amber-300/80']">
-                  Click below to grant microphone permission in your browser/app.
+                  {{ t('onboarding.steps.hearing.clickBelowToGrantMicrophonePermissionInYourBrowserApp') }}
                 </span>
               </div>
             </div>
@@ -687,14 +692,14 @@ watch(selectedAudioInput, async () => {
               class="h-8 shrink-0 px-3 text-xs font-semibold"
               @click="startStream"
             >
-              <span>Grant Access</span>
+              <span>{{ t('onboarding.steps.hearing.grantAccess') }}</span>
             </Button>
           </div>
 
           <!-- Choose Speech Engine: Hero Cards -->
           <div class="flex flex-col gap-2.5">
             <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
-              Speech recognition
+              {{ t('onboarding.steps.hearing.speechRecognition') }}
             </span>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <!-- Hero Card 1: Web Speech API -->
@@ -720,12 +725,12 @@ watch(selectedAudioInput, async () => {
                     </div>
                     <div class="flex flex-col">
                       <div class="flex items-center gap-2">
-                        <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">Web Speech API</span>
+                        <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">{{ t('onboarding.steps.hearing.webSpeechApi') }}</span>
                         <span class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-medium dark:text-emerald-400">
-                          Built-in
+                          {{ t('onboarding.steps.hearing.builtIn') }}
                         </span>
                       </div>
-                      <span class="text-xs text-neutral-500 dark:text-neutral-400">Zero Setup · No Download</span>
+                      <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('onboarding.steps.hearing.zeroSetupNoDownload') }}</span>
                     </div>
                   </div>
                   <div
@@ -734,7 +739,7 @@ watch(selectedAudioInput, async () => {
                   />
                 </div>
                 <p class="mt-3 text-xs text-neutral-600 leading-relaxed dark:text-neutral-300">
-                  Uses speech recognition provided by your browser or operating system. No model download or API key required.
+                  {{ t('onboarding.steps.hearing.browserRecognitionDescription') }}
                 </p>
               </div>
 
@@ -761,12 +766,12 @@ watch(selectedAudioInput, async () => {
                     </div>
                     <div class="flex flex-col">
                       <div class="flex items-center gap-2">
-                        <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">Local Whisper</span>
+                        <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">{{ t('onboarding.steps.hearing.localWhisper') }}</span>
                         <span class="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-600 font-medium dark:text-purple-400">
-                          WebGPU Offline
+                          {{ t('onboarding.steps.hearing.webgpuOffline') }}
                         </span>
                       </div>
-                      <span class="text-xs text-neutral-500 dark:text-neutral-400">Speech processed on your device</span>
+                      <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('onboarding.steps.hearing.processedOnDevice') }}</span>
                     </div>
                   </div>
                   <div
@@ -775,7 +780,7 @@ watch(selectedAudioInput, async () => {
                   />
                 </div>
                 <p class="mt-3 text-xs text-neutral-600 leading-relaxed dark:text-neutral-300">
-                  Runs OpenAI Whisper locally in your browser/app. Speech processed on your device.
+                  {{ t('onboarding.steps.hearing.localWhisperDescription') }}
                 </p>
               </div>
             </div>
@@ -787,9 +792,9 @@ watch(selectedAudioInput, async () => {
             :class="['p-4 sm:p-5 rounded-[20px]', 'bg-white/70 dark:bg-neutral-900/60', 'border border-neutral-200/80 dark:border-neutral-800/80', 'backdrop-blur-md', 'flex flex-col gap-3.5']"
           >
             <div class="flex flex-col gap-1">
-              <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">Whisper WebGPU Model</span>
+              <span class="text-sm text-neutral-800 font-semibold dark:text-neutral-100">{{ t('onboarding.steps.hearing.whisperWebgpuModel') }}</span>
               <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                Larger models offer higher accuracy; smaller models download faster with less VRAM.
+                {{ t('onboarding.steps.hearing.largerModelsOfferHigherAccuracySmallerModelsDownloadFasterWithLessV') }}
               </p>
             </div>
 
@@ -797,7 +802,7 @@ watch(selectedAudioInput, async () => {
               <div class="flex-1">
                 <FieldSelect
                   v-model="selectedWhisperModel"
-                  label="Model"
+                  :label="t('onboarding.steps.hearing.provider.modelLabel')"
                   :options="availableWhisperModels.map(m => ({ label: `${m.name} (${getWhisperModelSpec(m.id)})`, value: m.id }))"
                   layout="vertical"
                   :disabled="whisperDownloadState === 'downloading'"
@@ -811,7 +816,7 @@ watch(selectedAudioInput, async () => {
                   @click="startWhisperDownload"
                 >
                   <div class="i-solar:cloud-download-bold-duotone text-base" />
-                  <span>Download Model</span>
+                  <span>{{ t('onboarding.steps.hearing.downloadModel') }}</span>
                 </Button>
 
                 <Button
@@ -821,7 +826,7 @@ watch(selectedAudioInput, async () => {
                   @click="cancelWhisperDownload"
                 >
                   <div class="i-solar:close-circle-bold-duotone text-base" />
-                  <span>Cancel</span>
+                  <span>{{ t('onboarding.steps.hearing.download.cancel') }}</span>
                 </Button>
 
                 <Button
@@ -831,7 +836,7 @@ watch(selectedAudioInput, async () => {
                   @click="startWhisperDownload(true)"
                 >
                   <div class="i-solar:refresh-circle-bold-duotone text-base" />
-                  <span>Re-download</span>
+                  <span>{{ t('onboarding.steps.hearing.reDownload') }}</span>
                 </Button>
 
                 <Button
@@ -841,7 +846,7 @@ watch(selectedAudioInput, async () => {
                   @click="startWhisperDownload(true)"
                 >
                   <div class="i-solar:restart-bold-duotone text-base" />
-                  <span>Retry Download</span>
+                  <span>{{ t('onboarding.steps.hearing.retryDownload') }}</span>
                 </Button>
               </div>
             </div>
@@ -851,7 +856,7 @@ watch(selectedAudioInput, async () => {
               <div class="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300">
                 <div class="flex items-center gap-1.5">
                   <div class="i-solar:cloud-download-bold-duotone animate-pulse text-primary-500" />
-                  <span>{{ whisperPhaseMessage }}</span>
+                  <span>{{ whisperPhaseDisplay }}</span>
                 </div>
                 <span class="font-medium font-mono">
                   {{ Math.floor(whisperProgress) }}%
@@ -866,14 +871,14 @@ watch(selectedAudioInput, async () => {
             <!-- Ready Status -->
             <div v-else-if="whisperDownloadState === 'ready'" class="flex items-center gap-2 border border-emerald-500/20 rounded-xl bg-emerald-500/10 p-3 text-xs text-emerald-700 font-medium dark:text-emerald-300">
               <div class="i-solar:check-circle-bold-duotone h-4 w-4 flex-shrink-0 text-emerald-500" />
-              <span>Whisper model shard is cached & resident in memory — ready to transcribe.</span>
+              <span>{{ t('onboarding.steps.hearing.whisperModelShardIsCachedResidentInMemoryReadyToTranscribe') }}</span>
             </div>
 
             <!-- Error Status -->
             <div v-else-if="whisperDownloadState === 'error'" class="flex flex-col gap-1 border border-red-500/20 rounded-xl bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-300">
               <div class="flex items-center gap-2 font-bold">
                 <div class="i-solar:danger-circle-bold-duotone h-4 w-4 text-red-500" />
-                <span>Download failed or connection interrupted.</span>
+                <span>{{ t('onboarding.steps.hearing.downloadFailedOrConnectionInterrupted') }}</span>
               </div>
               <span v-if="whisperErrorMessage" class="break-all text-[11px] text-red-600/80 dark:text-red-400/80">
                 {{ whisperErrorMessage }}
@@ -888,21 +893,21 @@ watch(selectedAudioInput, async () => {
           >
             <div class="flex items-center justify-between">
               <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
-                Cloud & Remote Engines (API Key Required)
+                {{ t('onboarding.steps.hearing.cloudRemoteEnginesApiKeyRequired') }}
               </span>
-              <span class="text-[11px] text-neutral-400">Optional</span>
+              <span class="text-[11px] text-neutral-400">{{ t('onboarding.steps.hearing.optional') }}</span>
             </div>
 
             <!-- Deployment / Pricing Filter Pills -->
             <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
               <div class="flex flex-col gap-1.5">
-                <span class="text-xs text-neutral-500 font-medium tracking-wider uppercase dark:text-neutral-400">Deployment</span>
+                <span class="text-xs text-neutral-500 font-medium tracking-wider uppercase dark:text-neutral-400">{{ t('onboarding.steps.hearing.deployment') }}</span>
                 <div class="flex items-center gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
                   <button
                     v-for="opt in [
-                      { label: 'All', value: 'all' },
-                      { label: 'Cloud', value: 'cloud' },
-                      { label: 'Local', value: 'local' },
+                      { label: t('onboarding.steps.hearing.filters.all'), value: 'all' },
+                      { label: t('onboarding.steps.hearing.filters.cloud'), value: 'cloud' },
+                      { label: t('onboarding.steps.hearing.filters.local'), value: 'local' },
                     ]"
                     :key="opt.value"
                     type="button"
@@ -920,13 +925,13 @@ watch(selectedAudioInput, async () => {
               </div>
 
               <div class="flex flex-col gap-1.5">
-                <span class="text-xs text-neutral-500 font-medium tracking-wider uppercase dark:text-neutral-400">Pricing</span>
+                <span class="text-xs text-neutral-500 font-medium tracking-wider uppercase dark:text-neutral-400">{{ t('onboarding.steps.hearing.pricing') }}</span>
                 <div class="flex items-center gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
                   <button
                     v-for="opt in [
-                      { label: 'All', value: 'all' },
-                      { label: 'Free', value: 'free' },
-                      { label: 'Paid', value: 'paid' },
+                      { label: t('onboarding.steps.hearing.filters.all'), value: 'all' },
+                      { label: t('onboarding.steps.hearing.filters.free'), value: 'free' },
+                      { label: t('onboarding.steps.hearing.filters.paid'), value: 'paid' },
                     ]"
                     :key="opt.value"
                     type="button"
@@ -982,9 +987,9 @@ watch(selectedAudioInput, async () => {
           >
             <FieldSelect
               v-model="activeCloudModel"
-              label="Model"
+              :label="t('onboarding.steps.hearing.provider.modelLabel')"
               :options="providerModels.map((m: any) => ({ label: m.name || m.id, value: m.id }))"
-              placeholder="Select a transcription model"
+              :placeholder="t('onboarding.steps.hearing.selectATranscriptionModel')"
               layout="vertical"
             />
           </div>
@@ -997,10 +1002,10 @@ watch(selectedAudioInput, async () => {
             <div class="flex items-center justify-between gap-2">
               <div>
                 <div class="text-sm text-neutral-800 font-bold dark:text-neutral-100">
-                  Push-to-Talk Trigger Key
+                  {{ t('onboarding.steps.hearing.pushToTalkTriggerKey') }}
                 </div>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                  Pick a lock key to toggle the microphone hands-free.
+                  {{ t('onboarding.steps.hearing.pickALockKeyToToggleTheMicrophoneHandsFree') }}
                 </p>
               </div>
               <span
@@ -1008,7 +1013,7 @@ watch(selectedAudioInput, async () => {
                 class="flex animate-pulse items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-600 font-bold dark:text-emerald-400"
               >
                 <div class="i-solar:check-circle-bold-duotone h-3.5 w-3.5" />
-                Key detected
+                {{ t('onboarding.steps.hearing.keyDetected') }}
               </span>
             </div>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1043,10 +1048,10 @@ watch(selectedAudioInput, async () => {
             </div>
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Listening check
+                {{ t('onboarding.steps.hearing.listeningCheck') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed']">
-                Speak to verify your microphone and engine.
+                {{ t('onboarding.steps.hearing.listeningCheckDescription') }}
               </p>
             </div>
             <span
@@ -1054,7 +1059,7 @@ watch(selectedAudioInput, async () => {
               :class="['ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-600 font-bold dark:text-emerald-400']"
             >
               <div :class="['i-solar:verified-check-bold-duotone h-4 w-4']" />
-              Verified
+              {{ t('onboarding.steps.hearing.verified') }}
             </span>
           </div>
 
@@ -1063,7 +1068,7 @@ watch(selectedAudioInput, async () => {
           <!-- Effective engine summary (bound to committed draft state) -->
           <div :class="['rounded-xl border border-neutral-200/70 dark:border-white/10 bg-neutral-50/70 dark:bg-black/20 px-3 py-2.5 flex flex-col gap-1']">
             <span :class="['text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500']">
-              Testing
+              {{ t('onboarding.steps.hearing.testing') }}
             </span>
             <span :title="effectiveModelLabel" :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-100 truncate']">
               {{ effectiveModelLabel }}
@@ -1073,12 +1078,12 @@ watch(selectedAudioInput, async () => {
             </span>
           </div>
 
-          <LevelMeter :level="volumeLevel" label="Microphone level" />
+          <LevelMeter :level="volumeLevel" :label="t('onboarding.steps.hearing.microphoneLevel')" />
 
           <div v-if="testStatusMessage" class="flex items-center gap-2 border border-primary-200 rounded-lg bg-primary-50 p-3 text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
             <div v-if="isTesting" class="i-solar:spinner-line-duotone animate-spin text-sm" />
             <div v-else class="i-solar:info-circle-line-duotone text-sm" />
-            <span class="text-sm font-medium">{{ testStatusMessage }}</span>
+            <span class="text-sm font-medium">{{ testStatusDisplay }}</span>
           </div>
 
           <Button
@@ -1091,7 +1096,7 @@ watch(selectedAudioInput, async () => {
             @click="isTesting ? stopTest() : startTest()"
           >
             <div :class="[isTesting ? 'i-solar:stop-circle-bold-duotone' : 'i-solar:microphone-3-bold-duotone', 'h-4 w-4']" />
-            <span>{{ isTesting ? 'Stop Test' : 'Start listening test' }}</span>
+            <span>{{ isTesting ? t('onboarding.steps.hearing.stopTest') : t('onboarding.steps.hearing.startListeningTest') }}</span>
           </Button>
 
           <div v-if="testError" class="border border-red-200 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
@@ -1101,7 +1106,7 @@ watch(selectedAudioInput, async () => {
           <!-- Transcription result -->
           <div :class="['flex flex-col gap-1.5 min-w-0']">
             <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">
-              Recognized speech
+              {{ t('onboarding.steps.hearing.recognizedSpeech') }}
             </span>
             <div
               class="max-h-64 min-h-[96px] overflow-y-auto border rounded-lg p-3 text-sm"
@@ -1109,7 +1114,7 @@ watch(selectedAudioInput, async () => {
             >
               <template v-if="testStreamingText && supportsStreamInput">
                 <div class="mb-1 text-xs text-neutral-400 font-medium">
-                  Hearing you…
+                  {{ t('onboarding.steps.hearing.hearingYou') }}
                 </div>
                 <div class="whitespace-pre-wrap text-neutral-600 dark:text-neutral-400">
                   {{ testStreamingText }}
@@ -1117,13 +1122,13 @@ watch(selectedAudioInput, async () => {
               </template>
               <template v-if="transcribedText">
                 <div class="mb-1 text-xs text-emerald-600 font-bold dark:text-emerald-400" :class="{ 'mt-2 border-t border-neutral-200 pt-2 dark:border-neutral-700': testStreamingText && supportsStreamInput }">
-                  Final transcription:
+                  {{ t('onboarding.steps.hearing.finalTranscription') }}
                 </div>
                 <div class="whitespace-pre-wrap text-neutral-700 dark:text-neutral-200">
                   {{ transcribedText }}
                 </div>
               </template>
-              <span v-if="!transcribedText && !testStreamingText">No transcription yet. Start the test and speak into your microphone.</span>
+              <span v-if="!transcribedText && !testStreamingText">{{ t('onboarding.steps.hearing.noTranscriptionYetStartTheTestAndSpeakIntoYourMicrophone') }}</span>
             </div>
           </div>
 
@@ -1131,31 +1136,31 @@ watch(selectedAudioInput, async () => {
           <div :class="['flex items-center gap-1.5 text-xs font-semibold']">
             <span v-if="checkStatus === 'empty'" :class="['flex items-center gap-1.5 text-neutral-400']">
               <span :class="['h-2 w-2 rounded-full bg-neutral-300 dark:bg-neutral-600']" />
-              <span>Not configured</span>
+              <span>{{ t('onboarding.steps.hearing.notConfigured') }}</span>
             </span>
             <span v-else-if="checkStatus === 'not-ready'" :class="['flex items-center gap-1.5 text-amber-600 dark:text-amber-400']">
               <span :class="['h-2 w-2 rounded-full bg-amber-500']" />
-              <span>Download required</span>
+              <span>{{ t('onboarding.steps.hearing.downloadRequired') }}</span>
             </span>
             <span v-else-if="checkStatus === 'ready'" :class="['flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400']">
               <span :class="['h-2 w-2 rounded-full bg-emerald-500']" />
-              <span>Ready to test</span>
+              <span>{{ t('onboarding.steps.hearing.readyToTest') }}</span>
             </span>
             <span v-else-if="checkStatus === 'listening'" :class="['flex items-center gap-1.5 text-primary-600 dark:text-primary-400']">
               <span :class="['h-2 w-2 rounded-full bg-primary-500 animate-pulse']" />
-              <span>Listening…</span>
+              <span>{{ t('onboarding.steps.hearing.listening') }}</span>
             </span>
             <span v-else-if="checkStatus === 'heard'" :class="['flex items-center gap-1.5 text-primary-600 dark:text-primary-400']">
               <span :class="['h-2 w-2 rounded-full bg-primary-500']" />
-              <span>Heard you — finishing…</span>
+              <span>{{ t('onboarding.steps.hearing.heardFinishing') }}</span>
             </span>
             <span v-else-if="checkStatus === 'verified'" :class="['flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400']">
               <span :class="['h-2 w-2 rounded-full bg-emerald-500']" />
-              <span>Ear verified</span>
+              <span>{{ t('onboarding.steps.hearing.earVerified') }}</span>
             </span>
             <span v-else :class="['flex items-center gap-1.5 text-red-600 dark:text-red-400']">
               <span :class="['h-2 w-2 rounded-full bg-red-500']" />
-              <span>Check failed</span>
+              <span>{{ t('onboarding.steps.hearing.checkFailed') }}</span>
             </span>
           </div>
         </aside>
@@ -1184,22 +1189,22 @@ watch(selectedAudioInput, async () => {
       <!-- Center Status Hint -->
       <div :class="['text-[11px] text-neutral-400 font-medium italic hidden sm:block text-center truncate max-w-sm min-w-0']">
         <span v-if="isVerified" class="text-emerald-500 font-semibold not-italic dark:text-emerald-400">
-          Ear verified! Ready to proceed.
+          {{ t('onboarding.steps.hearing.earVerifiedReadyToProceed') }}
         </span>
         <span v-else-if="checkStatus === 'not-ready'">
-          Download your selected model to start the listening test.
+          {{ t('onboarding.steps.hearing.downloadHint') }}
         </span>
         <span v-else-if="checkStatus === 'listening'">
-          Speak into your microphone now.
+          {{ t('onboarding.steps.hearing.speakNow') }}
         </span>
         <span v-else-if="checkStatus === 'heard'">
-          Hearing you — finishing up…
+          {{ t('onboarding.steps.hearing.hearingFinishing') }}
         </span>
         <span v-else-if="checkStatus === 'ready'">
-          Start the listening test to verify your microphone.
+          {{ t('onboarding.steps.hearing.startTestHint') }}
         </span>
         <span v-else>
-          Speak into your microphone — Next unlocks once we hear you.
+          {{ t('onboarding.steps.hearing.speakIntoYourMicrophoneNextUnlocksOnceWeHearYou') }}
         </span>
       </div>
 

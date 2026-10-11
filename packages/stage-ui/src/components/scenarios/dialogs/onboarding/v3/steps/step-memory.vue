@@ -97,7 +97,7 @@ function handleToggleDreamState() {
 
 function formatWindowDays(days?: number | null) {
   const n = days ?? 3
-  return n <= 1 ? '1 day' : `${n} days`
+  return n <= 1 ? t('onboarding.steps.memory.window.oneDay') : t('onboarding.steps.memory.window.days', { count: n })
 }
 
 const summaryWindowLabel = computed(() => formatWindowDays(draftStore.state.memoryShortTermWindowSize))
@@ -124,12 +124,12 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Memory
+            {{ t('onboarding.steps.memory.label') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Choose what I remember, and how I carry our conversations forward."
+          :message="t('onboarding.steps.memory.companionGreeting')"
           step-key="memory"
           sticker-id="airi-affectionate"
           tone="primary"
@@ -154,10 +154,10 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               </div>
               <div :class="['min-w-0']">
                 <h3 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                  Recent context
+                  {{ t('onboarding.steps.memory.recentContext.title') }}
                 </h3>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed']">
-                  Keeps recent conversation summaries close at hand, so we can pick up where we left off.
+                  {{ t('onboarding.steps.memory.recentContext.description') }}
                 </p>
               </div>
             </div>
@@ -166,7 +166,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               <input
                 type="checkbox"
                 :checked="draftStore.state.memoryShortTermEnabled"
-                aria-label="Recent context"
+                :aria-label="t('onboarding.steps.memory.recentContext.title')"
                 :class="['sr-only peer']"
                 @change="handleToggleShortTerm"
               >
@@ -179,7 +179,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
             :class="['flex flex-col gap-2']"
           >
             <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']">
-              Summary window
+              {{ t('onboarding.steps.memory.recentContext.window') }}
             </span>
             <div :class="['grid grid-cols-3 gap-2']">
               <button
@@ -199,7 +199,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
                 </div>
                 <div :class="['min-w-0']">
                   <div :class="['text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate']">
-                    {{ tier.label }}
+                    {{ t(`onboarding.steps.memory.stmmTiers.${tier.id}.label`) }}
                   </div>
                   <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
                     {{ formatWindowDays(tier.windowSize) }}
@@ -208,7 +208,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               </button>
             </div>
             <span :class="['text-[11px] text-neutral-400 dark:text-neutral-500']">
-              Larger windows add more context to each reply.
+              {{ t('onboarding.steps.memory.recentContext.windowHint') }}
             </span>
           </div>
         </div>
@@ -229,10 +229,10 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               </div>
               <div :class="['min-w-0']">
                 <h3 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                  Personal journal
+                  {{ t('onboarding.steps.memory.personalJournal.title') }}
                 </h3>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed']">
-                  Records meaningful moments and feelings, and can look them up later.
+                  {{ t('onboarding.steps.memory.personalJournal.description') }}
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               <input
                 type="checkbox"
                 :checked="draftStore.state.memoryLongTermJournalEnabled"
-                aria-label="Personal journal"
+                :aria-label="t('onboarding.steps.memory.personalJournal.title')"
                 :class="['sr-only peer']"
                 @change="handleToggleLongTermJournal"
               >
@@ -252,7 +252,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
           <div :class="['rounded-xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/10 px-3 py-2.5 flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-200']">
             <div :class="['i-solar:shield-check-bold text-emerald-500 text-base shrink-0']" />
             <span :class="['leading-relaxed']">
-              New entries add to the journal without rewriting earlier ones.
+              {{ t('onboarding.steps.memory.personalJournal.appendOnly') }}
             </span>
           </div>
 
@@ -287,10 +287,10 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               </div>
               <div :class="['min-w-0']">
                 <h3 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                  Shared history
+                  {{ t('onboarding.steps.memory.sharedHistory.title') }}
                 </h3>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed']">
-                  Carries important milestones and relationship context across weeks and months.
+                  {{ t('onboarding.steps.memory.sharedHistory.description') }}
                 </p>
               </div>
             </div>
@@ -299,7 +299,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               <input
                 type="checkbox"
                 :checked="draftStore.state.memoryLifetimeEnabled"
-                aria-label="Shared history"
+                :aria-label="t('onboarding.steps.memory.sharedHistory.title')"
                 :class="['sr-only peer']"
                 @change="handleToggleLifetime"
               >
@@ -311,7 +311,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
             <div :class="['rounded-xl border border-neutral-200/60 dark:border-white/10 bg-neutral-50/60 dark:bg-black/20 px-3 py-2.5 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300 flex-1 min-w-0']">
               <div :class="['i-solar:info-circle-bold text-neutral-400 text-base shrink-0']" />
               <span :class="['leading-relaxed']">
-                A lasting summary of what matters between you and your companion.
+                {{ t('onboarding.steps.memory.sharedHistory.summary') }}
               </span>
             </div>
             <img
@@ -341,10 +341,10 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               </div>
               <div :class="['min-w-0']">
                 <h3 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                  Quiet reflection
+                  {{ t('onboarding.steps.memory.quietReflection.title') }}
                 </h3>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed']">
-                  Reflects on recent conversations while you’re away, preparing context for your return.
+                  {{ t('onboarding.steps.memory.quietReflection.description') }}
                 </p>
               </div>
             </div>
@@ -353,7 +353,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
               <input
                 type="checkbox"
                 :checked="draftStore.state.memoryDreamStateEnabled"
-                aria-label="Quiet reflection"
+                :aria-label="t('onboarding.steps.memory.quietReflection.title')"
                 :class="['sr-only peer']"
                 @change="handleToggleDreamState"
               >
@@ -365,7 +365,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
             <div :class="['rounded-xl border border-neutral-200/60 dark:border-white/10 bg-neutral-50/60 dark:bg-black/20 px-3 py-2.5 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300 flex-1 min-w-0']">
               <div :class="['i-solar:info-circle-bold text-neutral-400 text-base shrink-0']" />
               <span :class="['leading-relaxed']">
-                Runs during idle time between conversations.
+                {{ t('onboarding.steps.memory.quietReflection.idle') }}
               </span>
             </div>
             <img
@@ -387,7 +387,7 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
             <div :class="['i-solar:layers-bold-duotone text-base']" />
           </div>
           <span :class="['text-sm font-bold text-neutral-900 dark:text-white']">
-            Your memory setup
+            {{ t('onboarding.steps.memory.setup.title') }}
           </span>
         </div>
         <template v-if="hasAnyMemoryEnabled">
@@ -396,32 +396,32 @@ const hasAnyMemoryEnabled = computed(() => Boolean(
             :class="['flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 sm:border-l sm:border-neutral-200/70 dark:sm:border-white/10 sm:pl-4']"
           >
             <div :class="['i-solar:alarm-bold-duotone text-cyan-500']" />
-            <span>Recent context · {{ summaryWindowLabel }}</span>
+            <span>{{ t('onboarding.steps.memory.setup.recentContext', { window: summaryWindowLabel }) }}</span>
           </span>
           <span
             v-if="draftStore.state.memoryLongTermJournalEnabled"
             :class="['flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 sm:border-l sm:border-neutral-200/70 dark:sm:border-white/10 sm:pl-4']"
           >
             <div :class="['i-solar:notebook-bookmark-bold-duotone text-emerald-500']" />
-            <span>Personal journal</span>
+            <span>{{ t('onboarding.steps.memory.personalJournal.title') }}</span>
           </span>
           <span
             v-if="draftStore.state.memoryLifetimeEnabled"
             :class="['flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 sm:border-l sm:border-neutral-200/70 dark:sm:border-white/10 sm:pl-4']"
           >
             <div :class="['i-solar:infinity-bold-duotone text-amber-500']" />
-            <span>Shared history</span>
+            <span>{{ t('onboarding.steps.memory.sharedHistory.title') }}</span>
           </span>
           <span
             v-if="draftStore.state.memoryDreamStateEnabled"
             :class="['flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 sm:border-l sm:border-neutral-200/70 dark:sm:border-white/10 sm:pl-4']"
           >
             <div :class="['i-solar:moon-bold-duotone text-violet-500']" />
-            <span>Quiet reflection</span>
+            <span>{{ t('onboarding.steps.memory.quietReflection.title') }}</span>
           </span>
         </template>
         <span v-else :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          No memory features enabled.
+          {{ t('onboarding.steps.memory.setup.disabled') }}
         </span>
       </div>
     </div>

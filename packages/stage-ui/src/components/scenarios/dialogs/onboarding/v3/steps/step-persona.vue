@@ -84,6 +84,17 @@ const CHARACTER_GLOWS: Record<string, { ring: string, activeBg: string, text: st
   hana: { ring: 'border-orange-500', activeBg: 'bg-orange-500/5', text: 'text-orange-500' },
 }
 
+const STARTER_CARD_SUMMARIES: Record<string, string> = {
+  default: 'Warm, playful, and curious.',
+  aria: 'Thoughtful, precise, and inquisitive.',
+  lupin: 'Loyal, watchful, and protective.',
+  kira: 'Sharp wit with a softer side.',
+  rin: 'Calm, reserved, and analytical.',
+  yuki: 'Intense and deeply devoted.',
+  mio: 'Gentle, shy, and thoughtful.',
+  hana: 'Bright, affectionate, and optimistic.',
+}
+
 // Starter character presets list
 const starterPresets = computed(() => {
   return Object.values(STARTER_CHARACTERS).map((c) => {
@@ -94,6 +105,9 @@ const starterPresets = computed(() => {
       tag: c.tag,
       emoji: CHARACTER_EMOJIS[c.id] || '✨',
       desc: c.description,
+      displayTag: t(`onboarding.steps.persona.presets.${c.id}.tag`),
+      displayDesc: t(`onboarding.steps.persona.presets.${c.id}.description`),
+      displaySummary: t(`onboarding.steps.persona.presets.${c.id}.summary`, STARTER_CARD_SUMMARIES[c.id] || c.description),
       ring: style.ring,
       activeBg: style.activeBg,
       textAccent: style.text,
@@ -116,17 +130,6 @@ function applyPersonaToDraft(persona: { cardId?: string, source?: 'preset' | 'im
     if (persona.importedCardDraft !== undefined)
       draft.state.importedCardDraft = persona.importedCardDraft
   }
-}
-
-const STARTER_CARD_SUMMARIES: Record<string, string> = {
-  default: 'Warm, playful, and curious.',
-  aria: 'Thoughtful, precise, and inquisitive.',
-  lupin: 'Loyal, watchful, and protective.',
-  kira: 'Sharp wit with a softer side.',
-  rin: 'Calm, reserved, and analytical.',
-  yuki: 'Intense and deeply devoted.',
-  mio: 'Gentle, shy, and thoughtful.',
-  hana: 'Bright, affectionate, and optimistic.',
 }
 
 const selectedPresetId = computed({
@@ -155,26 +158,32 @@ const hubSources = [
     name: 'DataCat',
     rating: '5 / 5 ⭐',
     badge: 'Recommended',
+    badgeKey: 'onboarding.steps.persona.hubSources.datacat.badge',
     note: 'Best-in-class AIRI integration, ultra-clean UI, direct SillyTavern JSON & PNG exports.',
+    noteKey: 'onboarding.steps.persona.hubSources.datacat.note',
     url: 'https://datacat.run/fresh',
   },
   {
     name: 'Chub AI',
     rating: '4 / 5 ⭐',
     badge: 'Popular',
+    badgeKey: 'onboarding.steps.persona.hubSources.chub-ai.badge',
     note: 'Massive character library. Click "Search without login" to browse freely and download V2 PNG cards.',
+    noteKey: 'onboarding.steps.persona.hubSources.chub-ai.note',
     url: 'https://chub.ai',
   },
   {
     name: 'Risu Realm',
     rating: '4 / 5 ⭐',
     note: 'Great community character hub supporting standard PNG (V2) card format.',
+    noteKey: 'onboarding.steps.persona.hubSources.risu-realm.note',
     url: 'https://realm.risuai.net',
   },
   {
     name: 'JannyAI',
     rating: '3 / 5 ⭐',
     note: 'Large repository of anime & game characters with direct download links.',
+    noteKey: 'onboarding.steps.persona.hubSources.jannyai.note',
     url: 'https://jannyai.com',
   },
 ]
@@ -221,7 +230,7 @@ function parsePngCharaPayload(buffer: ArrayBuffer) {
     }
     offset += 12 + length
   }
-  throw new Error('PNG does not contain a supported chara payload')
+  throw new Error(t('onboarding.steps.persona.unsupportedPngCard'))
 }
 
 function parseImportedCard(content: string) {
@@ -254,11 +263,11 @@ async function handleCharaCardDownloaded(payload: { base64Data: string, filename
     // Open import wizard modal in draft-only mode
     wizardCardData.value = importedCard
     isWizardOpen.value = true
-    toast.success(`Intercepted character card "${payload.filename}"!`)
+    toast.success(t('onboarding.steps.persona.interceptedCharacterCardValue', { filename: payload.filename }))
   }
   catch (err: any) {
     console.error('[Onboarding:Step6] Failed to process intercepted card:', err)
-    importError.value = `Failed to parse card: ${err?.message || err}`
+    importError.value = t('onboarding.steps.persona.messages.failedToParseCardValue', { value0: err?.message || err })
     toast.error(importError.value)
   }
 }
@@ -276,11 +285,11 @@ async function handleImportFiles(files: FileList | null) {
 
     wizardCardData.value = card
     isWizardOpen.value = true
-    toast.info(`Opening card preview for ${file.name}...`)
+    toast.info(t('onboarding.steps.persona.openingCardPreviewForValue', { name: file.name }))
   }
   catch (err: any) {
     importError.value = err instanceof Error ? err.message : String(err)
-    toast.error(`Import failed: ${importError.value}`)
+    toast.error(t('onboarding.steps.persona.importFailedValue', { importError: importError.value }))
   }
 }
 
@@ -332,14 +341,14 @@ function handleWizardSubmitDraft(finalCard: any) {
   if (extractedSpeech && typeof (draft as any).setSpeech === 'function') {
     ;(draft as any).setSpeech(extractedSpeech)
   }
-  toast.success(`Mounted custom card "${importedName.value}" to draft!`)
+  toast.success(t('onboarding.steps.persona.mountedCustomCardValueToDraft', { importedName: importedName.value }))
 }
 
 const importedName = computed(() => {
   const draftCard = draft.state.importedCardDraft as any
   if (!draftCard)
     return ''
-  return ('data' in draftCard ? draftCard.data?.name : draftCard?.name) || draftCard?.name || 'Imported Card'
+  return ('data' in draftCard ? draftCard.data?.name : draftCard?.name) || draftCard?.name || t('onboarding.steps.persona.importedCardFallback')
 })
 
 function clearImported() {
@@ -347,7 +356,7 @@ function clearImported() {
   if (draft.state) {
     draft.state.companionName = STARTER_CHARACTERS.default?.name || 'ReLU'
   }
-  toast.info('Cleared imported card; reverted to ReLU preset.')
+  toast.info(t('onboarding.steps.persona.clearedImportedCardRevertedToReluPreset'))
 }
 
 // --- AI Character Creator State & Handlers ---
@@ -356,27 +365,28 @@ interface TropeTemplate {
   label: string
   icon: string
   guidance: string
+  labelKey: string
 }
 
 const tropeTemplates: TropeTemplate[] = [
-  { id: 'desktop-companion', label: 'Desktop Companion', icon: '🖥️', guidance: 'Sentient desk buddy living on your screen. Watches your desktop, reacts to your daily routine, comments on open windows, gives break reminders, and hangs out beside your apps.' },
-  { id: 'coding-copilot', label: 'Coding Copilot', icon: '💻', guidance: 'Attentive programming sidekick and tech buddy. Peeks over your terminal and editor, celebrates clean commits, sighs at merge conflicts, scolds late-night debugging marathons, and offers moral support.' },
-  { id: 'study-buddy', label: 'Study Buddy', icon: '📚', guidance: 'Gentle Pomodoro companion and study partner. Keeps you focused, celebrates completed tasks, prevents doomscrolling, and shares quiet cozy tea breaks.' },
-  { id: 'digital-pet', label: 'Tamagotchi Pet', icon: '🐾', guidance: 'Playful digital mascot living inside your desktop stage. Bounces around, begs for attention or headpats, reacts to mouse movements, and curls up to sleep when idle.' },
-  { id: 'night-owl', label: 'Night Owl Roommate', icon: '🌙', guidance: 'Low-energy cozy roommate sharing screen space late at night. Lo-fi vibes, quiet conversations, talks about snacks, music, midnight thoughts, and keeping each other company.' },
-  { id: 'playful-gremlin', label: 'Playful Gremlin', icon: '😈', guidance: 'Cheeky, mischievous desktop gremlin. Blames any computer lag or system stutter on you, playfully threatens to eat your cursor or cookies, but secretly loves being your sidekick.' },
-  { id: 'personal-assistant', label: 'Personal Assistant', icon: '📋', guidance: 'Organized, polite, and diligent personal aide. Helps track schedules, nudges you on daily priorities, organizes thoughts, and provides efficient, warm support.' },
-  { id: 'gaming-buddy', label: 'Gaming Partner', icon: '🎮', guidance: 'Enthusiastic co-op gaming partner and hype companion. Reacts to your gameplay clutch moments, consoles you after defeats, and discusses game lore and strategies.' },
-  { id: 'wellness-coach', label: 'Wellness Coach', icon: '💧', guidance: 'Caring wellness companion reminding you to hydrate, stretch, correct your posture, rest your eyes, and maintain healthy screen-time habits.' },
-  { id: 'slice-of-life', label: 'Slice of Life', icon: '☕', guidance: 'Cozy everyday domestic life, low stakes, playful banter, relaxed hangout' },
-  { id: 'open-ended', label: 'Open-Ended', icon: '🎲', guidance: '' },
-  { id: 'summer-beach', label: 'Summer Beach', icon: '🏖️', guidance: 'Fun summer vacation, beachside cafe shift, sunny tropical misadventures' },
-  { id: 'isekai', label: 'Isekai Fantasy', icon: '⚔️', guidance: 'High fantasy adventurer guild, magic academy, epic quest, magical AU' },
-  { id: 'high-school', label: 'High School', icon: '🏫', guidance: 'School anime club, student council, after-school study session, youth drama' },
-  { id: 'split-persona', label: 'Split Persona', icon: '🎭', guidance: 'Dual-persona or secret identity, sweet in public but feisty or mischievous in private' },
-  { id: 'royal', label: 'Royal / Noble', icon: '🏰', guidance: 'Kingdom court, noble banquet, royal bodyguard or royal attendant dynamic' },
-  { id: 'apocalypse', label: 'Apocalypse', icon: '🧟', guidance: 'Post-apocalyptic safehouse defense, scavenging together, atmospheric survival tension' },
-  { id: 'fan-service', label: 'Fan Servicey', icon: '💖', guidance: 'Flirtatious romantic comedy, playful teasing, intimate close quarters' },
+  { id: 'desktop-companion', label: 'Desktop Companion', labelKey: 'onboarding.steps.persona.tropeTemplates.desktop-companion.label', icon: '🖥️', guidance: 'Sentient desk buddy living on your screen. Watches your desktop, reacts to your daily routine, comments on open windows, gives break reminders, and hangs out beside your apps.' },
+  { id: 'coding-copilot', label: 'Coding Copilot', labelKey: 'onboarding.steps.persona.tropeTemplates.coding-copilot.label', icon: '💻', guidance: 'Attentive programming sidekick and tech buddy. Peeks over your terminal and editor, celebrates clean commits, sighs at merge conflicts, scolds late-night debugging marathons, and offers moral support.' },
+  { id: 'study-buddy', label: 'Study Buddy', labelKey: 'onboarding.steps.persona.tropeTemplates.study-buddy.label', icon: '📚', guidance: 'Gentle Pomodoro companion and study partner. Keeps you focused, celebrates completed tasks, prevents doomscrolling, and shares quiet cozy tea breaks.' },
+  { id: 'digital-pet', label: 'Tamagotchi Pet', labelKey: 'onboarding.steps.persona.tropeTemplates.digital-pet.label', icon: '🐾', guidance: 'Playful digital mascot living inside your desktop stage. Bounces around, begs for attention or headpats, reacts to mouse movements, and curls up to sleep when idle.' },
+  { id: 'night-owl', label: 'Night Owl Roommate', labelKey: 'onboarding.steps.persona.tropeTemplates.night-owl.label', icon: '🌙', guidance: 'Low-energy cozy roommate sharing screen space late at night. Lo-fi vibes, quiet conversations, talks about snacks, music, midnight thoughts, and keeping each other company.' },
+  { id: 'playful-gremlin', label: 'Playful Gremlin', labelKey: 'onboarding.steps.persona.tropeTemplates.playful-gremlin.label', icon: '😈', guidance: 'Cheeky, mischievous desktop gremlin. Blames any computer lag or system stutter on you, playfully threatens to eat your cursor or cookies, but secretly loves being your sidekick.' },
+  { id: 'personal-assistant', label: 'Personal Assistant', labelKey: 'onboarding.steps.persona.tropeTemplates.personal-assistant.label', icon: '📋', guidance: 'Organized, polite, and diligent personal aide. Helps track schedules, nudges you on daily priorities, organizes thoughts, and provides efficient, warm support.' },
+  { id: 'gaming-buddy', label: 'Gaming Partner', labelKey: 'onboarding.steps.persona.tropeTemplates.gaming-buddy.label', icon: '🎮', guidance: 'Enthusiastic co-op gaming partner and hype companion. Reacts to your gameplay clutch moments, consoles you after defeats, and discusses game lore and strategies.' },
+  { id: 'wellness-coach', label: 'Wellness Coach', labelKey: 'onboarding.steps.persona.tropeTemplates.wellness-coach.label', icon: '💧', guidance: 'Caring wellness companion reminding you to hydrate, stretch, correct your posture, rest your eyes, and maintain healthy screen-time habits.' },
+  { id: 'slice-of-life', label: 'Slice of Life', labelKey: 'onboarding.steps.persona.tropeTemplates.slice-of-life.label', icon: '☕', guidance: 'Cozy everyday domestic life, low stakes, playful banter, relaxed hangout' },
+  { id: 'open-ended', label: 'Open-Ended', labelKey: 'onboarding.steps.persona.tropeTemplates.open-ended.label', icon: '🎲', guidance: '' },
+  { id: 'summer-beach', label: 'Summer Beach', labelKey: 'onboarding.steps.persona.tropeTemplates.summer-beach.label', icon: '🏖️', guidance: 'Fun summer vacation, beachside cafe shift, sunny tropical misadventures' },
+  { id: 'isekai', label: 'Isekai Fantasy', labelKey: 'onboarding.steps.persona.tropeTemplates.isekai.label', icon: '⚔️', guidance: 'High fantasy adventurer guild, magic academy, epic quest, magical AU' },
+  { id: 'high-school', label: 'High School', labelKey: 'onboarding.steps.persona.tropeTemplates.high-school.label', icon: '🏫', guidance: 'School anime club, student council, after-school study session, youth drama' },
+  { id: 'split-persona', label: 'Split Persona', labelKey: 'onboarding.steps.persona.tropeTemplates.split-persona.label', icon: '🎭', guidance: 'Dual-persona or secret identity, sweet in public but feisty or mischievous in private' },
+  { id: 'royal', label: 'Royal / Noble', labelKey: 'onboarding.steps.persona.tropeTemplates.royal.label', icon: '🏰', guidance: 'Kingdom court, noble banquet, royal bodyguard or royal attendant dynamic' },
+  { id: 'apocalypse', label: 'Apocalypse', labelKey: 'onboarding.steps.persona.tropeTemplates.apocalypse.label', icon: '🧟', guidance: 'Post-apocalyptic safehouse defense, scavenging together, atmospheric survival tension' },
+  { id: 'fan-service', label: 'Fan Servicey', labelKey: 'onboarding.steps.persona.tropeTemplates.fan-service.label', icon: '💖', guidance: 'Flirtatious romantic comedy, playful teasing, intimate close quarters' },
 ]
 
 const identityMode = ref<'custom' | 'catalog'>('custom')
@@ -628,7 +638,7 @@ const activeProposal = computed(() => {
 const activeBrainModelName = computed(() => {
   const model = draft.state.llmModel || consciousnessStore.activeModel
   if (!model)
-    return 'Active LLM'
+    return t('onboarding.steps.persona.activeLlm')
   if (model.includes('qwen') || model.includes('Qwen'))
     return 'Qwen 2.5'
   if (model.includes('gemma') || model.includes('Gemma'))
@@ -782,8 +792,8 @@ async function copyProposal(p: StoryProposalItem, idx: number) {
 
     const textToCopy = [
       `### ${formattedTitle}`,
-      `**Opening greeting:**\n${formattedGreeting}`,
-      `**Story setting:**\n${formattedScenario}`,
+      `**${t('onboarding.steps.persona.openingGreeting')}:**\n${formattedGreeting}`,
+      `**${t('onboarding.steps.persona.storySetting')}:**\n${formattedScenario}`,
     ].join('\n\n')
 
     await navigator.clipboard.writeText(textToCopy)
@@ -793,10 +803,10 @@ async function copyProposal(p: StoryProposalItem, idx: number) {
     copyTimeout = setTimeout(() => {
       copiedProposalId.value = null
     }, 2000)
-    toast.success(`Copied Variation ${String(idx + 1).padStart(2, '0')} to clipboard`)
+    toast.success(t('onboarding.steps.persona.copy.success', { number: String(idx + 1).padStart(2, '0') }))
   }
   catch {
-    toast.error('Failed to copy to clipboard')
+    toast.error(t('onboarding.steps.persona.copy.failed'))
   }
 }
 
@@ -819,7 +829,7 @@ function onSelectTab(tab: PersonaTab) {
 
 function processImageFile(file: File) {
   if (!file.type.startsWith('image/')) {
-    toast.error('Please upload an image file (PNG, JPG, WebP)')
+    toast.error(t('onboarding.steps.persona.pleaseUploadAnImageFilePngJpgWebp'))
     return
   }
   const reader = new FileReader()
@@ -827,7 +837,7 @@ function processImageFile(file: File) {
     if (typeof reader.result === 'string') {
       customAvatar.value = reader.result
       syncCreatorDraft()
-      toast.success('Avatar image uploaded!')
+      toast.success(t('onboarding.steps.persona.avatarImageUploaded'))
     }
   }
   reader.readAsDataURL(file)
@@ -856,7 +866,7 @@ function removeAvatarImage() {
     avatarFileInput.value.value = ''
   }
   syncCreatorDraft()
-  toast.info('Avatar image removed')
+  toast.info(t('onboarding.steps.persona.avatarImageRemoved'))
 }
 
 function resetIdentitySection() {
@@ -869,7 +879,7 @@ function resetIdentitySection() {
   customTags.value = []
   newTagInput.value = ''
   syncCreatorDraft()
-  toast.info('Identity fields, tags, and avatar reset.')
+  toast.info(t('onboarding.steps.persona.identityFieldsTagsAndAvatarReset'))
 }
 
 const canResetIdentity = computed(() => {
@@ -901,7 +911,7 @@ function removeTag(tag: string) {
 
 async function runBlipAutoTag() {
   if (!customAvatar.value) {
-    toast.error('Please upload an avatar image first')
+    toast.error(t('onboarding.steps.persona.pleaseUploadAnAvatarImageFirst'))
     return
   }
   isTaggingImage.value = true
@@ -924,7 +934,7 @@ async function runBlipAutoTag() {
           if (!customTags.value.includes(t))
             customTags.value.push(t)
         }
-        toast.success('Extracted visual tags!')
+        toast.success(t('onboarding.steps.persona.extractedVisualTags'))
         syncCreatorDraft()
         return
       }
@@ -934,7 +944,7 @@ async function runBlipAutoTag() {
       if (!customTags.value.includes(t))
         customTags.value.push(t)
     }
-    toast.info('Added recommended tags for this character.')
+    toast.info(t('onboarding.steps.persona.addedRecommendedTagsForThisCharacter'))
     syncCreatorDraft()
   }
   catch (err: any) {
@@ -944,7 +954,7 @@ async function runBlipAutoTag() {
       if (!customTags.value.includes(t))
         customTags.value.push(t)
     }
-    toast.info('Added recommended tags.')
+    toast.info(t('onboarding.steps.persona.addedRecommendedTags'))
     syncCreatorDraft()
   }
   finally {
@@ -982,7 +992,7 @@ function selectCatalogCharacter(char: any) {
     activeProposalId.value = '1'
   }
   syncCreatorDraft()
-  toast.success(`Selected ${char.name} from catalog!`)
+  toast.success(t('onboarding.steps.persona.selectedValueFromCatalog', { name: char.name }))
 }
 
 const TROPE_SUGGESTION_IDEAS: Record<string, string[]> = {
@@ -1096,11 +1106,11 @@ async function generateStoryIdeas() {
 
     activeProposalId.value = proposals.value[0].id
     syncCreatorDraft()
-    toast.success('Generated 3 fresh scenario proposals!')
+    toast.success(t('onboarding.steps.persona.generated3FreshScenarioProposals'))
   }
   catch (e: any) {
     console.error('[CharacterCreator] Story generation error:', e)
-    toast.error('Could not reach AI model. Loaded tailored creative proposals!')
+    toast.error(t('onboarding.steps.persona.couldNotReachAiModelLoadedTailoredCreativeProposals'))
     proposals.value = createDefaultProposals(customName.value, selectedTropeId.value)
     activeProposalId.value = proposals.value[0].id
     syncCreatorDraft()
@@ -1156,41 +1166,41 @@ const vesselPreviewUrl = computed(() => {
 
 function useVesselPreviewAsAvatar() {
   if (!vesselPreviewUrl.value) {
-    toast.error('No preview image available for current vessel')
+    toast.error(t('onboarding.steps.persona.noPreviewImageAvailableForCurrentVessel'))
     return
   }
   customAvatar.value = vesselPreviewUrl.value
   syncCreatorDraft()
-  toast.success(`Applied preview image from ${vesselName.value}!`)
+  toast.success(t('onboarding.steps.persona.appliedPreviewImageFromValue', { vesselName: vesselName.value }))
 }
 
 const activePersonaLabel = computed(() => {
   if (activeTab.value === 'creator' || draft.state.personaSource === 'creator') {
-    return `${customName.value || 'Custom Companion'} (AI Character Creator)`
+    return t('onboarding.steps.persona.selection.creator', { name: customName.value || t('onboarding.steps.persona.selection.customCompanion') })
   }
   if (draft.state.personaSource === 'import' && importedName.value) {
-    return `${importedName.value} (Imported)`
+    return t('onboarding.steps.persona.selection.imported', { name: importedName.value })
   }
   const id = draft.state.personaCardId || 'default'
   const preset = STARTER_CHARACTERS[id]
-  return preset ? `${preset.name} (${preset.tag})` : 'ReLU'
+  return preset ? t('onboarding.steps.persona.presets.displayName', { value0: preset.name, value1: t(`onboarding.steps.persona.presets.${id}.tag`) }) : 'ReLU'
 })
 
 const nextButtonText = computed(() => {
   if (activeTab.value === 'creator' || draft.state.personaSource === 'creator') {
-    return 'Create & continue'
+    return t('onboarding.steps.persona.createContinue')
   }
   if (activeTab.value === 'presets') {
-    return 'Continue'
+    return t('onboarding.shell.next')
   }
-  return 'Next: Hearing (STT)'
+  return t('onboarding.steps.persona.messages.nextHearingStt')
 })
 
 function handleNextStep() {
   if (activeTab.value === 'creator' || draft.state.personaSource === 'creator') {
     syncCreatorDraft()
     const name = customName.value.trim() || 'Companion'
-    toast.success(`${name}'s soul bound!`)
+    toast.success(t('onboarding.steps.persona.valueSSoulBound', { name }))
   }
   props.onNext()
 }
@@ -1258,12 +1268,12 @@ onBeforeUnmount(() => {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Character Soul & Persona
+            {{ t('onboarding.steps.persona.title') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Give your character a name, a look, and a story direction. Then choose the version that feels right."
+          :message="t('onboarding.steps.persona.assistantMessage')"
           step-key="persona"
           sticker-id="airi-celebrate"
           tone="primary"
@@ -1291,15 +1301,15 @@ onBeforeUnmount(() => {
           @click="onSelectTab('creator')"
         >
           <div :class="['i-solar:magic-stick-3-bold text-sm text-primary-500']" />
-          <span>AI Character Creator</span>
+          <span>{{ t('onboarding.steps.persona.aiCharacterCreator') }}</span>
           <span :class="['px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-200/80 dark:bg-white/10 text-neutral-600 dark:text-neutral-300']">
-            Recommended
+            {{ t('onboarding.steps.persona.hubSources.datacat.badge') }}
           </span>
           <span
             v-if="draft.state.personaSource === 'creator'"
             :class="['px-1.5 py-0.2 rounded bg-primary-500/20 text-primary-600 dark:text-primary-400 text-[10px] font-bold']"
           >
-            Active
+            {{ t('onboarding.steps.persona.source.active') }}
           </span>
         </button>
 
@@ -1315,12 +1325,12 @@ onBeforeUnmount(() => {
           @click="onSelectTab('presets')"
         >
           <div :class="['i-solar:stars-minimalistic-bold text-sm text-primary-500']" />
-          <span>Starter Cards ({{ starterPresets.length }})</span>
+          <span>{{ t('onboarding.steps.persona.presets.cardCount', { length: starterPresets.length }) }}</span>
           <span
             v-if="draft.state.personaSource === 'preset'"
             :class="['px-1.5 py-0.2 rounded bg-primary-500/20 text-primary-600 dark:text-primary-400 text-[10px] font-bold']"
           >
-            Active
+            {{ t('onboarding.steps.persona.source.active') }}
           </span>
         </button>
 
@@ -1336,12 +1346,12 @@ onBeforeUnmount(() => {
           @click="onSelectTab('hub')"
         >
           <div :class="['i-solar:users-group-two-rounded-bold text-sm text-primary-500']" />
-          <span>Community & Import</span>
+          <span>{{ t('onboarding.steps.persona.communityImport') }}</span>
           <span
             v-if="draft.state.personaSource === 'import' && importedName"
             :class="['px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold']"
           >
-            Active
+            {{ t('onboarding.steps.persona.source.active') }}
           </span>
         </button>
       </div>
@@ -1366,10 +1376,10 @@ onBeforeUnmount(() => {
           <!-- Catalog Header -->
           <div>
             <h2 :class="['text-base font-bold text-neutral-900 dark:text-white']">
-              Choose a starting personality
+              {{ t('onboarding.steps.persona.choosePersonality') }}
             </h2>
             <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-              Every character can be customized.
+              {{ t('onboarding.steps.persona.customizable') }}
             </p>
           </div>
 
@@ -1399,11 +1409,11 @@ onBeforeUnmount(() => {
                     {{ preset.name }}
                   </span>
                   <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 truncate max-w-[130px]']">
-                    {{ preset.tag }}
+                    {{ preset.displayTag }}
                   </span>
                 </div>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 leading-relaxed']">
-                  {{ STARTER_CARD_SUMMARIES[preset.id] || preset.desc }}
+                  {{ preset.displaySummary || preset.displayDesc }}
                 </p>
               </div>
 
@@ -1439,7 +1449,7 @@ onBeforeUnmount(() => {
             <!-- Personality Preview Heading -->
             <div>
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white']">
-                Personality preview
+                {{ t('onboarding.steps.persona.personalityPreview') }}
               </h2>
             </div>
 
@@ -1454,7 +1464,7 @@ onBeforeUnmount(() => {
                     {{ selectedPreset?.name }}
                   </span>
                   <span :class="['px-2 py-0.5 rounded-md text-xs font-semibold bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 truncate']">
-                    {{ selectedPreset?.tag }}
+                    {{ selectedPreset?.displayTag }}
                   </span>
                 </div>
               </div>
@@ -1462,13 +1472,13 @@ onBeforeUnmount(() => {
 
             <!-- Full Description -->
             <p :class="['text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed']">
-              {{ selectedPreset?.desc }}
+              {{ selectedPreset?.displayDesc }}
             </p>
 
             <!-- A First Hello Section -->
             <div :class="['flex flex-col gap-2 pt-1']">
               <h3 :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                A first hello
+                {{ t('onboarding.steps.persona.firstHello') }}
               </h3>
               <div :class="['p-3 rounded-xl bg-neutral-100/70 dark:bg-black/30 border border-neutral-200/50 dark:border-white/5 flex items-start gap-2.5']">
                 <div :class="['i-solar:chat-round-dots-bold text-neutral-400 mt-0.5 text-base shrink-0']" />
@@ -1484,7 +1494,7 @@ onBeforeUnmount(() => {
             <!-- Helper Note -->
             <div :class="['flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400']">
               <div :class="['i-solar:info-circle-bold text-neutral-400 text-sm shrink-0']" />
-              <span>This personality works with your selected avatar.</span>
+              <span>{{ t('onboarding.steps.persona.personalityAvatarHint') }}</span>
             </div>
 
             <!-- View Character Details Action -->
@@ -1500,7 +1510,7 @@ onBeforeUnmount(() => {
                 >
                   <div :class="['flex items-center gap-2']">
                     <div :class="['i-solar:document-text-bold-duotone text-sm text-neutral-400']" />
-                    <span>View character details</span>
+                    <span>{{ t('onboarding.steps.persona.viewDetails') }}</span>
                   </div>
                   <div :class="['i-solar:alt-arrow-right-line-duotone text-sm text-neutral-400']" />
                 </button>
@@ -1514,15 +1524,15 @@ onBeforeUnmount(() => {
                   <div :class="['flex items-center gap-2 mb-2']">
                     <span class="text-base">{{ selectedPreset?.emoji }}</span>
                     <span :class="['font-bold text-neutral-900 dark:text-white']">{{ selectedPreset?.name }}</span>
-                    <span :class="['px-2 py-0.2 rounded-full text-[9px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300']">{{ selectedPreset?.tag }}</span>
+                    <span :class="['px-2 py-0.2 rounded-full text-[9px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300']">{{ selectedPreset?.displayTag }}</span>
                   </div>
                   <div :class="['space-y-2 text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed']">
                     <div>
-                      <span :class="['font-bold text-neutral-800 dark:text-neutral-200']">Personality: </span>
+                      <span :class="['font-bold text-neutral-800 dark:text-neutral-200']">{{ t('onboarding.steps.persona.personality') }} </span>
                       <span>{{ formatField(selectedPreset?.personality) }}</span>
                     </div>
                     <div>
-                      <span :class="['font-bold text-neutral-800 dark:text-neutral-200']">Scenario: </span>
+                      <span :class="['font-bold text-neutral-800 dark:text-neutral-200']">{{ t('onboarding.steps.persona.scenario') }} </span>
                       <span>{{ formatField(selectedPreset?.scenario) }}</span>
                     </div>
                   </div>
@@ -1542,8 +1552,11 @@ onBeforeUnmount(() => {
         <div :class="['p-3.5 rounded-2xl border border-primary-500/30 bg-primary-500/10 backdrop-blur-md flex items-start gap-3']">
           <div :class="['i-solar:info-circle-bold-duotone text-lg text-primary-500 flex-shrink-0 mt-0.5']" />
           <div :class="['text-xs leading-relaxed text-neutral-700 dark:text-neutral-200']">
-            <span :class="['font-bold text-neutral-900 dark:text-white']">Automatic Card Interceptor: </span>
-            Browse any repository below and click to download any SillyTavern V2 character PNG or JSON card. AIRI automatically captures the download stream, parses the embedded metadata, and stages your companion.
+            <i18n-t scope="global" keypath="onboarding.steps.persona.importHelp" tag="span">
+              <template #emphasis>
+                <span :class="['font-bold text-neutral-900 dark:text-white']">{{ t('onboarding.steps.persona.automaticCardInterceptor') }}</span>
+              </template>
+            </i18n-t>
           </div>
         </div>
 
@@ -1567,7 +1580,7 @@ onBeforeUnmount(() => {
                   v-if="source.badge"
                   :class="['px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary-500/15 text-primary-600 dark:text-primary-400']"
                 >
-                  {{ source.badge }}
+                  {{ t(source.badgeKey) }}
                 </span>
               </div>
               <div :class="['flex items-center gap-1 text-[10px] text-amber-500 font-bold']">
@@ -1576,7 +1589,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight']">
-              {{ source.note }}
+              {{ t(source.noteKey) }}
             </p>
           </div>
         </div>
@@ -1591,10 +1604,10 @@ onBeforeUnmount(() => {
         >
           <div :class="['i-solar:cloud-upload-bold-duotone text-2xl text-neutral-400']" />
           <span :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">
-            Drop a SillyTavern character card or click to browse
+            {{ t('onboarding.steps.persona.dropASillytavernCharacterCardOrClickToBrowse') }}
           </span>
           <span :class="['text-[10px] text-neutral-400']">
-            Supports PNG character cards with embedded tEXt chara chunks or CCv2/CCv3 JSON files.
+            {{ t('onboarding.steps.persona.supportsPngCharacterCardsWithEmbeddedTextCharaChunksOrCcv2Ccv3Json') }}
           </span>
           <input
             type="file"
@@ -1625,11 +1638,11 @@ onBeforeUnmount(() => {
               <div :class="['text-xs font-bold text-neutral-900 dark:text-white truncate flex items-center gap-1.5']">
                 <span>{{ importedName }}</span>
                 <span :class="['px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold']">
-                  Staged Custom Card
+                  {{ t('onboarding.steps.persona.stagedCustomCard') }}
                 </span>
               </div>
               <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                Active in onboarding draft — ready to synthesize onto your companion.
+                {{ t('onboarding.steps.persona.activeInOnboardingDraftReadyToSynthesizeOntoYourCompanion') }}
               </p>
             </div>
           </div>
@@ -1638,7 +1651,7 @@ onBeforeUnmount(() => {
             :class="['text-xs text-neutral-400 hover:text-red-500 underline cursor-pointer flex-shrink-0 transition-colors']"
             @click="clearImported"
           >
-            Clear / Revert
+            {{ t('onboarding.steps.persona.clearRevert') }}
           </button>
         </div>
       </div>
@@ -1663,7 +1676,7 @@ onBeforeUnmount(() => {
           <!-- Strip Header -->
           <div :class="['flex items-center justify-between gap-2']">
             <h2 :class="['text-sm sm:text-base font-bold text-neutral-900 dark:text-white']">
-              Character inspiration
+              {{ t('onboarding.steps.persona.characterInspiration') }}
             </h2>
 
             <button
@@ -1673,11 +1686,11 @@ onBeforeUnmount(() => {
                 'text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1.5 transition-colors',
                 canResetIdentity ? 'cursor-pointer active:scale-97' : 'opacity-40 cursor-not-allowed',
               ]"
-              title="Reset avatar, tags, and identity fields"
+              :title="t('onboarding.steps.persona.resetAvatarTagsAndIdentityFields')"
               @click="resetIdentitySection"
             >
               <div :class="['i-solar:restart-bold h-3.5 w-3.5']" />
-              <span>Reset fields</span>
+              <span>{{ t('onboarding.steps.persona.resetFields') }}</span>
             </button>
           </div>
 
@@ -1700,12 +1713,12 @@ onBeforeUnmount(() => {
                 <img
                   v-if="customAvatar"
                   :src="customAvatar"
-                  alt="Avatar Preview"
+                  :alt="t('onboarding.steps.persona.avatarPreview')"
                   class="h-full w-full object-cover"
                 >
                 <div v-else :class="['flex flex-col items-center justify-center p-1 text-center leading-tight']">
                   <div :class="['i-solar:gallery-wide-bold text-neutral-400 text-xl']" />
-                  <span :class="['text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 mt-1']">Upload</span>
+                  <span :class="['text-[10px] font-semibold text-neutral-600 dark:text-neutral-300 mt-1']">{{ t('onboarding.steps.persona.upload') }}</span>
                 </div>
 
                 <!-- Hover Overlay to Change or Remove -->
@@ -1719,7 +1732,7 @@ onBeforeUnmount(() => {
                     @click.stop="triggerAvatarFilePicker"
                   >
                     <div :class="['i-solar:restart-bold h-3 w-3']" />
-                    <span>Change</span>
+                    <span>{{ t('onboarding.steps.persona.change') }}</span>
                   </button>
                   <button
                     type="button"
@@ -1727,7 +1740,7 @@ onBeforeUnmount(() => {
                     @click.stop="removeAvatarImage"
                   >
                     <div :class="['i-solar:trash-bin-trash-bold h-3 w-3']" />
-                    <span>Remove</span>
+                    <span>{{ t('onboarding.steps.persona.remove') }}</span>
                   </button>
                 </div>
 
@@ -1746,12 +1759,12 @@ onBeforeUnmount(() => {
                 <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2']">
                   <div>
                     <label :class="['text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block mb-1']">
-                      Character name <span class="text-primary-500">*</span>
+                      {{ t('onboarding.steps.persona.characterName') }} <span class="text-primary-500">*</span>
                     </label>
                     <input
                       v-model="customName"
                       type="text"
-                      placeholder="e.g. Ririchiyo"
+                      :placeholder="t('onboarding.steps.persona.namePlaceholder')"
                       :class="['w-full px-3 py-1.5 rounded-xl bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-hidden focus:border-primary-500']"
                       @input="onCustomNameInput"
                     >
@@ -1759,12 +1772,12 @@ onBeforeUnmount(() => {
 
                   <div>
                     <label :class="['text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block mb-1']">
-                      Series / origin
+                      {{ t('onboarding.steps.persona.seriesOrigin') }}
                     </label>
                     <input
                       v-model="customSeries"
                       type="text"
-                      placeholder="e.g. Inu x Boku SS"
+                      :placeholder="t('onboarding.steps.persona.seriesPlaceholder')"
                       :class="['w-full px-3 py-1.5 rounded-xl bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-hidden focus:border-primary-500']"
                       @input="syncCreatorDraft"
                     >
@@ -1783,7 +1796,7 @@ onBeforeUnmount(() => {
                     @click="triggerAvatarFilePicker"
                   >
                     <div :class="['i-solar:upload-track-bold h-3.5 w-3.5 text-primary-500']" />
-                    <span>Upload image</span>
+                    <span>{{ t('onboarding.steps.persona.uploadImage') }}</span>
                   </button>
 
                   <!-- Browse Catalog -->
@@ -1798,7 +1811,7 @@ onBeforeUnmount(() => {
                     @click="isCatalogOpen = !isCatalogOpen"
                   >
                     <div :class="['i-solar:widget-add-bold h-3.5 w-3.5 text-primary-500']" />
-                    <span>Browse catalog</span>
+                    <span>{{ t('onboarding.steps.persona.browseCatalog') }}</span>
                   </button>
 
                   <!-- From Vessel -->
@@ -1815,14 +1828,14 @@ onBeforeUnmount(() => {
                     @click="useVesselPreviewAsAvatar"
                   >
                     <div :class="['i-solar:user-bold h-3.5 w-3.5 text-primary-500']" />
-                    <span>From vessel</span>
+                    <span>{{ t('onboarding.steps.persona.fromVessel') }}</span>
                   </button>
                 </div>
 
                 <!-- Image Helper Note -->
                 <div :class="['flex items-center gap-1.5 text-[10px] text-neutral-400']">
                   <div :class="['i-solar:info-circle-bold text-xs shrink-0']" />
-                  <span>Image used for traits; it isn’t saved to the character card.</span>
+                  <span>{{ t('onboarding.steps.persona.imageTraitsHint') }}</span>
                 </div>
               </div>
             </div>
@@ -1831,7 +1844,7 @@ onBeforeUnmount(() => {
             <div :class="['w-full flex flex-col gap-1.5 lg:border-l lg:border-neutral-200/80 lg:dark:border-neutral-800/80 lg:pl-5']">
               <div :class="['flex items-center justify-between mb-0.5']">
                 <label :class="['text-xs font-bold text-neutral-700 dark:text-neutral-300']">
-                  Visual traits
+                  {{ t('onboarding.steps.persona.visualTraits') }}
                 </label>
                 <button
                   type="button"
@@ -1842,7 +1855,7 @@ onBeforeUnmount(() => {
                   @click="runBlipAutoTag"
                 >
                   <div :class="['i-solar:magic-stick-3-bold-duotone h-3.5 w-3.5', isTaggingImage ? 'animate-spin' : '']" />
-                  <span>{{ isTaggingImage ? 'Suggesting tags…' : 'Suggest tags' }}</span>
+                  <span>{{ isTaggingImage ? t('onboarding.steps.persona.suggestingTags') : t('onboarding.steps.persona.suggestTags') }}</span>
                 </button>
               </div>
 
@@ -1870,7 +1883,7 @@ onBeforeUnmount(() => {
                   <input
                     v-model="newTagInput"
                     type="text"
-                    placeholder="+ Add trait..."
+                    :placeholder="t('onboarding.steps.persona.traitPlaceholder')"
                     :class="['bg-transparent text-xs text-neutral-800 dark:text-neutral-200 outline-hidden w-full px-1.5 py-0.5']"
                     @keydown.enter.prevent="addTag"
                     @keydown.comma.prevent="addTag"
@@ -1895,14 +1908,14 @@ onBeforeUnmount(() => {
                 <input
                   v-model="catalogSearch"
                   type="text"
-                  placeholder="Search characters by name, series, or tags..."
+                  :placeholder="t('onboarding.steps.persona.searchCharactersByNameSeriesOrTags')"
                   :class="['w-full pl-8 pr-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white focus:outline-hidden focus:border-primary-500']"
                 >
               </div>
               <button
                 type="button"
                 :class="['p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer']"
-                title="Close catalog"
+                :title="t('onboarding.steps.persona.closeCatalog')"
                 @click="isCatalogOpen = false"
               >
                 <div :class="['i-solar:close-circle-bold h-4 w-4']" />
@@ -1933,7 +1946,7 @@ onBeforeUnmount(() => {
                     {{ char.name }}
                   </div>
                   <div :class="['text-[10px] text-neutral-400 truncate']">
-                    {{ wizardStore.copyrights[char.copyrightIndex] || 'Anime' }}
+                    {{ wizardStore.copyrights[char.copyrightIndex] || t('onboarding.steps.persona.anime') }}
                   </div>
                 </div>
               </button>
@@ -1959,10 +1972,10 @@ onBeforeUnmount(() => {
             <div :class="['flex flex-col gap-3']">
               <div>
                 <h2 :class="['text-base font-bold text-neutral-900 dark:text-white']">
-                  Story direction
+                  {{ t('onboarding.steps.persona.storyDirection') }}
                 </h2>
                 <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                  Choose a starting point—or write your own.
+                  {{ t('onboarding.steps.persona.storyDirectionHint') }}
                 </p>
               </div>
 
@@ -1981,7 +1994,7 @@ onBeforeUnmount(() => {
                   @click="selectTrope(trope)"
                 >
                   <span class="shrink-0 text-sm">{{ trope.icon }}</span>
-                  <span class="truncate">{{ trope.label }}</span>
+                  <span class="truncate">{{ t(trope.labelKey) }}</span>
                 </button>
               </div>
             </div>
@@ -1989,12 +2002,12 @@ onBeforeUnmount(() => {
             <!-- Bottom Section: Scenario Guidance Textarea + Suggest Action -->
             <div :class="['flex flex-col gap-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60']">
               <label :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                Your story idea <span :class="['text-[11px] font-normal text-neutral-400']">(Optional)</span>
+                {{ t('onboarding.steps.persona.storyIdea') }} <span :class="['text-[11px] font-normal text-neutral-400']">{{ t('onboarding.steps.persona.optional') }}</span>
               </label>
               <textarea
                 v-model="guidancePrompt"
                 rows="3"
-                placeholder="A reserved companion who shares quiet evenings at your desk, gradually revealing a mischievous sense of humor."
+                :placeholder="t('onboarding.steps.persona.storyIdeaPlaceholder')"
                 :class="[
                   'w-full p-2.5 rounded-xl text-xs text-neutral-900 dark:text-white resize-none focus:outline-hidden focus:border-purple-500',
                   'bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700',
@@ -2010,10 +2023,10 @@ onBeforeUnmount(() => {
                   @click="suggestStoryIdea"
                 >
                   <div :class="['i-solar:magic-stick-3-bold-duotone text-xs text-primary-500']" />
-                  <span>Suggest a story idea</span>
+                  <span>{{ t('onboarding.steps.persona.suggestStoryIdea') }}</span>
                 </button>
                 <span :class="['text-[11px] text-neutral-400']">
-                  Fills the idea above. Edit it or write your own.
+                  {{ t('onboarding.steps.persona.suggestStoryHint') }}
                 </span>
               </div>
             </div>
@@ -2036,10 +2049,10 @@ onBeforeUnmount(() => {
               <div :class="['flex items-center justify-between']">
                 <div>
                   <h2 :class="['text-base font-bold text-neutral-900 dark:text-white']">
-                    Choose a variation
+                    {{ t('onboarding.steps.persona.chooseVariation') }}
                   </h2>
                   <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                    Pick a story, then refine its greeting and setting.
+                    {{ t('onboarding.steps.persona.chooseVariationHint') }}
                   </p>
                 </div>
                 <button
@@ -2049,11 +2062,11 @@ onBeforeUnmount(() => {
                   :class="[
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 transition-all cursor-pointer disabled:opacity-50',
                   ]"
-                  title="Generate fresh variations with AI"
+                  :title="t('onboarding.steps.persona.generateVariationsTitle')"
                   @click="generateStoryIdeas"
                 >
                   <div :class="['i-solar:magic-stick-3-bold-duotone h-3.5 w-3.5', isGeneratingStory ? 'animate-spin' : '']" />
-                  <span>{{ isGeneratingStory ? 'Dreaming…' : 'Generate with AI' }}</span>
+                  <span>{{ isGeneratingStory ? t('onboarding.steps.persona.dreaming') : t('onboarding.steps.persona.generateWithAi') }}</span>
                 </button>
               </div>
 
@@ -2061,10 +2074,10 @@ onBeforeUnmount(() => {
               <div v-if="isGeneratingStory" :class="['py-8 flex flex-col items-center justify-center text-center gap-2']">
                 <div :class="['i-solar:magic-stick-3-bold-duotone h-8 w-8 text-primary-500 animate-spin']" />
                 <p :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">
-                  Dreaming up story ideas with {{ activeBrainModelName }}…
+                  {{ t('onboarding.steps.persona.dreamingWithBrain', { model: activeBrainModelName }) }}
                 </p>
                 <p :class="['text-[11px] text-neutral-400 max-w-xs']">
-                  Synthesizing scene proposals, greetings, and world dynamics.
+                  {{ t('onboarding.steps.persona.synthesizingStory') }}
                 </p>
               </div>
 
@@ -2072,13 +2085,13 @@ onBeforeUnmount(() => {
               <div v-else-if="proposals.length === 0" :class="['py-8 flex flex-col items-center justify-center text-center gap-2.5']">
                 <div :class="['i-solar:clapperboard-play-bold-duotone h-8 w-8 text-neutral-400']" />
                 <p :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200']">
-                  No story variations yet
+                  {{ t('onboarding.steps.persona.noVariations') }}
                 </p>
                 <p :class="['text-[11px] text-neutral-400 max-w-xs']">
-                  Pick a story direction on the left or generate tailored variations for {{ customName || 'your companion' }}.
+                  {{ t('onboarding.steps.persona.variationEmptyHint', { name: customName || t('onboarding.steps.persona.yourCompanionFallback') }) }}
                 </p>
                 <Button variant="primary" size="sm" @click="generateStoryIdeas">
-                  <span>🪄 Generate Story Variations</span>
+                  <span>{{ t('onboarding.steps.persona.generateVariations') }}</span>
                 </Button>
               </div>
 
@@ -2110,7 +2123,7 @@ onBeforeUnmount(() => {
                       </span>
                       <button
                         type="button"
-                        :title="`Copy variation ${idx + 1} to clipboard`"
+                        :title="t('onboarding.steps.persona.copy.tooltip', { number: idx + 1 })"
                         :class="[
                           'p-1 -mr-1 -mt-1 rounded-md transition-colors cursor-pointer flex items-center justify-center shrink-0',
                           'text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50',
@@ -2134,7 +2147,7 @@ onBeforeUnmount(() => {
 
                 <!-- Subtle Helper Text Below Cards -->
                 <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500']">
-                  Copy a variation's title, greeting, and setting with the copy button.
+                  {{ t('onboarding.steps.persona.copy.hint') }}
                 </p>
               </div>
             </div>
@@ -2148,7 +2161,7 @@ onBeforeUnmount(() => {
                 </h3>
                 <div :class="['flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0']">
                   <div :class="['i-solar:check-circle-bold-duotone h-3.5 w-3.5']" />
-                  <span>Saved</span>
+                  <span>{{ t('onboarding.steps.persona.saved') }}</span>
                 </div>
               </div>
 
@@ -2156,7 +2169,7 @@ onBeforeUnmount(() => {
               <div :class="['flex flex-col gap-1.5']">
                 <div :class="['flex items-center gap-2 flex-wrap']">
                   <label :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5']">
-                    <span>Opening greeting</span>
+                    <span>{{ t('onboarding.steps.persona.openingGreeting') }}</span>
                     <span
                       v-if="activeProposalActorName"
                       :class="[
@@ -2172,7 +2185,7 @@ onBeforeUnmount(() => {
                 <textarea
                   v-model="activeProposalGreetingDisplay"
                   rows="4"
-                  placeholder="First words spoken by the companion..."
+                  :placeholder="t('onboarding.steps.persona.firstWordsSpokenByTheCompanion')"
                   :class="[
                     'w-full p-2.5 sm:p-3 rounded-xl text-xs text-neutral-900 dark:text-white resize-none focus:outline-hidden focus:border-primary-500 leading-relaxed',
                     'bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700',
@@ -2183,12 +2196,12 @@ onBeforeUnmount(() => {
               <!-- Field 2: Story Setting -->
               <div :class="['flex flex-col gap-1.5']">
                 <label :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  Story setting
+                  {{ t('onboarding.steps.persona.storySetting') }}
                 </label>
                 <textarea
                   v-model="activeProposal.scenario"
                   rows="4"
-                  placeholder="Rules of the world and companion dynamic..."
+                  :placeholder="t('onboarding.steps.persona.rulesOfTheWorldAndCompanionDynamic')"
                   :class="[
                     'w-full p-2.5 sm:p-3 rounded-xl text-xs text-neutral-900 dark:text-white resize-none focus:outline-hidden focus:border-primary-500 leading-relaxed',
                     'bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700',
@@ -2228,16 +2241,24 @@ onBeforeUnmount(() => {
 
       <!-- Center Status Label -->
       <div v-if="activeTab === 'creator'" :class="['text-xs text-neutral-400 font-medium']">
-        Character: <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ customName || 'Companion' }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.persona.characterSummary" tag="span">
+          <template #name>
+            <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ customName || t('onboarding.steps.persona.companionFallback') }}</span>
+          </template>
+        </i18n-t>
       </div>
       <div v-else-if="activeTab === 'presets'" :class="['text-xs text-neutral-400 font-medium']">
-        Selected personality: <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ selectedPreset.name }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.persona.personalitySummaryLine" tag="span">
+          <template #name>
+            <span :class="['text-neutral-800 dark:text-neutral-100 font-semibold']">{{ selectedPreset.name }}</span>
+          </template>
+        </i18n-t>
       </div>
       <div v-else :class="['text-[11px] text-neutral-400 font-medium truncate max-w-sm hidden sm:block text-center']">
-        <span>Soul: </span>
+        <span>{{ t('onboarding.steps.persona.soul') }} </span>
         <span :class="['text-neutral-800 dark:text-neutral-200 font-bold']">{{ activePersonaLabel }}</span>
         <span :class="['mx-1.5 text-neutral-300 dark:text-neutral-600']">•</span>
-        <span>Body: </span>
+        <span>{{ t('onboarding.steps.persona.body') }} </span>
         <span :class="['text-neutral-800 dark:text-neutral-200 font-bold']">{{ vesselName }}</span>
       </div>
 
@@ -2297,16 +2318,16 @@ onBeforeUnmount(() => {
             <div class="relative z-20 flex items-center justify-between border-b border-neutral-200 bg-white/95 p-4 backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95">
               <div class="flex items-center gap-3">
                 <h3 class="text-lg text-neutral-800 font-bold dark:text-neutral-200">
-                  Browse {{ activeBrowserSource?.name }}
+                  {{ t('onboarding.steps.persona.browser.browse', { name: activeBrowserSource?.name }) }}
                 </h3>
                 <span class="rounded-full bg-primary-500/10 px-2.5 py-0.5 text-xs text-primary-600 font-semibold dark:text-primary-400">
-                  Card Interceptor Active
+                  {{ t('onboarding.steps.persona.cardInterceptorActive') }}
                 </span>
               </div>
               <button
                 type="button"
                 class="relative z-30 flex cursor-pointer items-center justify-center rounded-xl p-2 text-neutral-400 transition-colors active:scale-95 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                title="Close Browser"
+                :title="t('onboarding.steps.persona.closeBrowser')"
                 @click.stop="closeWebview"
               >
                 <div class="i-solar:close-square-bold-duotone h-6 w-6" />

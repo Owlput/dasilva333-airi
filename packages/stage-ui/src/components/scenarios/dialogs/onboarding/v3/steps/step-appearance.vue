@@ -49,53 +49,57 @@ function selectLanguage(code: string) {
 const currentLanguage = computed(() => settingsGeneral.language || locale.value || 'en')
 const selectedLanguageName = computed(() => {
   const found = languages.find(item => item.code === currentLanguage.value)
-  return found?.name || 'English'
+  return t(`onboarding.steps.appearance.languages.${found?.code || 'en'}`)
 })
 
 // 24-color spectrum presets (grouped in 4 rows of 6) identical to Settings
 const colorSpectrumRows = [
   {
+    id: 'warm',
     group: 'Warm & Fire',
     swatches: [
-      { name: 'Crimson', color: '#E11D48' },
-      { name: 'Coral', color: '#F43F5E' },
-      { name: 'Tangerine', color: '#EA580C' },
-      { name: 'Marigold', color: '#F59E0B' },
-      { name: 'Amber', color: '#EAB308' },
-      { name: 'Lemon', color: '#84CC16' },
+      { id: 'crimson', name: 'Crimson', color: '#E11D48' },
+      { id: 'coral', name: 'Coral', color: '#F43F5E' },
+      { id: 'tangerine', name: 'Tangerine', color: '#EA580C' },
+      { id: 'marigold', name: 'Marigold', color: '#F59E0B' },
+      { id: 'amber', name: 'Amber', color: '#EAB308' },
+      { id: 'lemon', name: 'Lemon', color: '#84CC16' },
     ],
   },
   {
+    id: 'earth',
     group: 'Earth & Flora',
     swatches: [
-      { name: 'Lime', color: '#65A30D' },
-      { name: 'Emerald', color: '#16A34A' },
-      { name: 'Mint', color: '#10B981' },
-      { name: 'Jade', color: '#059669' },
-      { name: 'Viridian', color: '#0D9488' },
-      { name: 'Teal', color: '#0891B2' },
+      { id: 'lime', name: 'Lime', color: '#65A30D' },
+      { id: 'emerald', name: 'Emerald', color: '#16A34A' },
+      { id: 'mint', name: 'Mint', color: '#10B981' },
+      { id: 'jade', name: 'Jade', color: '#059669' },
+      { id: 'viridian', name: 'Viridian', color: '#0D9488' },
+      { id: 'teal', name: 'Teal', color: '#0891B2' },
     ],
   },
   {
+    id: 'ocean',
     group: 'Ocean & Sky',
     swatches: [
-      { name: 'Turquoise', color: '#06B6D4' },
-      { name: 'Cyan', color: undefined },
-      { name: 'Cerulean', color: '#2563EB' },
-      { name: 'Cobalt', color: '#3B82F6' },
-      { name: 'Sapphire', color: '#4F46E5' },
-      { name: 'Denim', color: '#6366F1' },
+      { id: 'turquoise', name: 'Turquoise', color: '#06B6D4' },
+      { id: 'cyan-default', name: 'Cyan', color: undefined },
+      { id: 'cerulean', name: 'Cerulean', color: '#2563EB' },
+      { id: 'cobalt', name: 'Cobalt', color: '#3B82F6' },
+      { id: 'sapphire', name: 'Sapphire', color: '#4F46E5' },
+      { id: 'denim', name: 'Denim', color: '#6366F1' },
     ],
   },
   {
+    id: 'royal',
     group: 'Royal & Bloom',
     swatches: [
-      { name: 'Indigo', color: '#7C3AED' },
-      { name: 'Amethyst', color: '#9333EA' },
-      { name: 'Violet', color: '#A855F7' },
-      { name: 'Fuchsia', color: '#C026D3' },
-      { name: 'Magenta', color: '#DB2777' },
-      { name: 'Rose', color: '#E11D74' },
+      { id: 'indigo', name: 'Indigo', color: '#7C3AED' },
+      { id: 'amethyst', name: 'Amethyst', color: '#9333EA' },
+      { id: 'violet', name: 'Violet', color: '#A855F7' },
+      { id: 'fuchsia', name: 'Fuchsia', color: '#C026D3' },
+      { id: 'magenta', name: 'Magenta', color: '#DB2777' },
+      { id: 'rose', name: 'Rose', color: '#E11D74' },
     ],
   },
 ]
@@ -112,11 +116,11 @@ const activeColorName = computed(() => {
   for (const row of colorSpectrumRows) {
     for (const swatch of row.swatches) {
       if (settingsTheme.isColorSelectedForPrimary(swatch.color)) {
-        return swatch.name
+        return t(`onboarding.steps.appearance.colors.${swatch.id}`)
       }
     }
   }
-  return 'Cyan'
+  return t('onboarding.steps.appearance.colors.cyan-default')
 })
 </script>
 
@@ -173,12 +177,16 @@ const activeColorName = computed(() => {
                   {{ t('onboarding.steps.appearance.languageSection.title') }}
                 </h2>
                 <p :class="['text-[11px] text-neutral-400']">
-                  Selected: <span :class="['text-primary-500 font-semibold']">{{ selectedLanguageName }}</span>
+                  <i18n-t scope="global" keypath="onboarding.steps.appearance.selectedLanguage" tag="span">
+                    <template #language>
+                      <span :class="['text-primary-500 font-semibold']">{{ selectedLanguageName }}</span>
+                    </template>
+                  </i18n-t>
                 </p>
               </div>
             </div>
             <span :class="['text-[10px] font-mono px-2 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50']">
-              {{ languages.length }} languages
+              {{ t('onboarding.steps.appearance.languageCount', { count: languages.length }) }}
             </span>
           </div>
 
@@ -219,7 +227,7 @@ const activeColorName = computed(() => {
                     {{ item.native }}
                   </div>
                   <div :class="['text-[10px] text-neutral-400 truncate']">
-                    {{ item.name }}
+                    {{ t(`onboarding.steps.appearance.languages.${item.code}`) }}
                   </div>
                 </div>
               </div>
@@ -340,7 +348,7 @@ const activeColorName = computed(() => {
                 <button
                   type="button"
                   :class="['flex items-center gap-1 text-[10px] text-neutral-400 hover:text-primary-500 font-medium transition-colors cursor-pointer']"
-                  title="Reset to Signature AIRI Cyan"
+                  :title="t('onboarding.steps.appearance.resetToSignatureAiriCyan')"
                   @click="resetColorToDefault"
                 >
                   <div :class="['i-solar:restart-linear text-xs']" />
@@ -358,14 +366,14 @@ const activeColorName = computed(() => {
                 :class="['flex items-center gap-2']"
               >
                 <span :class="['w-18 text-[10px] font-medium text-neutral-400 dark:text-neutral-500 truncate shrink-0']">
-                  {{ row.group }}
+                  {{ t(`onboarding.steps.appearance.colorGroups.${row.id}`) }}
                 </span>
                 <div :class="['grid grid-cols-6 gap-1.5 flex-1']">
                   <button
                     v-for="swatch in row.swatches"
                     :key="swatch.name"
                     type="button"
-                    :title="swatch.name"
+                    :title="t(`onboarding.steps.appearance.colors.${swatch.id}`)"
                     :class="[
                       'relative h-6 w-full rounded-lg transition-all duration-150 cursor-pointer',
                       'hover:scale-110 hover:z-10 hover:shadow-md focus:outline-none',
@@ -407,7 +415,7 @@ const activeColorName = computed(() => {
               {{ t('onboarding.steps.appearance.perDeviceToggle') }}
             </div>
             <div :class="['text-[11px] text-neutral-400 truncate']">
-              Prevents remote cloud sync from overwriting this machine's language and theme preferences.
+              {{ t('onboarding.steps.appearance.preventsRemoteCloudSyncFromOverwritingThisMachineSLanguageAndTheme') }}
             </div>
           </div>
         </div>
@@ -448,7 +456,7 @@ const activeColorName = computed(() => {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium']">
-        Next: Choose your companion style
+        {{ t('onboarding.steps.appearance.nextHint') }}
       </div>
 
       <Button

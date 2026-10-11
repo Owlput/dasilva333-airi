@@ -118,12 +118,12 @@ function appendStyle(styleTag: string) {
 }
 
 // --- Providers Configuration ---
-const providers = [
+const providers = computed(() => [
   {
     id: 'pollinations' as const,
     name: 'Pollinations AI',
-    secondary: 'Hosted service',
-    badge: '100% Free / Zero-Config',
+    secondary: t('onboarding.steps.artistry.providers.pollinations.secondary'),
+    badge: t('onboarding.steps.artistry.providers.pollinations.badge'),
     badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     desc: 'Instant cloud image generation without API keys or accounts.',
     icon: 'i-solar:magic-stick-3-bold-duotone',
@@ -131,8 +131,8 @@ const providers = [
   {
     id: 'comfyui' as const,
     name: 'ComfyUI',
-    secondary: 'Your server',
-    badge: 'Local Node',
+    secondary: t('onboarding.steps.artistry.providers.comfyui.secondary'),
+    badge: t('onboarding.steps.artistry.providers.comfyui.badge'),
     badgeColor: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
     desc: 'Execute custom workflows on localhost:8188 or WSL node.',
     icon: 'i-solar:monitor-camera-bold-duotone',
@@ -149,22 +149,22 @@ const providers = [
   {
     id: 'replicate' as const,
     name: 'Replicate.ai',
-    secondary: 'Cloud service',
-    badge: 'Cloud API',
+    secondary: t('onboarding.steps.artistry.providers.replicate.secondary'),
+    badge: t('onboarding.steps.artistry.providers.replicate.badge'),
     badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
     desc: 'High-resolution LoRAs, FLUX, and specialized checkpoints.',
     icon: 'i-solar:cloud-upload-bold-duotone',
   },
   {
     id: 'none' as const,
-    name: 'None',
-    secondary: 'Image generation off',
-    badge: 'Disabled',
+    name: t('onboarding.steps.artistry.providers.none.shortName'),
+    secondary: t('onboarding.steps.artistry.providers.none.secondary'),
+    badge: t('onboarding.steps.artistry.providers.none.badge'),
     badgeColor: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
     desc: 'Bypass all image generation and visual manifestations.',
     icon: 'i-solar:forbidden-circle-bold-duotone',
   },
-]
+])
 
 // --- Unified Model / Workflow Dropdown Options ---
 const nanobananaModelOptions = [
@@ -185,7 +185,7 @@ const pollinationsModelOptions = computed(() => {
   const list = cached.length > 0 ? cached : POLLINATIONS_DEFAULT_MODELS
   return list.map(m => ({
     label: m.id === ''
-      ? 'Free Router (Pollinations Auto)'
+      ? t('onboarding.steps.artistry.models.freeRouter')
       : (m.price ? `${m.name} (${m.price})` : m.name),
     value: m.id,
   }))
@@ -195,11 +195,11 @@ const comfyuiWorkflowOptions = computed(() => {
   const workflows = artistryStore.comfyuiSavedWorkflows || []
   if (workflows.length === 0) {
     return [
-      { label: 'No workflows uploaded yet (Upload workflow_api.json above)', value: '' },
+      { label: t('onboarding.steps.artistry.workflow.empty'), value: '' },
     ]
   }
   return workflows.map(wf => ({
-    label: `${wf.name} (${Object.values(wf.exposedFields || {}).reduce((n, arr) => n + (arr?.length || 0), 0)} exposed fields)`,
+    label: t('onboarding.steps.artistry.workflow.option', { name: wf.name, count: Object.values(wf.exposedFields || {}).reduce((n, arr) => n + (arr?.length || 0), 0) }),
     value: wf.id,
   }))
 })
@@ -260,7 +260,7 @@ async function testComfyConnection() {
     const url = comfyServerUrl.value.replace(/\/+$/, '')
     if (healthCheck) {
       const result = await healthCheck({ url })
-      connectionInfo.value = `Connected — ${result.gpus || 'GPU'}${result.vramStr ? ` (${result.vramStr} VRAM)` : ''}`
+      connectionInfo.value = t('onboarding.steps.artistry.connection.connected', { gpu: result.gpus || t('onboarding.steps.artistry.connection.fallbackGpu'), vram: result.vramStr ? t('onboarding.steps.artistry.connection.vram', { size: result.vramStr }) : '' })
       connectionStatus.value = 'connected'
     }
     else {
@@ -269,13 +269,13 @@ async function testComfyConnection() {
         throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
       const devices = data.devices || []
-      const gpuNames = devices.map((d: any) => d.name).join(', ') || 'Connected'
-      connectionInfo.value = `Connected — ${gpuNames}`
+      const gpuNames = devices.map((d: any) => d.name).join(', ') || t('onboarding.steps.artistry.connection.connectedLabel')
+      connectionInfo.value = t('onboarding.steps.artistry.messages.connectedValue', { value0: gpuNames })
       connectionStatus.value = 'connected'
     }
   }
   catch (e: any) {
-    connectionInfo.value = `Failed: ${e.message}`
+    connectionInfo.value = t('onboarding.steps.artistry.messages.failedValue', { value0: e.message })
     connectionStatus.value = 'failed'
   }
 }
@@ -295,7 +295,7 @@ function handleComfyFileUpload(event: Event) {
       isWorkflowModalOpen.value = true
     }
     catch (err: any) {
-      connectionInfo.value = `Invalid JSON: ${err.message}`
+      connectionInfo.value = t('onboarding.steps.artistry.messages.invalidJsonValue', { value0: err.message })
     }
     input.value = ''
   }
@@ -354,12 +354,12 @@ function handleNext() {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Artistry
+            {{ t('onboarding.steps.artistry.label') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Choose how I create images, and when I bring our stories to life."
+          :message="t('onboarding.steps.artistry.assistantMessage')"
           step-key="artistry"
           sticker-id="airi-celebrate"
           tone="primary"
@@ -386,10 +386,10 @@ function handleNext() {
             </div>
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Image generation
+                {{ t('onboarding.steps.artistry.imageGeneration') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                Choose the service that creates your images.
+                {{ t('onboarding.steps.artistry.serviceDescription') }}
               </p>
             </div>
           </div>
@@ -431,14 +431,14 @@ function handleNext() {
             <div v-if="selectedProvider === 'pollinations'" :class="['space-y-1.5']">
               <div :class="['flex items-center justify-between text-xs']">
                 <label :class="['font-medium text-neutral-700 dark:text-neutral-300']">
-                  Pollinations API Key / Pollen Token <span :class="['text-neutral-400 text-[10px]']">(Optional)</span>
+                  {{ t('onboarding.steps.artistry.pollinationsApiKeyPollenToken') }} <span :class="['text-neutral-400 text-[10px]']">{{ t('onboarding.steps.artistry.optional') }}</span>
                 </label>
-                <span :class="['text-[10px] text-emerald-500 dark:text-emerald-400 font-mono']">✓ Free mode active without key</span>
+                <span :class="['text-[10px] text-emerald-500 dark:text-emerald-400 font-mono']">{{ t('onboarding.steps.artistry.freeModeActiveWithoutKey') }}</span>
               </div>
               <input
                 v-model="apiKey"
                 type="password"
-                placeholder="Leave blank for 100% free mode, or enter token for FLUX/Grok"
+                :placeholder="t('onboarding.steps.artistry.leaveBlankFor100FreeModeOrEnterTokenForFluxGrok')"
                 :class="['w-full rounded-xl bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 px-3.5 py-2 text-xs text-neutral-800 dark:text-neutral-200 placeholder-neutral-400 focus:border-primary-500 focus:outline-none font-mono']"
                 @input="syncDraft"
               >
@@ -447,7 +447,7 @@ function handleNext() {
             <!-- ComfyUI: Server URL + Workflow + JSON Upload -->
             <div v-else-if="selectedProvider === 'comfyui'" :class="['space-y-3']">
               <div :class="['space-y-1.5']">
-                <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">ComfyUI server:</label>
+                <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">{{ t('onboarding.steps.artistry.comfyServerLabel') }}</label>
                 <div :class="['flex gap-2']">
                   <input
                     v-model="comfyServerUrl"
@@ -463,13 +463,13 @@ function handleNext() {
                     @click="testComfyConnection"
                   >
                     <div :class="[connectionStatus === 'testing' ? 'i-solar:refresh-bold animate-spin' : 'i-solar:plug-circle-bold']" />
-                    <span>Test</span>
+                    <span>{{ t('onboarding.steps.artistry.test') }}</span>
                   </button>
                 </div>
               </div>
 
               <div :class="['space-y-1.5']">
-                <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">Workflow:</label>
+                <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">{{ t('onboarding.steps.artistry.workflowLabel') }}</label>
                 <select
                   v-model="selectedModel"
                   :class="['w-full rounded-xl bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 px-3.5 py-2.5 text-xs text-neutral-800 dark:text-neutral-200 focus:border-primary-500 focus:outline-none cursor-pointer']"
@@ -496,10 +496,10 @@ function handleNext() {
                   @click="fileInputRef?.click()"
                 >
                   <div :class="['i-solar:upload-track-bold-duotone text-base']" />
-                  <span>Upload workflow_api.json</span>
+                  <span>{{ t('onboarding.steps.artistry.uploadWorkflowApiJson') }}</span>
                 </button>
                 <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
-                  Use an API-format workflow exported from ComfyUI.
+                  {{ t('onboarding.steps.artistry.workflowHint') }}
                 </p>
               </div>
 
@@ -512,7 +512,7 @@ function handleNext() {
 
             <!-- Nano Banana: Google AI Studio Key -->
             <div v-else-if="selectedProvider === 'nanobanana'" :class="['space-y-1.5']">
-              <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">Google AI Studio API Key</label>
+              <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">{{ t('onboarding.steps.artistry.googleAiStudioApiKey') }}</label>
               <input
                 v-model="apiKey"
                 type="password"
@@ -524,7 +524,7 @@ function handleNext() {
 
             <!-- Replicate: Replicate Token -->
             <div v-else-if="selectedProvider === 'replicate'" :class="['space-y-1.5']">
-              <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">Replicate API Token</label>
+              <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">{{ t('onboarding.steps.artistry.replicateApiToken') }}</label>
               <input
                 v-model="apiKey"
                 type="password"
@@ -537,7 +537,7 @@ function handleNext() {
             <!-- Unified Model Dropdown (non-ComfyUI providers; ComfyUI has its own Workflow selector above) -->
             <div v-if="selectedProvider !== 'comfyui'" :class="['space-y-1.5 pt-1']">
               <label :class="['text-xs font-medium text-neutral-700 dark:text-neutral-300 block']">
-                Synthesizer Model
+                {{ t('onboarding.steps.artistry.synthesizerModel') }}
               </label>
               <select
                 v-model="selectedModel"
@@ -569,10 +569,10 @@ function handleNext() {
             </div>
             <div :class="['min-w-0']">
               <h2 :class="['text-base font-bold text-neutral-900 dark:text-white leading-tight']">
-                Character visual style
+                {{ t('onboarding.steps.artistry.characterStyle') }}
               </h2>
               <p :class="['text-xs text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                Keep your companion’s appearance consistent across generated images.
+                {{ t('onboarding.steps.artistry.styleDescription') }}
               </p>
             </div>
           </div>
@@ -582,7 +582,7 @@ function handleNext() {
             v-model="visualPrompt"
             rows="6"
             :class="['w-full min-h-[150px] rounded-xl bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 p-3 text-xs text-neutral-800 dark:text-neutral-200 font-mono leading-relaxed focus:border-primary-500 focus:outline-none resize-y']"
-            placeholder="e.g. masterpiece, best quality, 1girl, blue eyes..."
+            :placeholder="t('onboarding.steps.artistry.eGMasterpieceBestQuality1girlBlueEyes')"
             @input="syncDraft"
           />
 
@@ -595,7 +595,7 @@ function handleNext() {
               @click="resetToPersonaPrompt"
             >
               <span>✨</span>
-              <span>Reset to persona tags</span>
+              <span>{{ t('onboarding.steps.artistry.resetToPersonaTags') }}</span>
             </button>
             <span v-if="hasPersonaTags" :class="['text-neutral-300 dark:text-neutral-700 text-xs']">•</span>
             <button
@@ -603,7 +603,7 @@ function handleNext() {
               :class="['text-[11px] text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer']"
               @click="resetToDefaultPrompt"
             >
-              ↺ Reset to avatar default
+              {{ t('onboarding.steps.artistry.resetAvatar') }}
             </button>
             <span :class="['flex-1']" />
             <button
@@ -618,40 +618,40 @@ function handleNext() {
               @click="openPreviewModal"
             >
               <span>🎨</span>
-              <span>Preview</span>
+              <span>{{ t('onboarding.steps.artistry.style.preview') }}</span>
             </button>
           </div>
 
           <!-- Preset Style Chips -->
           <div :class="['flex items-center gap-1.5 flex-wrap text-xs']">
-            <span :class="['text-neutral-500 dark:text-neutral-400 font-semibold mr-1']">Add an aesthetic</span>
+            <span :class="['text-neutral-500 dark:text-neutral-400 font-semibold mr-1']">{{ t('onboarding.steps.artistry.addAestheticLabel') }}</span>
             <button
               type="button"
               :class="['px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-white/5 hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/10 transition-colors cursor-pointer']"
               @click="appendStyle('Studio Ghibli meadow lighting,')"
             >
-              + Ghibli Meadow
+              {{ t('onboarding.steps.artistry.ghibliMeadow') }}
             </button>
             <button
               type="button"
               :class="['px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-white/5 hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/10 transition-colors cursor-pointer']"
               @click="appendStyle('Cyberpunk neon rim lighting, night rain,')"
             >
-              + Cyberpunk Neon
+              {{ t('onboarding.steps.artistry.cyberpunkNeon') }}
             </button>
             <button
               type="button"
               :class="['px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-white/5 hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/10 transition-colors cursor-pointer']"
               @click="appendStyle('Makoto Shinkai volumetric clouds, radiant sky,')"
             >
-              + Shinkai Sky
+              {{ t('onboarding.steps.artistry.shinkaiSky') }}
             </button>
             <button
               type="button"
               :class="['px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-white/5 hover:bg-neutral-200 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/10 transition-colors cursor-pointer']"
               @click="appendStyle('Cozy warm cafe interior, soft bokeh,')"
             >
-              + Cozy Cafe
+              {{ t('onboarding.steps.artistry.cozyCafe') }}
             </button>
           </div>
 
@@ -660,7 +660,7 @@ function handleNext() {
 
           <div :class="['flex flex-col gap-2.5']">
             <h3 :class="['text-sm font-bold text-neutral-900 dark:text-white']">
-              When to create images
+              {{ t('onboarding.steps.artistry.whenCreateImages') }}
             </h3>
 
             <!-- Autonomous director row -->
@@ -669,10 +669,10 @@ function handleNext() {
                 <span :class="['text-xl shrink-0']">🎬</span>
                 <div :class="['min-w-0']">
                   <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                    Autonomous director
+                    {{ t('onboarding.steps.artistry.directorLabel') }}
                   </div>
                   <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug']">
-                    Creates scene images and selfies as conversations unfold.
+                    {{ t('onboarding.steps.artistry.directorDescription') }}
                   </p>
                 </div>
               </div>
@@ -698,7 +698,7 @@ function handleNext() {
             <!-- Input Trigger Mode Selector (Enabled only when Director is ON) -->
             <div v-if="directorEnabled" :class="['pt-3 border-t border-neutral-200 dark:border-white/5 space-y-2']">
               <span :class="['text-xs font-semibold text-neutral-800 dark:text-neutral-200 block']">
-                Evaluation Trigger Mode
+                {{ t('onboarding.steps.artistry.evaluationTriggerMode') }}
               </span>
               <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs']">
                 <!-- Companion Reaction / Output (Default) -->
@@ -712,11 +712,15 @@ function handleNext() {
                   @click="directorTarget = 'assistant'; syncDraft()"
                 >
                   <div :class="['flex items-center justify-between font-bold text-neutral-900 dark:text-white']">
-                    <span>🌟 Companion Reaction (Default)</span>
-                    <span :class="['text-[9px] bg-primary-500/20 text-primary-600 dark:text-primary-300 px-1.5 py-0.2 rounded font-medium']">Impact Focus</span>
+                    <span>{{ t('onboarding.steps.artistry.companionReactionDefault') }}</span>
+                    <span :class="['text-[9px] bg-primary-500/20 text-primary-600 dark:text-primary-300 px-1.5 py-0.2 rounded font-medium']">{{ t('onboarding.steps.artistry.impactFocus') }}</span>
                   </div>
                   <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-normal']">
-                    Evaluates what the companion replied: <code>User &rarr; LLM Reply &rarr; Director</code>. Best for natural scene reactivity.
+                    <i18n-t scope="global" keypath="onboarding.steps.artistry.reactionDescription" tag="span">
+                      <template #code>
+                        <code>{{ t('onboarding.steps.artistry.userLlmReplyDirector') }}</code>
+                      </template>
+                    </i18n-t>
                   </p>
                 </div>
 
@@ -731,11 +735,11 @@ function handleNext() {
                   @click="directorTarget = 'user'; syncDraft()"
                 >
                   <div :class="['flex items-center justify-between font-bold text-neutral-900 dark:text-white']">
-                    <span>👤 User Input</span>
-                    <span :class="['text-[9px] bg-neutral-200 dark:bg-white/10 text-neutral-500 dark:text-neutral-400 px-1.5 py-0.2 rounded font-medium']">Prompt Focus</span>
+                    <span>{{ t('onboarding.steps.artistry.userInput') }}</span>
+                    <span :class="['text-[9px] bg-neutral-200 dark:bg-white/10 text-neutral-500 dark:text-neutral-400 px-1.5 py-0.2 rounded font-medium']">{{ t('onboarding.steps.artistry.promptFocus') }}</span>
                   </div>
                   <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-normal']">
-                    Evaluates user's incoming message immediately before the companion speaks.
+                    {{ t('onboarding.steps.artistry.evaluatesUserSIncomingMessageImmediatelyBeforeTheCompanionSpeaks') }}
                   </p>
                 </div>
               </div>
@@ -746,10 +750,10 @@ function handleNext() {
                 <span :class="['text-xl shrink-0']">🖌️</span>
                 <div :class="['min-w-0']">
                   <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                    Companion image creation
+                    {{ t('onboarding.steps.artistry.companionCreation') }}
                   </div>
                   <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug']">
-                    Lets your companion create images when you ask.
+                    {{ t('onboarding.steps.artistry.companionCreationDescription') }}
                   </p>
                 </div>
               </div>

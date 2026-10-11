@@ -132,10 +132,10 @@ const permissionStatus = ref<string>('granted')
 const selectedSourceLabel = computed(() => {
   if (!screenWatcherSourceId.value || screenWatcherSourceId.value === 'screen:primary' || screenWatcherSourceId.value === 'primary') {
     const primary = displaySources.value.find(s => s.id.includes('primary'))
-    return primary ? primary.name : 'Primary Display'
+    return primary ? primary.name : t('onboarding.steps.proactivity.sources.primaryDisplay')
   }
   const match = sources.value.find(s => s.id === screenWatcherSourceId.value)
-  return match ? match.name : 'Choose a screen or window'
+  return match ? match.name : t('onboarding.steps.proactivity.sources.choose')
 })
 
 function selectSource(sourceId: string, type: 'displays' | 'applications') {
@@ -180,10 +180,10 @@ async function downloadMoondream() {
       }
     })
     isMoondreamCached.value = true
-    toast.success('Local scene understanding model downloaded and ready!')
+    toast.success(t('onboarding.steps.proactivity.analysis.downloadSuccess'))
   }
   catch (err: any) {
-    toast.error(`Failed to download vision model: ${err?.message || err}`)
+    toast.error(t('onboarding.steps.proactivity.analysis.downloadFailure', { error: err?.message || err }))
   }
   finally {
     isMoondreamDownloading.value = false
@@ -193,24 +193,24 @@ async function downloadMoondream() {
 // --- Dynamic Expectations (Right Panel) ---
 const dynamicExpectationTitle = computed(() => {
   if (proactivityEngineMode.value === 'both')
-    return 'Aware and conversational'
+    return t('onboarding.steps.proactivity.expectations.bothTitle')
   if (proactivityEngineMode.value === 'screen')
-    return screenBehavior.value === 'comment' ? 'Attentive observer' : 'Quiet observer'
+    return screenBehavior.value === 'comment' ? t('onboarding.steps.proactivity.expectations.commentTitle') : t('onboarding.steps.proactivity.expectations.quietTitle')
   if (proactivityEngineMode.value === 'heartbeats')
-    return 'Periodic companion'
-  return 'On-demand companion'
+    return t('onboarding.steps.proactivity.expectations.periodicTitle')
+  return t('onboarding.steps.proactivity.expectations.onDemandTitle')
 })
 
 const dynamicDeliveryText = computed(() => {
   if (savedCommentDelivery.value === 'voice-and-bubble')
-    return 'Screen comments use voice and a bubble.'
+    return t('onboarding.steps.proactivity.expectations.voiceAndBubble')
   if (savedCommentDelivery.value === 'bubble-only')
-    return 'Screen comments use a bubble only.'
-  return 'Screen comments use voice only.'
+    return t('onboarding.steps.proactivity.expectations.bubbleOnly')
+  return t('onboarding.steps.proactivity.expectations.voiceOnly')
 })
 
 function handleFineTuneHint() {
-  toast.info('Advanced settings like quiet hours, tripwires, and sensitivity can be customized in Character Settings.')
+  toast.info(t('onboarding.steps.proactivity.behavior.fineTuneHint'))
 }
 
 onMounted(async () => {
@@ -287,12 +287,12 @@ onBeforeUnmount(() => {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Proactivity
+            {{ t('onboarding.steps.proactivity.label') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Choose when I chime in, and how I stay aware of your day."
+          :message="t('onboarding.steps.proactivity.companionGreeting')"
           step-key="proactivity"
           sticker-id="airi-thanks"
           tone="primary"
@@ -326,10 +326,10 @@ onBeforeUnmount(() => {
             </div>
             <div :class="['min-w-0']">
               <h4 :class="['text-xs sm:text-sm font-bold text-neutral-900 dark:text-white truncate']">
-                {{ choice.title }}
+                {{ t(`onboarding.steps.proactivity.interactionChoices.${choice.id}.title`) }}
               </h4>
               <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5 line-clamp-2']">
-                {{ choice.desc }}
+                {{ t(`onboarding.steps.proactivity.interactionChoices.${choice.id}.description`) }}
               </p>
             </div>
           </div>
@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
         <div :class="['lg:col-span-7 rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.02] shadow-sm backdrop-blur-md p-5 flex flex-col justify-between gap-4']">
           <div :class="['flex flex-col gap-4']">
             <h3 :class="['text-sm sm:text-base font-bold text-neutral-900 dark:text-white']">
-              Companion behavior
+              {{ t('onboarding.steps.proactivity.behavior.title') }}
             </h3>
 
             <!-- State A: On Demand Explanation -->
@@ -368,10 +368,10 @@ onBeforeUnmount(() => {
                 <div :class="['i-solar:chat-round-outline w-5 h-5']" />
               </div>
               <div :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                On demand mode active
+                {{ t('onboarding.steps.proactivity.behavior.onDemandActive') }}
               </div>
               <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed']">
-                Your companion only responds when you start a conversation. Background timers and screen observation are paused.
+                {{ t('onboarding.steps.proactivity.behavior.onDemandDescription') }}
               </p>
             </div>
 
@@ -380,7 +380,7 @@ onBeforeUnmount(() => {
               <!-- 1. Screen Behavior (if screenWatcherEnabled) -->
               <div v-if="screenWatcherEnabled" :class="['flex flex-col gap-2.5 animate-fadeIn']">
                 <div :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  1. Screen behavior
+                  {{ t('onboarding.steps.proactivity.behavior.screenBehavior') }}
                 </div>
                 <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2.5']">
                   <!-- Quiet awareness -->
@@ -398,10 +398,10 @@ onBeforeUnmount(() => {
                       <div :class="['i-solar:eye-outline w-4 h-4 text-primary-500 shrink-0 mt-0.5']" />
                       <div>
                         <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                          Quiet awareness
+                          {{ t('onboarding.steps.proactivity.behavior.quietTitle') }}
                         </div>
                         <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-snug']">
-                          Builds context for later conversations.
+                          {{ t('onboarding.steps.proactivity.behavior.quietDescription') }}
                         </p>
                       </div>
                     </div>
@@ -434,10 +434,10 @@ onBeforeUnmount(() => {
                       <div :class="['i-solar:chat-round-line-outline w-4 h-4 text-primary-500 shrink-0 mt-0.5']" />
                       <div>
                         <div :class="['text-xs font-bold text-neutral-900 dark:text-white']">
-                          Comment on notable changes
+                          {{ t('onboarding.steps.proactivity.behavior.commentTitle') }}
                         </div>
                         <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-snug']">
-                          Can chime in when something relevant happens.
+                          {{ t('onboarding.steps.proactivity.behavior.commentDescription') }}
                         </p>
                       </div>
                     </div>
@@ -459,7 +459,7 @@ onBeforeUnmount(() => {
                 <!-- Screen or window trigger row -->
                 <div :class="['flex flex-col gap-1.5 mt-1']">
                   <div :class="['text-[11px] font-semibold text-neutral-700 dark:text-neutral-300']">
-                    Screen or window
+                    {{ t('onboarding.steps.proactivity.sources.title') }}
                   </div>
                   <button
                     type="button"
@@ -498,7 +498,7 @@ onBeforeUnmount(() => {
                           ]"
                           @click="screenWatcherSourceType = 'displays'"
                         >
-                          Displays
+                          {{ t('onboarding.steps.proactivity.sources.displays') }}
                         </button>
                         <button
                           type="button"
@@ -510,7 +510,7 @@ onBeforeUnmount(() => {
                           ]"
                           @click="screenWatcherSourceType = 'applications'"
                         >
-                          Applications
+                          {{ t('onboarding.steps.proactivity.sources.applications') }}
                         </button>
                       </div>
 
@@ -518,7 +518,7 @@ onBeforeUnmount(() => {
                         type="button"
                         :disabled="isRefetching"
                         :class="['p-1 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors cursor-pointer disabled:opacity-50']"
-                        title="Refresh sources"
+                        :title="t('onboarding.steps.proactivity.sources.refresh')"
                         @click="refetchSources"
                       >
                         <div :class="['i-solar:refresh-linear w-3.5 h-3.5', isRefetching ? 'animate-spin' : '']" />
@@ -532,14 +532,14 @@ onBeforeUnmount(() => {
                     >
                       <div :class="['flex items-center gap-1.5']">
                         <div :class="['i-solar:shield-warning-bold w-3.5 h-3.5 shrink-0']" />
-                        <span :class="['text-[11px]']">Screen recording permission needed</span>
+                        <span :class="['text-[11px]']">{{ t('onboarding.steps.proactivity.sources.permissionNeeded') }}</span>
                       </div>
                       <button
                         type="button"
                         :class="['px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer']"
                         @click="visionStore.openPermissionSettings"
                       >
-                        Settings
+                        {{ t('onboarding.steps.proactivity.sources.settings') }}
                       </button>
                     </div>
 
@@ -547,7 +547,7 @@ onBeforeUnmount(() => {
                     <div :class="['max-h-36 overflow-y-auto flex flex-col gap-1 pr-1']">
                       <template v-if="screenWatcherSourceType === 'displays'">
                         <button
-                          v-for="source in (displaySources.length ? displaySources : [{ id: 'screen:primary', name: 'Primary Display', resolution: 'Virtual Screen', icon: 'i-solar:monitor-outline', category: 'displays' }])"
+                          v-for="source in (displaySources.length ? displaySources : [{ id: 'screen:primary', name: t('onboarding.steps.proactivity.sources.primaryDisplay'), resolution: t('onboarding.steps.proactivity.sources.virtualScreen'), icon: 'i-solar:monitor-outline', category: 'displays' }])"
                           :key="source.id"
                           type="button"
                           :class="[
@@ -586,7 +586,7 @@ onBeforeUnmount(() => {
                           <span v-if="source.resolution" :class="['shrink-0 text-[10px] font-mono text-neutral-400']">{{ source.resolution }}</span>
                         </button>
                         <div v-if="applicationSources.length === 0" :class="['py-3 text-center text-xs text-neutral-400']">
-                          No windows detected.
+                          {{ t('onboarding.steps.proactivity.sources.noWindows') }}
                         </div>
                       </template>
                     </div>
@@ -597,7 +597,7 @@ onBeforeUnmount(() => {
               <!-- 2. Comment Delivery (shown ONLY when Comment on notable changes is selected) -->
               <div v-if="screenWatcherEnabled && screenBehavior === 'comment'" :class="['flex flex-col gap-1.5 animate-fadeIn']">
                 <div :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  2. Comment delivery
+                  {{ t('onboarding.steps.proactivity.behavior.commentDelivery') }}
                 </div>
                 <div :class="['grid grid-cols-1 sm:grid-cols-3 gap-2']">
                   <button
@@ -614,7 +614,7 @@ onBeforeUnmount(() => {
                   >
                     <div :class="['flex items-center gap-2 truncate pr-1']">
                       <div :class="[opt.icon, 'w-3.5 h-3.5 text-primary-500 shrink-0']" />
-                      <span :class="['text-xs font-semibold truncate']">{{ opt.label }}</span>
+                      <span :class="['text-xs font-semibold truncate']">{{ t(`onboarding.steps.proactivity.deliveryOptions.${opt.id}`) }}</span>
                     </div>
                     <div :class="['shrink-0']">
                       <div
@@ -631,14 +631,14 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
                 <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5']">
-                  Applies to comments prompted by screen activity.
+                  {{ t('onboarding.steps.proactivity.behavior.commentDeliveryHint') }}
                 </p>
               </div>
 
               <!-- 3. Check-in Frequency (if heartbeatsEnabled) -->
               <div v-if="heartbeatsEnabled" :class="['flex flex-col gap-1.5 animate-fadeIn']">
                 <div :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  {{ screenWatcherEnabled ? (screenBehavior === 'comment' ? '3. Check-in frequency' : '2. Check-in frequency') : '1. Check-in frequency' }}
+                  {{ t('onboarding.steps.proactivity.behavior.checkInFrequency', { number: screenWatcherEnabled ? (screenBehavior === 'comment' ? 3 : 2) : 1 }) }}
                 </div>
                 <div :class="['grid grid-cols-4 gap-2']">
                   <button
@@ -653,11 +653,11 @@ onBeforeUnmount(() => {
                     ]"
                     @click="heartbeatsInterval = freq.value; syncDraft()"
                   >
-                    {{ freq.label }}
+                    {{ t('onboarding.steps.proactivity.checkInMinutes', { minutes: freq.value }) }}
                   </button>
                 </div>
                 <p :class="['text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5']">
-                  Timing also follows your character's operating schedule.
+                  {{ t('onboarding.steps.proactivity.behavior.scheduleHint') }}
                 </p>
               </div>
             </template>
@@ -671,7 +671,7 @@ onBeforeUnmount(() => {
               @click="handleFineTuneHint"
             >
               <div :class="['i-solar:settings-minimalistic-outline w-3.5 h-3.5']" />
-              <span>Fine-tune later in Character Settings</span>
+              <span>{{ t('onboarding.steps.proactivity.behavior.fineTuneLater') }}</span>
             </button>
           </div>
         </div>
@@ -680,7 +680,7 @@ onBeforeUnmount(() => {
         <div :class="['lg:col-span-5 rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.02] shadow-sm backdrop-blur-md p-5 flex flex-col justify-between gap-4']">
           <div :class="['flex flex-col gap-3.5']">
             <h3 :class="['text-sm sm:text-base font-bold text-neutral-900 dark:text-white']">
-              What to expect
+              {{ t('onboarding.steps.proactivity.expectations.title') }}
             </h3>
 
             <!-- Twin-bubble illustration & dynamic summary -->
@@ -699,14 +699,14 @@ onBeforeUnmount(() => {
                   <!-- Dynamic Screen bullet -->
                   <div v-if="screenWatcherEnabled" :class="['flex items-start gap-2']">
                     <div :class="['i-solar:eye-outline w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5']" />
-                    <span v-if="screenBehavior === 'comment'">Relevant screen changes can prompt a comment.</span>
-                    <span v-else>Notices screen changes quietly without interrupting.</span>
+                    <span v-if="screenBehavior === 'comment'">{{ t('onboarding.steps.proactivity.expectations.screenComments') }}</span>
+                    <span v-else>{{ t('onboarding.steps.proactivity.expectations.screenQuiet') }}</span>
                   </div>
 
                   <!-- Dynamic Check-in bullet -->
                   <div v-if="heartbeatsEnabled" :class="['flex items-start gap-2']">
                     <div :class="['i-solar:clock-circle-outline w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5']" />
-                    <span>Periodic check-ins are enabled.</span>
+                    <span>{{ t('onboarding.steps.proactivity.expectations.checkIns') }}</span>
                   </div>
 
                   <!-- Dynamic Delivery bullet -->
@@ -719,11 +719,11 @@ onBeforeUnmount(() => {
                   <template v-if="proactivityEngineMode === 'on-demand'">
                     <div :class="['flex items-start gap-2']">
                       <div :class="['i-solar:chat-round-outline w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5']" />
-                      <span>Responds only when you start a conversation.</span>
+                      <span>{{ t('onboarding.steps.proactivity.expectations.onDemand') }}</span>
                     </div>
                     <div :class="['flex items-start gap-2']">
                       <div :class="['i-solar:shield-check-outline w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5']" />
-                      <span>No background timers or screen captures.</span>
+                      <span>{{ t('onboarding.steps.proactivity.expectations.noBackground') }}</span>
                     </div>
                   </template>
                 </div>
@@ -737,10 +737,10 @@ onBeforeUnmount(() => {
             <div :class="['flex flex-col gap-2.5']">
               <div>
                 <h4 :class="['text-xs font-bold text-neutral-800 dark:text-neutral-200']">
-                  Screen analysis
+                  {{ t('onboarding.steps.proactivity.analysis.title') }}
                 </h4>
                 <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                  Choose how screen activity is understood.
+                  {{ t('onboarding.steps.proactivity.analysis.description') }}
                 </p>
               </div>
 
@@ -761,10 +761,10 @@ onBeforeUnmount(() => {
                     <div :class="['i-solar:document-text-outline w-4 h-4 text-primary-500 shrink-0']" />
                     <div :class="['truncate']">
                       <div :class="['text-xs font-bold text-neutral-900 dark:text-white truncate']">
-                        Lightweight
+                        {{ t('onboarding.steps.proactivity.analysis.lightweight.title') }}
                       </div>
                       <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 truncate']">
-                        Text recognition and visual change detection.
+                        {{ t('onboarding.steps.proactivity.analysis.lightweight.description') }}
                       </p>
                     </div>
                   </div>
@@ -797,10 +797,10 @@ onBeforeUnmount(() => {
                       <div :class="['i-solar:cpu-bolt-outline w-4 h-4 text-primary-500 shrink-0']" />
                       <div :class="['truncate']">
                         <div :class="['text-xs font-bold text-neutral-900 dark:text-white truncate']">
-                          Local scene understanding
+                          {{ t('onboarding.steps.proactivity.analysis.local.title') }}
                         </div>
                         <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 truncate']">
-                          Uses a downloaded vision model on this device.
+                          {{ t('onboarding.steps.proactivity.analysis.local.description') }}
                         </p>
                       </div>
                     </div>
@@ -825,20 +825,20 @@ onBeforeUnmount(() => {
                   >
                     <div v-if="isMoondreamCached" :class="['flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium']">
                       <div :class="['i-solar:check-circle-bold w-3.5 h-3.5']" />
-                      <span>Downloaded & ready</span>
+                      <span>{{ t('onboarding.steps.proactivity.analysis.downloaded') }}</span>
                     </div>
                     <div v-else-if="isMoondreamDownloading" :class="['flex items-center gap-1.5 text-primary-600 dark:text-primary-400 font-medium']">
                       <div :class="['i-solar:refresh-linear w-3.5 h-3.5 animate-spin']" />
-                      <span>Downloading model ({{ moondreamDownloadPercent }}%)...</span>
+                      <span>{{ t('onboarding.steps.proactivity.analysis.downloading', { percent: moondreamDownloadPercent }) }}</span>
                     </div>
                     <div v-else :class="['flex items-center justify-between w-full']">
-                      <span :class="['text-neutral-500 dark:text-neutral-400 text-[10px]']">Model not yet downloaded</span>
+                      <span :class="['text-neutral-500 dark:text-neutral-400 text-[10px]']">{{ t('onboarding.steps.proactivity.analysis.notDownloaded') }}</span>
                       <button
                         type="button"
                         :class="['px-2.5 py-1 rounded-lg bg-primary-600 hover:bg-primary-500 text-white font-semibold text-[10px] shadow-xs cursor-pointer']"
                         @click.stop="downloadMoondream"
                       >
-                        Download model (~1.1 GB)
+                        {{ t('onboarding.steps.proactivity.analysis.download') }}
                       </button>
                     </div>
                   </div>
@@ -860,10 +860,10 @@ onBeforeUnmount(() => {
                       <div :class="['i-solar:cloud-outline w-4 h-4 text-primary-500 shrink-0']" />
                       <div :class="['truncate']">
                         <div :class="['text-xs font-bold text-neutral-900 dark:text-white truncate']">
-                          Configured vision provider
+                          {{ t('onboarding.steps.proactivity.analysis.external.title') }}
                         </div>
                         <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400 truncate']">
-                          Uses the provider chosen in Vision.
+                          {{ t('onboarding.steps.proactivity.analysis.external.description') }}
                         </p>
                       </div>
                     </div>
@@ -887,10 +887,10 @@ onBeforeUnmount(() => {
                     :class="['mt-2 pt-2 border-t border-neutral-200/50 dark:border-white/5 text-[10px]']"
                   >
                     <span v-if="draft.state.visionModel || draft.state.visionProvider" :class="['text-primary-600 dark:text-primary-400 font-mono']">
-                      Active: {{ draft.state.visionModel || draft.state.visionProvider }}
+                      {{ t('onboarding.steps.proactivity.analysis.external.active', { provider: draft.state.visionModel || draft.state.visionProvider }) }}
                     </span>
                     <span v-else :class="['text-amber-500 dark:text-amber-400']">
-                      Notice: No provider configured in Vision step.
+                      {{ t('onboarding.steps.proactivity.analysis.external.unconfigured') }}
                     </span>
                   </div>
                 </button>
@@ -900,7 +900,7 @@ onBeforeUnmount(() => {
 
           <!-- Bottom Footnote -->
           <p :class="['text-[10px] text-neutral-400 dark:text-neutral-500 leading-tight pt-1']">
-            Processing location depends on your vision, classifier, and brain settings.
+            {{ t('onboarding.steps.proactivity.analysis.processingLocation') }}
           </p>
         </div>
       </div>
@@ -926,7 +926,7 @@ onBeforeUnmount(() => {
 
       <!-- Center Helper Note -->
       <div :class="['text-xs text-neutral-400 dark:text-neutral-500 text-center hidden sm:block truncate max-w-xs md:max-w-md']">
-        You can adjust this later in Character Settings.
+        {{ t('onboarding.steps.proactivity.adjustLater') }}
       </div>
 
       <div :class="['flex items-center gap-2']">
@@ -935,7 +935,7 @@ onBeforeUnmount(() => {
           :class="['px-3 py-2 rounded-xl text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors cursor-pointer']"
           @click="() => { syncDraft(); props.onNext() }"
         >
-          Set up later
+          {{ t('onboarding.steps.proactivity.setUpLater') }}
         </button>
         <Button
           variant="primary"

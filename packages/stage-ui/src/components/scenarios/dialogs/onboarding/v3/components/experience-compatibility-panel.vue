@@ -2,6 +2,7 @@
 import type { ExperienceArchetypeId } from '../stores/useOnboardingV3Draft'
 
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useOnboardingHardwareSnapshot } from '../composables/useOnboardingHardwareSnapshot'
 
@@ -13,12 +14,14 @@ const emit = defineEmits<{
   (e: 'selectArchetype', id: ExperienceArchetypeId): void
 }>()
 
+const { t } = useI18n()
+
 const { snapshot } = useOnboardingHardwareSnapshot()
 const isExpanded = ref(false)
 
 function formatBytes(bytes: number | null): string {
   if (!bytes || bytes <= 0)
-    return 'Not measured'
+    return t('onboarding.steps.experience.hardware.notMeasured')
   const gb = bytes / (1024 * 1024 * 1024)
   return `${gb >= 10 ? Math.round(gb) : gb.toFixed(1)} GB`
 }
@@ -45,8 +48,8 @@ const guidance = computed<GuidanceEvaluation>(() => {
   if (snapshot.value.status === 'checking') {
     return {
       severity: 'checking',
-      title: 'Checking local AI compatibility…',
-      explanation: 'Probing hardware acceleration and available system capabilities.',
+      title: t('onboarding.steps.experience.hardware.checkingTitle'),
+      explanation: t('onboarding.steps.experience.hardware.checkingDescription'),
     }
   }
 
@@ -54,8 +57,8 @@ const guidance = computed<GuidanceEvaluation>(() => {
   if (snapshot.value.status === 'unknown' || snapshot.value.webgpu.value === null) {
     return {
       severity: 'unknown',
-      title: 'We couldn’t fully check local performance. You can continue and choose providers during setup.',
-      explanation: 'Browser security or platform restrictions prevented reading detailed GPU capabilities. You can still use local or remote providers freely.',
+      title: t('onboarding.steps.experience.hardware.unknownTitle'),
+      explanation: t('onboarding.steps.experience.hardware.unknownDescription'),
     }
   }
 
@@ -64,15 +67,15 @@ const guidance = computed<GuidanceEvaluation>(() => {
     if (props.archetypeId === 'quiet') {
       return {
         severity: 'ready',
-        title: 'The Quiet Observer uses lightweight text and memory, which runs smoothly on CPU.',
-        explanation: 'Because this archetype operates without a rendered avatar or continuous local audio perception, it does not require WebGPU.',
+        title: t('onboarding.steps.experience.hardware.quietTitle'),
+        explanation: t('onboarding.steps.experience.hardware.quietDescription'),
       }
     }
 
     return {
       severity: 'advisory',
-      title: 'Some local features may run slowly or need another provider. You can continue and adjust your setup.',
-      explanation: 'WebGPU acceleration was not detected. Local voice and audio transcription can run via CPU fallback or cloud providers (Cloudflare, ElevenLabs, OpenAI). You can continue and choose your preferred backend in upcoming steps.',
+      title: t('onboarding.steps.experience.hardware.advisoryTitle'),
+      explanation: t('onboarding.steps.experience.hardware.noAccelerationDescription'),
       showLighterPresetRecommendation: true,
     }
   }
@@ -82,8 +85,8 @@ const guidance = computed<GuidanceEvaluation>(() => {
   if (isLowSystemRam.value && props.archetypeId !== 'quiet') {
     return {
       severity: 'advisory',
-      title: 'Some local features may run slowly or need another provider. You can continue and adjust your setup.',
-      explanation: `Approximately ${formatBytes(snapshot.value.systemMemoryBytes.value)} of system memory was detected. Running the entire local neural stack concurrently may encounter memory pressure. You can select lighter models or remote providers during setup.`,
+      title: t('onboarding.steps.experience.hardware.advisoryTitle'),
+      explanation: t('onboarding.steps.experience.hardware.lowMemoryDescription', { memory: formatBytes(snapshot.value.systemMemoryBytes.value) }),
       showLighterPresetRecommendation: true,
     }
   }
@@ -91,8 +94,8 @@ const guidance = computed<GuidanceEvaluation>(() => {
   // Standard acceleration available state
   return {
     severity: 'ready',
-    title: 'Hardware acceleration is available. Performance will depend on selected models.',
-    explanation: 'WebGPU compute is active. Actual speed will vary depending on your choice of neural speech, transcription, and reasoning models.',
+    title: t('onboarding.steps.experience.hardware.readyTitle'),
+    explanation: t('onboarding.steps.experience.hardware.readyDescription'),
   }
 })
 
@@ -172,7 +175,7 @@ const severityClasses = computed(() => {
         ]"
         @click="isExpanded = !isExpanded"
       >
-        <span>{{ isExpanded ? 'Hide Details' : 'Details' }}</span>
+        <span>{{ isExpanded ? t('onboarding.steps.experience.hardware.hideDetails') : t('onboarding.steps.experience.hardware.details') }}</span>
         <div :class="['i-solar:alt-arrow-down-linear text-xs transition-transform duration-200', isExpanded ? 'rotate-180' : '']" />
       </button>
     </div>
@@ -182,13 +185,13 @@ const severityClasses = computed(() => {
       v-if="guidance.showLighterPresetRecommendation && archetypeId !== 'quiet'"
       :class="['mt-2.5 pt-2 border-t border-amber-500/20 flex items-center justify-between gap-2 text-[11px] text-neutral-600 dark:text-neutral-300']"
     >
-      <span>Prefer a lighter resource footprint?</span>
+      <span>{{ t('onboarding.steps.experience.hardware.lighterQuestion') }}</span>
       <button
         type="button"
         :class="['px-2.5 py-1 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-medium transition-all active:scale-95 cursor-pointer']"
         @click="emit('selectArchetype', 'quiet')"
       >
-        Switch to The Quiet Observer
+        {{ t('onboarding.steps.experience.hardware.switchQuiet') }}
       </button>
     </div>
 
@@ -204,36 +207,36 @@ const severityClasses = computed(() => {
       <!-- Observed Capabilities Table -->
       <div :class="['grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1 bg-black/5 dark:bg-black/20 p-2.5 rounded-lg font-mono text-[10px]']">
         <div>
-          <span class="text-neutral-400">WebGPU Acceleration: </span>
+          <span class="text-neutral-400">{{ t('onboarding.steps.experience.hardware.webgpuLabel') }}</span>
           <span :class="snapshot.webgpu.value ? 'text-emerald-400 font-semibold' : snapshot.webgpu.value === false ? 'text-amber-400' : 'text-neutral-400'">
-            {{ snapshot.webgpu.value === true ? 'Available' : snapshot.webgpu.value === false ? 'Unavailable' : 'Unknown' }}
+            {{ snapshot.webgpu.value === true ? t('onboarding.steps.experience.hardware.available') : snapshot.webgpu.value === false ? t('onboarding.steps.experience.hardware.unavailable') : t('onboarding.steps.experience.hardware.unknown') }}
           </span>
-          <span class="block text-[9px] text-neutral-500">({{ snapshot.webgpu.confidence }})</span>
+          <span class="block text-[9px] text-neutral-500">({{ t(`onboarding.steps.experience.hardware.sources.${snapshot.webgpu.source}`) }})</span>
         </div>
 
         <div>
-          <span class="text-neutral-400">Shader FP16: </span>
+          <span class="text-neutral-400">{{ t('onboarding.steps.experience.hardware.fp16Label') }}</span>
           <span :class="snapshot.fp16.value ? 'text-emerald-400' : 'text-neutral-400'">
-            {{ snapshot.fp16.value === true ? 'Supported' : snapshot.fp16.value === false ? 'Unsupported' : 'Unknown' }}
+            {{ snapshot.fp16.value === true ? t('onboarding.steps.experience.hardware.supported') : snapshot.fp16.value === false ? t('onboarding.steps.experience.hardware.unsupported') : t('onboarding.steps.experience.hardware.unknown') }}
           </span>
-          <span class="block text-[9px] text-neutral-500">({{ snapshot.fp16.confidence }})</span>
+          <span class="block text-[9px] text-neutral-500">({{ t(`onboarding.steps.experience.hardware.sources.${snapshot.fp16.source}`) }})</span>
         </div>
 
         <div v-if="snapshot.gpuDeviceName.value">
-          <span class="text-neutral-400">Graphics Adapter: </span>
+          <span class="text-neutral-400">{{ t('onboarding.steps.experience.hardware.gpuLabel') }}</span>
           <span class="text-neutral-200">{{ snapshot.gpuDeviceName.value }}</span>
-          <span class="block text-[9px] text-neutral-500">({{ snapshot.gpuDeviceName.confidence }})</span>
+          <span class="block text-[9px] text-neutral-500">({{ t(`onboarding.steps.experience.hardware.sources.${snapshot.gpuDeviceName.source}`) }})</span>
         </div>
 
         <div>
-          <span class="text-neutral-400">System Memory: </span>
+          <span class="text-neutral-400">{{ t('onboarding.steps.experience.hardware.memoryLabel') }}</span>
           <span class="text-neutral-200">{{ formatBytes(snapshot.systemMemoryBytes.value) }}</span>
-          <span class="block text-[9px] text-neutral-500">({{ snapshot.systemMemoryBytes.confidence }})</span>
+          <span class="block text-[9px] text-neutral-500">({{ t(`onboarding.steps.experience.hardware.sources.${snapshot.systemMemoryBytes.source}`) }})</span>
         </div>
       </div>
 
       <div :class="['text-[10px] text-neutral-400 italic']">
-        Note: Guidance is advisory. You can configure CPU fallbacks, separate local servers, or remote cloud providers at any step.
+        {{ t('onboarding.steps.experience.hardware.advisoryNote') }}
       </div>
     </div>
   </div>

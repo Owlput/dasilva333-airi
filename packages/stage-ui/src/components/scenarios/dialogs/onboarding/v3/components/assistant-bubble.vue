@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { chatStickers } from '../../../../../../assets/stickers'
 
@@ -88,6 +88,9 @@ function startAnimation() {
     }, props.speed)
   }, props.startDelay)
 }
+
+// Keep translated guidance fully visible when the interface language changes.
+watch(() => props.message, revealAll)
 
 onMounted(() => {
   startAnimation()

@@ -25,7 +25,7 @@ const props = defineProps<{
   onPrevious: () => void
 }>()
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const draftStore = useOnboardingV3Draft()
 const showAdvancedModules = ref(false)
 
@@ -151,6 +151,7 @@ const CAPABILITY_DETAILS: Record<string, CapabilityDetail> = {
 }
 
 interface ArchetypeChip {
+  capabilityId: string
   label: string
   icon?: string
   color?: string
@@ -176,17 +177,17 @@ interface ArchetypeCard {
 
 function getArchetypeTitle(arch: ArchetypeCard): string {
   const key = `onboarding.steps.experience.archetypes.${arch.id}.title`
-  return te(key) ? t(key) : arch.title
+  return t(key)
 }
 
 function getArchetypeSubtitle(arch: ArchetypeCard): string {
   const key = `onboarding.steps.experience.archetypes.${arch.id}.subtitle`
-  return te(key) ? t(key) : arch.subtitle
+  return t(key)
 }
 
 function getArchetypeDescription(arch: ArchetypeCard): string {
   const key = `onboarding.steps.experience.archetypes.${arch.id}.description`
-  return te(key) ? t(key) : arch.description
+  return t(key)
 }
 
 const archetypes: ArchetypeCard[] = [
@@ -197,9 +198,9 @@ const archetypes: ArchetypeCard[] = [
     description: 'Text conversation, thoughtful pacing, and memory—without a rendered avatar.',
     icon: 'i-solar:chat-round-line-bold',
     chips: [
-      { label: 'Text' },
-      { label: 'Memory' },
-      { label: 'Tools' },
+      { capabilityId: 'Text', label: 'Text' },
+      { capabilityId: 'Memory', label: 'Memory' },
+      { capabilityId: 'Tools', label: 'Tools' },
     ],
     colorTheme: {
       activeBorder: 'border-slate-400/80',
@@ -218,11 +219,11 @@ const archetypes: ArchetypeCard[] = [
     description: 'Ambient voice, heartbeats, sleep schedule, quiet hours, and awareness.',
     icon: 'i-solar:moon-sleep-bold',
     chips: [
-      { label: 'Hearing' },
-      { label: 'Voice' },
-      { label: 'Presence' },
-      { label: 'Pacing' },
-      { label: 'Memory' },
+      { capabilityId: 'Hearing', label: 'Hearing' },
+      { capabilityId: 'Voice', label: 'Voice' },
+      { capabilityId: 'Presence', label: 'Presence' },
+      { capabilityId: 'Pacing', label: 'Pacing' },
+      { capabilityId: 'Memory', label: 'Memory' },
     ],
     colorTheme: {
       activeBorder: 'border-sky-500',
@@ -241,12 +242,12 @@ const archetypes: ArchetypeCard[] = [
     description: 'Live speech, natural voice, vision, expressive emotions, and memory.',
     icon: 'i-solar:microphone-3-bold',
     chips: [
-      { label: 'Hearing' },
-      { label: 'Voice' },
-      { label: 'Pacing' },
-      { label: 'Emotions' },
-      { label: 'Memory' },
-      { label: 'Vision' },
+      { capabilityId: 'Hearing', label: 'Hearing' },
+      { capabilityId: 'Voice', label: 'Voice' },
+      { capabilityId: 'Pacing', label: 'Pacing' },
+      { capabilityId: 'Emotions', label: 'Emotions' },
+      { capabilityId: 'Memory', label: 'Memory' },
+      { capabilityId: 'Vision', label: 'Vision' },
     ],
     colorTheme: {
       activeBorder: 'border-purple-500',
@@ -265,12 +266,12 @@ const archetypes: ArchetypeCard[] = [
     description: 'Voice dialogue, screen awareness, local action tools, and web search.',
     icon: 'i-solar:case-round-bold',
     chips: [
-      { label: 'Hearing' },
-      { label: 'Voice' },
-      { label: 'Vision' },
-      { label: 'Tools' },
-      { label: 'Memory' },
-      { label: 'Pacing' },
+      { capabilityId: 'Hearing', label: 'Hearing' },
+      { capabilityId: 'Voice', label: 'Voice' },
+      { capabilityId: 'Vision', label: 'Vision' },
+      { capabilityId: 'Tools', label: 'Tools' },
+      { capabilityId: 'Memory', label: 'Memory' },
+      { capabilityId: 'Pacing', label: 'Pacing' },
     ],
     colorTheme: {
       activeBorder: 'border-teal-500',
@@ -289,12 +290,12 @@ const archetypes: ArchetypeCard[] = [
     description: 'Spoken dialogue, image generation, chat vision, and expressive morphs.',
     icon: 'i-solar:palette-round-bold',
     chips: [
-      { label: 'Hearing' },
-      { label: 'Voice' },
-      { label: 'Vision' },
-      { label: 'Emotions' },
-      { label: 'Visuals' },
-      { label: 'Memory' },
+      { capabilityId: 'Hearing', label: 'Hearing' },
+      { capabilityId: 'Voice', label: 'Voice' },
+      { capabilityId: 'Vision', label: 'Vision' },
+      { capabilityId: 'Emotions', label: 'Emotions' },
+      { capabilityId: 'Visuals', label: 'Visuals' },
+      { capabilityId: 'Memory', label: 'Memory' },
     ],
     colorTheme: {
       activeBorder: 'border-amber-500',
@@ -313,15 +314,15 @@ const archetypes: ArchetypeCard[] = [
     description: 'A companion that talks, sees, creates, and takes action—with memory and an ongoing presence.',
     icon: 'i-solar:stars-minimalistic-bold',
     chips: [
-      { label: 'Hearing' },
-      { label: 'Voice' },
-      { label: 'Pacing' },
-      { label: 'Emotions' },
-      { label: 'Vision' },
-      { label: 'Presence' },
-      { label: 'Visuals' },
-      { label: 'Tools' },
-      { label: 'Memory' },
+      { capabilityId: 'Hearing', label: 'Hearing' },
+      { capabilityId: 'Voice', label: 'Voice' },
+      { capabilityId: 'Pacing', label: 'Pacing' },
+      { capabilityId: 'Emotions', label: 'Emotions' },
+      { capabilityId: 'Vision', label: 'Vision' },
+      { capabilityId: 'Presence', label: 'Presence' },
+      { capabilityId: 'Visuals', label: 'Visuals' },
+      { capabilityId: 'Tools', label: 'Tools' },
+      { capabilityId: 'Memory', label: 'Memory' },
     ],
     colorTheme: {
       activeBorder: 'border-rose-500',
@@ -556,7 +557,7 @@ function resetToPresetDefaults() {
                     ]"
                   >
                     <div :class="[CAPABILITY_DETAILS[chip.label]?.icon || chip.icon, 'text-xs shrink-0', CAPABILITY_DETAILS[chip.label]?.color || chip.color || 'text-neutral-400']" />
-                    <span>{{ chip.label }}</span>
+                    <span>{{ t(`onboarding.steps.experience.capabilities.${chip.capabilityId}.title`) }}</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipPortal>
@@ -574,19 +575,19 @@ function resetToPresetDefaults() {
                     <div v-if="CAPABILITY_DETAILS[chip.label]">
                       <div :class="['flex items-center gap-1.5 font-bold text-xs text-neutral-900 dark:text-white mb-1']">
                         <div :class="[CAPABILITY_DETAILS[chip.label].icon, 'text-xs shrink-0', CAPABILITY_DETAILS[chip.label].color]" />
-                        <span>{{ CAPABILITY_DETAILS[chip.label].title }}</span>
+                        <span>{{ t(`onboarding.steps.experience.capabilities.${chip.capabilityId}.title`) }}</span>
                       </div>
                       <p :class="['text-[11px] text-neutral-600 dark:text-neutral-400 leading-snug mb-2']">
-                        {{ CAPABILITY_DETAILS[chip.label].description }}
+                        {{ t(`onboarding.steps.experience.capabilities.${chip.capabilityId}.description`) }}
                       </p>
                       <div :class="['space-y-1 pt-1.5 border-t border-neutral-100 dark:border-white/5 text-[10px] text-neutral-500 dark:text-neutral-300']">
                         <div
-                          v-for="bullet in CAPABILITY_DETAILS[chip.label].bullets"
+                          v-for="(bullet, bulletIndex) in CAPABILITY_DETAILS[chip.label].bullets"
                           :key="bullet"
                           :class="['flex items-center gap-1.5 leading-tight']"
                         >
                           <div :class="['w-1 h-1 rounded-full bg-primary-500/80 dark:bg-primary-400/80 shrink-0']" />
-                          <span>{{ bullet }}</span>
+                          <span>{{ t(`onboarding.steps.experience.capabilities.${chip.capabilityId}.bullets.${bulletIndex}`) }}</span>
                         </div>
                       </div>
                     </div>
@@ -629,10 +630,10 @@ function resetToPresetDefaults() {
               :class="['text-[11px] text-neutral-400 hover:text-primary-500 font-medium transition-colors cursor-pointer mr-2']"
               @click.stop="resetToPresetDefaults"
             >
-              Reset to Preset
+              {{ t('onboarding.steps.experience.resetToPreset') }}
             </button>
             <span :class="['text-xs text-neutral-500 dark:text-neutral-400 font-medium']">
-              {{ activeModules.length }} enabled · {{ Math.max(0, 10 - activeModules.length) }} available · {{ totalSteps }} steps
+              {{ t('onboarding.steps.experience.enabledAvailableSteps', { length: activeModules.length, lengthValue: Math.max(0, 10 - activeModules.length), totalSteps }) }}
             </span>
             <div
               :class="[
@@ -675,7 +676,7 @@ function resetToPresetDefaults() {
               <div :class="['min-w-0 flex-1']">
                 <div :class="['flex items-center justify-between gap-1']">
                   <span :class="['text-xs font-bold truncate']">
-                    {{ mod.label }}
+                    {{ t(`onboarding.steps.experience.moduleDefinitions.${mod.key}.label`) }}
                   </span>
                   <span
                     :class="[
@@ -683,11 +684,11 @@ function resetToPresetDefaults() {
                       draftStore.state?.modules?.[mod.key] ? 'text-primary-500 font-bold' : 'text-neutral-400',
                     ]"
                   >
-                    {{ draftStore.state?.modules?.[mod.key] ? 'ON' : 'OFF' }}
+                    {{ draftStore.state?.modules?.[mod.key] ? t('onboarding.steps.experience.on') : t('onboarding.steps.experience.off') }}
                   </span>
                 </div>
                 <p :class="['text-[10px] text-neutral-400 mt-0.5 leading-snug line-clamp-2']">
-                  {{ mod.description }}
+                  {{ t(`onboarding.steps.experience.moduleDefinitions.${mod.key}.description`) }}
                 </p>
               </div>
             </button>
@@ -705,14 +706,14 @@ function resetToPresetDefaults() {
               <div :class="['min-w-0 flex-1']">
                 <div :class="['flex items-center justify-between gap-1']">
                   <span :class="['text-xs font-semibold text-neutral-500 dark:text-neutral-400 truncate']">
-                    Extensible Plugins
+                    {{ t('onboarding.steps.experience.extensiblePlugins') }}
                   </span>
                   <span :class="['text-[9px] font-mono text-neutral-400 dark:text-neutral-500 uppercase tracking-wider']">
-                    Soon
+                    {{ t('onboarding.steps.experience.soon') }}
                   </span>
                 </div>
                 <p :class="['text-[10px] text-neutral-400/80 mt-0.5 leading-snug line-clamp-2']">
-                  Discord bot, community skills & triggers
+                  {{ t('onboarding.steps.experience.discordBotCommunitySkillsTriggers') }}
                 </p>
               </div>
             </div>
@@ -746,7 +747,11 @@ function resetToPresetDefaults() {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium']">
-        Selected: <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ getArchetypeTitle(selectedArchetype) }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.experience.summary.selected" tag="span">
+          <template #title>
+            <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ getArchetypeTitle(selectedArchetype) }}</span>
+          </template>
+        </i18n-t>
       </div>
 
       <Button

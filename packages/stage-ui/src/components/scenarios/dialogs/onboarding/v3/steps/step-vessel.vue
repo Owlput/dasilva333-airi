@@ -39,7 +39,9 @@ const localPresetModels: UnifiedVesselItem[] = [
     isInstalled: true,
     author: 'Live2D Inc.',
     sourceSiteName: 'Official Live2D Sample',
+    sourceSiteNameKey: 'onboarding.steps.vessel.catalog.live2dSource',
     description: 'Official Live2D Cubism 4 starter avatar with natural breathing, eye gaze physics, and blink sync.',
+    descriptionKey: 'onboarding.steps.vessel.localPresetModels.preset-live2d-2.description',
     prompt: 'masterpiece, best quality, 1girl, hiyori, brown twin tails with blue hair ribbons, brown hair, gentle blue eyes, anime school uniform with blue ribbon tie, clean lineart, soft watercolor anime style,',
   },
   {
@@ -51,7 +53,9 @@ const localPresetModels: UnifiedVesselItem[] = [
     isInstalled: true,
     author: 'VRM Consortium',
     sourceSiteName: 'VRM Sample Model',
+    sourceSiteNameKey: 'onboarding.steps.vessel.catalog.vrmSampleSource',
     description: 'Official VRM 1.0 3D Humanoid companion with full blendshape facial expressions, spring bone hair physics, and full-body IK.',
+    descriptionKey: 'onboarding.steps.vessel.localPresetModels.preset-vrm-2.description',
     prompt: 'masterpiece, best quality, 1girl, seed girl, long dual-tone silvery-blue hair with white highlights, glowing cyan iris, futuristic idol bodysuit with neon accents, cel-shaded 3D anime aesthetic,',
   },
   {
@@ -63,7 +67,9 @@ const localPresetModels: UnifiedVesselItem[] = [
     isInstalled: true,
     author: 'VRM Consortium',
     sourceSiteName: 'VRM Starter Model',
+    sourceSiteNameKey: 'onboarding.steps.vessel.catalog.vrmStarterSource',
     description: 'Starter lightweight humanoid VRM companion with standard spring bone physics and expressive facial presets.',
+    descriptionKey: 'onboarding.steps.vessel.localPresetModels.preset-vrm-1.description',
     prompt: 'masterpiece, best quality, 1girl, avatarsample a, shoulder length brown hair, brown eyes, casual school uniform, simple clean anime style,',
   },
 ]
@@ -82,7 +88,7 @@ const communitySpotlightModels = computed<UnifiedVesselItem[]>(() => {
       sourceSiteName: m.sourceSiteName,
       sourceSiteUrl: m.sourceSiteUrl,
       downloadUrl: m.downloadUrl,
-      description: m.description || `Community-curated ${m.format.toUpperCase()} avatar from ${m.sourceSiteName}.`,
+      description: m.description || t('onboarding.steps.vessel.catalog.communityDescription', { format: m.format.toUpperCase(), source: m.sourceSiteName }),
       prompt: `masterpiece, best quality, 1girl, ${m.name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ')}, anime aesthetic, highly detailed illustration,`,
     }
   })
@@ -124,8 +130,11 @@ const userCustomModels = computed<UnifiedVesselItem[]>(() => {
       previewUrl: ('previewImage' in m && m.previewImage) ? m.previewImage : (('authorIcon' in m && m.authorIcon) ? m.authorIcon : ''),
       isInstalled: true,
       author: 'Custom Import',
+      authorKey: 'onboarding.steps.vessel.import.author',
       sourceSiteName: 'Local Vault',
+      sourceSiteNameKey: 'onboarding.steps.vessel.import.source',
       description: 'Custom imported companion avatar stored in your IndexedDB repository.',
+      descriptionKey: 'onboarding.steps.vessel.import.description',
       prompt: `masterpiece, best quality, 1girl, ${cleanName || 'custom avatar'}, detailed anime aesthetic,`,
     }
   })
@@ -223,13 +232,13 @@ watch(
 function handleDownloadClick() {
   if (!activeModel.value.isInstalled && activeModel.value.downloadUrl) {
     window.open(activeModel.value.downloadUrl, '_blank', 'noopener,noreferrer')
-    toast.info(`Opening download page for ${activeModel.value.name}...`)
+    toast.info(t('onboarding.steps.vessel.openingDownloadPageForValue', { name: activeModel.value.name }))
   }
 }
 
 function handleReselectActive() {
   applyVesselToDraft(activeModel.value.id, activeModel.value.prompt)
-  toast.success(`Mounted ${activeModel.value.name} as companion vessel!`)
+  toast.success(t('onboarding.steps.vessel.mountedValueAsCompanionVessel', { name: activeModel.value.name }))
 }
 
 // Custom model upload seam
@@ -238,7 +247,7 @@ const showCustomDropzone = ref(false)
 
 async function processModelFile(file: File) {
   isUploading.value = true
-  toast.info(`Importing ${file.name}...`)
+  toast.info(t('onboarding.steps.vessel.importingValue', { name: file.name }))
   try {
     const ext = file.name.split('.').pop()?.toLowerCase()
     let format: DisplayModelFormat = DisplayModelFormat.VRM
@@ -253,12 +262,12 @@ async function processModelFile(file: File) {
     const newModel = displayModelsStore.displayModels[0]
     if (newModel?.id) {
       selectedModelId.value = newModel.id
-      toast.success(`Loaded avatar "${newModel.name || file.name}"!`)
+      toast.success(t('onboarding.steps.vessel.loadedAvatarValue', { name: newModel.name || file.name }))
     }
   }
   catch (error: any) {
     console.error('[Step 5 Vessel] Failed to upload model file:', error)
-    toast.error(`Failed to load avatar: ${error?.message || 'Invalid model file'}`)
+    toast.error(t('onboarding.steps.vessel.failedToLoadAvatarValue', { messageInvalidmodelfile: error?.message || t('onboarding.steps.vessel.invalidModelFile') }))
   }
   finally {
     isUploading.value = false
@@ -306,7 +315,7 @@ function handleDrop(e: DragEvent) {
         </div>
 
         <AssistantBubble
-          message="Let’s find a look that feels right. Browse the collection or import your own avatar, then preview it on the stage."
+          :message="t('onboarding.steps.vessel.companionGreeting')"
           step-key="vessel"
           sticker-id="airi-surprised"
           tone="primary"
@@ -330,7 +339,7 @@ function handleDrop(e: DragEvent) {
           <!-- Avatar identity and metadata -->
           <div :class="['flex flex-col gap-3']">
             <span :class="['text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400']">
-              Selected avatar
+              {{ t('onboarding.steps.vessel.selectedAvatar') }}
             </span>
 
             <div :class="['flex items-start gap-3 min-w-0']">
@@ -350,8 +359,8 @@ function handleDrop(e: DragEvent) {
                 <div :title="activeModel.name" :class="['text-sm font-bold text-neutral-900 dark:text-white leading-tight break-words line-clamp-2']">
                   {{ activeModel.name }}
                 </div>
-                <div v-if="activeModel.sourceSiteName" :title="activeModel.sourceSiteName" :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate']">
-                  {{ activeModel.sourceSiteName }}
+                <div v-if="activeModel.sourceSiteName" :title="activeModel.sourceSiteNameKey ? t(activeModel.sourceSiteNameKey) : activeModel.sourceSiteName" :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate']">
+                  {{ activeModel.sourceSiteNameKey ? t(activeModel.sourceSiteNameKey) : activeModel.sourceSiteName }}
                 </div>
                 <div :class="['flex flex-wrap items-center gap-1.5 mt-1.5']">
                   <span
@@ -363,7 +372,7 @@ function handleDrop(e: DragEvent) {
                     ]"
                   >
                     <span v-if="activeModel.isInstalled" :class="['i-solar:check-circle-bold h-3 w-3']" />
-                    <span>{{ activeModel.isInstalled ? 'Installed' : 'Download' }}</span>
+                    <span>{{ activeModel.isInstalled ? t('onboarding.steps.vessel.installedBadge') : t('onboarding.steps.vessel.downloadBadge') }}</span>
                   </span>
                   <span
                     :class="[
@@ -385,23 +394,23 @@ function handleDrop(e: DragEvent) {
           <!-- Description and selection state -->
           <div :class="['flex flex-col gap-2']">
             <p :class="['text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed break-words']">
-              <span v-if="activeModel.author" :class="['text-neutral-700 dark:text-neutral-300 font-medium']">{{ activeModel.author }} • </span>
-              <span>{{ activeModel.description }}</span>
+              <span v-if="activeModel.author" :class="['text-neutral-700 dark:text-neutral-300 font-medium']">{{ activeModel.authorKey ? t(activeModel.authorKey) : activeModel.author }} • </span>
+              <span>{{ activeModel.descriptionKey ? t(activeModel.descriptionKey) : activeModel.description }}</span>
             </p>
 
             <div :class="['flex items-center gap-2']">
               <span v-if="isActiveCommitted" :class="['inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400']">
                 <span :class="['i-solar:check-circle-bold h-4 w-4']" />
-                <span>Selected</span>
+                <span>{{ t('onboarding.steps.vessel.selected') }}</span>
               </span>
               <span v-else-if="activeModel.isInstalled" :class="['inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400']">
-                <span>Browsing…</span>
+                <span>{{ t('onboarding.steps.vessel.browsing') }}</span>
                 <button
                   type="button"
                   :class="['text-primary-600 dark:text-primary-400 font-semibold hover:underline cursor-pointer']"
                   @click="handleReselectActive"
                 >
-                  Select
+                  {{ t('onboarding.steps.vessel.select') }}
                 </button>
               </span>
               <Button
@@ -412,7 +421,7 @@ function handleDrop(e: DragEvent) {
                 @click="handleDownloadClick"
               >
                 <span :class="['i-solar:download-minimalistic-bold-duotone h-4 w-4']" />
-                <span>Download model</span>
+                <span>{{ t('onboarding.steps.vessel.downloadModel') }}</span>
               </Button>
             </div>
           </div>
@@ -422,7 +431,7 @@ function handleDrop(e: DragEvent) {
           <!-- Visual-style descriptor -->
           <div :class="['flex flex-col gap-1.5 flex-1 min-h-0']">
             <label :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-300']" for="vessel-visual-descriptor">
-              Visual style descriptor
+              {{ t('onboarding.steps.vessel.visualStyleDescriptor') }}
             </label>
             <textarea
               id="vessel-visual-descriptor"
@@ -431,7 +440,7 @@ function handleDrop(e: DragEvent) {
               :class="['w-full flex-1 min-h-28 resize-y rounded-lg border border-neutral-200/80 dark:border-white/10 bg-white/80 dark:bg-black/30 px-3 py-2 font-mono text-xs leading-relaxed text-neutral-700 dark:text-neutral-300 outline-none transition focus:border-primary-500 break-words']"
             />
             <span :class="['text-[11px] text-neutral-400 dark:text-neutral-500']">
-              Used when generating images of your companion.
+              {{ t('onboarding.steps.vessel.visualStyleHint') }}
             </span>
           </div>
         </div>
@@ -461,7 +470,7 @@ function handleDrop(e: DragEvent) {
                 ]"
                 @click="activeSourceFilter = 'all'"
               >
-                All sources ({{ allModels.length }})
+                {{ t('onboarding.steps.vessel.filters.allCount', { count: allModels.length }) }}
               </button>
               <button
                 type="button"
@@ -473,7 +482,7 @@ function handleDrop(e: DragEvent) {
                 ]"
                 @click="activeSourceFilter = 'installed'"
               >
-                Installed ({{ installedCount }})
+                {{ t('onboarding.steps.vessel.filters.installedCount', { count: installedCount }) }}
               </button>
               <button
                 type="button"
@@ -485,7 +494,7 @@ function handleDrop(e: DragEvent) {
                 ]"
                 @click="activeSourceFilter = 'free'"
               >
-                Free downloads ({{ freeCount }})
+                {{ t('onboarding.steps.vessel.filters.freeCount', { count: freeCount }) }}
               </button>
             </div>
 
@@ -499,7 +508,7 @@ function handleDrop(e: DragEvent) {
               ]"
               @click="showCustomDropzone = !showCustomDropzone"
             >
-              <span>+ Import custom</span>
+              <span>{{ t('onboarding.steps.vessel.importCustom') }}</span>
             </button>
           </div>
 
@@ -551,7 +560,7 @@ function handleDrop(e: DragEvent) {
               ]"
               @click="activeFormatFilter = 'spine'"
             >
-              Spine (2D)
+              {{ t('onboarding.steps.vessel.spine2d') }}
             </button>
             <button
               type="button"
@@ -588,11 +597,11 @@ function handleDrop(e: DragEvent) {
               </div>
               <div :class="['min-w-0']">
                 <div :class="['text-xs font-bold text-neutral-800 dark:text-white flex items-center gap-2']">
-                  <span>Drop your custom model here (.vrm or .zip)</span>
-                  <span v-if="isUploading" :class="['text-[10px] text-primary-500 font-mono animate-pulse']">Loading...</span>
+                  <span>{{ t('onboarding.steps.vessel.dropYourCustomModelHereVrmOrZip') }}</span>
+                  <span v-if="isUploading" :class="['text-[10px] text-primary-500 font-mono animate-pulse']">{{ t('onboarding.steps.vessel.import.loading') }}</span>
                 </div>
                 <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5']">
-                  Supports VRM 0.0/1.0 3D humanoids and Live2D Cubism model zip packages.
+                  {{ t('onboarding.steps.vessel.supportsVrm00103dHumanoidsAndLive2dCubismModelZipPackages') }}
                 </p>
               </div>
             </div>
@@ -602,7 +611,7 @@ function handleDrop(e: DragEvent) {
               :class="['flex-shrink-0']"
               @click.stop="openFileDialog()"
             >
-              Choose File
+              {{ t('onboarding.steps.vessel.chooseFile') }}
             </Button>
           </div>
 
@@ -618,7 +627,7 @@ function handleDrop(e: DragEvent) {
           <!-- Selected-avatar caption -->
           <div :class="['text-center text-xs text-neutral-500 dark:text-neutral-400 truncate px-2']">
             <span :title="activeModel.name" :class="['font-bold text-neutral-800 dark:text-neutral-100']">{{ activeModel.name }}</span>
-            <span> · {{ activeModel.formatLabel || activeModel.format.toUpperCase() }} · {{ activeModel.isInstalled ? 'Installed' : 'Download' }}</span>
+            <span> · {{ activeModel.formatLabel || activeModel.format.toUpperCase() }} · {{ activeModel.isInstalled ? t('onboarding.steps.vessel.installedBadge') : t('onboarding.steps.vessel.downloadBadge') }}</span>
           </div>
         </div>
       </div>
@@ -644,7 +653,11 @@ function handleDrop(e: DragEvent) {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 font-medium truncate px-2']">
-        Selected: <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ activeModel.name }}</span>
+        <i18n-t scope="global" keypath="onboarding.steps.vessel.summary.selected" tag="span">
+          <template #name>
+            <span :class="['text-neutral-700 dark:text-neutral-200 font-semibold']">{{ activeModel.name }}</span>
+          </template>
+        </i18n-t>
       </div>
 
       <Button

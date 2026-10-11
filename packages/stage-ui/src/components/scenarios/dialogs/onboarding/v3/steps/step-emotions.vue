@@ -102,12 +102,12 @@ function handleContinue() {
           :class="['text-center']"
         >
           <h1 :class="['text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white']">
-            Emotions & Expressions
+            {{ t('onboarding.steps.emotions.heading') }}
           </h1>
         </div>
 
         <AssistantBubble
-          message="Let’s discover how your companion expresses emotion. Preview your avatar’s expressions, keep the ones that work, and connect them to emotional cues."
+          :message="t('onboarding.steps.emotions.companionGreeting')"
           step-key="emotions"
           sticker-id="airi-happy"
           tone="primary"
@@ -142,7 +142,7 @@ function handleContinue() {
       </button>
 
       <div :class="['text-[11px] text-neutral-400 hidden sm:block']">
-        Changes automatically saved to companion draft
+        {{ t('onboarding.steps.emotions.changesAutomaticallySavedToCompanionDraft') }}
       </div>
 
       <div :class="['flex items-center gap-2.5']">
