@@ -10,6 +10,7 @@ export interface PersistedWidget {
   surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
   position?: { x: number, y: number }
+  state?: any
   isMounted: boolean
   mountedAt: number
   updatedAt: number
@@ -39,6 +40,17 @@ export const widgetsRepo = {
     }
     const clean = JSON.parse(JSON.stringify(all))
     await storage.setItemRaw(WIDGETS_REGISTRY_KEY, clean)
+  },
+
+  async updateWidgetState(idOrPath: string, state: any): Promise<void> {
+    const all = await this.getWidgets()
+    const found = all.find(w => w.id === idOrPath || w.path === idOrPath)
+    if (found) {
+      found.state = state
+      found.updatedAt = Date.now()
+      const clean = JSON.parse(JSON.stringify(all))
+      await storage.setItemRaw(WIDGETS_REGISTRY_KEY, clean)
+    }
   },
 
   async updateWidgetPosition(idOrPath: string, position: { x: number, y: number }): Promise<void> {

@@ -256,6 +256,8 @@ const generationReasoningFallback = ref<boolean>(true)
 const compactionStrategy = ref<string>('none')
 const compactionMinKeepTurns = ref<number | undefined>(15)
 const generationAllowedTools = ref<string[] | undefined>(undefined)
+const generationMaxToolSteps = ref<number | undefined>(undefined)
+const generationPreserveToolHistory = ref<boolean>(false)
 const selectedActingModelExpressionPrompt = ref<string>('')
 const selectedActingSpeechExpressionPrompt = ref<string>('')
 const selectedActingSpeechMannerismPrompt = ref<string>('')
@@ -1015,6 +1017,8 @@ async function saveCard(card: Card): Promise<boolean> {
     contextWidth: normalizeOptionalNumber(generationContextWidth.value),
     reasoningFallback: generationReasoningFallback.value,
     allowedTools: toRaw(generationAllowedTools.value),
+    maxToolSteps: normalizeOptionalNumber(generationMaxToolSteps.value),
+    preserveToolHistory: generationPreserveToolHistory.value,
   }
   let generationAdvanced: Record<string, any> | undefined
 
@@ -1390,6 +1394,8 @@ function initializeCard(): Card {
     generationContextWidth.value = normalizeOptionalNumber(airiExt?.generation?.known?.contextWidth)
     generationReasoningFallback.value = airiExt?.generation?.known?.reasoningFallback ?? true
     generationAllowedTools.value = airiExt?.generation?.known?.allowedTools
+    generationMaxToolSteps.value = normalizeOptionalNumber(airiExt?.generation?.known?.maxToolSteps)
+    generationPreserveToolHistory.value = airiExt?.generation?.known?.preserveToolHistory ?? false
     generationAdvancedJson.value = airiExt?.generation?.advanced ? JSON.stringify(airiExt.generation.advanced, null, 2) : '{\n  \n}'
     selectedActingModelExpressionPrompt.value = airiExt?.acting?.modelExpressionPrompt ?? DEFAULT_ACTING_MODEL_PROMPT
     selectedActingSpeechExpressionPrompt.value = airiExt?.acting?.speechExpressionPrompt ?? DEFAULT_ACTING_SPEECH_EXPRESSION_PROMPT
@@ -2124,6 +2130,8 @@ function handleGeneratorSave(newValue: string) {
       <CardCreationTabTools
         v-else-if="activeTab === 'tools'"
         v-model:selected-allowed-tools="generationAllowedTools"
+        v-model:selected-max-tool-steps="generationMaxToolSteps"
+        v-model:selected-preserve-tool-history="generationPreserveToolHistory"
         v-model:selected-image-journal-instruction="selectedArtistryWidgetInstruction"
         v-model:selected-text-journal-instruction="selectedTextJournalInstruction"
         v-model:selected-sandbox-instruction="selectedSandboxInstruction"

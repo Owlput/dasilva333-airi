@@ -617,4 +617,120 @@ console.log('SUM:' + res.sum);
       expect(srcdoc).toContain('type: \'widget-resize\'')
     })
   })
+
+  describe('lazy sidecar state binding & 2-way reactivity', () => {
+    it('initializes with empty state by default without creating sidecar file spam', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/strawberry.ts', 'export default function mount({ container, state }: AiriWidgetContext) { container.innerHTML = "🍓"; }')
+      const res = await sandbox.exec('mount_widget /workspace/strawberry.ts')
+      expect(res.exitCode).toBe(0)
+
+      // Does NOT spam empty .json file
+      const jsonExists = await (sandbox as any).bash.fs.exists('/workspace/strawberry.json')
+      expect(jsonExists).toBe(false)
+      expect(sandbox.mountedWidgets[0].state).toBeUndefined()
+    })
+
+    it('mounts with preloaded state if sidecar file already exists in VFS', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/counter.json', JSON.stringify({ count: 7 }))
+      await sandbox.writeFile('/workspace/counter.ts', 'export default function mount({ container, state }: AiriWidgetContext) { container.innerHTML = `Count: ${state.count}`; }')
+      const res = await sandbox.exec('mount_widget /workspace/counter.ts')
+      expect(res.exitCode).toBe(0)
+
+      expect(sandbox.mountedWidgets[0].state).toEqual({ count: 7 })
+    })
+
+    it('lazily creates sidecar json and updates widgetsRepo when handleWidgetStateUpdate is called', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/strawberry.ts', 'export default function mount() {}')
+      await sandbox.exec('mount_widget /workspace/strawberry.ts')
+      const widget = sandbox.mountedWidgets[0]
+      expect(widget).toBeDefined()
+
+      // Simulate setState from iframe
+      await sandbox.handleWidgetStateUpdate(widget.id, widget.path, { loves: 12, mood: '🍓' })
+
+      // File should now lazily exist in VFS
+      const rawJson = await sandbox.readFile('/workspace/strawberry.json')
+      expect(JSON.parse(rawJson)).toEqual({ loves: 12, mood: '🍓' })
+
+      // Persisted in repo
+      const persisted = await widgetsRepo.getWidgets()
+      const found = persisted.find(w => w.id === widget.id)
+      expect(found?.state).toEqual({ loves: 12, mood: '🍓' })
+      expect(sandbox.mountedWidgets[0].state).toEqual({ loves: 12, mood: '🍓' })
+    })
+
+    it('detects file modifications from bash and synchronizes widget state', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/strawberry.ts', 'export default function mount() {}')
+      await sandbox.exec('mount_widget /workspace/strawberry.ts')
+      const widget = sandbox.mountedWidgets[0]
+
+      // First call setState to create the file
+      await sandbox.handleWidgetStateUpdate(widget.id, widget.path, { loves: 5 })
+
+      // Agent in bash mutates the file directly via echo/redirect
+      const mutateRes = await sandbox.exec('echo \'{"loves": 99, "status": "happy"}\' > /workspace/strawberry.json')
+      expect(mutateRes.exitCode).toBe(0)
+
+      // State is synchronized into mounted widget and repo
+      expect(sandbox.mountedWidgets[0].state).toEqual({ loves: 99, status: 'happy' })
+      const persisted = await widgetsRepo.getWidgets()
+      const found = persisted.find(w => w.id === widget.id)
+      expect(found?.state).toEqual({ loves: 99, status: 'happy' })
+    })
+
+    it('rehydrates persisted state and restores sidecar json on reboot', async () => {
+      // Seed persisted widget in widgetsRepo with state
+      await widgetsRepo.saveWidget({
+        id: 'widget-rehydrate-test',
+        title: 'Rehydrate Test',
+        path: '/workspace/rehydrate.js',
+        sourcePath: '/workspace/rehydrate.ts',
+        sourceCode: 'export default function mount() {}',
+        code: 'export default function mount() {}',
+        state: { level: 3, xp: 450 },
+        isMounted: true,
+        mountedAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+
+      const newSandbox = new SandboxManager()
+      await newSandbox.init()
+
+      // The .json sidecar should be restored in VFS
+      const rawJson = await newSandbox.readFile('/workspace/rehydrate.json')
+      expect(JSON.parse(rawJson)).toEqual({ level: 3, xp: 450 })
+
+      // Mounted widget should have state
+      const mounted = newSandbox.mountedWidgets.find(w => w.id === 'widget-rehydrate-test')
+      expect(mounted?.state).toEqual({ level: 3, xp: 450 })
+    })
+
+    it('packages srcdoc with state, setState, onStateChange, and message handlers', async () => {
+      const srcdoc = await buildWidgetIframeSrcdoc({
+        path: '/workspace/pet.js',
+        code: 'export default function mount({ state, setState, onStateChange }) {}',
+        title: 'Pet',
+        state: { hunger: 25 },
+      })
+
+      expect(srcdoc).toContain('let widgetState = {"hunger":25};')
+      expect(srcdoc).toContain('function setState(val)')
+      expect(srcdoc).toContain('function onStateChange(cb)')
+      expect(srcdoc).toContain('widget-state-update')
+      expect(srcdoc).toContain('widget-state-sync')
+      expect(srcdoc).toContain('get state() { return widgetState; }')
+    })
+  })
 })

@@ -134,6 +134,8 @@ export interface CharacterGenerationConfig {
     contextWidth?: number
     reasoningFallback?: boolean
     allowedTools?: string[]
+    maxToolSteps?: number
+    preserveToolHistory?: boolean
   }
   advanced?: Record<string, any>
   compaction?: {

@@ -34,6 +34,7 @@ export interface StreamOptions {
   max_tokens?: number
   contextWidth?: number
   vision?: boolean
+  maxSteps?: number
   requestOverrides?: Record<string, unknown>
 }
 
@@ -358,7 +359,7 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
         streamOptions: {
           includeUsage: true,
         },
-        maxSteps: 10,
+        maxSteps: options?.maxSteps ?? 20,
         messages: sanitized,
         headers: {
           ...(chatConfig.headers as Record<string, string> | undefined),
@@ -449,7 +450,7 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
   return await generateText({
     ...chatConfig,
     ...requestOverrides,
-    maxSteps: 10,
+    maxSteps: options?.maxSteps ?? 20,
     messages: sanitized,
     headers: {
       ...(chatConfig.headers as Record<string, string> | undefined),

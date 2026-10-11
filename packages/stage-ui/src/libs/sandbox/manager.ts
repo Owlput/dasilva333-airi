@@ -35,6 +35,8 @@ export class SandboxManager {
   private channel: BroadcastChannel | null = null
   private isLeader = true
   private pendingRequests = new Map<string, { resolve: (val: any) => void, reject: (err: any) => void, timeout: ReturnType<typeof setTimeout> }>()
+  private suppressStateSyncPaths = new Set<string>()
+  private windowMessageListener: ((event: MessageEvent) => void) | null = null
 
   constructor() {
     this.bash = new Bash({
@@ -45,6 +47,7 @@ export class SandboxManager {
 
   async init(): Promise<void> {
     this.isLeader = isMainWindow()
+    this.setupWindowMessageListener()
 
     if (typeof BroadcastChannel !== 'undefined') {
       try {
@@ -189,6 +192,26 @@ export class SandboxManager {
             this.notifyMountListeners()
             break
           }
+          case 'widget-state-update': {
+            await this.handleWidgetStateUpdate(msg.id, msg.path, msg.state)
+            break
+          }
+          case 'widget-state-sync': {
+            const widget = this.mountedWidgetsList.find(w => w.id === msg.id || w.path === msg.path)
+            if (widget) {
+              widget.state = msg.state
+            }
+            if (typeof document !== 'undefined') {
+              const iframes = Array.from(document.querySelectorAll('iframe'))
+              for (const iframe of iframes) {
+                try {
+                  iframe.contentWindow?.postMessage(msg, '*')
+                }
+                catch {}
+              }
+            }
+            break
+          }
           case 'reset': {
             await this.resetInternal()
             this.channel?.postMessage({
@@ -232,6 +255,22 @@ export class SandboxManager {
           case 'widget-clear': {
             this.mountedWidgetsList = []
             this.notifyMountListeners()
+            break
+          }
+          case 'widget-state-sync': {
+            const widget = this.mountedWidgetsList.find(w => w.id === msg.id || w.path === msg.path)
+            if (widget) {
+              widget.state = msg.state
+            }
+            if (typeof document !== 'undefined') {
+              const iframes = Array.from(document.querySelectorAll('iframe'))
+              for (const iframe of iframes) {
+                try {
+                  iframe.contentWindow?.postMessage(msg, '*')
+                }
+                catch {}
+              }
+            }
             break
           }
           case 'command-log': {
@@ -283,6 +322,122 @@ export class SandboxManager {
           }
         }
       }
+    }
+  }
+
+  private setupWindowMessageListener(): void {
+    if (typeof window === 'undefined' || this.windowMessageListener)
+      return
+
+    this.windowMessageListener = async (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || msg.type !== 'widget-state-update')
+        return
+
+      const { id, path, state } = msg
+      await this.handleWidgetStateUpdate(id, path, state)
+    }
+
+    window.addEventListener('message', this.windowMessageListener)
+  }
+
+  async handleWidgetStateUpdate(id: string, path: string, state: any): Promise<void> {
+    const widget = this.mountedWidgetsList.find(w => w.id === id || w.path === path)
+    if (widget) {
+      widget.state = state
+    }
+
+    try {
+      await widgetsRepo.updateWidgetState(id || path, state)
+    }
+    catch (err) {
+      console.warn('[SandboxManager] Failed to persist widget state in repo:', err)
+    }
+
+    const targetPath = widget?.sourcePath || widget?.path || path
+    if (targetPath) {
+      const jsonPath = targetPath.replace(/\.(ts|js|html)$/, '.json')
+      const jsonStr = JSON.stringify(state, null, 2)
+      if (widget) {
+        widget._lastSyncedJsonContent = jsonStr
+      }
+      this.suppressStateSyncPaths.add(jsonPath)
+      try {
+        await this.writeFile(jsonPath, jsonStr)
+      }
+      catch (err) {
+        console.warn(`[SandboxManager] Failed to write sidecar state file ${jsonPath}:`, err)
+      }
+      finally {
+        this.suppressStateSyncPaths.delete(jsonPath)
+      }
+    }
+
+    this.broadcastWidgetStateSync(widget?.id || id, widget?.path || path, state)
+  }
+
+  async checkWidgetStateFiles(specificPath?: string): Promise<void> {
+    for (const widget of this.mountedWidgetsList) {
+      const targetPath = widget.sourcePath || widget.path
+      if (!targetPath)
+        continue
+      const jsonPath = targetPath.replace(/\.(ts|js|html)$/, '.json')
+      if (specificPath && specificPath !== jsonPath)
+        continue
+      if (this.suppressStateSyncPaths.has(jsonPath))
+        continue
+
+      try {
+        if (await this.bash.fs.exists(jsonPath)) {
+          const content = await this.bash.readFile(jsonPath)
+          if (content && content !== widget._lastSyncedJsonContent) {
+            widget._lastSyncedJsonContent = content
+            let parsed: any
+            try {
+              parsed = JSON.parse(content)
+            }
+            catch {
+              continue
+            }
+            widget.state = parsed
+            try {
+              await widgetsRepo.updateWidgetState(widget.id, parsed)
+            }
+            catch {}
+            this.broadcastWidgetStateSync(widget.id, widget.path, parsed)
+          }
+        }
+      }
+      catch {}
+    }
+  }
+
+  private broadcastWidgetStateSync(id: string, path: string, state: any): void {
+    if (this.channel) {
+      try {
+        this.channel.postMessage({
+          type: 'widget-state-sync',
+          id,
+          path,
+          state,
+        })
+      }
+      catch {}
+    }
+
+    if (typeof document !== 'undefined') {
+      try {
+        const iframes = Array.from(document.querySelectorAll('iframe'))
+        for (const iframe of iframes) {
+          iframe.contentWindow?.postMessage({
+            type: 'widget-state-sync',
+            id,
+            path,
+            state,
+          }, '*')
+        }
+      }
+      catch {}
     }
   }
 
@@ -585,25 +740,6 @@ export class SandboxManager {
         title = foundInRepo?.title || fullPath.split('/').pop() || 'Widget'
       }
 
-      const target: 'sidepanel' | 'inline' | 'window' = surface === 'widget' ? 'window' : 'sidepanel'
-      const widget: MountedWidget = {
-        id: foundInRepo?.id || `widget-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        path: fullPath,
-        code,
-        title,
-        surface,
-        target,
-        mountedAt: Date.now(),
-      }
-
-      const existingIdx = this.mountedWidgetsList.findIndex(w => w.id === widget.id || w.path === fullPath)
-      if (existingIdx >= 0) {
-        this.mountedWidgetsList[existingIdx] = widget
-      }
-      else {
-        this.mountedWidgetsList.push(widget)
-      }
-
       let sourcePath: string | undefined
       let sourceCode: string | undefined
       if (file.endsWith('.ts')) {
@@ -620,6 +756,54 @@ export class SandboxManager {
         sourceCode = foundInRepo.sourceCode
       }
 
+      // Check for existing sidecar state file or persisted state
+      const jsonCandidatePath = (sourcePath || fullPath).replace(/\.(ts|js|html)$/, '.json')
+      let preloadedState: any = foundInRepo?.state
+      let lastSyncedJsonContent: string | undefined
+      try {
+        if (await ctx.fs.exists(jsonCandidatePath)) {
+          const raw = await ctx.fs.readFile(jsonCandidatePath)
+          if (raw && raw.trim()) {
+            preloadedState = JSON.parse(raw)
+            lastSyncedJsonContent = raw
+          }
+        }
+      }
+      catch {}
+
+      // If state was persisted in repo but .json file doesn't exist yet in VFS, lazily write it
+      if (!lastSyncedJsonContent && preloadedState && Object.keys(preloadedState).length > 0) {
+        try {
+          const jsonStr = JSON.stringify(preloadedState, null, 2)
+          await ctx.fs.writeFile(jsonCandidatePath, jsonStr)
+          lastSyncedJsonContent = jsonStr
+        }
+        catch {}
+      }
+
+      const target: 'sidepanel' | 'inline' | 'window' = surface === 'widget' ? 'window' : 'sidepanel'
+      const widget: MountedWidget = {
+        id: foundInRepo?.id || `widget-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        path: fullPath,
+        sourcePath,
+        sourceCode,
+        code,
+        title,
+        surface,
+        target,
+        state: preloadedState,
+        _lastSyncedJsonContent: lastSyncedJsonContent,
+        mountedAt: Date.now(),
+      }
+
+      const existingIdx = this.mountedWidgetsList.findIndex(w => w.id === widget.id || w.path === fullPath)
+      if (existingIdx >= 0) {
+        this.mountedWidgetsList[existingIdx] = widget
+      }
+      else {
+        this.mountedWidgetsList.push(widget)
+      }
+
       void widgetsRepo.saveWidget({
         id: widget.id,
         title: widget.title || title || 'Widget',
@@ -629,6 +813,7 @@ export class SandboxManager {
         code,
         surface,
         target,
+        state: preloadedState,
         isMounted: true,
         mountedAt: widget.mountedAt,
         updatedAt: Date.now(),
@@ -1390,20 +1575,23 @@ interface _AiriWidgetSidecar {
   }
 }
 
-interface _AiriWidgetContext extends HTMLElement {
+interface _AiriWidgetContext<T = Record<string, any>> extends HTMLElement {
   container: HTMLElement
   sidecar: _AiriWidgetSidecar
   data: _AiriWidgetSidecar
+  state: T
+  setState: (updater: Partial<T> | ((prevState: T) => Partial<T> | T)) => void
+  onStateChange: (callback: (newState: T) => void) => () => void
   onUpdate: (callback: (updatedSidecar: _AiriWidgetSidecar) => void) => () => void
   callMcpTool: (name: string, args?: Record<string, unknown>) => Promise<any>
 }
 
 export type AiriWidgetSidecar = _AiriWidgetSidecar
-export type AiriWidgetContext = _AiriWidgetContext
+export type AiriWidgetContext<T = Record<string, any>> = _AiriWidgetContext<T>
 
 declare global {
   type AiriWidgetSidecar = _AiriWidgetSidecar
-  type AiriWidgetContext = _AiriWidgetContext
+  type AiriWidgetContext<T = Record<string, any>> = _AiriWidgetContext<T>
 }
 `)
 
@@ -1441,6 +1629,8 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
     const startTime = performance.now()
     const result = await this.bash.exec(command)
     const durationMs = Math.round(performance.now() - startTime)
+
+    await this.checkWidgetStateFiles()
 
     const logEntry: CommandLogEntry = {
       id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1575,6 +1765,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
 
   private async writeFileInternal(filePath: string, content: string): Promise<void> {
     await this.bash.fs.writeFile(filePath, content)
+    await this.checkWidgetStateFiles(filePath)
   }
 
   async reset(): Promise<void> {
@@ -1599,6 +1790,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
     this.bash = new Bash({ cwd: '/workspace' })
     this.mountedWidgetsList = []
     this.commandLogs = []
+    this.suppressStateSyncPaths.clear()
     this.registerCustomCommands()
     await this.seedWorkspace()
     await this.syncProjections()
@@ -1629,14 +1821,32 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
           }
         }
 
+        // If widget has persisted state, lazily re-seed <name>.json into VFS
+        let lastSyncedJsonContent: string | undefined
+        if (item.state && Object.keys(item.state).length > 0) {
+          const jsonPath = (item.sourcePath || item.path).replace(/\.(ts|js|html)$/, '.json')
+          try {
+            const jsonStr = JSON.stringify(item.state, null, 2)
+            await this.bash.fs.writeFile(jsonPath, jsonStr)
+            lastSyncedJsonContent = jsonStr
+          }
+          catch (e) {
+            console.warn(`[SandboxManager] Failed to restore state file ${jsonPath}:`, e)
+          }
+        }
+
         const widget: MountedWidget = {
           id: item.id,
           path: item.path,
+          sourcePath: item.sourcePath,
+          sourceCode: item.sourceCode,
           code: item.code,
           title: item.title,
           surface: item.surface || (item.target === 'window' ? 'widget' : 'panel'),
           target: item.target || (item.surface === 'widget' ? 'window' : 'sidepanel'),
           position: item.position,
+          state: item.state,
+          _lastSyncedJsonContent: lastSyncedJsonContent,
           mountedAt: item.mountedAt || Date.now(),
         }
 

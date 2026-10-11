@@ -314,6 +314,8 @@ const AiriExtensionSchema = looseObject({
       temperature: optional(number()),
       topP: optional(number()),
       reasoningFallback: optional(boolean()),
+      maxToolSteps: optional(number()),
+      preserveToolHistory: optional(boolean()),
     })),
     advanced: optional(record(string(), unknown())),
     importedPresetMeta: optional(looseObject({

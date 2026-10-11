@@ -24,11 +24,15 @@ export interface VirtualFileEntry {
 export interface MountedWidget {
   id: string
   path: string
+  sourcePath?: string
+  sourceCode?: string
   code: string
   title?: string
   surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
   position?: { x: number, y: number }
+  state?: any
+  _lastSyncedJsonContent?: string
   mountedAt: number
 }
 
@@ -113,6 +117,8 @@ export type SandboxChannelMessage
     | { type: 'widget-mount', widget: MountedWidget }
     | { type: 'widget-unmount', id: string }
     | { type: 'widget-clear' }
+    | { type: 'widget-state-sync', id: string, path: string, state: any }
+    | { type: 'widget-state-update', id: string, path: string, state: any }
     | { type: 'exec', requestId: string, command: string }
     | { type: 'exec-done', requestId: string, result: ExecResult }
     | { type: 'exec-error', requestId: string, error: string }

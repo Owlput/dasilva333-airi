@@ -595,6 +595,7 @@ export interface PersistedWidget {
   surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
   position?: { x: number, y: number }
+  state?: any
   isMounted: boolean
   mountedAt: number
   updatedAt: number

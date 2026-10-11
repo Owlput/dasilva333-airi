@@ -230,17 +230,28 @@ export interface AiriWidgetSidecar {
   }
 }
 
-export interface AiriWidgetContext {
+export interface AiriWidgetContext<T = Record<string, any>> {
   container: HTMLElement
   sidecar: AiriWidgetSidecar
   data: AiriWidgetSidecar
+  state: T
+  setState: (updater: Partial<T> | ((prevState: T) => Partial<T> | T)) => void
+  onStateChange: (callback: (newState: T) => void) => () => void
   /**
    * Subscribes to live state updates pushed from AIRI's runtime stores.
    * Returns an unsubscribe cleanup function.
    */
   onUpdate: (callback: (updatedSidecar: AiriWidgetSidecar) => void) => () => void
+  callMcpTool: (name: string, args?: Record<string, unknown>) => Promise<any>
 }
 ```
+
+#### Level 4: 2-Way Reactive Sidecar State Binding (`/workspace/<name>.json` & `setState`)
+Every mounted widget (e.g. `/workspace/strawberry_pet.ts`) is lazily bound 1:1 to a sidecar JSON state file (`/workspace/strawberry_pet.json`).
+* **Zero File Spam**: The file is NOT pre-created on mount if unused. It is instantiated on the RAM disk lazily only when `setState()` is first called (or if the agent manually pre-creates it before mounting).
+* **UI $\to$ Terminal**: User interactions in the widget iframe call `setState(data)` $\to$ automatically updates `widgetsRepo` (`local:widgets/registry`) and writes/updates `/workspace/<name>.json` on the virtual RAM disk.
+* **Terminal $\to$ UI**: The agent can inspect or mutate active widget data directly via bash (`cat <name>.json`, `jq '.count += 1' <name>.json > tmp && mv tmp <name>.json`) $\to$ `SandboxManager` detects changes $\to$ broadcasts `widget-state-sync` to iframes $\to$ `onStateChange((newState) => ...)` fires live in the widget DOM.
+* **Reboot Rehydration**: When the app reloads, if a widget has persisted state, the `<name>.json` sidecar file is re-seeded into the virtual RAM disk immediately.
 
 #### Multi-Window Synchronization via BroadcastChannel
 In Electron multi-window mode, the Control Strip acts as the **leader** process owning the primary `Bash` instance and VFS, while auxiliary windows (such as the Desktop Chat window) act as **followers**.
@@ -248,6 +259,7 @@ The host wires an internal `BroadcastChannel('airi:sandbox:channel')`:
 * Followers request state and command logs from the leader upon initialization.
 * Commands executed in the Chat window's terminal drawer sync execution and output to the leader.
 * `mount_widget` triggers are broadcast so the Inspector canvas stays perfectly synchronized across all open windows.
+* State updates (`widget-state-update` / `widget-state-sync`) sync reactively across standalone widget windows and inspector tabs.
 
 #### Canonical Reference: "Hours Since Last Message" Companion Widget
 The agent leverages the Level 3 sidecar contract to create a live, reactive companion widget that updates in real time without continuous LLM inference:

@@ -65,27 +65,41 @@ Generative widgets run inside a sandboxed iframe. Every widget module must expor
 ```ts
 import type { AiriWidgetContext, AiriWidgetSidecar } from './types/airi-widget'
 
-export default function mount({ container, sidecar, onUpdate }: AiriWidgetContext) {
+export default function mount({ container, sidecar, state, setState, onStateChange, onUpdate, callMcpTool }: AiriWidgetContext) {
   // 1. Build DOM inside container
   const el = document.createElement('div')
   el.className = 'p-4 rounded-xl bg-neutral-900/80 text-white font-sans'
   el.innerHTML = `
     <h3 class="text-sm font-bold text-sky-400">System Telemetry</h3>
     <div id="status" class="mt-2 text-xs">Emotion: ${sidecar.cognition.emotion}</div>
+    <button id="like-btn" class="mt-3 px-3 py-1 bg-pink-600 rounded-lg text-xs font-bold">🍓 Loves: <span id="count">${state.loves || 0}</span></button>
   `
   container.appendChild(el)
 
-  // 2. Subscribe to reactive sidecar updates (returns an unmount cleanup function)
-  const unsubscribe = onUpdate((newSidecar: AiriWidgetSidecar) => {
+  // 2. Interactive state persistence (lazily writes to /workspace/<name>.json)
+  el.querySelector('#like-btn')?.addEventListener('click', () => {
+    setState((prev: any) => ({ ...prev, loves: (prev.loves || 0) + 1 }))
+  })
+
+  // 3. React to state changes (from UI clicks OR terminal edits via cat/jq)
+  const unsubState = onStateChange((newState: any) => {
+    const count = el.querySelector('#count')
+    if (count)
+      count.textContent = String(newState.loves || 0)
+  })
+
+  // 4. Subscribe to reactive sidecar updates
+  const unsubSidecar = onUpdate((newSidecar: AiriWidgetSidecar) => {
     const status = el.querySelector('#status')
     if (status) {
       status.textContent = `Emotion: ${newSidecar.cognition.emotion} | Energy: ${newSidecar.cognition.energy}%`
     }
   })
 
-  // 3. Return unmount cleanup
+  // 5. Return unmount cleanup
   return () => {
-    unsubscribe()
+    unsubState()
+    unsubSidecar()
     container.innerHTML = ''
   }
 }
@@ -94,11 +108,15 @@ export default function mount({ container, sidecar, onUpdate }: AiriWidgetContex
 ### Ambient Types (`/workspace/types/airi-widget.d.ts`)
 
 - **`container: HTMLElement`**: The scoped root element provided by the iframe host.
+- **`state: T`**: Preloaded persistent widget state (defaults to `{}`).
+- **`setState(updater: Partial<T> | ((prev: T) => Partial<T> | T)): void`**: Persists state to database and lazily writes to sidecar file `/workspace/<name>.json`.
+- **`onStateChange(callback: (newState: T) => void): () => void`**: Registers a listener that fires whenever state changes via UI or terminal (`jq`, `cat`).
 - **`sidecar: AiriWidgetSidecar`**:
   - `session`: `{ id: string, activeCardName: string, messageCount: number }`
   - `cognition`: `{ emotion: string, energy: number }`
   - `telemetry`: `{ activeApp?: string, cpuLoad?: { avg1m?: number } | number[], idleSeconds?: number, isAfk?: boolean }`
 - **`onUpdate(callback: (sidecar: AiriWidgetSidecar) => void): () => void`**: Registers a listener that fires whenever live session or telemetry state changes.
+- **`callMcpTool(name: string, args?: Record<string, unknown>): Promise<any>`**: Executes external MCP tools directly from within the iframe.
 
 ---
 
@@ -176,6 +194,7 @@ widget-3    Crypto Ticker panel     [OFFLINE]  /workspace/ticker.ts
     surface?: 'panel' | 'widget'
     target?: 'sidepanel' | 'inline' | 'window'
     position?: { x: number, y: number }
+    state?: any
     isMounted: boolean
     mountedAt: number
     updatedAt: number
@@ -183,8 +202,8 @@ widget-3    Crypto Ticker panel     [OFFLINE]  /workspace/ticker.ts
   ```
 - **Auto-Rehydration Flow**:
   1. On application startup or page reload, `SandboxManager.init()` reads `widgetsRepo.getMountedWidgets()`.
-  2. For every mounted widget, it re-writes `sourceCode` (or compiled `code`) back to `/workspace` in the virtual RAM disk.
-  3. Populates `mountedWidgetsList` with persisted `title`, `surface`, and drag `position: { x, y }`, broadcasting `widget-mount` to active UI surfaces.
+  2. For every mounted widget, it re-writes `sourceCode` (or compiled `code`) and re-seeds persisted `state` into `/workspace/<name>.json` in the virtual RAM disk.
+  3. Populates `mountedWidgetsList` with persisted `title`, `surface`, `state`, and drag `position: { x, y }`, broadcasting `widget-mount` to active UI surfaces.
   4. In `stage-web` and `stage-pocket`, `<FloatingWidgetsLayer />` mounts floating widgets at their exact saved coordinates. In chat, `selectedWidgetId` stays on the active panel tab across browser reloads.
 
 ---

@@ -1126,6 +1126,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       let turnSpeechContent = ''
       let turnRawContent = ''
       const bridgedTurnsHistory: { content: string, rawContent?: string, tool_calls?: any[], tool_results: any[] }[] = []
+      let lastStreamFinishReason = ''
 
       while (bridgedSteps < 5) {
         bridgedSteps++
@@ -1244,7 +1245,10 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           return content
         }
 
-        let newMessages = inferenceMessages.map((msg: any) => {
+        const shouldPreserveToolHistory = activeCard.value?.extensions?.airi?.generation?.known?.preserveToolHistory ?? false
+
+        let newMessages: Message[] = []
+        for (const msg of inferenceMessages) {
           const { context: _context, id: _id, createdAt: _createdAt, ...withoutContext } = msg
           const rawMessage = toRaw(withoutContext)
 
@@ -1254,11 +1258,44 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             // content (display-friendly, stripped). This prevents the model from "forgetting"
             // to use ACTOR/ACT/DELAY tokens as conversation history grows.
             const inferenceContent = (rawMessage as ChatAssistantMessage).rawContent || rest.content
-            return { ...toRaw(rest), content: cleanMessageContent(inferenceContent) }
+            const baseAssistantMsg: Message = { ...toRaw(rest), role: 'assistant', content: cleanMessageContent(inferenceContent) }
+
+            if (shouldPreserveToolHistory) {
+              const assistantSlices = (rawMessage as ChatAssistantMessage).slices || []
+              const toolSlices = assistantSlices.filter((s: any) => s.type === 'tool-call' && (s as any).toolCall)
+              const rawToolCalls = toolSlices.map((s: any) => (s as any).toolCall)
+              const existingToolResults = (rawMessage as ChatAssistantMessage).tool_results || []
+
+              if (rawToolCalls.length > 0) {
+                baseAssistantMsg.tool_calls = rawToolCalls
+                newMessages.push(baseAssistantMsg)
+
+                for (const tc of rawToolCalls) {
+                  const tcId = tc.id || (tc as any).toolCallId
+                  const matchedRes = existingToolResults.find((r: any) => r.id === tcId)
+                    || toolSlices.find((s: any) => (s as any).toolCall?.id === tcId && (s as any).result !== undefined)
+                  const resContent = matchedRes
+                    ? (typeof (matchedRes as any).result === 'string'
+                        ? cleanMessageContent((matchedRes as any).result)
+                        : JSON.stringify((matchedRes as any).result))
+                    : 'Success'
+
+                  newMessages.push({
+                    role: 'tool',
+                    tool_call_id: tcId,
+                    content: resContent,
+                  } as any)
+                }
+                continue
+              }
+            }
+
+            newMessages.push(baseAssistantMsg)
+            continue
           }
 
-          return { ...rawMessage, content: cleanMessageContent(rawMessage.content) }
-        })
+          newMessages.push({ ...rawMessage, content: cleanMessageContent(rawMessage.content) })
+        }
 
         // Inject all previously completed bridged turns into newMessages history
         for (const turn of bridgedTurnsHistory) {
@@ -1700,6 +1737,7 @@ Format your output as a raw thought log.`
           max_tokens: generationKnown?.maxTokens,
           contextWidth: generationKnown?.contextWidth,
           vision: isVisionSupported,
+          maxSteps: generationKnown?.maxToolSteps ?? 20,
           requestOverrides: generationConfig?.enabled ? generationConfig.advanced : undefined,
           abortSignal: abortController.signal,
           waitForTools: true,
@@ -1769,6 +1807,7 @@ Format your output as a raw thought log.`
                 break
               }
               case 'finish':
+                lastStreamFinishReason = (event as any).finishReason || ''
                 chatLog('Stream finished. Reason:', (event as any).finishReason, 'rawFullText length:', rawFullText.length)
                 ;(window as any).electron?.ipcRenderer?.send('llm-raw-output', {
                   type: 'full',
@@ -1887,6 +1926,15 @@ Format your output as a raw thought log.`
         else {
           appendActorAwareTextSlice(buildingMessage.slices, fallbackText, actorSliceState)
         }
+        updateUI()
+      }
+
+      if (!speechText.trim() && !hasTurnToolCalls && lastStreamFinishReason && (lastStreamFinishReason.includes('content_filter') || lastStreamFinishReason.includes('SAFETY'))) {
+        const filterText = `⚠️ Generation stopped: response blocked by AI provider safety filter (${lastStreamFinishReason}).`
+        buildingMessage.content = filterText
+        fullText = filterText
+        rawFullText = filterText
+        appendActorAwareTextSlice(buildingMessage.slices, filterText, actorSliceState)
         updateUI()
       }
 

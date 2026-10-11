@@ -1,7 +1,10 @@
 export interface WidgetIframeOptions {
+  id?: string
   path: string
+  sourcePath?: string
   code: string
   title?: string
+  state?: any
 }
 
 export async function buildWidgetIframeSrcdoc(
@@ -83,6 +86,19 @@ export async function buildWidgetIframeSrcdoc(
     cognition: normalizedCognition,
   }
 
+  // Preload lazy sidecar state if exists
+  const statePath = (widget.sourcePath || widget.path).replace(/\.(ts|js|html)$/, '.json')
+  let initialState = widget.state || {}
+  if (readFileFn && (!widget.state || Object.keys(widget.state).length === 0)) {
+    try {
+      const rawState = await readFileFn(statePath)
+      if (rawState && rawState.trim()) {
+        initialState = JSON.parse(rawState)
+      }
+    }
+    catch {}
+  }
+
   if (widget.path.endsWith('.html')) {
     return `<!DOCTYPE html>
 <html class="dark" style="background: transparent !important; color-scheme: dark;">
@@ -113,6 +129,9 @@ export async function buildWidgetIframeSrcdoc(
 <body class="antialiased">
   <div id="root" class="w-full">${widget.code}</div>
   <${'script'}>
+    const widgetId = ${JSON.stringify(widget.id || '')};
+    const widgetPath = ${JSON.stringify(widget.path)};
+    let widgetState = ${JSON.stringify(initialState)};
     const root = document.getElementById('root');
     let lastH = 0;
     function reportH() {
@@ -165,7 +184,12 @@ export async function buildWidgetIframeSrcdoc(
 <body class="antialiased">
   <div id="root" class="w-full"></div>
   <${'script'} type="module">
+    const widgetId = ${JSON.stringify(widget.id || '')};
+    const widgetPath = ${JSON.stringify(widget.path)};
     const sidecarData = ${JSON.stringify(sidecar)};
+    let widgetState = ${JSON.stringify(initialState)};
+    const stateListeners = [];
+
     const root = document.getElementById('root');
 
     let lastH = 0;
@@ -185,10 +209,54 @@ export async function buildWidgetIframeSrcdoc(
     window.addEventListener('load', () => setTimeout(reportH, 20));
     if (window.ResizeObserver && root) new ResizeObserver(reportH).observe(root);
 
+    function setState(val) {
+      if (typeof val === 'function') {
+        widgetState = val(widgetState);
+      } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+        widgetState = { ...widgetState, ...val };
+      } else {
+        widgetState = val;
+      }
+      window.parent.postMessage({
+        type: 'widget-state-update',
+        id: widgetId,
+        path: widgetPath,
+        state: widgetState,
+      }, '*');
+      for (const cb of stateListeners) {
+        try { cb(widgetState); } catch (e) { console.error(e); }
+      }
+    }
+
+    function onStateChange(cb) {
+      if (typeof cb === 'function') {
+        stateListeners.push(cb);
+        return () => {
+          const idx = stateListeners.indexOf(cb);
+          if (idx !== -1) stateListeners.splice(idx, 1);
+        };
+      }
+      return () => {};
+    }
+
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'widget-state-sync') {
+        if (!widgetId || !e.data.id || e.data.id === widgetId || e.data.path === widgetPath) {
+          widgetState = e.data.state;
+          for (const cb of stateListeners) {
+            try { cb(widgetState); } catch (err) { console.error(err); }
+          }
+        }
+      }
+    });
+
     const baseContext = {
       container: root,
       sidecar: sidecarData,
       data: sidecarData,
+      get state() { return widgetState; },
+      setState,
+      onStateChange,
       onUpdate: (cb) => {
         window.addEventListener('message', (e) => {
           if (e.data && e.data.type === 'sidecar-update') cb(e.data.sidecar);

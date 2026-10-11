@@ -28,7 +28,9 @@ const resolvedWidget = computed(() => {
         id: found.id,
         title: found.title || props.title || 'Generative Widget',
         path: found.path,
+        sourcePath: found.sourcePath,
         code: found.code,
+        state: found.state,
       }
     }
   }
@@ -36,7 +38,9 @@ const resolvedWidget = computed(() => {
     id: props.id || 'widget-standalone',
     title: props.title || 'Generative Widget',
     path: props.path || '/workspace/widget.js',
+    sourcePath: undefined,
     code: props.code || '',
+    state: undefined,
   }
 })
 
@@ -59,9 +63,12 @@ async function refresh() {
       catch {}
     }
     iframeSrcdoc.value = await buildWidgetIframeSrcdoc({
+      id: resolvedWidget.value.id,
       path: path || '/workspace/widget.js',
+      sourcePath: resolvedWidget.value.sourcePath,
       code: code || '',
       title: displayTitle.value,
+      state: resolvedWidget.value.state,
     }, readFile)
     iframeKey.value++
   }
