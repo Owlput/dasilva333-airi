@@ -1,11 +1,11 @@
 # Proposal: In-Memory Agent Sandboxes, Zero-VM Workspaces, and Edge WASM Capabilities
 
-> **Status**: Partially Shipped / Active Development (Phases 1–6 Shipped, Phase 7 Persistence in Progress)
+> **Status**: Partially Shipped / Active Development (Phases 1–7B Shipped, Phase 8 Web & Pocket Multi-Surface Parity in Active Design)
 > **Author**: Richard Pinedo (@dasilva333 / azimuthal)
-> **Date**: 2026-10-10 (Updated with Shipped Inspector Canvas & Sidecar Normalization)
+> **Date**: 2026-10-11 (Updated with Standalone Desktop Windows, --surface CLI, and Web/Pocket Architecture)
 > **Target Audience**: Core Developers, Architecture Maintainers, Community Extension Developers
-> **Key Commits**: `1db5c5fb94` (`feat(sandbox): generative UI sidecar widgets and chat inspector integration`)
-> **Related Documents**: [`docs/design-cloud-relay.md`](./design-cloud-relay.md), [`docs/proposal-plugin-ecosystem-and-community-registry.md`](./proposal-plugin-ecosystem-and-community-registry.md), [`docs/design-discord-control-plane.md`](./design-discord-control-plane.md), [`docs/arch-mcp-integration.md`](./arch-mcp-integration.md), [`docs/proposal-built-in-llm-webgpu.md`](./proposal-built-in-llm-webgpu.md), [`docs/data-catalog.md`](./data-catalog.md)
+> **Key Commits**: `1db5c5fb94` (`feat(sandbox): generative UI sidecar widgets and chat inspector integration`), `2cc38ba1e0` (`feat(sandbox): standalone generative desktop widgets with --surface support and breakout popout`), `70044cf6d3` (`fix(stage-tamagotchi): add zlib stubs to virtual node-shim for just-bash browser compatibility`)
+> **Related Documents**: [`docs/proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md), [`docs/design-cloud-relay.md`](./design-cloud-relay.md), [`docs/proposal-plugin-ecosystem-and-community-registry.md`](./proposal-plugin-ecosystem-and-community-registry.md), [`docs/design-discord-control-plane.md`](./design-discord-control-plane.md), [`docs/arch-mcp-integration.md`](./arch-mcp-integration.md), [`docs/proposal-built-in-llm-webgpu.md`](./proposal-built-in-llm-webgpu.md), [`docs/data-catalog.md`](./data-catalog.md)
 
 ---
 
@@ -426,6 +426,8 @@ Coupling **Remote MCP** with **In-Memory Bash** creates a powerful dual-engine p
 
 ## 6. Pillar 3: Next-Gen Cloudflare Edge Relay with WASM ("Vercel for Characters")
 
+> **Dedicated Architectural Specification**: For the complete standalone blueprint covering serverless Rust WASM 2D Tachie sprite compositing (`tiny-skia` / `image-rs`), Cloudflare R2 zero-egress asset caching, emotional cadence trigger policies, and dynamic visual status cards, see [`docs/proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md).
+
 ### 6.1 Context & Cloudflare Workers WASM Support
 AIRI's **Cloud Relay** ([`apps/stage-edge/`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/apps/stage-edge/), governed by [`airi-cloud-relay-infrastructure`](file:///Users/richardpinedo/Projects.nosync/airi/.agents/skills/airi-cloud-relay-infrastructure/SKILL.md)) deploys an HTTP interaction worker on Cloudflare Workers that serves as a 24/7 Discord bot and Edge KV memory sync.
 
@@ -434,13 +436,15 @@ Cloudflare Workers run on V8 Isolates and feature **native WebAssembly support**
 ### 6.2 Novel Edge Capabilities
 By integrating targeted WASM binaries into `apps/stage-edge`, the Discord bot gains capabilities traditionally reserved for heavy cloud servers:
 
-1. **Edge Code Interpreter in Discord Slash Commands**:
+1. **Edge Tachie (立ち絵) Sprite Compositing**:
+   * Pure Rust WASM alpha-compositing via `tiny-skia` / `image-rs` blending base pose, eyes, mouth, and mood FX into a single reaction PNG in < 25ms.
+   * Backed by Cloudflare R2 asset storage (zero egress fees) and edge point-of-presence caching (`caches.default`).
+2. **Edge Code Interpreter in Discord Slash Commands**:
    * Users in Discord can invoke `/eval` or ask the bot complex procedural questions (e.g. data crunching, Monte Carlo simulations, regex parsing).
    * The Discord worker executes the task inside an embedded QuickJS-WASM sandbox directly on Cloudflare’s edge nodes within the 50ms CPU execution budget.
-2. **Dynamic Visual Card & Avatar Asset Synthesis**:
-   * Currently, the Discord bot only returns plain text (limited to 2,000 characters).
-   * Using a compiled Rust WASM crate (such as `resvg` or `image-rs`), the Worker can dynamically render visual status sheets, character intimacy badges, and RPG quest cards directly from SVG templates into PNG byte buffers, attaching them to Discord webhook replies.
-3. **Edge Semantic Vector Search (Micro-RAG)**:
+3. **Dynamic Visual Card & Avatar Asset Synthesis**:
+   * Using a compiled Rust WASM crate (such as `resvg` or `tiny-skia`), the Worker dynamically renders visual status sheets, character intimacy badges, and API budget monitors into PNG byte buffers attached to Discord webhook replies.
+4. **Edge Semantic Vector Search (Micro-RAG)**:
    * Run lightweight vector cosine similarity or embedding quantization in WASM over KV-stored conversational history without calling external vector databases.
 
 ---
@@ -496,7 +500,27 @@ By integrating targeted WASM binaries into `apps/stage-edge`, the Discord bot ga
     * Intelligent remounting: `mount_widget <title|path|id>` restores widgets from IndexedDB even if the virtual file was cleared.
     * Auto-focus UX: automatically switches active tabs to newly generated widgets when mounted.
     * Interactive Glassmorphic Micro-App Library: added full modal UI in `ChatWorkspaceWidgetsPanel.vue` (accessible from empty-state click, "Browse Widget Library" button, and header bar icon) with one-click mount, active badge, and deletion.
-  * **Phase 7B (Standalone OS Windows)**: Connect Electron main-process window management (`WidgetsWindowManager`) to load compiled virtual scripts from the in-memory sandbox as floating, frameless, transparent OS windows with persisted coordinates.
-* **Phase 8: Cloudflare Edge Relay WASM Extensions (`apps/stage-edge`)**
-  * Add QuickJS-WASM code interpreter module to `apps/stage-edge/src/inference/`.
-  * Implement edge-evaluated Discord slash commands (`/eval`) and dynamic SVG card rendering on Cloudflare Workers.
+  * **Phase 7B (Standalone OS Windows & Popout Breakout) [COMPLETED & SHIPPED — Commit `2cc38ba1e0`]**:
+    * Implemented CLI flag `mount_widget <file.ts|file.js> [--surface panel|widget]` (with backward-compatible `--target window|sidepanel` normalization).
+    * Connected Electron main-process window management (`WidgetsWindowManager`) to launch compiled virtual scripts from the in-memory sandbox as floating, frameless, transparent OS windows with persisted coordinates.
+    * Added dedicated breakout popout button (`i-solar:square-top-down-broken`) in `ChatWorkspaceWidgetsPanel.vue` next to the widget library modal to tear off any active panel widget into its own standalone desktop window.
+    * Shipped standalone host page in `apps/stage-tamagotchi/src/renderer/pages/widgets.vue` with `Generative.vue`, `buildWidgetIframeSrcdoc`, and bidirectional MCP tool bridge forwarding.
+    * Added explicit agent stdout reminder on `mount_widget` execution detailing whether the widget was mounted into the chatbox side panel or popped out as a new standalone desktop window.
+* **Phase 8: Web Browser & Pocket Stage Parity (`stage-web` / `stage-pocket`) [ACTIVE ARCHITECTURE & UPCOMING DIRECTION]**
+  * **Portrait Mode UX Architecture**:
+    * Segmented mode switcher directly on the grab-bar header of `MobileWhisperSheet` (`[ 💬 Chat | 💻 Terminal ]`), preventing top header clutter while preserving companion presence in the upper 35–40% of the viewport.
+    * Dedicated mobile terminal posture: renders monospace ANSI-formatted activity, responsive command prompt, and touch quick-action chips (`ls`, `mcp list`, `cat .airi/session.json`, `clear`).
+    * In-page floating widgets layer (`<FloatingWidgetsLayer />`): floating glassmorphic cards with touch drag handles, offering complete layout freedom without blocking companion touch zones.
+  * **Landscape Mode UX Architecture**:
+    * Multi-surface workspace card in `InteractiveArea`: top tab navigation (`[ 💬 Chat | 💻 Terminal | 🧩 Widgets ]`), keeping the companion avatar centered on stage and avoiding screen clutter.
+    * Optional widen/fullscreen toggle to expand the terminal across 60–70% of the screen for intensive file/code inspection.
+  * **Browser-Native Floating Widget Subsystem**:
+    * Replace Electron OS child windows with in-page draggable glassmorphic `div`s rendered by `<FloatingWidgetsLayer />`.
+    * Backed by `useSandbox()`, `widgetsRepo`, and `Generative.vue` with `buildWidgetIframeSrcdoc` and MCP tool bridge communication over `window.addEventListener('message')`.
+  * **Shared Component Infrastructure**:
+    * Promote `ChatWorkspaceTerminalPanel.vue` and `Generative.vue` to `@proj-airi/stage-ui` or `@proj-airi/stage-layouts` to ensure 100% DRY code sharing across Desktop Electron (`stage-tamagotchi`), Web Browser (`stage-web`), and Mobile Capacitor (`stage-pocket`).
+* **Phase 9: Cloudflare Edge Relay WASM Extensions & Tachie Compositor (`apps/stage-edge`)**
+  * *Specification Document*: [`docs/proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md).
+  * Serverless 2D Tachie sprite compositing in Rust WASM (`tiny-skia` / `image-rs`) with Cloudflare R2 asset storage and edge caching.
+  * ACT emotion cue $\rightarrow$ sprite recipe matcher with Discord multipart PNG webhook attachments.
+  * Embedded QuickJS-WASM code interpreter for edge `/eval` slash commands and autonomous API budget tracking.

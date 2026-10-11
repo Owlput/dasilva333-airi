@@ -435,6 +435,7 @@ A game layer on top of the Actor Stage with deep Live2D integration. Implements 
 | **Tool call availability** | Discord messages flow through the same `performSend` pipeline as desktop inputs. Tools are NOT passed explicitly by the Discord store, but `chat.ts:297` falls through to `toolsResolver.value` (set to `builtinTools` at `index.vue:728`). All built-in tools (text journal, widgets, stickers, MCP, dating sim) are available from Discord. The only exception is VLM turns (image attachments) — tools are stripped for all sources, not just Discord. |
 | **Full spec** | [`feat-discord-revamp.md`](./feat-discord-revamp.md) |
 | **Architecture doc** | [`design-discord-bot-integration.md`](./design-discord-bot-integration.md) |
+| **Cloud Relay & Edge WASM** | [`design-cloud-relay.md`](./design-cloud-relay.md), [`proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md) |
 
 ---
 
@@ -672,6 +673,7 @@ Cross-window communication relies on named `BroadcastChannel` instances. This is
 - [[airi-dating-sim-engine]]
 - [[airi-desktop-chatbox]]
 - [[airi-desktop-lifecycle-power-throttling]]
+- [[airi-generative-widgets]]
 - [[airi-infra-library-references]]
 - [[airi-interaction-pipelines]]
 - [[airi-ipc-eventa]]
