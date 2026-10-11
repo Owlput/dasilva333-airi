@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { widgetsRepo } from '../../database/repos/widgets.repo'
+import { clearMcpToolBridge, setMcpToolBridge } from '../../stores/mcp-tool-bridge'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNan0Store } from '../../stores/modules/nan0'
 import { createBashTool, executeBashCommand } from '../../stores/modules/tools/bash'
@@ -403,6 +404,120 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(apiMounted).not.toBeNull()
       expect(apiMounted?.title).toBe('Digital Clock')
       expect(sandbox.mountedWidgets.some(w => w.id === mountedWidget.id)).toBe(true)
+    })
+  })
+
+  describe('native mcp cli and virtual node mcp bridge', () => {
+    beforeEach(() => {
+      clearMcpToolBridge()
+    })
+
+    it('returns usage help when mcp is called without arguments or with --help', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const res = await sandbox.exec('mcp')
+      expect(res.exitCode).toBe(0)
+      expect(res.stdout).toContain('Usage:')
+      expect(res.stdout).toContain('mcp list')
+      expect(res.stdout).toContain('mcp call')
+    })
+
+    it('returns error when mcp bridge is not available', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const res = await sandbox.exec('mcp list')
+      expect(res.exitCode).toBe(1)
+      expect(res.stderr).toContain('MCP tool bridge is not available')
+    })
+
+    it('lists tools and executes tool calls piping into filesystem and jq', async () => {
+      const mockBridge = {
+        listTools: vi.fn().mockResolvedValue([
+          { serverName: 'weather', toolName: 'get_forecast', name: 'weather::get_forecast', description: 'Get weather forecast' },
+          { serverName: 'github', toolName: 'list_issues', name: 'github::list_issues', description: 'List repo issues' },
+        ]),
+        callTool: vi.fn().mockImplementation(async (payload: any) => {
+          if (payload.name === 'weather::get_forecast') {
+            return {
+              structuredContent: { city: payload.arguments?.city, temp: 22, condition: 'Sunny' },
+            }
+          }
+          return { toolResult: 'ok' }
+        }),
+        getRuntimeStatus: vi.fn().mockResolvedValue({ path: '', servers: [], updatedAt: Date.now() }),
+      }
+      setMcpToolBridge(mockBridge as any)
+
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      // 1. mcp list
+      const listRes = await sandbox.exec('mcp list')
+      expect(listRes.exitCode).toBe(0)
+      expect(listRes.stdout).toContain('weather::get_forecast')
+      expect(listRes.stdout).toContain('github::list_issues')
+
+      // 2. mcp list --json
+      const jsonListRes = await sandbox.exec('mcp list --json')
+      expect(jsonListRes.exitCode).toBe(0)
+      expect(JSON.parse(jsonListRes.stdout).length).toBe(2)
+
+      // 3. mcp call with args piped to file
+      const callRes = await sandbox.exec('mcp weather::get_forecast \'{"city":"Tokyo"}\' > /workspace/weather.json')
+      expect(callRes.exitCode).toBe(0)
+
+      // 4. Verify file content and pipe to jq
+      const jqRes = await sandbox.exec('cat /workspace/weather.json | jq .city')
+      expect(jqRes.exitCode).toBe(0)
+      expect(jqRes.stdout.trim()).toBe('"Tokyo"')
+
+      const tempRes = await sandbox.exec('cat /workspace/weather.json | jq .temp')
+      expect(tempRes.exitCode).toBe(0)
+      expect(tempRes.stdout.trim()).toBe('22')
+    })
+
+    it('supports require("mcp") and global mcp in node runtime', async () => {
+      const mockBridge = {
+        listTools: vi.fn().mockResolvedValue([
+          { serverName: 'calc', toolName: 'add', name: 'calc::add', description: 'Add numbers' },
+        ]),
+        callTool: vi.fn().mockImplementation(async (payload: any) => {
+          if (payload.name === 'calc::add') {
+            return {
+              structuredContent: { sum: (payload.arguments?.a ?? 0) + (payload.arguments?.b ?? 0) },
+            }
+          }
+          return { toolResult: null }
+        }),
+        getRuntimeStatus: vi.fn().mockResolvedValue({ path: '', servers: [], updatedAt: Date.now() }),
+      }
+      setMcpToolBridge(mockBridge as any)
+
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      // 1. node require('mcp')
+      const script = `
+const mcp = require('mcp');
+const fs = require('fs');
+const res = await mcp.callTool('calc::add', { a: 15, b: 27 });
+fs.writeFileSync('/workspace/sum.json', JSON.stringify(res));
+console.log('SUM:' + res.sum);
+`
+      await sandbox.exec(`cat > /workspace/calc.js << 'EOF'${script}EOF`)
+      const nodeRes = await sandbox.exec('node /workspace/calc.js')
+      expect(nodeRes.exitCode).toBe(0)
+      expect(nodeRes.stdout).toContain('SUM:42')
+
+      const sumFile = await sandbox.exec('cat /workspace/sum.json | jq .sum')
+      expect(sumFile.stdout.trim()).toBe('42')
+
+      // 2. node global mcp via eval (-e)
+      const evalRes = await sandbox.exec('node -e "const res = await mcp.callTool(\'calc::add\', { a: 100, b: 200 }); console.log(\'EVAL_SUM:\' + res.sum);"')
+      expect(evalRes.exitCode).toBe(0)
+      expect(evalRes.stdout).toContain('EVAL_SUM:300')
     })
   })
 })

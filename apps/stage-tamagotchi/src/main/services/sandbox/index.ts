@@ -67,6 +67,12 @@ declare module "path" {
   export const posix: any;
 }
 declare module "node:path" { export * from "path"; }
+declare module "mcp" {
+  export function listTools(): Promise<any[]>;
+  export function callTool(name: string, args?: Record<string, any>): Promise<any>;
+  export function getRuntimeStatus(): Promise<any>;
+}
+declare module "node:mcp" { export * from "mcp"; }
 `
       await fs.writeFile(path.join(tempDir, 'ambient-node.d.ts'), ambientNodeDts, 'utf-8')
 

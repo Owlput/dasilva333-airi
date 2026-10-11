@@ -4,6 +4,7 @@ import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { Bash } from 'just-bash'
 
 import { widgetsRepo } from '../../database/repos/widgets.repo'
+import { tryGetMcpToolBridge } from '../../stores/mcp-tool-bridge'
 import { compileTypeScriptInSandbox } from './compiler-bridge'
 import {
   buildCognitionProjection,
@@ -714,6 +715,154 @@ export class SandboxManager {
       execute: clearWidgetsHandler,
     })
 
+    // 2.5. Native MCP CLI command
+    const mcpHandler = async (args: string[], _ctx: any) => {
+      if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
+        return {
+          stdout: `Usage:
+  mcp list [--json]                    List all available MCP tools
+  mcp tools [--json]                   Alias for 'mcp list'
+  mcp call <server::tool> [json_args]  Call an MCP tool with JSON arguments
+  mcp <server::tool> [json_args]       Shorthand to call an MCP tool
+
+Examples:
+  mcp list
+  mcp weather::get_forecast '{"city": "Tokyo"}'
+  mcp github::list_issues '{"repo": "airi"}' > /workspace/issues.json
+  cat /workspace/issues.json | jq '.[].title'
+`,
+          stderr: '',
+          exitCode: 0,
+        }
+      }
+
+      const bridge = tryGetMcpToolBridge()
+      if (!bridge) {
+        return {
+          stdout: '',
+          stderr: 'mcp: MCP tool bridge is not available in this runtime.\nTip: Ensure MCP servers are configured in Settings > MCP.\n',
+          exitCode: 1,
+        }
+      }
+
+      const sub = args[0]
+
+      // Listing tools
+      if (sub === 'list' || sub === 'tools') {
+        try {
+          const isJson = args.includes('--json')
+          const tools = await bridge.listTools()
+          if (isJson) {
+            return {
+              stdout: `${JSON.stringify(tools, null, 2)}\n`,
+              stderr: '',
+              exitCode: 0,
+            }
+          }
+          if (tools.length === 0) {
+            return {
+              stdout: 'No MCP tools currently registered or running.\n',
+              stderr: '',
+              exitCode: 0,
+            }
+          }
+          let out = `Available MCP Tools (${tools.length}):\n`
+          for (const t of tools) {
+            const qualified = t.name || `${t.serverName}::${t.toolName}`
+            out += `  • ${qualified.padEnd(32)} ${t.description || 'No description'}\n`
+          }
+          return { stdout: out, stderr: '', exitCode: 0 }
+        }
+        catch (err: any) {
+          return {
+            stdout: '',
+            stderr: `mcp: failed to list tools: ${err.message}\n`,
+            exitCode: 1,
+          }
+        }
+      }
+
+      // Tool invocation
+      const toolName = sub === 'call' ? args[1] : sub
+      const rawArgs = sub === 'call' ? args.slice(2).join(' ') : args.slice(1).join(' ')
+
+      if (!toolName) {
+        return {
+          stdout: '',
+          stderr: 'mcp: missing tool name. Usage: mcp call <server::tool> [json_args]\n',
+          exitCode: 1,
+        }
+      }
+
+      let parsedArgs: Record<string, unknown> = {}
+      if (rawArgs.trim()) {
+        try {
+          parsedArgs = JSON.parse(rawArgs.trim())
+        }
+        catch (err: any) {
+          return {
+            stdout: '',
+            stderr: `mcp: invalid JSON arguments for '${toolName}': ${err.message}\nReceived: ${rawArgs}\n`,
+            exitCode: 1,
+          }
+        }
+      }
+
+      try {
+        const res = await bridge.callTool({
+          name: toolName,
+          arguments: parsedArgs,
+        })
+
+        if (res.isError) {
+          const errMsg = typeof res.toolResult === 'string'
+            ? res.toolResult
+            : JSON.stringify(res.toolResult || res.content || 'Unknown error', null, 2)
+          return {
+            stdout: '',
+            stderr: `mcp error [${toolName}]: ${errMsg}\n`,
+            exitCode: 1,
+          }
+        }
+
+        let outputText = ''
+        if (res.structuredContent) {
+          outputText = JSON.stringify(res.structuredContent, null, 2)
+        }
+        else if (res.toolResult !== undefined) {
+          outputText = typeof res.toolResult === 'object'
+            ? JSON.stringify(res.toolResult, null, 2)
+            : String(res.toolResult)
+        }
+        else if (Array.isArray(res.content)) {
+          outputText = res.content
+            .map((c: any) => c.text ?? JSON.stringify(c, null, 2))
+            .join('\n')
+        }
+        else {
+          outputText = JSON.stringify(res, null, 2)
+        }
+
+        return {
+          stdout: `${outputText}\n`,
+          stderr: '',
+          exitCode: 0,
+        }
+      }
+      catch (err: any) {
+        return {
+          stdout: '',
+          stderr: `mcp: invocation failed for '${toolName}': ${err.message}\n`,
+          exitCode: 1,
+        }
+      }
+    }
+
+    this.bash.registerCommand({
+      name: 'mcp',
+      execute: mcpHandler,
+    })
+
     // 3. sed -i permission preservation wrapper
     const origSed = (this.bash as any).commands?.get?.('sed')
     if (origSed) {
@@ -909,11 +1058,38 @@ export class SandboxManager {
       }
       virtualPath.posix = virtualPath
 
+      const virtualMcp = {
+        listTools: async () => {
+          const b = tryGetMcpToolBridge()
+          if (!b)
+            throw new Error('MCP tool bridge is not available in this runtime.')
+          return await b.listTools()
+        },
+        callTool: async (name: string, args: Record<string, unknown> = {}) => {
+          const b = tryGetMcpToolBridge()
+          if (!b)
+            throw new Error('MCP tool bridge is not available in this runtime.')
+          const res = await b.callTool({ name, arguments: args })
+          if (res.isError) {
+            throw new Error(`MCP tool error [${name}]: ${JSON.stringify(res.toolResult || res.content)}`)
+          }
+          return res.structuredContent ?? res.toolResult ?? res.content
+        },
+        getRuntimeStatus: async () => {
+          const b = tryGetMcpToolBridge()
+          if (!b)
+            throw new Error('MCP tool bridge is not available in this runtime.')
+          return await b.getRuntimeStatus()
+        },
+      }
+
       const virtualModules: Record<string, any> = {
         'fs': virtualFs,
         'node:fs': virtualFs,
         'path': virtualPath,
         'node:path': virtualPath,
+        'mcp': virtualMcp,
+        'node:mcp': virtualMcp,
       }
 
       const customRequire = (id: string) => {
@@ -961,6 +1137,7 @@ export class SandboxManager {
         __dirname: dirname,
         fs: virtualFs,
         path: virtualPath,
+        mcp: virtualMcp,
       }
     }
 
@@ -978,6 +1155,8 @@ export class SandboxManager {
       }
 
       const transformed = transformScriptCode(code)
+      const prevMcp = (globalThis as any).mcp
+      ;(globalThis as any).mcp = env.mcp
       try {
         const fn = new (AsyncFunction as any)('require', 'module', 'exports', 'console', 'process', '__filename', '__dirname', transformed)
         await fn(env.require, env.module, env.module.exports, customConsole, env.process, env.__filename, env.__dirname)
@@ -988,6 +1167,14 @@ export class SandboxManager {
           return { stdout, stderr, exitCode: err.code }
         }
         return { stdout, stderr: `${stderr}${err.stack || err.message}\n`, exitCode: 1 }
+      }
+      finally {
+        if (prevMcp !== undefined) {
+          ;(globalThis as any).mcp = prevMcp
+        }
+        else {
+          delete (globalThis as any).mcp
+        }
       }
     }
 
@@ -1127,6 +1314,7 @@ interface _AiriWidgetContext extends HTMLElement {
   sidecar: _AiriWidgetSidecar
   data: _AiriWidgetSidecar
   onUpdate: (callback: (updatedSidecar: _AiriWidgetSidecar) => void) => () => void
+  callMcpTool: (name: string, args?: Record<string, unknown>) => Promise<any>
 }
 
 export type AiriWidgetSidecar = _AiriWidgetSidecar
@@ -1143,6 +1331,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
 - Live system projections: /workspace/.airi/*.json
 - TypeScript compiler: tsc <file.ts>
 - Generative UI: mount_widget <file.ts|file.js>
+- Model Context Protocol: mcp list | mcp <server::tool> [json_args]
 - Micro-App Types: /workspace/types/airi-widget.d.ts
 `)
   }

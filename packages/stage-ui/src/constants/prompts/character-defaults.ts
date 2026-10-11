@@ -191,6 +191,7 @@ When asked to build interactive cards, monitors, timers, or companion tools:
 export const DEFAULT_SANDBOX_SCRATCHPAD_INSTRUCTION = `## Instruction: In-Memory POSIX Scratchpad
 You have access to an isolated in-memory POSIX environment via the **bash** tool at \`/workspace\` (zero-leak RAM disk).
 - Use \`jq\`, \`grep\`, \`awk\`, and \`sed\` to slice and filter structured data under \`/workspace/.airi/\` (such as \`telemetry.json\` and \`session.json\`) to minimize context tokens.
+- Call MCP tools directly in the terminal via \`mcp <server::tool> [json_args]\` or via \`require('mcp')\` in node scripts, piping responses to files or \`jq\` to eliminate context token bloat.
 - Run JavaScript snippets via \`node -e "..."\` or scripts via \`node\`.
 - Compile and typecheck TypeScript scripts via \`tsc\` (ambient \`fs\` and \`path\` types are preloaded; target defaults to \`ES2022\`).`
 

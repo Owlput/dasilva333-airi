@@ -7,7 +7,7 @@ import { getSandboxManager } from '../../../libs/sandbox'
 
 export const bashParams = z.object({
   command: z.string().describe(
-    'The bash command to execute in the in-memory POSIX workstation (/workspace). Supports pipes, jq, sed, awk, grep, node, tsc, and mount_widget. Live state projections are available under /workspace/.airi/ (session.json, cognition.json, telemetry.json, messages.json).',
+    'The bash command to execute in the in-memory POSIX workstation (/workspace). Supports pipes, jq, sed, awk, grep, node, tsc, mcp, and mount_widget. Live state projections are available under /workspace/.airi/ (session.json, cognition.json, telemetry.json, messages.json). Call MCP tools directly via `mcp <server::tool> [json_args]` or `require("mcp")` in node.',
   ),
 })
 
@@ -35,7 +35,7 @@ export async function executeBashCommand(params: { command: string }): Promise<s
 export function createBashTool(): Promise<Tool> {
   return tool({
     name: 'bash',
-    description: 'Execute bash commands in the in-memory POSIX workstation (/workspace). Inspect live state in /workspace/.airi/*.json with jq/cat, compile TypeScript with tsc, evaluate code with node, or mount generative widgets with mount_widget.',
+    description: 'Execute bash commands in the in-memory POSIX workstation (/workspace). Inspect live state in /workspace/.airi/*.json with jq/cat, compile TypeScript with tsc, evaluate code with node, call MCP tools with mcp, or mount generative widgets with mount_widget.',
     execute: params => executeBashCommand(params as { command: string }),
     parameters: bashParams,
   })

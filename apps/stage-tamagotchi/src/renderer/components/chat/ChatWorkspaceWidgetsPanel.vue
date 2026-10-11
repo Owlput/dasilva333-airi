@@ -2,6 +2,7 @@
 import type { MountedWidget, PersistedWidget } from '@proj-airi/stage-ui/libs/sandbox'
 
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
+import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const {
@@ -259,6 +260,20 @@ async function buildIframeSrcdoc(widget: MountedWidget): Promise<string> {
           if (e.data && e.data.type === 'sidecar-update') cb(e.data.sidecar);
         });
         return () => {};
+      },
+      callMcpTool: (name, args) => {
+        return new Promise((resolve, reject) => {
+          const reqId = 'mcp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+          function onMsg(e) {
+            if (e.data && e.data.type === 'mcp-call-result' && e.data.id === reqId) {
+              window.removeEventListener('message', onMsg);
+              if (e.data.error) reject(new Error(e.data.error));
+              else resolve(e.data.result);
+            }
+          }
+          window.addEventListener('message', onMsg);
+          window.parent.postMessage({ type: 'mcp-call', id: reqId, name, args }, '*');
+        });
       }
     };
 
@@ -375,6 +390,27 @@ async function refreshActiveWidget() {
 function handleIframeMessage(e: MessageEvent) {
   if (e.data?.type === 'widget-resize' && typeof e.data.height === 'number') {
     iframeHeight.value = Math.max(160, Math.min(e.data.height + 8, 520))
+  }
+  else if (e.data?.type === 'mcp-call') {
+    const { id, name, args } = e.data
+    const bridge = tryGetMcpToolBridge()
+    const target = e.source as WindowProxy | null
+    if (!bridge) {
+      target?.postMessage({ type: 'mcp-call-result', id, error: 'MCP tool bridge not available' }, '*')
+      return
+    }
+    bridge.callTool({ name, arguments: args })
+      .then((res) => {
+        if (res.isError) {
+          target?.postMessage({ type: 'mcp-call-result', id, error: String(res.toolResult || 'MCP tool execution failed') }, '*')
+        }
+        else {
+          target?.postMessage({ type: 'mcp-call-result', id, result: res.structuredContent ?? res.toolResult ?? res.content }, '*')
+        }
+      })
+      .catch((err: any) => {
+        target?.postMessage({ type: 'mcp-call-result', id, error: err.message || 'MCP tool error' }, '*')
+      })
   }
 }
 
