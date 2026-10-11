@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
 })
 
 const {
+  isReady,
   mountedWidgets,
   unmountWidget,
   clearWidgets,
@@ -48,18 +49,17 @@ const previousWidgetIds = ref<Set<string>>(new Set())
 
 watch(() => mountedWidgets.value, (list) => {
   if (list.length > 0) {
+    const hasCurrent = list.some(w => w.id === selectedWidgetId.value)
     const newWidget = list.find(w => !previousWidgetIds.value.has(w.id))
-    if (newWidget) {
+
+    if (newWidget && previousWidgetIds.value.size > 0) {
       selectedWidgetId.value = newWidget.id
     }
-    else {
-      const exists = list.some(w => w.id === selectedWidgetId.value)
-      if (!exists) {
-        selectedWidgetId.value = list[list.length - 1].id
-      }
+    else if (!hasCurrent) {
+      selectedWidgetId.value = list[list.length - 1].id
     }
   }
-  else {
+  else if (isReady.value) {
     selectedWidgetId.value = ''
   }
   previousWidgetIds.value = new Set(list.map(w => w.id))
@@ -118,16 +118,22 @@ function formatDate(timestamp?: number): string {
   })
 }
 
-async function popoutActiveWidget() {
+async function toggleActiveWidgetSurface() {
   if (!activeWidget.value)
     return
-  await setWidgetSurface(activeWidget.value.id, 'widget')
+  const nextSurface = activeWidget.value.surface === 'widget' ? 'panel' : 'widget'
+  await setWidgetSurface(activeWidget.value.id, nextSurface)
 }
 
 const iframeSrcdoc = ref('')
 
 async function refreshActiveWidget() {
   if (!activeWidget.value) {
+    iframeSrcdoc.value = ''
+    return
+  }
+  // Floated widgets render in FloatingWidgetsLayer; keep panel srcdoc empty.
+  if (activeWidget.value.surface === 'widget') {
     iframeSrcdoc.value = ''
     return
   }
@@ -226,6 +232,13 @@ onUnmounted(() => {
           >
             <span class="i-solar:widget-5-bold-duotone shrink-0 text-xs" />
             <span class="max-w-[120px] truncate">{{ w.title || w.path.split('/').pop() }}</span>
+            <span
+              v-if="w.surface === 'widget'"
+              class="ml-0.5 rounded bg-primary-500/20 px-1 py-0.2 text-[8px] text-primary-600 font-bold dark:text-primary-300"
+              title="Floating on stage"
+            >
+              FLOAT
+            </span>
           </button>
         </template>
         <span
@@ -266,15 +279,17 @@ onUnmounted(() => {
 
         <button
           v-if="activeWidget"
-          title="Pop out into floating widget"
+          :title="activeWidget.surface === 'widget' ? 'Dock back to panel' : 'Pop out into floating widget'"
           type="button"
           :class="[
-            'flex items-center justify-center rounded-lg p-1.5 text-neutral-500 hover:text-primary-600 dark:text-neutral-400 dark:hover:text-primary-400',
-            'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
+            'flex items-center justify-center rounded-lg p-1.5 transition-colors cursor-pointer',
+            activeWidget.surface === 'widget'
+              ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300 hover:bg-primary-500/25 border border-primary-500/30'
+              : 'text-neutral-500 hover:text-primary-600 dark:text-neutral-400 dark:hover:text-primary-400 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50',
           ]"
-          @click="popoutActiveWidget"
+          @click="toggleActiveWidgetSurface"
         >
-          <span class="i-solar:square-top-down-broken text-sm" />
+          <span :class="activeWidget.surface === 'widget' ? 'i-solar:minimize-square-3-bold-duotone text-sm' : 'i-solar:square-top-down-broken text-sm'" />
         </button>
 
         <button
@@ -315,32 +330,58 @@ onUnmounted(() => {
           : 'w-full border border-neutral-200/60 dark:border-neutral-800/50 rounded-lg',
       ]"
     >
+      <!-- NOTICE: floated widgets render in FloatingWidgetsLayer, not here.
+        Without this guard the same widget renders twice (panel iframe + floating
+        card), which showed as a black box with a FLOAT tag and no floating div. -->
       <div
-        :class="[
-          'relative w-full overflow-hidden rounded-xl border border-neutral-200/60 dark:border-white/5 bg-white/40 dark:bg-neutral-950/40 backdrop-blur-md',
-          props.fillContainer ? 'flex-1 h-full min-h-0' : '',
-        ]"
+        v-if="activeWidget.surface === 'widget'"
+        class="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
       >
-        <iframe
-          :key="iframeKey"
-          :srcdoc="iframeSrcdoc"
-          allowtransparency="true"
-          sandbox="allow-scripts allow-forms allow-same-origin"
-          :class="[
-            'block w-full border-0 bg-transparent transition-[height] duration-200',
-            props.fillContainer ? 'h-full' : '',
-          ]"
-          :style="props.fillContainer ? { backgroundColor: 'transparent' } : { height: `${iframeHeight}px`, backgroundColor: 'transparent' }"
-        />
+        <span class="i-solar:widget-5-bold-duotone text-xl text-primary-500" />
+        <p class="text-xs text-neutral-800 font-bold dark:text-neutral-200">
+          Floating on stage
+        </p>
+        <p class="max-w-[280px] text-[11px] text-neutral-500 leading-normal dark:text-neutral-400">
+          {{ activeWidget.title || activeWidget.path.split('/').pop() }} is popped out. Close the Workspace sheet to see it.
+        </p>
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1.5 border border-primary-500/30 rounded-xl bg-primary-500/15 px-3 py-1.5 text-xs text-primary-600 font-semibold transition-all hover:bg-primary-500/25 dark:text-primary-300"
+          @click="toggleActiveWidgetSurface"
+        >
+          <span class="i-solar:minimize-square-3-bold-duotone text-sm" />
+          <span>Dock back to panel</span>
+        </button>
       </div>
 
-      <div
-        v-if="errorMessage"
-        class="mt-2 flex items-center gap-2 border border-rose-500/30 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-400"
-      >
-        <span class="i-solar:danger-triangle-bold-duotone shrink-0 text-sm" />
-        <span class="truncate">{{ errorMessage }}</span>
-      </div>
+      <template v-else>
+        <div
+          :class="[
+            'relative w-full overflow-hidden rounded-xl border border-neutral-200/60 dark:border-white/5 bg-white/40 dark:bg-neutral-950/40 backdrop-blur-md',
+            props.fillContainer ? 'flex-1 h-full min-h-0' : '',
+          ]"
+        >
+          <iframe
+            :key="iframeKey"
+            :srcdoc="iframeSrcdoc"
+            allowtransparency="true"
+            sandbox="allow-scripts allow-forms allow-same-origin"
+            :class="[
+              'block w-full border-0 bg-transparent transition-[height] duration-200',
+              props.fillContainer ? 'h-full' : '',
+            ]"
+            :style="props.fillContainer ? { backgroundColor: 'transparent' } : { height: `${iframeHeight}px`, backgroundColor: 'transparent' }"
+          />
+        </div>
+
+        <div
+          v-if="errorMessage"
+          class="mt-2 flex items-center gap-2 border border-rose-500/30 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-400"
+        >
+          <span class="i-solar:danger-triangle-bold-duotone shrink-0 text-sm" />
+          <span class="truncate">{{ errorMessage }}</span>
+        </div>
+      </template>
     </div>
 
     <!-- Empty State -->

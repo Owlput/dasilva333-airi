@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 
 import FloatingWidgetCard from './FloatingWidgetCard.vue'
 
 import { useSandbox } from '../../../composables/use-sandbox'
 
-const { mountedWidgets } = useSandbox()
+const { mountedWidgets, init } = useSandbox()
+
+// NOTICE: explicitly (re)init on mount so the layer never stays on an empty
+// snapshot if it mounted before the panel's breakout notification fired.
+onMounted(() => {
+  void init()
+})
 
 const floatingWidgets = computed(() => {
   return mountedWidgets.value.filter(w => w.surface === 'widget')

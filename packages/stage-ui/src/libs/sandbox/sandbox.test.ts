@@ -435,6 +435,33 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(rehydrated?.position).toEqual({ x: 420, y: 180 })
     })
 
+    it('mounts persisted widget with surface override and safely updates surface with reactive proxy state', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/panel-item.js', 'export default function mount() {}')
+      await sandbox.exec('mount_widget /workspace/panel-item.js --title "Panel Tool" --surface panel')
+      expect(sandbox.mountedWidgets[0].surface).toBe('panel')
+
+      // Simulate proxy in state
+      const proxyState = new Proxy({ counter: 42 }, {
+        get(target, prop) {
+          return (target as any)[prop]
+        },
+      })
+      sandbox.mountedWidgets[0].state = proxyState
+
+      // Changing surface should not throw DataCloneError
+      await expect(sandbox.setWidgetSurface(sandbox.mountedWidgets[0].id, 'widget')).resolves.not.toThrow()
+      expect(sandbox.mountedWidgets[0].surface).toBe('widget')
+
+      // Unmount and remount with surface override
+      sandbox.unmountWidget(sandbox.mountedWidgets[0].id)
+      const remounted = await sandbox.mountPersistedWidget('Panel Tool', 'widget')
+      expect(remounted).toBeDefined()
+      expect(remounted?.surface).toBe('widget')
+    })
+
     it('lists persisted widgets with list_widgets / widgets and remounts by title or path', async () => {
       const sandbox = new SandboxManager()
       await sandbox.init()

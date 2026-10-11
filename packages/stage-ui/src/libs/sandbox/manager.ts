@@ -509,11 +509,21 @@ export class SandboxManager {
     }
   }
 
+  private postChannelMessage(message: any): void {
+    if (!this.channel)
+      return
+    try {
+      const clean = JSON.parse(JSON.stringify(message))
+      this.channel.postMessage(clean)
+    }
+    catch (err) {
+      console.warn('[SandboxManager] Failed to post message to BroadcastChannel:', err)
+    }
+  }
+
   unmountWidget(idOrPath: string): void {
     this.mountedWidgetsList = this.mountedWidgetsList.filter(w => w.id !== idOrPath && w.path !== idOrPath)
-    if (this.channel) {
-      this.channel.postMessage({ type: 'widget-unmount', id: idOrPath })
-    }
+    this.postChannelMessage({ type: 'widget-unmount', id: idOrPath })
     void widgetsRepo.setMounted(idOrPath, false).catch((err) => {
       console.warn('[SandboxManager] Failed to update unmount state in widgetsRepo:', err)
     })
@@ -528,14 +538,14 @@ export class SandboxManager {
       await widgetsRepo.saveWidget({
         ...w,
         title: w.title || 'Widget',
+        surface,
+        target: w.target,
         isMounted: true,
         updatedAt: Date.now(),
       }).catch((err) => {
         console.warn('[SandboxManager] Failed to update widget surface in widgetsRepo:', err)
       })
-      if (this.channel) {
-        this.channel.postMessage({ type: 'widget-mount', widget: w })
-      }
+      this.postChannelMessage({ type: 'widget-mount', widget: w })
       this.notifyMountListeners(w)
     }
   }
@@ -547,24 +557,23 @@ export class SandboxManager {
       await widgetsRepo.updateWidgetPosition(w.id, position).catch((err) => {
         console.warn('[SandboxManager] Failed to update widget position in widgetsRepo:', err)
       })
-      if (this.channel) {
-        this.channel.postMessage({ type: 'widget-mount', widget: w })
-      }
+      this.postChannelMessage({ type: 'widget-mount', widget: w })
+      // NOTICE: same-window followers (floating layer) only refresh via
+      // mount listeners; without this the drag position never propagates.
+      this.notifyMountListeners(w)
     }
   }
 
   clearWidgets(): void {
     this.mountedWidgetsList = []
-    if (this.channel) {
-      this.channel.postMessage({ type: 'widget-clear' })
-    }
+    this.postChannelMessage({ type: 'widget-clear' })
     void widgetsRepo.clearMounted().catch((err) => {
       console.warn('[SandboxManager] Failed to clear mounted widgets in widgetsRepo:', err)
     })
     this.notifyMountListeners()
   }
 
-  async mountPersistedWidget(idOrPath: string): Promise<MountedWidget | null> {
+  async mountPersistedWidget(idOrPath: string, surfaceOverride?: 'panel' | 'widget'): Promise<MountedWidget | null> {
     const all = await widgetsRepo.getWidgets()
     const target = all.find(w =>
       w.id === idOrPath
@@ -589,15 +598,21 @@ export class SandboxManager {
       catch {}
     }
 
+    const surface = surfaceOverride || target.surface || (target.target === 'window' ? 'widget' : 'panel')
+    const targetMode = target.target || (surface === 'widget' ? 'window' : 'sidepanel')
+
     // 2. Add or update mounted list
     const widget: MountedWidget = {
       id: target.id,
       path: target.path,
+      sourcePath: target.sourcePath,
+      sourceCode: target.sourceCode,
       code: target.code,
       title: target.title,
-      surface: target.surface || (target.target === 'window' ? 'widget' : 'panel'),
-      target: target.target || (target.surface === 'widget' ? 'window' : 'sidepanel'),
+      surface,
+      target: targetMode,
       position: target.position,
+      state: target.state,
       mountedAt: Date.now(),
     }
 
@@ -609,16 +624,17 @@ export class SandboxManager {
       this.mountedWidgetsList.push(widget)
     }
 
-    // 3. Mark mounted in repo
-    await widgetsRepo.setMounted(target.id, true)
+    // 3. Mark mounted in repo and update surface
+    await widgetsRepo.saveWidget({
+      ...target,
+      surface,
+      target: targetMode,
+      isMounted: true,
+      updatedAt: Date.now(),
+    }).catch(() => {})
 
     // 4. Broadcast & notify
-    if (this.channel) {
-      try {
-        this.channel.postMessage({ type: 'widget-mount', widget })
-      }
-      catch {}
-    }
+    this.postChannelMessage({ type: 'widget-mount', widget })
     this.notifyMountListeners(widget)
 
     return widget

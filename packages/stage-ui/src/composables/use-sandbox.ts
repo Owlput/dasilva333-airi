@@ -6,29 +6,49 @@ import { onMounted, ref } from 'vue'
 import { widgetsRepo } from '../database/repos/widgets.repo'
 import { getSandboxManager } from '../libs/sandbox'
 
+// NOTICE: shared module-level refs keep every useSandbox() caller (panel,
+// floating layer, workspace sheet) on the same widget list. Per-call refs
+// caused breakout updates in one surface to never reach the others.
+const sharedSandbox = ref<SandboxManager | null>(null)
+const sharedIsReady = ref(false)
+const sharedIsExecuting = ref(false)
+const sharedLastResult = ref<ExecResult | null>(null)
+const sharedMountedWidgets = ref<MountedWidget[]>([])
+const sharedCommandHistory = ref<CommandLogEntry[]>([])
+let sharedListenersRegistered = false
+
 export function useSandbox() {
-  const sandbox = ref<SandboxManager | null>(null)
-  const isReady = ref(false)
-  const isExecuting = ref(false)
-  const lastResult = ref<ExecResult | null>(null)
-  const mountedWidgets = ref<MountedWidget[]>([])
-  const commandHistory = ref<CommandLogEntry[]>([])
+  const sandbox = sharedSandbox
+  const isReady = sharedIsReady
+  const isExecuting = sharedIsExecuting
+  const lastResult = sharedLastResult
+  const mountedWidgets = sharedMountedWidgets
+  const commandHistory = sharedCommandHistory
 
   async function init() {
-    if (sandbox.value)
+    if (sandbox.value) {
+      // Refresh from singleton in case another surface mutated it first.
+      const current = sandbox.value
+      mountedWidgets.value = [...current.mountedWidgets]
+      commandHistory.value = [...current.commandHistory]
+      isReady.value = true
       return
+    }
     const instance = await getSandboxManager()
     sandbox.value = instance
-    mountedWidgets.value = instance.mountedWidgets
-    commandHistory.value = instance.commandHistory
+    mountedWidgets.value = [...instance.mountedWidgets]
+    commandHistory.value = [...instance.commandHistory]
 
-    instance.onMount(() => {
-      mountedWidgets.value = [...instance.mountedWidgets]
-    })
+    if (!sharedListenersRegistered) {
+      sharedListenersRegistered = true
+      instance.onMount(() => {
+        mountedWidgets.value = [...instance.mountedWidgets]
+      })
 
-    instance.onCommand(() => {
-      commandHistory.value = [...instance.commandHistory]
-    })
+      instance.onCommand(() => {
+        commandHistory.value = [...instance.commandHistory]
+      })
+    }
 
     isReady.value = true
   }
@@ -120,10 +140,10 @@ export function useSandbox() {
     }
   }
 
-  async function mountPersistedWidget(idOrPath: string): Promise<void> {
+  async function mountPersistedWidget(idOrPath: string, surface?: 'panel' | 'widget'): Promise<void> {
     await init()
     if (sandbox.value) {
-      await sandbox.value.mountPersistedWidget(idOrPath)
+      await sandbox.value.mountPersistedWidget(idOrPath, surface)
       mountedWidgets.value = [...sandbox.value.mountedWidgets]
     }
   }
@@ -151,6 +171,7 @@ export function useSandbox() {
     lastResult,
     mountedWidgets,
     commandHistory,
+    init,
     exec,
     listFiles,
     clearLogs,

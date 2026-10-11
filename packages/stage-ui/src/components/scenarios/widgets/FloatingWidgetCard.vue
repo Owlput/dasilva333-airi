@@ -27,12 +27,28 @@ const iframeKey = ref(0)
 const iframeHeight = ref(160)
 const iframeSrcdoc = ref('')
 
-const initialX = props.widget.position?.x ?? (typeof window !== 'undefined'
-  ? Math.max(16, window.innerWidth - 360 - (props.index * 24))
-  : 100)
-const initialY = props.widget.position?.y ?? (typeof window !== 'undefined'
-  ? Math.max(80, 100 + (props.index * 36))
-  : 100)
+// NOTICE: persisted coordinates can predate the current viewport (e.g. saved
+// on a larger monitor), leaving the card mounted but off-screen. Clamp every
+// entry point so breakout always lands visibly.
+function clampPosition(x: number, y: number): { x: number, y: number } {
+  if (typeof window === 'undefined')
+    return { x, y }
+  const maxX = Math.max(16, window.innerWidth - 336)
+  const maxY = Math.max(16, window.innerHeight - 120)
+  return {
+    x: Math.min(Math.max(16, Math.round(x)), maxX),
+    y: Math.min(Math.max(16, Math.round(y)), maxY),
+  }
+}
+
+const fallbackPos = typeof window !== 'undefined'
+  ? { x: Math.max(16, window.innerWidth - 360 - (props.index * 24)), y: Math.max(80, 100 + (props.index * 36)) }
+  : { x: 100, y: 100 }
+const storedPos = props.widget.position && typeof props.widget.position.x === 'number' && typeof props.widget.position.y === 'number'
+  ? clampPosition(props.widget.position.x, props.widget.position.y)
+  : fallbackPos
+const initialX = storedPos.x
+const initialY = storedPos.y
 
 const { x, y, style, isDragging } = useDraggable(cardEl, {
   handle: dragHandleRef,
@@ -42,10 +58,21 @@ const { x, y, style, isDragging } = useDraggable(cardEl, {
 // Persist position whenever dragging ends
 watch(isDragging, (dragging) => {
   if (!dragging) {
-    const currentPos = { x: Math.round(x.value), y: Math.round(y.value) }
+    const currentPos = clampPosition(Math.round(x.value), Math.round(y.value))
     void updateWidgetPosition(props.widget.id, currentPos)
   }
 })
+
+// Reactively update coordinates if position is updated externally or rehydrated
+watch(() => props.widget.position, (pos) => {
+  if (!isDragging.value && pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+    const clamped = clampPosition(pos.x, pos.y)
+    if (clamped.x !== x.value || clamped.y !== y.value) {
+      x.value = clamped.x
+      y.value = clamped.y
+    }
+  }
+}, { deep: true })
 
 async function refreshActiveWidget() {
   isLoading.value = true
@@ -107,6 +134,14 @@ watch(() => props.widget.code, () => {
 onMounted(() => {
   window.addEventListener('message', handleIframeMessage)
   void refreshActiveWidget()
+  // Repair stale off-screen coordinates on first mount.
+  const current = { x: Math.round(x.value), y: Math.round(y.value) }
+  const clamped = clampPosition(current.x, current.y)
+  if (!props.widget.position || clamped.x !== current.x || clamped.y !== current.y) {
+    x.value = clamped.x
+    y.value = clamped.y
+    void updateWidgetPosition(props.widget.id, clamped)
+  }
 })
 
 onUnmounted(() => {
