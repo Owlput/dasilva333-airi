@@ -408,6 +408,33 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(afterUnmount.some(w => w.id === rehydrated!.id)).toBe(false)
     })
 
+    it('persists widget position and surface across rehydration', async () => {
+      const sandbox1 = new SandboxManager()
+      await sandbox1.init()
+
+      await sandbox1.writeFile('/workspace/floating.js', 'export default function mount() {}')
+      await sandbox1.exec('mount_widget /workspace/floating.js --title "Floating Pet" --surface widget')
+
+      expect(sandbox1.mountedWidgets[0].surface).toBe('widget')
+
+      // Update position
+      await sandbox1.updateWidgetPosition(sandbox1.mountedWidgets[0].id, { x: 420, y: 180 })
+
+      const repoWidgets = await widgetsRepo.getMountedWidgets()
+      const saved = repoWidgets.find(w => w.id === sandbox1.mountedWidgets[0].id)
+      expect(saved?.position).toEqual({ x: 420, y: 180 })
+      expect(saved?.surface).toBe('widget')
+
+      // Simulate reboot
+      const sandbox2 = new SandboxManager()
+      await sandbox2.init()
+
+      const rehydrated = sandbox2.mountedWidgets.find(w => w.title === 'Floating Pet')
+      expect(rehydrated).toBeDefined()
+      expect(rehydrated?.surface).toBe('widget')
+      expect(rehydrated?.position).toEqual({ x: 420, y: 180 })
+    })
+
     it('lists persisted widgets with list_widgets / widgets and remounts by title or path', async () => {
       const sandbox = new SandboxManager()
       await sandbox.init()

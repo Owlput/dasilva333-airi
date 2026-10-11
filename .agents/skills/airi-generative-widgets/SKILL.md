@@ -175,6 +175,7 @@ widget-3    Crypto Ticker panel     [OFFLINE]  /workspace/ticker.ts
     code: string
     surface?: 'panel' | 'widget'
     target?: 'sidepanel' | 'inline' | 'window'
+    position?: { x: number, y: number }
     isMounted: boolean
     mountedAt: number
     updatedAt: number
@@ -183,8 +184,8 @@ widget-3    Crypto Ticker panel     [OFFLINE]  /workspace/ticker.ts
 - **Auto-Rehydration Flow**:
   1. On application startup or page reload, `SandboxManager.init()` reads `widgetsRepo.getMountedWidgets()`.
   2. For every mounted widget, it re-writes `sourceCode` (or compiled `code`) back to `/workspace` in the virtual RAM disk.
-  3. Populates `mountedWidgetsList` and broadcasts `widget-mount` to active UI surfaces.
-  4. Widgets survive window reloads, Vite HMR updates, and browser tab refreshes without losing state.
+  3. Populates `mountedWidgetsList` with persisted `title`, `surface`, and drag `position: { x, y }`, broadcasting `widget-mount` to active UI surfaces.
+  4. In `stage-web` and `stage-pocket`, `<FloatingWidgetsLayer />` mounts floating widgets at their exact saved coordinates. In chat, `selectedWidgetId` stays on the active panel tab across browser reloads.
 
 ---
 

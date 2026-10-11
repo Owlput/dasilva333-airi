@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MountedWidget, PersistedWidget } from '../../../libs/sandbox'
 
+import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useSandbox } from '../../../composables/use-sandbox'
@@ -24,7 +25,7 @@ const {
   deletePersistedWidget,
 } = useSandbox()
 
-const selectedWidgetId = ref<string>('')
+const selectedWidgetId = useLocalStorage<string>('airi:widgets:selected-id', '')
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const iframeKey = ref(0)

@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<{
   index: 0,
 })
 
-const { unmountWidget, setWidgetSurface, readFile } = useSandbox()
+const { unmountWidget, setWidgetSurface, updateWidgetPosition, readFile } = useSandbox()
 
 const cardEl = ref<HTMLElement | null>(null)
 const dragHandleRef = ref<HTMLElement | null>(null)
@@ -27,16 +27,24 @@ const iframeKey = ref(0)
 const iframeHeight = ref(160)
 const iframeSrcdoc = ref('')
 
-const initialX = typeof window !== 'undefined'
+const initialX = props.widget.position?.x ?? (typeof window !== 'undefined'
   ? Math.max(16, window.innerWidth - 360 - (props.index * 24))
-  : 100
-const initialY = typeof window !== 'undefined'
+  : 100)
+const initialY = props.widget.position?.y ?? (typeof window !== 'undefined'
   ? Math.max(80, 100 + (props.index * 36))
-  : 100
+  : 100)
 
-const { style, isDragging } = useDraggable(cardEl, {
+const { x, y, style, isDragging } = useDraggable(cardEl, {
   handle: dragHandleRef,
   initialValue: { x: initialX, y: initialY },
+})
+
+// Persist position whenever dragging ends
+watch(isDragging, (dragging) => {
+  if (!dragging) {
+    const currentPos = { x: Math.round(x.value), y: Math.round(y.value) }
+    void updateWidgetPosition(props.widget.id, currentPos)
+  }
 })
 
 async function refreshActiveWidget() {

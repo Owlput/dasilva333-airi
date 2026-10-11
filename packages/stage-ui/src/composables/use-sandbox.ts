@@ -112,6 +112,14 @@ export function useSandbox() {
     }
   }
 
+  async function updateWidgetPosition(idOrPath: string, position: { x: number, y: number }): Promise<void> {
+    await init()
+    if (sandbox.value) {
+      await sandbox.value.updateWidgetPosition(idOrPath, position)
+      mountedWidgets.value = [...sandbox.value.mountedWidgets]
+    }
+  }
+
   async function mountPersistedWidget(idOrPath: string): Promise<void> {
     await init()
     if (sandbox.value) {
@@ -152,6 +160,7 @@ export function useSandbox() {
     unmountWidget,
     clearWidgets,
     setWidgetSurface,
+    updateWidgetPosition,
     mountPersistedWidget,
     getPersistedWidgets,
     deletePersistedWidget,

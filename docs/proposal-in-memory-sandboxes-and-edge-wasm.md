@@ -1,10 +1,10 @@
 # Proposal: In-Memory Agent Sandboxes, Zero-VM Workspaces, and Edge WASM Capabilities
 
-> **Status**: Partially Shipped / Active Development (Phases 1–7B Shipped, Phase 8 Web & Pocket Multi-Surface Parity in Active Design)
+> **Status**: Partially Shipped / Active Development (Phases 1–8 Shipped, Phase 9 Cloudflare Edge Relay WASM Extensions in Design)
 > **Author**: Richard Pinedo (@dasilva333 / azimuthal)
-> **Date**: 2026-10-11 (Updated with Standalone Desktop Windows, --surface CLI, and Web/Pocket Architecture)
+> **Date**: 2026-10-11 (Updated with Phase 8 Web/Pocket Parity, Sucrase AST Compiler, and Floating Layer)
 > **Target Audience**: Core Developers, Architecture Maintainers, Community Extension Developers
-> **Key Commits**: `1db5c5fb94` (`feat(sandbox): generative UI sidecar widgets and chat inspector integration`), `2cc38ba1e0` (`feat(sandbox): standalone generative desktop widgets with --surface support and breakout popout`), `70044cf6d3` (`fix(stage-tamagotchi): add zlib stubs to virtual node-shim for just-bash browser compatibility`)
+> **Key Commits**: `1db5c5fb94` (`feat(sandbox): generative UI sidecar widgets and chat inspector integration`), `2cc38ba1e0` (`feat(sandbox): standalone generative desktop widgets with --surface support and breakout popout`), `70044cf6d3` (`fix(stage-tamagotchi): add zlib stubs to virtual node-shim for just-bash browser compatibility`), `fbbebcde9e` (`feat(stage-ui): integrate generative widgets surface with sucrase browser compiler`), `17c2170adb` (`feat(stage-ui): implement floating widgets layer and stabilize auto-height resizing`)
 > **Related Documents**: [`docs/proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md), [`docs/design-cloud-relay.md`](./design-cloud-relay.md), [`docs/proposal-plugin-ecosystem-and-community-registry.md`](./proposal-plugin-ecosystem-and-community-registry.md), [`docs/design-discord-control-plane.md`](./design-discord-control-plane.md), [`docs/arch-mcp-integration.md`](./arch-mcp-integration.md), [`docs/proposal-built-in-llm-webgpu.md`](./proposal-built-in-llm-webgpu.md), [`docs/data-catalog.md`](./data-catalog.md)
 
 ---
@@ -505,19 +505,22 @@ By integrating targeted WASM binaries into `apps/stage-edge`, the Discord bot ga
     * Added dedicated breakout popout button (`i-solar:square-top-down-broken`) in `ChatWorkspaceWidgetsPanel.vue` next to the widget library modal to tear off any active panel widget into its own standalone desktop window.
     * Shipped standalone host page in `apps/stage-tamagotchi/src/renderer/pages/widgets.vue` with `Generative.vue`, `buildWidgetIframeSrcdoc`, and bidirectional MCP tool bridge forwarding.
     * Added explicit agent stdout reminder on `mount_widget` execution detailing whether the widget was mounted into the chatbox side panel or popped out as a new standalone desktop window.
-* **Phase 8: Web Browser & Pocket Stage Parity (`stage-web` / `stage-pocket`) [ACTIVE ARCHITECTURE & UPCOMING DIRECTION]**
-  * **Portrait Mode UX Architecture**:
+* **Phase 8: Web Browser & Pocket Stage Parity (`stage-web` / `stage-pocket`) [COMPLETED & SHIPPED — Commits `fbbebcde9e`, `17c2170adb`]**
+  * **Portrait Mode UX Architecture (Shipped)**:
     * Segmented mode switcher directly on the grab-bar header of `MobileWhisperSheet` (`[ 💬 Chat | 💻 Terminal ]`), preventing top header clutter while preserving companion presence in the upper 35–40% of the viewport.
     * Dedicated mobile terminal posture: renders monospace ANSI-formatted activity, responsive command prompt, and touch quick-action chips (`ls`, `mcp list`, `cat .airi/session.json`, `clear`).
     * In-page floating widgets layer (`<FloatingWidgetsLayer />`): floating glassmorphic cards with touch drag handles, offering complete layout freedom without blocking companion touch zones.
-  * **Landscape Mode UX Architecture**:
+  * **Landscape Mode UX Architecture (Shipped)**:
     * Multi-surface workspace card in `InteractiveArea`: top tab navigation (`[ 💬 Chat | 💻 Terminal | 🧩 Widgets ]`), keeping the companion avatar centered on stage and avoiding screen clutter.
     * Optional widen/fullscreen toggle to expand the terminal across 60–70% of the screen for intensive file/code inspection.
-  * **Browser-Native Floating Widget Subsystem**:
-    * Replace Electron OS child windows with in-page draggable glassmorphic `div`s rendered by `<FloatingWidgetsLayer />`.
-    * Backed by `useSandbox()`, `widgetsRepo`, and `Generative.vue` with `buildWidgetIframeSrcdoc` and MCP tool bridge communication over `window.addEventListener('message')`.
-  * **Shared Component Infrastructure**:
-    * Promote `ChatWorkspaceTerminalPanel.vue` and `Generative.vue` to `@proj-airi/stage-ui` or `@proj-airi/stage-layouts` to ensure 100% DRY code sharing across Desktop Electron (`stage-tamagotchi`), Web Browser (`stage-web`), and Mobile Capacitor (`stage-pocket`).
+  * **Sucrase AST Browser Compiler Tier (Shipped)**:
+    * Integrated AST-based `sucrase` (~200KB, `<1ms`) client-side transform in `compiler-bridge.ts`, stripping TypeScript types, interfaces, generics, and non-null assertions (`!`) on Web and Mobile Capacitor without requiring heavy WASM blobs or native binaries.
+  * **Browser-Native Floating Widget Subsystem & Auto-Height Stabilization (Shipped)**:
+    * In-page draggable glassmorphic `div`s rendered by `<FloatingWidgetsLayer />` and `<FloatingWidgetCard />` for widgets mounted with `--surface widget` (or popped out from the inspector panel).
+    * Fixed infinite auto-height expansion feedback loop between iframe `ResizeObserver` and host listener, allowing micro-apps to cleanly shrink-wrap to their content height (e.g. 140px).
+    * Full persistence in `widgetsRepo` (`local:widgets/registry`): preserves widget names, surface assignments, and drag positions `(x, y)` across page reloads and tab refreshes.
+  * **Shared Component Infrastructure (Shipped)**:
+    * Promoted `ChatWorkspaceTerminalPanel.vue`, `ChatWorkspaceWidgetsPanel.vue`, `FloatingWidgetsLayer.vue`, and `FloatingWidgetCard.vue` to `@proj-airi/stage-ui` ensuring 100% DRY code sharing across Desktop Electron (`stage-tamagotchi`), Web Browser (`stage-web`), and Mobile Capacitor (`stage-pocket`).
 * **Phase 9: Cloudflare Edge Relay WASM Extensions & Tachie Compositor (`apps/stage-edge`)**
   * *Specification Document*: [`docs/proposal-edge-wasm-character-runtime.md`](./proposal-edge-wasm-character-runtime.md).
   * Serverless 2D Tachie sprite compositing in Rust WASM (`tiny-skia` / `image-rs`) with Cloudflare R2 asset storage and edge caching.

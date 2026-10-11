@@ -28,6 +28,7 @@ export interface MountedWidget {
   title?: string
   surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
+  position?: { x: number, y: number }
   mountedAt: number
 }
 

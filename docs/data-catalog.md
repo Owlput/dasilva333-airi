@@ -592,7 +592,9 @@ export interface PersistedWidget {
   sourcePath?: string
   sourceCode?: string
   code: string
+  surface?: 'panel' | 'widget'
   target?: 'sidepanel' | 'inline' | 'window'
+  position?: { x: number, y: number }
   isMounted: boolean
   mountedAt: number
   updatedAt: number

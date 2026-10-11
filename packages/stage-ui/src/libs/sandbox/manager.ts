@@ -385,6 +385,19 @@ export class SandboxManager {
     }
   }
 
+  async updateWidgetPosition(idOrPath: string, position: { x: number, y: number }): Promise<void> {
+    const w = this.mountedWidgetsList.find(x => x.id === idOrPath || x.path === idOrPath)
+    if (w) {
+      w.position = position
+      await widgetsRepo.updateWidgetPosition(w.id, position).catch((err) => {
+        console.warn('[SandboxManager] Failed to update widget position in widgetsRepo:', err)
+      })
+      if (this.channel) {
+        this.channel.postMessage({ type: 'widget-mount', widget: w })
+      }
+    }
+  }
+
   clearWidgets(): void {
     this.mountedWidgetsList = []
     if (this.channel) {
@@ -427,7 +440,9 @@ export class SandboxManager {
       path: target.path,
       code: target.code,
       title: target.title,
-      target: target.target || 'sidepanel',
+      surface: target.surface || (target.target === 'window' ? 'widget' : 'panel'),
+      target: target.target || (target.surface === 'widget' ? 'window' : 'sidepanel'),
+      position: target.position,
       mountedAt: Date.now(),
     }
 
@@ -1619,7 +1634,9 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
           path: item.path,
           code: item.code,
           title: item.title,
-          target: item.target || 'sidepanel',
+          surface: item.surface || (item.target === 'window' ? 'widget' : 'panel'),
+          target: item.target || (item.surface === 'widget' ? 'window' : 'sidepanel'),
+          position: item.position,
           mountedAt: item.mountedAt || Date.now(),
         }
 
