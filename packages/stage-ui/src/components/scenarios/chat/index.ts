@@ -6,6 +6,7 @@ export { default as ChatImagesPopover } from './ChatImagesPopover.vue'
 export { default as ChatMemoryPopover } from './ChatMemoryPopover.vue'
 export { default as ChatSessionModal } from './ChatSessionModal.vue'
 export { default as ChatWorkspaceTerminalPanel } from './ChatWorkspaceTerminalPanel.vue'
+export { default as ChatWorkspaceWidgetsPanel } from './ChatWorkspaceWidgetsPanel.vue'
 export { default as CharacterContextView } from './components/CharacterContextView.vue'
 
 export { default as DirectorMonitorView } from './components/DirectorMonitorView.vue'

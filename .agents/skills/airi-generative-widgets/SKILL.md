@@ -27,7 +27,7 @@ Guidelines and exact code paths for AIRI's Generative UI widget subsystem. This 
 │                                           │                                            │
 │                                           ▼                                            │
 │   SandboxManager (packages/stage-ui/src/libs/sandbox/manager.ts)                       │
-│   • Compiles TypeScript via in-memory tsc-rs / @tsc-rs/wasm (<2ms)                     │
+│   • Compiles TypeScript via native tsc-rs (Electron) or Sucrase AST (<1ms, Web/Mobile) │
 │   • Emits compiled bundle into /workspace/dist/ or memory buffer                       │
 │   • Generates isolated HTML via buildWidgetIframeSrcdoc(...)                           │
 │   • Persists metadata & code into widgetsRepo (local:widgets/registry)                 │
@@ -108,8 +108,10 @@ export default function mount({ container, sidecar, onUpdate }: AiriWidgetContex
 
 1. **Path Resolution**: Looks up the file relative to `/workspace` (or absolute path).
 2. **Compilation**: If given a `.ts` file:
-   - Resolves or creates `/workspace/tsconfig.json`.
-   - Runs `tsc-rs` (`@tsc-rs/wasm`) to compile the file into valid ES module JavaScript.
+   - Evaluates host platform capabilities:
+     - **Desktop Electron**: Dispatches to native `tsc-rs` (`ts-rust`) compiler binary over Eventa IPC.
+     - **Web Browser & Mobile Capacitor**: Uses client-side **`sucrase`** AST transform (`<1ms`, ~200KB) to completely strip TypeScript types, interfaces, generics, type annotations, and non-null assertions (`!`), emitting valid modern JavaScript without requiring heavy WASM blobs or native binaries (upstream `pingdotgg/ts-rust` only publishes native OS binaries; its `crates/ts_wasm` build is experimental and unpublished).
+   - Emits the resulting `.js` file directly into `/workspace/<name>.js`.
 3. **Packaging**: Bundles the code with `buildWidgetIframeSrcdoc(...)`:
    - Injects UnoCSS runtime and Tailwind styling.
    - Wraps the code in an isolated IIFE that calls `export.default({ container, sidecar, onUpdate })`.

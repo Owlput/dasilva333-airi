@@ -145,6 +145,7 @@
     "remark-parse": "catalog:",
     "remark-rehype": "catalog:",
     "shiki": "^3.23.0",
+    "sucrase": "catalog:",
     "tesseract.js": "^7.0.0",
     "three": "^0.174.0",
     "unified": "catalog:",

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 
-import { ChatHistory, ChatWorkspaceTerminalPanel } from '@proj-airi/stage-ui/components'
+import { ChatHistory, ChatWorkspaceTerminalPanel, ChatWorkspaceWidgetsPanel } from '@proj-airi/stage-ui/components'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
@@ -123,21 +123,15 @@ const historyMessages = computed(() => messages.value as unknown as ChatHistoryI
           <ChatWorkspaceTerminalPanel fill-container class="h-full w-full" />
         </div>
 
-        <!-- Surface 3: Widgets Placeholder (Baby Step 1) -->
+        <!-- Surface 3: Widgets View -->
         <div
           v-else-if="activeTab === 'widgets'"
           :class="[
-            'min-h-0 flex-1 flex flex-col items-center justify-center',
-            'p-6 text-center text-neutral-500 dark:text-neutral-400',
+            'min-h-0 flex-1 flex flex-col overflow-hidden',
+            'w-full h-full',
           ]"
         >
-          <div class="i-solar:widget-2-bold-duotone mb-2 size-8 text-primary-500/70" />
-          <div class="text-xs text-neutral-700 font-bold tracking-wider uppercase dark:text-neutral-300">
-            Generative Widgets
-          </div>
-          <div class="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">
-            Sandboxed micro-apps & interactive UI
-          </div>
+          <ChatWorkspaceWidgetsPanel fill-container class="h-full w-full" />
         </div>
       </ChatContainer>
     </div>

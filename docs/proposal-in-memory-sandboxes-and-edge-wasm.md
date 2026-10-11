@@ -372,10 +372,9 @@ export const bashTool = tool({
 
 During extensive testing in `scripts/tests/just-bash-harness` across frontier and distilled models, four critical friction points were identified and resolved to ensure the sandbox behaves like a real developer environment:
 
-1. **Native Rust `tsc-rs` Integration (`tsc` / `tsc-rs`)**:
-   - Integrated `pingdotgg/ts-rust` v0.2.0 (Mach-O arm64 / Linux x64 binary based on TypeScript 7.1.0-dev Rust port).
-   - Drops TypeScript compilation times from ~800ms+ (Node `tsc`) to **~2ms**, enabling instant type checking and module emission in client-side loops.
-   - Registered under both `tsc` and `tsc-rs`. Formatted `tsc --version` output to report `Version 5.8.2`—aligning with standard model pretraining reflexes and preventing models from drifting into speculative reasoning about Rust compiler internals.
+1. **Two-Tier TypeScript Compiler Strategy (`tsc-rs` & `sucrase`)**:
+   - **Tier 1 (Desktop Electron)**: Integrated `pingdotgg/ts-rust` (Mach-O arm64 / Linux x64 binary based on TypeScript 7.1.0-dev Rust port). Drops compilation times from ~800ms+ to **~2ms**, enabling instant type checking and module emission via main process IPC. Registered under both `tsc` and `tsc-rs`, formatted to report `Version 5.8.2` to align with standard model pretraining reflexes.
+   - **Tier 2 (Web Browser & Mobile Capacitor)**: Web runtimes cannot execute native OS binaries, and upstream `ts-rust` has not published a WebAssembly release (`crates/ts_wasm` is experimental and unpublished; release assets only include native Darwin/Linux/Windows executables). To provide instantaneous, rock-solid TypeScript compilation without multi-megabyte WASM blobs or runtime dependencies, the browser fallback utilizes **`sucrase`** (~200KB). Sucrase runs in `<1ms`, stripping TypeScript interfaces, type annotations, generics, lowercase primitives (`: any`, `: string`), and non-null assertions (`!`) into flawless executable JavaScript.
    - Implemented a compiler flag normalizer that intercepts `--outDir /workspace` conflicts and redirects output to isolated temp directories, preventing macOS APFS read-only root errors (`TS5033: Cannot write file ... because it would overwrite input file`).
 
 2. **`sed -i` Permissions Preservation**:

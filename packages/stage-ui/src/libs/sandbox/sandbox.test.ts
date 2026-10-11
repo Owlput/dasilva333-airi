@@ -121,6 +121,34 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(sandbox.mountedWidgets.length).toBe(0)
     })
 
+    it('transpiles complex TypeScript with interfaces, generics, primitives and non-null assertions', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      await sandbox.writeFile('/workspace/pos.ts', `
+        interface MenuItem {
+          id: string;
+          price: number;
+          badge?: string;
+        }
+        const items: MenuItem[] = [{ id: 'coffee', price: 3.5 }];
+        export default function mount({ container, sidecar, onUpdate }: any) {
+          const cart: Record<string, number> = {};
+          let receiptData: string | null = null;
+          const found = items.find(i => i.id === 'coffee')!;
+          container.innerHTML = '<div>' + found.price + '</div>';
+        }
+      `)
+
+      const mountRes = await sandbox.exec('mount_widget /workspace/pos.ts --title "Cafe POS"')
+      expect(mountRes.exitCode).toBe(0)
+      expect(sandbox.mountedWidgets[0].code).not.toContain(': string')
+      expect(sandbox.mountedWidgets[0].code).not.toContain(': number')
+      expect(sandbox.mountedWidgets[0].code).not.toContain('Record<string, number>')
+      expect(sandbox.mountedWidgets[0].code).not.toContain('interface MenuItem')
+      expect(sandbox.mountedWidgets[0].code).toContain('container.innerHTML')
+    })
+
     it('supports --surface widget and --surface panel with explicit reminder messages', async () => {
       const sandbox = new SandboxManager()
       await sandbox.init()
