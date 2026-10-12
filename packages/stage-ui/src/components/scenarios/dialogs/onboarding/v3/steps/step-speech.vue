@@ -10,7 +10,7 @@ import { parseActor } from '../../../../../../composables/queues'
 import { stripMarkers, stripPacingEnvelopes } from '../../../../../../composables/response-categoriser'
 import { useLocalVoiceClone } from '../../../../../../composables/use-local-voice-clone'
 import { useProcessSpawner } from '../../../../../../composables/use-process-spawner'
-import { getStarterCharacter, STARTER_CHARACTERS } from '../../../../../../constants/prompts/character-defaults'
+import { getStarterCharacter } from '../../../../../../constants/prompts/character-defaults'
 import { STARTER_VOICE_CATALOG } from '../../../../../../constants/voices/starter-voice-catalog'
 import { getKokoroAdapter } from '../../../../../../libs/inference/adapters/kokoro'
 import { useSpeechStore } from '../../../../../../stores/modules/speech'
@@ -770,7 +770,7 @@ watch(selectedProvider, async (providerId) => {
 
 // 4. Greeting Text Resolution
 const resolvedPersona = computed(() => {
-  const personaCardId = draftStore.state.personaCardId || 'default'
+  const personaCardId = draftStore.state.personaCardId || 'relu'
   const userName = draftStore.state.userName || userProfileStore.name || 'Richy'
 
   if (draftStore.state.importedCardDraft) {
@@ -791,20 +791,10 @@ const resolvedPersona = computed(() => {
     }
   }
 
-  if (STARTER_CHARACTERS[personaCardId]) {
-    const p = getStarterCharacter(personaCardId)
-    const substituted = (p.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
-    return {
-      name: p.name,
-      actorName: undefined,
-      greeting: stripPacingEnvelopes(stripMarkers(substituted)).trim(),
-    }
-  }
-
-  const d = STARTER_CHARACTERS.default
-  const substituted = (d.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
+  const p = getStarterCharacter(personaCardId)
+  const substituted = (p.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
   return {
-    name: d.name,
+    name: p.name,
     actorName: undefined,
     greeting: stripPacingEnvelopes(stripMarkers(substituted)).trim(),
   }

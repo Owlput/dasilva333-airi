@@ -26,6 +26,7 @@ import {
   DEFAULT_POST_HISTORY_INSTRUCTIONS,
   DEFAULT_SANDBOX_SCRATCHPAD_INSTRUCTION,
   DEFAULT_SANDBOX_WORKSTATION_INSTRUCTION,
+  DEFAULT_STARTER_CARD_ID,
   DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION,
   STARTER_CHARACTERS,
 } from '../../constants/prompts/character-defaults'
@@ -373,7 +374,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   // can sync it as a first-class key without the localStorage dump/restore bridge.
   const cards = ref<Map<string, AiriCard>>(new Map())
   const cardsLoading = ref(true)
-  const activeCardId = useLocalStorageManualReset<string>('airi-card-active-id', 'default')
+  const activeCardId = useLocalStorageManualReset<string>('airi-card-active-id', DEFAULT_STARTER_CARD_ID)
 
   // Store-driven modal intents to eliminate route-query race conditions
   const pendingEditCardId = ref<string | null>(null)
@@ -804,12 +805,12 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     } as any)
   }
 
-  const getCard = (id: string) => {
+  function getCard(id: string) {
     return cards.value.get(id)
   }
 
   const getCardDisplayModelId = (id: string) => {
-    const card = cards.value.get(id)
+    const card = getCard(id)
     if (!card)
       return undefined
     return resolveAiriExtension(card).modules?.displayModelId
@@ -1367,7 +1368,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       if (!nextCards.has(starter.id)) {
         nextCards.set(starter.id, compactCard({
           name: starter.name,
-          creator: starter.id === 'default' ? undefined : 'AIRI',
+          creator: 'AIRI',
           version: '1.0.0',
           description: starter.description,
           personality: starter.personality,
@@ -1417,7 +1418,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
 
     if (!activeCardId.value)
-      activeCardId.value = 'default'
+      activeCardId.value = DEFAULT_STARTER_CARD_ID
   }
 
   async function seedDefaults(selectedId: string) {
@@ -1428,7 +1429,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       await activateCard(selectedId, true)
     }
     else {
-      await activateCard('default', true)
+      await activateCard(DEFAULT_STARTER_CARD_ID, true)
     }
   }
 

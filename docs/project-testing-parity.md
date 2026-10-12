@@ -23,7 +23,7 @@
 
 | Package / Workspace | Test Suites (Files) | Total Tests | Primary Subsystem Focus |
 |---|:---:|:---:|---|
-| [`packages/stage-ui`](../packages/stage-ui) | 78 | 916 | Arcade, Chat, Pacing, WebGPU Workers, BYOS Sync, Providers, Live2D, Memory, Artistry, Proactivity, MCP, Cloudflare OAuth, Gemini Live Bidi, Chat Input Bridge, Audio Device Routing |
+| [`packages/stage-ui`](../packages/stage-ui) | 80 | 923 | Arcade, Chat, Pacing, WebGPU Workers, BYOS Sync, Providers, Live2D, Memory, Artistry, Proactivity, MCP, Cloudflare OAuth, Gemini Live Bidi, Chat Input Bridge, Audio Device Routing, Character & Session Lifecycle |
 | [`packages/nan0-runtime`](../packages/nan0-runtime) | 24 | 301 | Nan0 Cognition Runtime, Thought Engine, Emotional Dynamics, Goal & Prediction Systems |
 | [`packages/live2d-runtime`](../packages/live2d-runtime) | 5 | 79 | Live2D Scripting DSL VM, Command Parser, Selector, Template, VarStore |
 | [`packages/stage-pages`](../packages/stage-pages) | 2 | 34 | Settings Topology & Devtools Context Flow Formatters |
@@ -36,7 +36,7 @@
 | [`packages/plugin-sdk`](../packages/plugin-sdk) | 1 | 22 | Plugin SDK Host Core Lifecycle |
 | [`packages/server-runtime`](../packages/server-runtime) | 1 | 9 | Server Route Middleware |
 | [`packages/i18n`](../packages/i18n) | 1 | 3 | Canonical Locales Discovery, Base YAML Syntax/Duplicates, Onboarding V3 100% Parity Assertion |
-| **Monorepo Vitest Baseline** | **135 Suites** | **1,526 Tests** | **Automated Zero-Failure Headless Test Baseline** |
+| **Monorepo Vitest Baseline** | **137 Suites** | **1,533 Tests** | **Automated Zero-Failure Headless Test Baseline** |
 
 *(Note: 4 additional test files across `@proj-airi/stage-ui` and `@proj-airi/live2d-runtime` contain 8 tests conditional on external models or live API keys, yielding 114 total test files cataloged and audited).*
 
@@ -71,6 +71,7 @@
 
 
 | **Message Deduplication & Sync Merge** | [`packages/stage-ui/src/stores/chat/session-message-merge.test.ts`](../packages/stage-ui/src/stores/chat/session-message-merge.test.ts) | 5 | Node / Pure TS | Blocking in CI | Session message deduplication, timestamp sorting, and remote sync merge rules. | Tests pure merge algorithm; does not test remote HTTP sync transport. |
+| **Chat Session Remote Sync & Member Invariants** | [`packages/stage-ui/src/stores/chat/session-store.sync.test.ts`](../packages/stage-ui/src/stores/chat/session-store.sync.test.ts) | 2 | Node / Pinia | Blocking in CI | Remote sync companion member preservation for ReLU character sessions, eradication of 'default' member stripping, and ensureActiveSessionForCharacter fallback assignment. | Tests sync scheduling and member payload composition; mocks client API post. |
 | **Message Payload Sanitization** | [`packages/stage-ui/src/stores/llm.sanitize.test.ts`](../packages/stage-ui/src/stores/llm.sanitize.test.ts) | 5 | Node / Pure TS | Blocking in CI | Stripping images when vision is disabled, converting error roles to user messages, and flattening text parts. | Pure payload transformation unit tests. |
 | **Chat Bubble Virtual Keying** | [`packages/stage-ui/src/components/scenarios/chat/message-key.test.ts`](../packages/stage-ui/src/components/scenarios/chat/message-key.test.ts) | 4 | Node / Pure TS | Blocking in CI | Stable key resolution for virtualized chat transcript items with missing IDs or timestamps. | Pure key computation tests; does not mount Vue virtual scroller components. |
 | **Chat Scenarios Utility** | [`packages/stage-ui/src/components/scenarios/chat/utils.test.ts`](../packages/stage-ui/src/components/scenarios/chat/utils.test.ts) | 1 | Node / Pure TS | Blocking in CI | Helper functions for chat UI formatting. | Unit helper test. |
@@ -117,6 +118,7 @@
 | **Sync Engine Conflict Merge** | [`packages/stage-ui/src/stores/sync-engine-merge.test.ts`](../packages/stage-ui/src/stores/sync-engine-merge.test.ts) | 3 | Node / Pure TS | Blocking in CI | Cloud vs local voice profile reconciliation using Last-Writer-Wins (LWW) by `updatedAt`/`createdAt`. | Verifies data merge functions; does not exercise binary asset reconciliation. |
 | **Sync Engine Query Safeguards** | [`packages/stage-ui/src/stores/sync-engine-safeguards.test.ts`](../packages/stage-ui/src/stores/sync-engine-safeguards.test.ts) | 10 | Node / Pure TS | Blocking in CI | Index-driven selective sync session ID extraction for checked characters; zero-read unselected session skipping; up-to-date mergeable key download suppression via timestamps/ETags. | Unit test for index resolution and download suppression; does not test active network sockets. |
 | **Character Store Lifecycle** | [`packages/stage-ui/src/stores/character.test.ts`](../packages/stage-ui/src/stores/character.test.ts) | 5 | Node / Pinia | Blocking in CI | Character card selection, active character ID switching, and card metadata reactivity. | Pinia store state tests; does not test filesystem card import/export. |
+| **Airi Card Seeding & Lifecycle** | [`packages/stage-ui/src/stores/modules/airi-card.test.ts`](../packages/stage-ui/src/stores/modules/airi-card.test.ts) | 5 | Node / Pinia | Blocking in CI | Clean-slate starter seeding (relu, aria, lupin), ReLU identity decoupling from 'default', non-empty descriptions, activeCard computed TDZ safety, and persistence reactivity. | Verifies store state and unstorage persistence in memory; does not mount rendering canvas. |
 | **Character Orchestrator** | [`packages/stage-ui/src/stores/character/orchestrator/index.test.ts`](../packages/stage-ui/src/stores/character/orchestrator/index.test.ts) | 2 | Node / Pinia | Blocking in CI | Character orchestrator initialization and teardown. | Store lifecycle test. |
 | **Long-Term Text Journal** | [`packages/stage-ui/src/stores/memory-text-journal.test.ts`](../packages/stage-ui/src/stores/memory-text-journal.test.ts) | 18 | Node / Memory DB | Blocking in CI | Sacred Journal entry creation, searching, keyword/token ranking, and local heuristic search fallback when worker is unavailable. | In-memory storage tests; does not test IndexedDB persistence across browser restarts. |
 | **Data Maintenance Composable** | [`packages/stage-ui/src/composables/use-data-maintenance.test.ts`](../packages/stage-ui/src/composables/use-data-maintenance.test.ts) | 7 | Node / Pure TS | Blocking in CI | Local data maintenance, stale cleanup, and cache pruning. | Composable state and eviction logic. |

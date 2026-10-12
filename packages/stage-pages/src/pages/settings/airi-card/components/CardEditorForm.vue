@@ -1559,12 +1559,14 @@ function initializeCard(): Card {
 
 const card = ref<Card>(initializeCard())
 
-// Reinitialize when cardId changes
-watch(() => props.cardId, async () => {
-  if (cardsLoading.value) {
-    await until(cardsLoading).toBe(false)
+// Reinitialize when cardId changes or when cards finish loading
+watch([() => props.cardId, cardsLoading], async ([newCardId, loading]) => {
+  if (loading) {
+    return
   }
-  card.value = initializeCard()
+  if (isEditMode.value && newCardId) {
+    card.value = initializeCard()
+  }
 })
 
 function makeComputed<T extends keyof Card>(

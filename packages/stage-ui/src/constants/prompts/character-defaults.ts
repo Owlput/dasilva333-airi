@@ -180,7 +180,7 @@ You have access to an isolated in-memory POSIX environment via the **bash** tool
 - Compile TypeScript scripts via \`tsc\` (defaults to \`--target es2022 --lib es2022,dom\`; emits directly without needing \`--outDir\`).`
 
 export interface StarterCharacterDefinition {
-  /** Stable card ID ('default', 'aria', 'lupin', 'kira', 'rin', 'yuki', 'mio', 'hana') */
+  /** Stable card ID ('relu', 'aria', 'lupin', 'kira', 'rin', 'yuki', 'mio', 'hana') */
   id: string
   /** Display name (e.g. 'ReLU', 'Dr. Aria') */
   name: string
@@ -212,9 +212,11 @@ export interface StarterCharacterDefinition {
   defaultVoiceId?: string
 }
 
+export const DEFAULT_STARTER_CARD_ID = 'relu'
+
 export const STARTER_CHARACTERS: Record<string, StarterCharacterDefinition> = {
-  default: {
-    id: 'default',
+  relu: {
+    id: 'relu',
     name: 'ReLU',
     tag: 'Empathetic Companion',
     accent: 'text-pink-500',
@@ -399,6 +401,6 @@ export const STARTER_CHARACTERS: Record<string, StarterCharacterDefinition> = {
 
 export function getStarterCharacter(id?: string): StarterCharacterDefinition {
   if (!id)
-    return STARTER_CHARACTERS.default
-  return STARTER_CHARACTERS[id] || STARTER_CHARACTERS.default
+    return STARTER_CHARACTERS.relu
+  return STARTER_CHARACTERS[id] || STARTER_CHARACTERS.relu
 }
