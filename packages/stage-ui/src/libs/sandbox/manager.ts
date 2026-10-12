@@ -8,6 +8,7 @@ import { Bash } from 'just-bash'
 import { widgetsRepo } from '../../database/repos/widgets.repo'
 import { tryGetMcpToolBridge } from '../../stores/mcp-tool-bridge'
 import { compileTypeScriptInSandbox } from './compiler-bridge'
+import { createVirtualJevEnvironment, handleJevCommand } from './jev'
 import {
   buildCognitionProjection,
   buildMessagesProjection,
@@ -1143,6 +1144,12 @@ Examples:
       execute: mcpHandler,
     })
 
+    // 2.6. Native TypeSafe Jev System-1 CLI command
+    this.bash.registerCommand({
+      name: 'jev',
+      execute: handleJevCommand,
+    })
+
     // 3. sed -i permission preservation wrapper
     const origSed = (this.bash as any).commands?.get?.('sed')
     if (origSed) {
@@ -1363,6 +1370,8 @@ Examples:
         },
       }
 
+      const virtualJev = createVirtualJevEnvironment()
+
       const virtualModules: Record<string, any> = {
         'fs': virtualFs,
         'node:fs': virtualFs,
@@ -1370,6 +1379,10 @@ Examples:
         'node:path': virtualPath,
         'mcp': virtualMcp,
         'node:mcp': virtualMcp,
+        'jev': virtualJev,
+        'node:jev': virtualJev,
+        'system1': virtualJev,
+        'node:system1': virtualJev,
       }
 
       const customRequire = (id: string) => {
@@ -1418,6 +1431,7 @@ Examples:
         fs: virtualFs,
         path: virtualPath,
         mcp: virtualMcp,
+        jev: virtualJev,
       }
     }
 
@@ -1437,6 +1451,8 @@ Examples:
       const transformed = transformScriptCode(code)
       const prevMcp = (globalThis as any).mcp
       ;(globalThis as any).mcp = env.mcp
+      const prevJev = (globalThis as any).jev
+      ;(globalThis as any).jev = env.jev
       try {
         const fn = new (AsyncFunction as any)('require', 'module', 'exports', 'console', 'process', '__filename', '__dirname', transformed)
         await fn(env.require, env.module, env.module.exports, customConsole, env.process, env.__filename, env.__dirname)
@@ -1454,6 +1470,12 @@ Examples:
         }
         else {
           delete (globalThis as any).mcp
+        }
+        if (prevJev !== undefined) {
+          ;(globalThis as any).jev = prevJev
+        }
+        else {
+          delete (globalThis as any).jev
         }
       }
     }
@@ -1617,6 +1639,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
 - TypeScript compiler: tsc <file.ts>
 - Generative UI: mount_widget <file.ts|file.js> [--surface panel|widget]
 - Model Context Protocol: mcp list | mcp <server::tool> [json_args]
+- System 1 Semantic Decisions: jev is | jev choose | jev score | require('jev')
 - Micro-App Types: /workspace/types/airi-widget.d.ts
 `)
   }

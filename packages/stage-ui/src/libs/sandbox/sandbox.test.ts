@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { widgetsRepo } from '../../database/repos/widgets.repo'
 import { useChatSessionStore } from '../../stores/chat/session-store'
@@ -8,6 +8,7 @@ import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNan0Store } from '../../stores/modules/nan0'
 import { createBashTool, executeBashCommand } from '../../stores/modules/tools/bash'
 import { ansiToHtml, stripAnsi } from './ansi'
+import { clearSystemOneBridge, setSystemOneBridge } from './jev'
 import { SandboxManager } from './manager'
 import { buildWidgetIframeSrcdoc } from './srcdoc'
 
@@ -22,6 +23,7 @@ describe('sandbox subsystem & in-memory posix execution', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
     await widgetsRepo.clearMounted()
+    clearSystemOneBridge()
   })
 
   describe('sandboxManager core', () => {
@@ -785,6 +787,265 @@ console.log('SUM:' + res.sum);
       expect(srcdoc).toContain('widget-state-update')
       expect(srcdoc).toContain('widget-state-sync')
       expect(srcdoc).toContain('get state() { return widgetState; }')
+    })
+  })
+
+  describe('system 1 semantic shell & jev sandbox bridge', () => {
+    const mockSystemOneBridge = {
+      execute: vi.fn(async (state, questions, _model) => {
+        const answers: Record<string, any> = {}
+        for (const [key, q] of Object.entries(questions as Record<string, any>)) {
+          if (q.type === 'noul') {
+            const stateText = (typeof state === 'string' ? state : JSON.stringify(state)).toLowerCase()
+            const isUrgent = stateText.includes('fatal') || stateText.includes('panic') || stateText.includes('urgent')
+            answers[key] = { noul: isUrgent ? 0.95 : 0.1 }
+          }
+          else if (q.type === 'choice') {
+            const keys = Object.keys(q.criteria || {})
+            answers[key] = { choice: keys[0] || 'default_opt', confidence: 0.92 }
+          }
+          else if (q.type === 'score') {
+            answers[key] = { score: 8.5 }
+          }
+        }
+        return { answers, usage: { input_tokens: 12, output_tokens: 1 } }
+      }),
+      runTriage: vi.fn(async (_query: string) => ({
+        category: 2,
+        choice: 'c2_temporal',
+        confidence: 0.92,
+        temporalSubtype: 'calendar_date',
+        searchScope: 'single_session',
+        conjunctionStructure: 'single_atomic',
+        requiresDecomposition: 0.05,
+      })),
+      configured: true,
+      lastLatencyMs: 110,
+    }
+
+    beforeEach(() => {
+      setSystemOneBridge(mockSystemOneBridge)
+    })
+
+    afterEach(() => {
+      clearSystemOneBridge()
+    })
+
+    describe('virtual node.js runtime (require("jev"))', () => {
+      it('provides require("jev"), require("node:jev"), and global jev', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        // 1. require('jev')
+        const scriptRequire = `
+const { is, choose, score } = require('jev');
+const fatal = await is('Is this fatal?', 'fatal kernel panic');
+const normal = await is('Is this fatal?', 'routine health ping');
+const action = await choose('Next action', 'disk full', ['purge', 'ignore']);
+const rating = await score('Clarity', 'clean code', { min: 1, max: 10 });
+console.log(JSON.stringify({ fatal, normal, action, rating }));
+`
+        await sandbox.writeFile('/workspace/test_jev.js', scriptRequire)
+        const res = await sandbox.exec('node /workspace/test_jev.js')
+        expect(res.exitCode).toBe(0)
+        const parsed = JSON.parse(res.stdout.trim())
+        expect(parsed.fatal).toBe(true)
+        expect(parsed.normal).toBe(false)
+        expect(parsed.action).toBe('purge')
+        expect(parsed.rating).toBe(8.5)
+
+        // 2. require('node:jev')
+        const scriptNodeJev = `
+const { is } = require('node:jev');
+console.log('NODE_JEV:' + (await is('Is this urgent?', 'urgent alarm')));
+`
+        const nodeJevRes = await sandbox.exec(`node -e "${scriptNodeJev.replace(/\n/g, ' ')}"`)
+        expect(nodeJevRes.exitCode).toBe(0)
+        expect(nodeJevRes.stdout).toContain('NODE_JEV:true')
+
+        // 3. Global jev
+        const globalRes = await sandbox.exec('node -e "const res = await jev.is(\'Is this fatal?\', \'fatal crash\'); console.log(\'GLOBAL:\' + res);"')
+        expect(globalRes.exitCode).toBe(0)
+        expect(globalRes.stdout).toContain('GLOBAL:true')
+      })
+
+      it('supports multi-head batch decide and memory triage', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        const script = `
+const { decide, triage } = require('jev');
+const decisions = await decide('system telemetry', {
+  status: { type: 'choice', instructions: 'Status check', criteria: { healthy: 'Healthy', degraded: 'Degraded' } },
+  needs_alert: { type: 'noul', instructions: 'Is this urgent?' }
+});
+const triageRes = await triage('When did we meet Pen-Pen?');
+console.log(JSON.stringify({ decisions, triageRes }));
+`
+        await sandbox.writeFile('/workspace/batch.js', script)
+        const res = await sandbox.exec('node /workspace/batch.js')
+        expect(res.exitCode).toBe(0)
+        const parsed = JSON.parse(res.stdout.trim())
+        expect(parsed.decisions.status.choice).toBe('healthy')
+        expect(parsed.triageRes.choice).toBe('c2_temporal')
+      })
+    })
+
+    describe('bash semantic cli (jev command)', () => {
+      it('displays help and usage on --help or no args', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        const resNoArgs = await sandbox.exec('jev')
+        expect(resNoArgs.exitCode).toBe(0)
+        expect(resNoArgs.stdout).toContain('Usage:')
+        expect(resNoArgs.stdout).toContain('jev is <predicate>')
+
+        const resHelp = await sandbox.exec('jev --help')
+        expect(resHelp.exitCode).toBe(0)
+        expect(resHelp.stdout).toContain('Semantic Shell Predicates:')
+      })
+
+      it('executes jev is with exit code 0 on true and exit code 1 on false', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        // Piped stdin with true result -> exitCode: 0
+        const resPipedTrue = await sandbox.exec('echo "fatal memory corruption" | jev is "Does this have a fatal error?"')
+        expect(resPipedTrue.exitCode).toBe(0)
+        expect(resPipedTrue.stdout.trim()).toBe('true')
+
+        // Piped stdin with false result -> exitCode: 1
+        const resPipedFalse = await sandbox.exec('echo "routine background scan" | jev is "Does this have a fatal error?"')
+        expect(resPipedFalse.exitCode).toBe(1)
+        expect(resPipedFalse.stdout.trim()).toBe('false')
+
+        // Native bash if condition branching with silent -q / --quiet flag
+        const branchScript = `
+if echo "fatal kernel panic" | jev is -q "Is this fatal?"; then
+  echo "BRANCH_TAKEN"
+else
+  echo "BRANCH_SKIPPED"
+fi
+`
+        const resBranch = await sandbox.exec(branchScript)
+        expect(resBranch.exitCode).toBe(0)
+        expect(resBranch.stdout.trim()).toBe('BRANCH_TAKEN')
+
+        const branchFalseScript = `
+if echo "normal text" | jev is -q "Is this fatal?"; then
+  echo "BRANCH_TAKEN"
+else
+  echo "BRANCH_SKIPPED"
+fi
+`
+        const resBranchFalse = await sandbox.exec(branchFalseScript)
+        expect(resBranchFalse.exitCode).toBe(0)
+        expect(resBranchFalse.stdout.trim()).toBe('BRANCH_SKIPPED')
+      })
+
+      it('reads context from virtual file path or inline argument', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        await sandbox.writeFile('/workspace/incident.log', 'fatal panic at address 0xdeadbeef')
+
+        // Reading directly from file path
+        const fileRes = await sandbox.exec('jev is "Does this have a fatal error?" /workspace/incident.log')
+        expect(fileRes.exitCode).toBe(0)
+        expect(fileRes.stdout.trim()).toBe('true')
+
+        // Reading from relative file path
+        const relRes = await sandbox.exec('jev is "Does this have a fatal error?" incident.log')
+        expect(relRes.exitCode).toBe(0)
+        expect(relRes.stdout.trim()).toBe('true')
+
+        // Reading from inline text
+        const inlineRes = await sandbox.exec('jev is "Does this have a fatal error?" "fatal panic in thread"')
+        expect(inlineRes.exitCode).toBe(0)
+        expect(inlineRes.stdout.trim()).toBe('true')
+      })
+
+      it('supports --json flag across is, choose, score, and triage', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        // 1. jev is --json
+        const isJsonRes = await sandbox.exec('echo "fatal panic" | jev is "Is this fatal?" --json')
+        expect(isJsonRes.exitCode).toBe(0)
+        const isJson = JSON.parse(isJsonRes.stdout.trim())
+        expect(isJson.result).toBe(true)
+        expect(isJson.probability).toBe(0.95)
+        expect(isJson.threshold).toBe(0.5)
+
+        // 2. jev choose --json
+        const chooseJsonRes = await sandbox.exec('jev choose "Select priority" --options low,medium,high,critical "disk 99% full" --json')
+        expect(chooseJsonRes.exitCode).toBe(0)
+        const chooseJson = JSON.parse(chooseJsonRes.stdout.trim())
+        expect(chooseJson.choice).toBe('low')
+        expect(chooseJson.options).toEqual(['low', 'medium', 'high', 'critical'])
+
+        // 3. jev score --json
+        const scoreJsonRes = await sandbox.exec('jev score "Rate performance" --min 1 --max 10 "app runs fast" --json')
+        expect(scoreJsonRes.exitCode).toBe(0)
+        const scoreJson = JSON.parse(scoreJsonRes.stdout.trim())
+        expect(scoreJson.score).toBe(8.5)
+        expect(scoreJson.min).toBe(1)
+        expect(scoreJson.max).toBe(10)
+
+        // 4. jev triage --json
+        const triageJsonRes = await sandbox.exec('jev triage "When was the last sync?" --json')
+        expect(triageJsonRes.exitCode).toBe(0)
+        const triageJson = JSON.parse(triageJsonRes.stdout.trim())
+        expect(triageJson.choice).toBe('c2_temporal')
+      })
+
+      it('executes jev choose and score plain output', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        const chooseRes = await sandbox.exec('jev choose "Pick action" --options restart,ignore,escalate')
+        expect(chooseRes.exitCode).toBe(0)
+        expect(chooseRes.stdout.trim()).toBe('restart')
+
+        const scoreRes = await sandbox.exec('jev score "Score clarity"')
+        expect(scoreRes.exitCode).toBe(0)
+        expect(scoreRes.stdout.trim()).toBe('8.5')
+      })
+
+      it('returns error exit code 1 and error message on missing parameters', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        const resMissingIs = await sandbox.exec('jev is')
+        expect(resMissingIs.exitCode).toBe(1)
+        expect(resMissingIs.stderr).toContain('missing predicate statement')
+
+        const resMissingChoose = await sandbox.exec('jev choose "Some question"')
+        expect(resMissingChoose.exitCode).toBe(1)
+        expect(resMissingChoose.stderr).toContain('missing --options')
+
+        const resMissingTriage = await sandbox.exec('jev triage')
+        expect(resMissingTriage.exitCode).toBe(1)
+        expect(resMissingTriage.stderr).toContain('missing query for triage')
+      })
+
+      it('fails gracefully with exit code 1 if system-one is completely unavailable or unconfigured', async () => {
+        clearSystemOneBridge()
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        // 1. Unconfigured provider failure
+        const resUnconfigured = await sandbox.exec('jev is "Does this work?" "test"')
+        expect(resUnconfigured.exitCode).toBe(1)
+        expect(resUnconfigured.stderr).toContain('jev: Provider credentials')
+
+        // 2. Completely missing runtime (no pinia or bridge)
+        setActivePinia(undefined as any)
+        const resNoRuntime = await sandbox.exec('jev is "Does this work?" "test"')
+        expect(resNoRuntime.exitCode).toBe(1)
+        expect(resNoRuntime.stderr).toContain('jev: System 1 decision engine is not available')
+      })
     })
   })
 })
