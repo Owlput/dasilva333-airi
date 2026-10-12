@@ -4,7 +4,7 @@ import type { CommandLogEntry, ExecResult, MountedWidget, SandboxManager, Virtua
 import { onMounted, ref } from 'vue'
 
 import { widgetsRepo } from '../database/repos/widgets.repo'
-import { getSandboxManager } from '../libs/sandbox'
+import { getSandboxManager, parseWidgetImportManifest } from '../libs/sandbox'
 
 // NOTICE: shared module-level refs keep every useSandbox() caller (panel,
 // floating layer, workspace sheet) on the same widget list. Per-call refs
@@ -160,6 +160,26 @@ export function useSandbox() {
     await widgetsRepo.removeWidget(idOrPath)
   }
 
+  async function importWidget(
+    manifestInput: string | Record<string, unknown>,
+    options?: { mount?: boolean, surface?: 'panel' | 'widget' },
+  ): Promise<PersistedWidget> {
+    await init()
+    const widget = parseWidgetImportManifest(manifestInput)
+    if (options?.surface) {
+      widget.surface = options.surface
+      widget.target = options.surface === 'widget' ? 'window' : 'sidepanel'
+    }
+    await widgetsRepo.saveWidget(widget)
+    if (options?.mount !== false) {
+      if (sandbox.value) {
+        await sandbox.value.mountPersistedWidget(widget.id, widget.surface)
+        mountedWidgets.value = [...sandbox.value.mountedWidgets]
+      }
+    }
+    return widget
+  }
+
   onMounted(() => {
     void init()
   })
@@ -185,5 +205,6 @@ export function useSandbox() {
     mountPersistedWidget,
     getPersistedWidgets,
     deletePersistedWidget,
+    importWidget,
   }
 }

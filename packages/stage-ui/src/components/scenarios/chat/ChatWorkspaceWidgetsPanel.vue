@@ -25,6 +25,7 @@ const {
   mountPersistedWidget,
   getPersistedWidgets,
   deletePersistedWidget,
+  importWidget,
 } = useSandbox()
 
 const selectedWidgetId = useLocalStorage<string>('airi:widgets:selected-id', '')
@@ -167,6 +168,73 @@ async function handleExportCatalogWidget(widget: PersistedWidget, event?: MouseE
   }
 }
 
+const importFileInputRef = ref<HTMLInputElement | null>(null)
+const isDraggingOver = ref(false)
+
+function triggerImportFilePicker() {
+  importFileInputRef.value?.click()
+}
+
+async function handleImportFiles(files: FileList | File[]) {
+  if (!files || files.length === 0)
+    return
+  let lastImported: PersistedWidget | null = null
+  let successCount = 0
+  for (const file of Array.from(files)) {
+    if (!file.name.endsWith('.json') && file.type !== 'application/json')
+      continue
+    try {
+      const text = await file.text()
+      const imported = await importWidget(text, { mount: true })
+      lastImported = imported
+      successCount++
+    }
+    catch (err: any) {
+      console.error('[WidgetsPanel] Failed to import widget file:', file.name, err)
+      toast.error(`Failed to import "${file.name}": ${err.message || 'Invalid format'}`)
+    }
+  }
+  if (lastImported) {
+    selectedWidgetId.value = lastImported.id
+    if (isLibraryOpen.value) {
+      persistedCatalog.value = await getPersistedWidgets()
+      closeLibrary()
+    }
+    if (successCount === 1) {
+      toast.success(`Imported and mounted "${lastImported.title}"`)
+    }
+    else {
+      toast.success(`Successfully imported ${successCount} widgets`)
+    }
+  }
+}
+
+async function handleImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files) {
+    await handleImportFiles(input.files)
+    input.value = ''
+  }
+}
+
+function handleDragOver(e: DragEvent) {
+  e.preventDefault()
+  isDraggingOver.value = true
+}
+
+function handleDragLeave(e: DragEvent) {
+  e.preventDefault()
+  isDraggingOver.value = false
+}
+
+async function handleDrop(e: DragEvent) {
+  e.preventDefault()
+  isDraggingOver.value = false
+  if (e.dataTransfer?.files) {
+    await handleImportFiles(e.dataTransfer.files)
+  }
+}
+
 async function toggleActiveWidgetSurface() {
   if (!activeWidget.value)
     return
@@ -249,12 +317,35 @@ onUnmounted(() => {
 <template>
   <div
     :class="[
-      'flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-100 transition-all',
+      'relative flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-100 transition-all',
       props.fillContainer
         ? 'h-full w-full flex-1 min-h-0 bg-transparent'
         : 'border border-neutral-200/60 dark:border-primary-500/20 rounded-2xl bg-white/70 dark:bg-neutral-900/80 backdrop-blur-md shadow-xl p-2.5 gap-2',
     ]"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
   >
+    <!-- Hidden file input for widget JSON import -->
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".json,application/json"
+      multiple
+      class="hidden"
+      @change="handleImportFileChange"
+    >
+
+    <!-- Drag overlay indicator -->
+    <div
+      v-if="isDraggingOver"
+      class="backdrop-blur-xs pointer-events-none absolute inset-0 z-50 flex items-center justify-center border-2 border-primary-500 rounded-2xl border-dashed bg-primary-500/10"
+    >
+      <div class="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-primary-600 font-bold shadow-lg dark:bg-neutral-900 dark:text-primary-300">
+        <span class="i-solar:import-bold-duotone text-lg" />
+        <span>Drop .json manifest to import</span>
+      </div>
+    </div>
     <!-- Active Widgets Header / Tabs & Action Bar -->
     <div
       :class="[
@@ -311,6 +402,18 @@ onUnmounted(() => {
           @click="openLibrary"
         >
           <span class="i-solar:widget-add-bold-duotone text-sm" />
+        </button>
+
+        <button
+          title="Import widget manifest (.json)"
+          type="button"
+          :class="[
+            'flex items-center justify-center rounded-lg p-1.5 text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+            'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
+          ]"
+          @click="triggerImportFilePicker"
+        >
+          <span class="i-solar:import-bold-duotone text-sm text-primary-500/90" />
         </button>
 
         <button
@@ -469,18 +572,33 @@ onUnmounted(() => {
         </p>
       </div>
 
-      <button
-        type="button"
-        :class="[
-          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer',
-          'bg-primary-500/15 text-primary-600 dark:text-primary-300 hover:bg-primary-500/25 border border-primary-500/30',
-          'transition-all duration-200 shadow-xs',
-        ]"
-        @click.stop="openLibrary"
-      >
-        <span class="i-solar:widget-add-bold-duotone text-sm" />
-        <span>Browse Widget Library</span>
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer',
+            'bg-primary-500/15 text-primary-600 dark:text-primary-300 hover:bg-primary-500/25 border border-primary-500/30',
+            'transition-all duration-200 shadow-xs',
+          ]"
+          @click.stop="openLibrary"
+        >
+          <span class="i-solar:widget-add-bold-duotone text-sm" />
+          <span>Browse Library</span>
+        </button>
+
+        <button
+          type="button"
+          :class="[
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer',
+            'bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 dark:bg-neutral-800/60 dark:hover:bg-neutral-800 dark:text-neutral-300',
+            'border border-neutral-200 dark:border-neutral-700/60 transition-all duration-200 shadow-xs',
+          ]"
+          @click.stop="triggerImportFilePicker"
+        >
+          <span class="i-solar:import-bold-duotone text-sm text-primary-500" />
+          <span>Import (.json)</span>
+        </button>
+      </div>
     </div>
 
     <!-- Micro-App Library Modal -->
@@ -504,6 +622,9 @@ onUnmounted(() => {
               'bg-white/95 dark:bg-neutral-900/95 border border-neutral-200/80 dark:border-neutral-700/60 shadow-2xl backdrop-blur-xl',
               'flex flex-col max-h-[85vh] text-neutral-800 dark:text-neutral-100',
             ]"
+            @dragover="handleDragOver"
+            @dragleave="handleDragLeave"
+            @drop="handleDrop"
           >
             <!-- Modal Header -->
             <div class="flex items-center justify-between border-b border-neutral-200/80 px-4 py-3 dark:border-neutral-800/80">
@@ -520,13 +641,28 @@ onUnmounted(() => {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                class="flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-                @click="closeLibrary"
-              >
-                <span class="i-solar:close-circle-bold-duotone text-lg" />
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  title="Import widget from .json"
+                  :class="[
+                    'flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold',
+                    'bg-primary-500/10 text-primary-600 hover:bg-primary-500/20 dark:bg-primary-500/20 dark:text-primary-300 dark:hover:bg-primary-500/30',
+                    'border border-primary-500/30 transition-colors shadow-xs',
+                  ]"
+                  @click="triggerImportFilePicker"
+                >
+                  <span class="i-solar:import-bold-duotone text-sm" />
+                  <span>Import</span>
+                </button>
+                <button
+                  type="button"
+                  class="flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  @click="closeLibrary"
+                >
+                  <span class="i-solar:close-circle-bold-duotone text-lg" />
+                </button>
+              </div>
             </div>
 
             <!-- Modal Content List -->
@@ -551,6 +687,18 @@ onUnmounted(() => {
                     Widgets created by companions or mounted in terminal will appear here automatically.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  :class="[
+                    'mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer',
+                    'bg-primary-500/15 text-primary-600 dark:text-primary-300 hover:bg-primary-500/25 border border-primary-500/30',
+                    'transition-all duration-200 shadow-xs',
+                  ]"
+                  @click="triggerImportFilePicker"
+                >
+                  <span class="i-solar:import-bold-duotone text-sm" />
+                  <span>Import Widget (.json)</span>
+                </button>
               </div>
 
               <div
