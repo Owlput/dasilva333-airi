@@ -2,10 +2,35 @@ import type { ExecResult, ResolvedCommandContext } from 'just-bash'
 
 import type { System1Response } from '../providers/types'
 
-import { decodeBytesToUtf8 } from 'just-bash'
 import { getActivePinia } from 'pinia'
 
 import { JEV_TRIAGE_SCHEMA, useSystemOneStore } from '../../stores/modules/system-one'
+
+function decodeBytesToUtf8(bytes: any): string {
+  const str = String(bytes ?? '')
+  if (!str)
+    return ''
+  let hasHighByte = false
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i)
+    if (code > 255)
+      return str
+    if (code > 127)
+      hasHighByte = true
+  }
+  if (!hasHighByte)
+    return str
+  const rawBytes = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; i++) {
+    rawBytes[i] = str.charCodeAt(i)
+  }
+  try {
+    return new TextDecoder().decode(rawBytes)
+  }
+  catch {
+    return str
+  }
+}
 
 export interface SystemOneBridge {
   execute: (
