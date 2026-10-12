@@ -40,6 +40,7 @@ import { DisplayModelFormat, useDisplayModelsStore } from '../display-models'
 import { useShortTermMemoryStore } from '../memory-short-term'
 import { useSettingsStageModel } from '../settings/stage-model'
 import { useStickersStore } from '../stickers'
+import { useSyncEngineStore } from '../sync-engine'
 import { useArtistryStore } from './artistry'
 import { useConsciousnessStore } from './consciousness'
 import { useSpeechStore } from './speech'
@@ -590,6 +591,19 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     const nextCards = new Map(cards.value)
     nextCards.set(newCardId, compactCard(card))
     await persistCards(nextCards)
+
+    // Ensure locally added or forged cards are immediately registered as synced if selective sync is enabled
+    try {
+      const syncEngineStore = useSyncEngineStore()
+      if (syncEngineStore.selectiveSyncEnabled) {
+        const displayModelId = modules?.displayModelId || ext?.modules?.displayModelId
+        syncEngineStore.addCardToSelectiveSync(newCardId, displayModelId)
+      }
+    }
+    catch (err) {
+      debug('[AiriCard] Failed to register newly added card to selective sync:', err)
+    }
+
     return newCardId
   }
 
