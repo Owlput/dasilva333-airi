@@ -1737,7 +1737,9 @@ Format your output as a raw thought log.`
           max_tokens: generationKnown?.maxTokens,
           contextWidth: generationKnown?.contextWidth,
           vision: isVisionSupported,
-          maxSteps: generationKnown?.maxToolSteps ?? 20,
+          // NOTICE: maxToolSteps is edited on the Tools tab, not with the sampling override,
+          // so it is read even when `generation.enabled` is off (like allowedTools).
+          maxSteps: generationConfig?.known?.maxToolSteps,
           requestOverrides: generationConfig?.enabled ? generationConfig.advanced : undefined,
           abortSignal: abortController.signal,
           waitForTools: true,
