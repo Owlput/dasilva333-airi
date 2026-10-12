@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { useBackgroundStore } from '../../../stores/background'
 import { useJournalPreviewStore } from '../../../stores/journal-preview'
 import { MarkdownRenderer } from '../../markdown'
+import { formatToolCallSummary } from './utils'
 
 const props = defineProps<{
   toolName: string
@@ -134,6 +135,10 @@ const formattedArgs = computed(() => {
     return props.args
   }
 })
+
+const toolSummary = computed(() => {
+  return formatToolCallSummary(props.toolName, parsedArgs.value || props.args)
+})
 </script>
 
 <template>
@@ -146,28 +151,30 @@ const formattedArgs = computed(() => {
     <template #trigger="{ visible, setVisible }">
       <button
         :class="[
-          'w-full text-start',
+          'w-full text-start flex items-center gap-1.5',
         ]"
         @click="setVisible(!visible)"
       >
         <div
           v-if="state === 'executing'"
-          i-eos-icons:loading class="mr-1 inline-block translate-y-0.5 op-50"
+          i-eos-icons:loading class="mr-1 inline-block shrink-0 translate-y-0.5 op-50"
         />
         <div
           v-else-if="state === 'error'"
-          i-ph:warning-circle-duotone class="mr-1 inline-block translate-y-0.5 text-red-500"
+          i-ph:warning-circle-duotone class="mr-1 inline-block shrink-0 translate-y-0.5 text-red-500"
         />
         <div
           v-else-if="state === 'done'"
-          i-ph:check-circle-duotone class="mr-1 inline-block translate-y-0.5 text-emerald-500"
+          i-ph:check-circle-duotone class="mr-1 inline-block shrink-0 translate-y-0.5 text-emerald-500"
         />
         <div
           v-else
-          i-solar:sledgehammer-bold-duotone class="mr-1 inline-block translate-y-1 op-50"
+          i-solar:sledgehammer-bold-duotone class="mr-1 inline-block shrink-0 translate-y-1 op-50"
         />
-        <code>{{ toolName }}</code>
-        <span v-if="state === 'error' && result" class="ml-2 text-xs text-red-500 op-80">
+        <code class="max-w-[320px] truncate text-xs text-neutral-800 font-medium font-mono dark:text-neutral-200" :title="toolSummary">
+          {{ toolSummary }}
+        </code>
+        <span v-if="state === 'error' && result" class="ml-2 truncate text-xs text-red-500 op-80">
           ({{ result }})
         </span>
       </button>
@@ -270,8 +277,18 @@ const formattedArgs = computed(() => {
         </div>
       </template>
 
-      <div v-else class="whitespace-pre-wrap break-words text-[10px] font-mono op-80">
-        {{ formattedArgs }}
+      <div v-else class="flex flex-col gap-2">
+        <div class="whitespace-pre-wrap break-words text-[10px] font-mono op-80">
+          {{ formattedArgs }}
+        </div>
+        <div v-if="result && typeof result === 'string'" class="border-t border-neutral-200/50 pt-1.5 dark:border-neutral-700/50">
+          <div class="mb-1 text-[9px] text-neutral-500 font-semibold tracking-wider uppercase">
+            Output
+          </div>
+          <div class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded bg-black/5 p-1.5 text-[10px] text-neutral-700 font-mono dark:bg-black/30 dark:text-neutral-300">
+            {{ result }}
+          </div>
+        </div>
       </div>
     </div>
   </Collapsible>
