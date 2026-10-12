@@ -144,45 +144,52 @@ const toolSummary = computed(() => {
 <template>
   <Collapsible
     :class="[
-      'bg-primary-100/40 dark:bg-primary-900/60 rounded-lg px-2 pb-2 pt-2',
-      'flex flex-col gap-2 items-start',
+      'bg-white/95 dark:bg-neutral-800/95 rounded-xl border border-neutral-200/60 dark:border-neutral-700/60 shadow-xs px-3.5 py-2.5',
+      'flex flex-col gap-2 items-start w-full transition-all',
     ]"
   >
     <template #trigger="{ visible, setVisible }">
       <button
         :class="[
-          'w-full text-start flex items-center gap-1.5',
+          'w-full text-start flex items-center justify-between gap-2 group cursor-pointer select-none',
         ]"
         @click="setVisible(!visible)"
       >
+        <div class="min-w-0 flex flex-1 items-center gap-2.5">
+          <div
+            v-if="state === 'executing'"
+            i-eos-icons:loading class="shrink-0 text-base text-primary-500"
+          />
+          <div
+            v-else-if="state === 'error'"
+            i-ph:warning-circle-duotone class="shrink-0 text-base text-red-500"
+          />
+          <div
+            v-else-if="state === 'done'"
+            i-ph:check-circle-duotone class="shrink-0 text-base text-emerald-500"
+          />
+          <div
+            v-else
+            i-solar:sledgehammer-bold-duotone class="shrink-0 text-base op-50"
+          />
+          <code class="truncate text-xs text-neutral-800 font-medium tracking-tight font-mono dark:text-neutral-200" :title="toolSummary">
+            {{ toolSummary }}
+          </code>
+          <span v-if="state === 'error' && result" class="ml-1 truncate text-xs text-red-500 op-80">
+            ({{ result }})
+          </span>
+        </div>
+
         <div
-          v-if="state === 'executing'"
-          i-eos-icons:loading class="mr-1 inline-block shrink-0 translate-y-0.5 op-50"
+          class="i-solar:alt-arrow-down-linear shrink-0 text-xs text-neutral-400 transition-transform duration-200 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300"
+          :class="[visible ? 'rotate-180' : '']"
         />
-        <div
-          v-else-if="state === 'error'"
-          i-ph:warning-circle-duotone class="mr-1 inline-block shrink-0 translate-y-0.5 text-red-500"
-        />
-        <div
-          v-else-if="state === 'done'"
-          i-ph:check-circle-duotone class="mr-1 inline-block shrink-0 translate-y-0.5 text-emerald-500"
-        />
-        <div
-          v-else
-          i-solar:sledgehammer-bold-duotone class="mr-1 inline-block shrink-0 translate-y-1 op-50"
-        />
-        <code class="max-w-[320px] truncate text-xs text-neutral-800 font-medium font-mono dark:text-neutral-200" :title="toolSummary">
-          {{ toolSummary }}
-        </code>
-        <span v-if="state === 'error' && result" class="ml-2 truncate text-xs text-red-500 op-80">
-          ({{ result }})
-        </span>
       </button>
     </template>
     <div
       :class="[
-        'rounded-md p-2 w-full',
-        'bg-neutral-100/80 text-sm text-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-200',
+        'rounded-lg p-2.5 w-full mt-1',
+        'bg-neutral-100/70 text-sm text-neutral-800 dark:bg-neutral-900/70 dark:text-neutral-200',
       ]"
     >
       <template v-if="isTextJournalCreate">

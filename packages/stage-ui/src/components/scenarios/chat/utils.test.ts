@@ -40,9 +40,9 @@ describe('formatToolCallSummary', () => {
       expect(formatToolCallSummary('mcp_bash', JSON.stringify({ command: 'cat /workspace/notes.txt' }))).toBe('$ cat /workspace/notes.txt')
     })
 
-    it('handles multiline commands taking first line and truncates', () => {
+    it('handles multiline commands flattening whitespace and truncates', () => {
       const multiline = JSON.stringify({ command: 'node -e \'\nconst fs = require("fs");\nconsole.log(123);\n\'' })
-      expect(formatToolCallSummary('bash', multiline)).toBe('$ node -e \'')
+      expect(formatToolCallSummary('bash', multiline)).toBe('$ node -e \'const fs = require("fs");...')
     })
 
     it('falls back to $ bash when command is empty', () => {

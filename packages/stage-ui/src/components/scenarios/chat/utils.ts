@@ -101,8 +101,8 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
     const rawCmd = (parsed?.command || parsed?.cmd || (typeof argsInput === 'string' && !argsInput.startsWith('{') ? argsInput : '') || '').trim()
     if (!rawCmd)
       return '$ bash'
-    const firstLine = rawCmd.split('\n')[0].trim()
-    const truncated = firstLine.length > 28 ? `${firstLine.slice(0, 28)}...` : firstLine
+    const normalized = rawCmd.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').replace(/'\s+/, '\'').trim()
+    const truncated = normalized.length > 34 ? `${normalized.slice(0, 34)}...` : normalized
     return `$ ${truncated}`
   }
 
@@ -146,8 +146,8 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
       const rawCmd = (params.command || params.cmd || '').trim()
       if (!rawCmd)
         return '$ bash'
-      const firstLine = rawCmd.split('\n')[0].trim()
-      const truncated = firstLine.length > 28 ? `${firstLine.slice(0, 28)}...` : firstLine
+      const normalized = rawCmd.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').replace(/'\s+/, '\'').trim()
+      const truncated = normalized.length > 34 ? `${normalized.slice(0, 34)}...` : normalized
       return `$ ${truncated}`
     }
 
