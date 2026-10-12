@@ -5,7 +5,6 @@ stepper:
   jumpToStep: 跳转至任意步骤
   allSteps: 全部引导步骤 ({count})
   stepCount: 步骤 {current} / {total}
-
 shell:
   close: 关闭
   finish: 启动舞台
@@ -16,7 +15,6 @@ shell:
   stageReady: 舞台就绪
   closeSetup: 关闭设置 (稍后继续)
   placeholderNotice: 该模块正在配置中，您可以继续进行下一步。
-
 steps:
   welcome:
     label: 欢迎
@@ -34,13 +32,12 @@ steps:
       setupLater: 稍后设置
     dialog:
       savedTitle: 设置已保存
-      savedDescription: '你可以随时通过 macOS 菜单栏或系统托盘中的 AIRI 图标重新打开伴侣配置：'
+      savedDescription: 你可以随时通过 macOS 菜单栏或系统托盘中的 AIRI 图标重新打开伴侣配置：
       trayItem: 伴侣设置与登录 (V3)
       continue: 继续设置
       closeToTray: 最小化到托盘
     quickStartButton: 极速启动
     quickStartDuration: 约 1 分钟
-
   triage:
     label: 账户
     subtitle: 账户登录与架构
@@ -206,7 +203,6 @@ steps:
     refresh: 刷新
     changeLater: 你可以稍后更改。
     moreDetails: 更多详情
-
   appearance:
     label: 外观
     subtitle: 语言、主题与强调色
@@ -282,7 +278,6 @@ steps:
     selectedLanguage: 已选择：{language}
     nextHint: 下一步：选择伙伴的互动风格
     companionGreeting: 让这里更像你的空间吧。选择语言、主题和强调色，调整时就能看到变化。
-
   experience:
     label: 体验
     subtitle: 交互原型
@@ -344,7 +339,7 @@ steps:
         subtitle: 语音、视觉与行动
         description: 能够交流、观察、创作和行动，拥有记忆，并持续陪伴你。
     advanced:
-      toggle: '高级：自定义各个模块开关'
+      toggle: 高级：自定义各个模块开关
       description: 手动启用或禁用特定的感官与认知能力模块。
       modules:
         hearing: 听觉 (麦克风语音转文字)
@@ -504,7 +499,6 @@ steps:
         user-reported: 用户提供
         unknown: 未知
     companionGreeting: 选择适合你的体验。无论你喜欢安静的观察者、语音伙伴，还是全能的舞台角色，每项能力都可以自定义。
-
   profile:
     label: 用户画像
     subtitle: 你是谁？
@@ -582,7 +576,6 @@ steps:
       female: 她（she/her）
       non-binary: TA（they/them）
     companionGreeting: 我该怎么称呼你？选择一份现成的资料，或告诉我你的情况，以及你希望我们如何相处。
-
   vessel:
     label: 物理躯体
     subtitle: Live2D / VRM 虚拟形象
@@ -648,7 +641,6 @@ steps:
     visualStyleHint: 用于生成描绘伙伴的图像。
     downloadBadge: 可下载
     companionGreeting: 一起找个合适的形象吧。浏览模型库或导入自己的角色模型，然后在舞台上预览。
-
   consciousness:
     label: 意识核心
     subtitle: 推理大脑 (LLM)
@@ -832,7 +824,6 @@ steps:
     providerChatUnavailable: 服务商“{provider}”未提供聊天补全接口，请检查凭据。
     emptyModelResponse: 语言模型返回了空回复。
     localWebllmShort: 本地 WebLLM
-
   persona:
     label: 灵魂人格
     subtitle: 个性核心
@@ -1040,7 +1031,6 @@ steps:
       success: 已将变体 {number} 复制到剪贴板
       failed: 复制到剪贴板失败
     saved: 已保存
-
   hearing:
     label: 听觉能力
     subtitle: 语音识别 (STT)
@@ -1144,7 +1134,6 @@ steps:
       local: 本地
       free: 免费
       paid: 付费
-
   speech:
     label: 发音能力
     subtitle: 神经拟真语音 (TTS)
@@ -1316,7 +1305,9 @@ steps:
     accessTokenInstructions: 在 {link} 创建 {emphasis}，选择 {emphasis2} 权限（令牌以 {code} 开头）。
     gatedVoiceDescription: 你选择的声音（{emphasis}）来自需要访问许可的 Hugging Face 仓库。请注册免费账户、接受模型访问条件，并在下方粘贴访问令牌。
     repositoryInstructions: 访问 {repository}，点击 {action}。
-    provider: {localFallback: 本地 TTS, cloudFallback: 云端 TTS}
+    provider:
+      localFallback: 本地 TTS
+      cloudFallback: 云端 TTS
     download:
       progress: 正在下载权重（{downloadProgress}%）...
       pocket: 正在下载 Pocket TTS 权重…
@@ -1413,7 +1404,6 @@ steps:
     engineCalibrated: '{provider} 引擎已就绪 · 声音已校准'
     providerSelected: 已选择 {provider}
     createAccountInstruction: 在 {link} 注册账号
-
   thinking:
     label: 思考节奏
     subtitle: 节奏把控与潜意识旁白
@@ -1549,15 +1539,14 @@ steps:
       latency: 首 token 用时 {latency} 毫秒
       sentences: '{count} 句'
     companionGreeting: 调整伴侣思考时的停顿与说话方式，选择适合模型推理速度的交流节奏。
-
   emotions:
     label: 丰富情感
     subtitle: 2-Pass ACT 动作表情桥接
     title: 情感共鸣与 ACT 桥梁
     description: 将文字对话中的情绪线索无缝转化为形象的生动面部表情与肢体动作。
-    pass1Title: '第 1 阶段：表情提取与归一化'
-    pass1Desc: '将模型的微表情提炼为标准的 <|ACT:*|> 动作指令标记。'
-    pass2Title: '第 2 阶段：演职提示词注入'
+    pass1Title: 第 1 阶段：表情提取与归一化
+    pass1Desc: 将模型的微表情提炼为标准的 <|ACT:*|> 动作指令标记。
+    pass2Title: 第 2 阶段：演职提示词注入
     pass2Desc: 系统提示词指令，教会角色在合适的语境下自主流露恰当的神情。
     liveExpressionTest: 实时表情预览测试
     testExpressions:
@@ -1569,7 +1558,6 @@ steps:
     changesAutomaticallySavedToCompanionDraft: 修改会自动保存到伴侣配置草稿
     companionGreeting: 来看看你的伴侣如何表达情绪。预览角色的表情，保留效果合适的表情，并将它们与情绪提示关联。
     heading: 情绪与表情
-
   vision:
     label: 图像感知
     subtitle: 聊天识图与分析 (VLM)
@@ -1582,7 +1570,7 @@ steps:
       localBadge: 物理隔离
       custom: 云端供应商
     cloudflare:
-      connected: '已连接至 Cloudflare：每日 10,000 免费 Neurons 算力已激活'
+      connected: 已连接至 Cloudflare：每日 10,000 免费 Neurons 算力已激活
       notConnected: 连接您的 Cloudflare 账号，即可零配置使用免费边缘视觉识别。
       signIn: 使用 Cloudflare 登录
     engineTitle: 视觉理解模型
@@ -1660,7 +1648,6 @@ steps:
     noVisualDescription: '[未生成视觉描述]'
     dropImage: 拖入图片或{action}
     providerInitError: 无法初始化视觉服务商“{provider}”。
-
   screen:
     label: 桌面观察
     subtitle: 屏幕动态捕捉
@@ -1724,7 +1711,6 @@ steps:
         title: Moondream2 视觉语言模型
         vram: WebGPU 约占用 700 MB
         desc: 本地视觉语言模型，为筛选出的事件生成一句场景描述。
-
   proactivity:
     label: 主动交互
     subtitle: 生活起居与环境心跳
@@ -1843,7 +1829,6 @@ steps:
       bubble-only: 仅气泡
       voice-only: 仅语音
     checkInMinutes: '{minutes} 分钟'
-
   artistry:
     label: 艺术创作
     subtitle: 画面生成与自主导演
@@ -1962,7 +1947,6 @@ steps:
     directorDescription: 随对话发展创作场景图片和自拍。
     companionCreation: 伙伴创作图片
     companionCreationDescription: 让伙伴在你提出请求时创作图片。
-
   memory:
     label: 记忆体系
     subtitle: 认知记忆四象限
@@ -2018,7 +2002,6 @@ steps:
       oneDay: 1 天
       days: '{count} 天'
     companionGreeting: 选择我该记住什么，以及如何延续我们的对话。
-
   tools:
     label: 工具扩展
     subtitle: 系统自动化与桌面 MCP
@@ -2055,14 +2038,13 @@ steps:
     filesystemDesktopMcp: 文件系统（filesystem · 桌面 MCP）
     generateMotion3dVrma: 动作生成（generate_motion · 3D VRMA）
     noExternalToolsEnabledSafeSandboxedMode: 未启用外部工具（安全沙盒模式）。
-    toolGranted: '已授权 {count} 项工具'
+    toolGranted: 已授权 {count} 项工具
     webSearchDescription: 通过 {code}（支持 DuckDuckGo、Bing、Brave、百度）为伴侣提供实时网页搜索和
       Markdown 内容提取，无需付费 API 密钥或订阅令牌。
     filesystemDescription: 通过 {code}让伴侣读取、列出和搜索指定项目目录中的文件，读取范围由用户设置。
     motionOutputDescription: 生成的动作会直接编译为 VRMA 动画轨道，并在舞台上实时播放。 {emphasis}
     motion:
       status: 引擎状态： {status}
-
   finale:
     label: 启航就绪
     subtitle: 最终检查与舞台发射
@@ -2280,7 +2262,6 @@ steps:
         title: Moondream2 视觉语言模型
         vram: WebGPU 约占用 700 MB
         desc: 本地视觉语言模型，为筛选出的事件生成一句场景描述。
-
 quickStart:
   title: 60秒极速启动
   subtitle: 使用精心调配的免配置默认方案快速体验伴侣。
