@@ -8,6 +8,7 @@ import { streamText } from '@xsai/stream-text'
 import { defineStore } from 'pinia'
 import { toRaw } from 'vue'
 
+import { DEFAULT_MAX_TOOL_STEPS, withToolStepBudget } from '../libs/providers/tool-call-budget'
 import { sanitizeTools } from '../libs/providers/tool-schema'
 import { useAiriCardStore } from './modules/airi-card'
 import { useSettingsChat } from './settings/chat'
@@ -307,7 +308,7 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
   if (sanitizedTools && sanitizedTools.length > 0) {
     debug('[llmStore] Resolved system tools before filtering:', sanitizedTools.map((t: any) => t.function?.name || t.name))
   }
-  const tools = filterToolsByAllowedTools(sanitizedTools)
+  const { tools, maxSteps } = withToolStepBudget(filterToolsByAllowedTools(sanitizedTools), options?.maxSteps ?? DEFAULT_MAX_TOOL_STEPS)
 
   if (tools && tools.length > 0) {
     debug('Calling LLM with tools', tools.map((t: any) => t.function?.name || t.name))
@@ -359,7 +360,7 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
         streamOptions: {
           includeUsage: true,
         },
-        maxSteps: options?.maxSteps ?? 20,
+        maxSteps,
         messages: sanitized,
         headers: {
           ...(chatConfig.headers as Record<string, string> | undefined),
@@ -396,6 +397,9 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
       // Derive usage from per-step final usage objects (see aggregateStepUsage) to
       // avoid the per-chunk cumulative-usage inflation in @xsai/stream-text.
       void result.steps.then(async (steps) => {
+        if (steps.length >= maxSteps && steps.at(-1)?.toolCalls?.length)
+          console.warn(`[LLM:Stream] Tool loop stopped after ${maxSteps} rounds before the model replied.`)
+
         let usage = aggregateStepUsage(steps)
         if (!usage) {
           const rawUsage = await result.usage.catch(() => undefined)
@@ -438,7 +442,7 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
   if (sanitizedTools && sanitizedTools.length > 0) {
     debug('[llmStore] Resolved system tools before filtering:', sanitizedTools.map((t: any) => t.function?.name || t.name))
   }
-  const tools = filterToolsByAllowedTools(sanitizedTools)
+  const { tools, maxSteps } = withToolStepBudget(filterToolsByAllowedTools(sanitizedTools), options?.maxSteps ?? DEFAULT_MAX_TOOL_STEPS)
 
   if (tools && tools.length > 0) {
     debug('Calling LLM with tools', tools.map((t: any) => t.function?.name || t.name))
@@ -450,7 +454,7 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
   return await generateText({
     ...chatConfig,
     ...requestOverrides,
-    maxSteps: options?.maxSteps ?? 20,
+    maxSteps,
     messages: sanitized,
     headers: {
       ...(chatConfig.headers as Record<string, string> | undefined),
