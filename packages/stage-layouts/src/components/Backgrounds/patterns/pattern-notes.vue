@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -119,7 +121,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 24
+  const particleCount = props.preview ? 6 : 24
   const notes: NoteParticle[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -127,8 +129,8 @@ onMounted(() => {
     notes.push({
       x: Math.random() * width,
       y: Math.random() * height,
-      size: Math.random() * 12 + 16, // 16px - 28px
-      speedY: Math.random() * 0.45 + 0.25,
+      size: props.preview ? (Math.random() * 6 + 8) : (Math.random() * 12 + 16), // 16px - 28px
+      speedY: props.preview ? (Math.random() * 0.25 + 0.15) : (Math.random() * 0.45 + 0.25),
       angle: (Math.random() - 0.5) * 0.3,
       swaySpeed: Math.random() * 0.025 + 0.015,
       swayOffset: Math.random() * Math.PI * 2,
@@ -157,8 +159,8 @@ onMounted(() => {
       n.y -= n.speedY
       n.x += Math.sin(tick * n.swaySpeed + n.swayOffset) * 0.65
 
-      if (n.y < -30) {
-        n.y = height + 25
+      if (n.y < (props.preview ? -15 : -30)) {
+        n.y = height + (props.preview ? 10 : 20)
         n.x = Math.random() * width
         const colors = getColors()
         n.color = colors[Math.floor(Math.random() * colors.length)]

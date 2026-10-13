@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -103,7 +105,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 22
+  const particleCount = props.preview ? 6 : 22
   const bubbles: Bubble[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -111,8 +113,8 @@ onMounted(() => {
     bubbles.push({
       x: Math.random() * width,
       y: Math.random() * height,
-      size: Math.random() * 16 + 14, // 14px - 30px
-      speedY: Math.random() * 0.45 + 0.3,
+      size: props.preview ? (Math.random() * 6 + 6) : (Math.random() * 16 + 14), // 14px - 30px
+      speedY: props.preview ? (Math.random() * 0.25 + 0.15) : (Math.random() * 0.45 + 0.3),
       wobbleSpeed: Math.random() * 0.025 + 0.015,
       wobbleOffset: Math.random() * Math.PI * 2,
       opacity: Math.random() * 0.3 + 0.5,
@@ -139,8 +141,8 @@ onMounted(() => {
       b.y -= b.speedY
       b.x += Math.sin(tick * b.wobbleSpeed + b.wobbleOffset) * 0.7
 
-      if (b.y < -40) {
-        b.y = height + 30
+      if (b.y < (props.preview ? -15 : -40)) {
+        b.y = height + (props.preview ? 10 : 30)
         b.x = Math.random() * width
         const colors = getColors()
         b.color = colors[Math.floor(Math.random() * colors.length)]

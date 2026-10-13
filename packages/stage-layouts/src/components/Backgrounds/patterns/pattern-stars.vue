@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -104,7 +106,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 32
+  const particleCount = props.preview ? 8 : 32
   const stars: StarParticle[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -112,8 +114,8 @@ onMounted(() => {
     stars.push({
       x: Math.random() * width,
       y: Math.random() * height,
-      baseSize: Math.random() * 16 + 12,
-      speedY: Math.random() * 0.35 + 0.15, // Gentle upward float
+      baseSize: props.preview ? (Math.random() * 8 + 6) : (Math.random() * 16 + 12),
+      speedY: props.preview ? (Math.random() * 0.2 + 0.1) : (Math.random() * 0.35 + 0.15), // Gentle upward float
       angle: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 0.015,
       twinkleSpeed: Math.random() * 0.04 + 0.02,
@@ -147,8 +149,8 @@ onMounted(() => {
       const currentOpacity = 0.5 + pulse * 0.4
       const currentSize = s.baseSize * (0.85 + pulse * 0.25)
 
-      if (s.y < -30) {
-        s.y = height + 20
+      if (s.y < (props.preview ? -15 : -30)) {
+        s.y = height + (props.preview ? 10 : 20)
         s.x = Math.random() * width
         const colors = getColors()
         s.color = colors[Math.floor(Math.random() * colors.length)]

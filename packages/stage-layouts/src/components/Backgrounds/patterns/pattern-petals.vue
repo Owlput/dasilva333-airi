@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -92,7 +94,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 26
+  const particleCount = props.preview ? 7 : 26
   const petals: Petal[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -100,9 +102,9 @@ onMounted(() => {
     petals.push({
       x: Math.random() * (width + 100) - 50,
       y: Math.random() * height,
-      size: Math.random() * 12 + 12, // 12px - 24px
-      speedY: Math.random() * 0.7 + 0.5, // Downward drift
-      speedX: Math.random() * 0.4 + 0.3, // Gentle drift to the right
+      size: props.preview ? (Math.random() * 6 + 7) : (Math.random() * 12 + 12),
+      speedY: props.preview ? (Math.random() * 0.4 + 0.3) : (Math.random() * 0.7 + 0.5),
+      speedX: props.preview ? (Math.random() * 0.25 + 0.15) : (Math.random() * 0.4 + 0.3),
       angle: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 0.03,
       swaySpeed: Math.random() * 0.02 + 0.01,
@@ -133,8 +135,8 @@ onMounted(() => {
       p.angle += p.rotationSpeed
 
       // Respawn at top if fallen past screen bottom
-      if (p.y > height + 30 || p.x > width + 50) {
-        p.y = -30
+      if (p.y > height + (props.preview ? 15 : 30) || p.x > width + (props.preview ? 25 : 50)) {
+        p.y = props.preview ? -15 : -30
         p.x = Math.random() * (width + 80) - 40
         const colors = getColors()
         p.color = colors[Math.floor(Math.random() * colors.length)]

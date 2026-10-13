@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -92,7 +94,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 28
+  const particleCount = props.preview ? 7 : 28
   const crosses: CrossParticle[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -100,8 +102,8 @@ onMounted(() => {
     crosses.push({
       x: Math.random() * width,
       y: Math.random() * height,
-      size: Math.random() * 12 + 10, // 10px - 22px
-      speedY: Math.random() * 0.4 + 0.2,
+      size: props.preview ? (Math.random() * 6 + 6) : (Math.random() * 12 + 10), // 10px - 22px
+      speedY: props.preview ? (Math.random() * 0.2 + 0.1) : (Math.random() * 0.4 + 0.2),
       angle: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 0.02,
       swaySpeed: Math.random() * 0.02 + 0.01,
@@ -131,8 +133,8 @@ onMounted(() => {
       c.x += Math.sin(tick * c.swaySpeed + c.swayOffset) * 0.5
       c.angle += c.rotationSpeed
 
-      if (c.y < -30) {
-        c.y = height + 20
+      if (c.y < (props.preview ? -15 : -30)) {
+        c.y = height + (props.preview ? 10 : 20)
         c.x = Math.random() * width
         const colors = getColors()
         c.color = colors[Math.floor(Math.random() * colors.length)]

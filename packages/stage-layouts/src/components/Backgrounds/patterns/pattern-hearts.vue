@@ -2,10 +2,12 @@
 import { useTheme } from '@proj-airi/ui'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   transparentBg?: boolean
+  preview?: boolean
 }>(), {
   transparentBg: false,
+  preview: false,
 })
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -94,7 +96,7 @@ onMounted(() => {
     return isDark.value ? darkColors : lightColors
   }
 
-  const particleCount = 28
+  const particleCount = props.preview ? 7 : 28
   const particles: Particle[] = []
 
   for (let i = 0; i < particleCount; i++) {
@@ -102,8 +104,8 @@ onMounted(() => {
     particles.push({
       x: Math.random() * width,
       y: Math.random() * height,
-      size: Math.random() * 16 + 14,
-      speedY: Math.random() * 0.5 + 0.3,
+      size: props.preview ? (Math.random() * 8 + 8) : (Math.random() * 16 + 14),
+      speedY: props.preview ? (Math.random() * 0.3 + 0.2) : (Math.random() * 0.5 + 0.3),
       swaySpeed: Math.random() * 0.02 + 0.01,
       swayOffset: Math.random() * Math.PI * 2,
       opacity: Math.random() * 0.4 + 0.5,
@@ -131,8 +133,8 @@ onMounted(() => {
       p.y -= p.speedY
       p.x += Math.sin(tick * p.swaySpeed + p.swayOffset) * 0.6
 
-      if (p.y < -40) {
-        p.y = height + 20
+      if (p.y < (props.preview ? -15 : -40)) {
+        p.y = height + (props.preview ? 10 : 20)
         p.x = Math.random() * width
         const colors = getColors()
         p.color = colors[Math.floor(Math.random() * colors.length)]
