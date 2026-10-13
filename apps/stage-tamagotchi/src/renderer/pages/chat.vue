@@ -1921,7 +1921,7 @@ function selectSurface(surface: typeof activeSurface.value) {
                 </div>
               </div>
 
-              <!-- Generative Widgets Section -->
+              <!-- Widgets Section -->
               <div v-if="isSandboxActive" class="flex flex-col gap-2">
                 <div class="flex items-center justify-between">
                   <span
@@ -1932,14 +1932,11 @@ function selectSurface(surface: typeof activeSurface.value) {
                     @click="rightPanelWidgetsCollapsed = !rightPanelWidgetsCollapsed"
                   >
                     <span class="i-solar:widget-5-bold-duotone text-xs" />
-                    Generative Widgets
+                    Widgets
                     <span v-if="activeWidgetsCount > 0" class="rounded-full bg-primary-500/20 px-1.5 py-0.2 text-[9px] text-primary-400 font-bold font-mono">
                       {{ activeWidgetsCount }}
                     </span>
                     <span :class="rightPanelWidgetsCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                  <span class="text-[9px] text-neutral-400 font-mono uppercase">
-                    Sidepanel UI
                   </span>
                 </div>
                 <div v-if="!rightPanelWidgetsCollapsed">

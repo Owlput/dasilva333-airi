@@ -120,32 +120,6 @@ function formatDate(timestamp?: number): string {
   })
 }
 
-async function handleExportWidget(event?: MouseEvent) {
-  if (!activeWidget.value)
-    return
-
-  const target = activeWidget.value
-  if (event?.shiftKey || event?.altKey) {
-    downloadWidgetManifestFile(target)
-    toast.success(`Downloaded "${target.title || 'Widget'}" manifest (.json)`)
-    return
-  }
-
-  const copied = await copyWidgetManifestToClipboard(target)
-  if (copied) {
-    toast.success(`Copied "${target.title || 'Widget'}" JSON to clipboard!`, {
-      action: {
-        label: 'Download .json',
-        onClick: () => downloadWidgetManifestFile(target),
-      },
-    })
-  }
-  else {
-    downloadWidgetManifestFile(target)
-    toast.info(`Downloaded "${target.title || 'Widget'}" manifest (.json)`)
-  }
-}
-
 async function handleExportCatalogWidget(widget: PersistedWidget, event?: MouseEvent) {
   if (event?.shiftKey || event?.altKey) {
     downloadWidgetManifestFile(widget)
@@ -405,18 +379,6 @@ onUnmounted(() => {
         </button>
 
         <button
-          title="Import widget manifest (.json)"
-          type="button"
-          :class="[
-            'flex items-center justify-center rounded-lg p-1.5 text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
-            'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
-          ]"
-          @click="triggerImportFilePicker"
-        >
-          <span class="i-solar:import-bold-duotone text-sm text-primary-500/90" />
-        </button>
-
-        <button
           v-if="activeWidget"
           title="Reload widget canvas"
           type="button"
@@ -427,19 +389,6 @@ onUnmounted(() => {
           @click="refreshActiveWidget"
         >
           <span class="i-solar:refresh-linear text-sm" :class="{ 'animate-spin': isLoading }" />
-        </button>
-
-        <button
-          v-if="activeWidget"
-          title="Export widget as JSON (Shift+Click to download)"
-          type="button"
-          :class="[
-            'flex items-center justify-center rounded-lg p-1.5 text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
-            'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
-          ]"
-          @click="handleExportWidget"
-        >
-          <span class="i-solar:diskette-bold text-sm text-primary-500/90" />
         </button>
 
         <button

@@ -87,30 +87,36 @@ export type { FavoriteModel }
 const favorites = useLocalStorage<FavoriteModel[]>('airi:chat-model-favorites', [])
 const deletedKeys = useLocalStorage<string[]>('airi:chat-model-deleted-keys', [])
 
+// Self-heal: Clean up any legacy corrupted favorites where model was mistakenly parsed as '*'
+favorites.value = favorites.value.filter(fav => fav && fav.model && fav.model !== '*')
+deletedKeys.value = deletedKeys.value.filter(k => !k.endsWith(':*') && !k.endsWith('::*'))
+
 // Seeding default favorites reactively to perfectly handle asynchronous card store hydration
 watch(cards, (newCards) => {
-  const discovered = new Set<string>()
+  const discoveredMap = new Map<string, { provider: string, model: string }>()
 
   // 1. Coalesce the current active model from store first
-  if (activeProvider.value && activeModel.value) {
-    discovered.add(`${activeProvider.value}:${activeModel.value}`)
+  if (activeProvider.value && activeModel.value && activeModel.value !== '*') {
+    const key = `${activeProvider.value}::${activeModel.value}`
+    discoveredMap.set(key, { provider: activeProvider.value, model: activeModel.value })
   }
 
   // 2. Coalesce all distinct model configurations from all imported character cards (both consciousness and generation modules)
   for (const card of newCards.values()) {
     const provider = card.extensions?.airi?.modules?.consciousness?.provider || card.extensions?.airi?.generation?.provider
     const model = card.extensions?.airi?.modules?.consciousness?.model || card.extensions?.airi?.generation?.model
-    if (provider && model) {
-      discovered.add(`${provider}:${model}`)
+    if (provider && model && model !== '*') {
+      const key = `${provider}::${model}`
+      discoveredMap.set(key, { provider, model })
     }
   }
 
   // 3. Dynamically sync discovered models into the favorites list
-  for (const key of discovered) {
-    const [provider, model] = key.split(':')
+  for (const [compositeKey, { provider, model }] of discoveredMap.entries()) {
+    const legacyKey = `${provider}:${model}`
 
     // If the user has explicitly deleted this favorite, respect their choice and do not auto-seed it again
-    if (deletedKeys.value.includes(key))
+    if (deletedKeys.value.includes(compositeKey) || deletedKeys.value.includes(legacyKey))
       continue
 
     const alreadyInFavorites = favorites.value.some(fav => fav.provider === provider && fav.model === model)
@@ -127,7 +133,7 @@ watch(cards, (newCards) => {
       }
 
       favorites.value.push({
-        id: `seed-${provider}-${model}`,
+        id: `seed-${provider.replace(/[:*]/g, '_')}-${model.replace(/[/:]/g, '_')}`,
         name: displayName,
         provider,
         model,
@@ -139,10 +145,14 @@ watch(cards, (newCards) => {
 function handleDeleteFavorite(fav: FavoriteModel) {
   favorites.value = favorites.value.filter(f => f.id !== fav.id)
 
-  // Track as deleted so it is never auto-seeded on card additions
-  const key = `${fav.provider}:${fav.model}`
-  if (!deletedKeys.value.includes(key)) {
-    deletedKeys.value.push(key)
+  // Track as deleted using both composite key and legacy key so it is never auto-seeded on card additions
+  const compositeKey = `${fav.provider}::${fav.model}`
+  const legacyKey = `${fav.provider}:${fav.model}`
+  if (!deletedKeys.value.includes(compositeKey)) {
+    deletedKeys.value.push(compositeKey)
+  }
+  if (!deletedKeys.value.includes(legacyKey)) {
+    deletedKeys.value.push(legacyKey)
   }
 }
 
@@ -275,6 +285,11 @@ function handleSaveFavoriteFromModal(payload: { id?: string, name: string, provi
       options: payload.options,
     })
   }
+
+  // If this model was previously deleted, un-mark it so it remains valid
+  const compositeKey = `${payload.provider}::${payload.model}`
+  const legacyKey = `${payload.provider}:${payload.model}`
+  deletedKeys.value = deletedKeys.value.filter(k => k !== compositeKey && k !== legacyKey)
 }
 
 function handleEntryClick(fav: FavoriteModel) {
