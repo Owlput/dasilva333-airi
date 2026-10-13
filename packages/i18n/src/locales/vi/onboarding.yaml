@@ -289,6 +289,7 @@ steps:
       ru: Russian
       vi: Vietnamese
       id: Indonesian
+      th: Tiếng Thái
     colorGroups:
       warm: Warm & Fire
       earth: Earth & Flora
