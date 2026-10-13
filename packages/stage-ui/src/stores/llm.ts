@@ -385,18 +385,30 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
       // and to prevent "Uncaught (in promise)" errors if the initial handshake fails (e.g. 429).
       // We prioritize result.messages for primary settlement, but ensure any step error
       // that occurs before the first message also triggers a rejection.
+      // NOTICE: A caller abort is an intentional cancellation that the caller already knows about.
+      // Logging it as an error fills the console during normal speech and conversational interruptions.
+      const isAborted = (err: unknown) => Boolean(
+        options?.abortSignal?.aborted
+        || (err instanceof Error && (err.name === 'AbortError' || err.message.toLowerCase().includes('aborted'))),
+      )
+
       void result.messages.then(() => resolveOnce()).catch((err) => {
         rejectOnce(err)
-        console.error('Stream messages error:', err)
+        if (!isAborted(err))
+          console.error('Stream messages error:', err)
       })
 
       void result.steps.catch((err) => {
         // If the stream steps fail before messages settle, propagate it.
         rejectOnce(err)
-        console.error('Stream steps error:', err)
+        if (!isAborted(err))
+          console.error('Stream steps error:', err)
       })
 
-      void result.usage.catch(err => console.error('Stream usage error:', err))
+      void result.usage.catch((err) => {
+        if (!isAborted(err))
+          console.error('Stream usage error:', err)
+      })
 
       // Derive usage from per-step final usage objects (see aggregateStepUsage) to
       // avoid the per-chunk cumulative-usage inflation in @xsai/stream-text.
@@ -414,7 +426,10 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
         else {
           debug('[LLM:Stream] Provider returned no usage statistics for this stream')
         }
-      }).catch(err => console.error('Stream steps usage error:', err))
+      }).catch((err) => {
+        if (!isAborted(err))
+          console.error('Stream steps usage error:', err)
+      })
     }
     catch (err) {
       rejectOnce(err)
