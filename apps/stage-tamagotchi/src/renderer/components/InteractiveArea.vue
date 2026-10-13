@@ -1235,7 +1235,7 @@ defineExpose({
       <div class="z-10 flex select-none items-center justify-between">
         <div class="flex flex-wrap items-center gap-2">
           <span class="i-solar:cpu-bolt-bold-duotone animate-pulse text-amber-500" />
-          <span class="text-[10px] text-amber-800 font-bold tracking-widest uppercase dark:text-amber-300">Pre-Flight Grounding Active</span>
+          <span class="text-[10px] text-amber-800 font-bold tracking-widest uppercase hidden min-[456px]:inline dark:text-amber-300">Pre-Flight Grounding Active</span>
 
           <!-- Quick Status Badges -->
           <span v-if="activeCard?.extensions?.airi?.groundingEnabled" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Sensors Active</span>
