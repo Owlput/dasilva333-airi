@@ -360,12 +360,10 @@ export const useBackgroundStore = defineStore('background', () => {
 
   function setChatboxActiveBackground(id: string) {
     chatboxActiveBackgroundId.value = id
-    broadcastSync(Date.now())
   }
 
   function setChatboxActiveAtmosphere(id: StageAtmosphere) {
     chatboxActiveAtmosphereId.value = id
-    broadcastSync(Date.now())
   }
 
   // List of available backgrounds for the current character

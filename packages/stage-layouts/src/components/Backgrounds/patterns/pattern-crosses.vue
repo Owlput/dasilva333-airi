@@ -75,8 +75,10 @@ onMounted(() => {
     if (!canvas)
       return
     const dims = getDims()
-    width = canvas.width = dims.w
-    height = canvas.height = dims.h
+    if (canvas.width !== dims.w || canvas.height !== dims.h) {
+      width = canvas.width = dims.w
+      height = canvas.height = dims.h
+    }
   }
   window.addEventListener('resize', handleResize)
 

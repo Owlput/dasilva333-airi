@@ -1123,27 +1123,47 @@ function selectSurface(surface: typeof activeSurface.value) {
 <template>
   <div class="relative h-full w-full flex flex-col overflow-hidden">
     <!-- Layer 1: Chatbox Wallpaper -->
-    <div
-      v-if="chatboxActiveBackgroundUrl"
-      class="pointer-events-none absolute inset-0 z-0 transition-opacity duration-500"
-      :style="{
-        backgroundImage: `url(${chatboxActiveBackgroundUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }"
+    <Transition
+      enter-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
     >
-      <!-- Subtle readability scrim so message bubbles remain clear and distinct -->
-      <div class="absolute inset-0 bg-white/75 backdrop-blur-[1px] dark:bg-neutral-950/75" />
-    </div>
+      <div
+        v-if="chatboxActiveBackgroundUrl"
+        :key="chatboxActiveBackgroundUrl"
+        class="pointer-events-none absolute inset-0 z-0"
+        :style="{
+          backgroundImage: `url(${chatboxActiveBackgroundUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }"
+      >
+        <!-- Subtle readability scrim so message bubbles remain clear and distinct -->
+        <div class="absolute inset-0 bg-white/75 backdrop-blur-[1px] dark:bg-neutral-950/75" />
+      </div>
+    </Transition>
 
     <!-- Layer 2: Animated Ambient Atmosphere Particles -->
-    <component
-      :is="activeChatAtmosphereComponent"
-      v-if="activeChatAtmosphereComponent"
-      :transparent-bg="true"
-      class="pointer-events-none absolute inset-0 z-1"
-    />
+    <Transition
+      enter-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <component
+        :is="activeChatAtmosphereComponent"
+        v-if="activeChatAtmosphereComponent"
+        :key="chatboxActiveAtmosphereId"
+        :transparent-bg="true"
+        class="pointer-events-none absolute inset-0 z-1"
+      />
+    </Transition>
 
     <!-- Header Toolbar: Flush to top, frosted glass translucent -->
     <header
