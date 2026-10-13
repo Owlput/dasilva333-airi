@@ -7,8 +7,6 @@ import { ChatOptionsPopover } from '@proj-airi/stage-layouts'
 import { resolveAtmosphereComponent } from '@proj-airi/stage-layouts/components/Backgrounds'
 import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
 import { ChatBrainPopover, ChatMemoryPopover, ChatSessionModal } from '@proj-airi/stage-ui/components'
-import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
-import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { DEFAULT_SANDBOX_WORKSTATION_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/character-defaults'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
@@ -20,13 +18,11 @@ import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positio
 import { useBroadcastChannel, useLocalStorage, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, defineAsyncComponent, markRaw, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, markRaw, nextTick, onUnmounted, ref, watch } from 'vue'
 
 import LogoDark from '../../../../../packages/stage-layouts/src/assets/logo-dark.svg'
-import ChatNan0CognitionPanel from '../components/chat/ChatNan0CognitionPanel.vue'
+import ChatDashboardPanel from '../components/chat/ChatDashboardPanel.vue'
 import ChatWorkspaceCoordinator from '../components/chat/ChatWorkspaceCoordinator.vue'
-import ChatWorkspaceTerminalPanel from '../components/chat/ChatWorkspaceTerminalPanel.vue'
-import ChatWorkspaceWidgetsPanel from '../components/chat/ChatWorkspaceWidgetsPanel.vue'
 
 import { electronApplySizePreset, electronOpenSettings, electronStageToggleVisibility, electronWindowSetTitle } from '../../shared/eventa'
 
@@ -137,36 +133,18 @@ function handleClearMessages() {
   interactiveAreaRef.value?.handleTrashClick()
 }
 
-function handleOpenJournal() {
-  if (interactiveAreaRef.value)
-    interactiveAreaRef.value.showJournalModal = true
-}
-
 const isRightPanelOpen = useLocalStorage('airi:chat:right-panel-open', false)
 const { width } = useWindowSize()
 const showRightPanel = computed(() => isRightPanelOpen.value && width.value >= 768 && activeSurface.value === 'messages' && isCurrentSurfaceReady.value)
-const mediaDisplayCount = ref(12)
-const rightPanelMemoriesCollapsed = useLocalStorage('airi:chat:rp-memories-collapsed', false)
-const rightPanelCurrentSceneCollapsed = useLocalStorage('airi:chat:rp-current-scene-collapsed', false)
-const rightPanelMediaCollapsed = useLocalStorage('airi:chat:rp-media-collapsed', false)
-const rightPanelTerminalCollapsed = useLocalStorage('airi:chat:rp-terminal-collapsed', false)
-const rightPanelWidgetsCollapsed = useLocalStorage('airi:chat:rp-widgets-collapsed', false)
-const { mountedWidgets } = useSandbox()
-const activeWidgetsCount = computed(() => mountedWidgets.value.length)
-
-watch(() => mountedWidgets.value.length, (newCount, oldCount) => {
-  if (newCount > (oldCount ?? 0)) {
-    rightPanelWidgetsCollapsed.value = false
-  }
-})
-
-const rightPanelNan0Collapsed = useLocalStorage('airi:chat:rp-nan0-collapsed', false)
 const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
-const rightPanelStageCollapsed = useLocalStorage('airi:chat:rp-stage-collapsed', true)
 
 const settingsStore = useSettings()
 const positioningStore = usePositioningStore()
 const { stageModelRenderer, stageModelSelected } = storeToRefs(settingsStore)
+
+const embeddedStageSupported = computed(() => {
+  return stageModelRenderer.value !== 'disabled'
+})
 
 const stageScale = computed(() => {
   return positioningStore.getPosition(stageModelSelected.value).scale
@@ -199,23 +177,6 @@ function handleStageOffsetChange(offset: { x: number, y: number }) {
     y: stageModelRenderer.value === 'live2d' ? -offset.y : offset.y,
   })
 }
-
-function toggleRightPanelStage() {
-  rightPanelStageCollapsed.value = !rightPanelStageCollapsed.value
-  void toggleStageVisibility(!!rightPanelStageCollapsed.value)
-}
-
-onMounted(() => {
-  if (!rightPanelStageCollapsed.value) {
-    void toggleStageVisibility(false)
-  }
-})
-
-onUnmounted(() => {
-  if (!rightPanelStageCollapsed.value) {
-    void toggleStageVisibility(true)
-  }
-})
 
 // Nan0 Cognition Pipeline Seam
 const isNan0Active = computed(() => {
@@ -1677,316 +1638,25 @@ function selectSurface(surface: typeof activeSurface.value) {
         <Transition name="slide-right">
           <div
             v-if="showRightPanel"
-            class="w-3/12 flex flex-col overflow-y-auto border-l border-neutral-200/50 bg-neutral-50/30 dark:border-neutral-800/50 dark:bg-neutral-950/30"
+            class="w-3/12 flex flex-col border-l border-neutral-200/50 bg-neutral-50/30 dark:border-neutral-800/50 dark:bg-neutral-950/30"
           >
-            <!-- Panel Body -->
-            <div class="flex flex-col gap-4 p-4">
-              <!-- Stage Section (Right at the Top) -->
-              <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelStageCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="toggleRightPanelStage"
-                  >
-                    Stage
-                    <span :class="rightPanelStageCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                </div>
-                <div
-                  v-if="!rightPanelStageCollapsed"
-                  class="relative aspect-[3/4] w-full overflow-hidden border border-neutral-200/40 rounded-xl bg-transparent dark:border-neutral-800/40"
-                >
-                  <RendererStage
-                    :paused="rightPanelStageCollapsed"
-                    :focus-at="{ x: 0, y: 0 }"
-                    :x-offset="stageXOffset"
-                    :y-offset="stageYOffset"
-                    :scale="stageScale"
-                    :show-background="false"
-                    :radial-menu-enabled="false"
-                    :draggable="true"
-                    :mouth-open-size="speakingState?.mouthOpenSize || 0"
-                    class="absolute inset-0 h-full w-full"
-                    @offset-change="handleStageOffsetChange"
-                    @scale-change="handleStageScaleChange"
-                  />
-                </div>
-              </div>
-
-              <!-- Nan0 Cognition Section (Conditionally Mounted) -->
-              <div v-if="isNan0Active" class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelNan0Collapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelNan0Collapsed = !rightPanelNan0Collapsed"
-                  >
-                    <span class="i-solar:brain-bold-duotone text-xs" />
-                    Nan0 Cognition
-                    <span :class="rightPanelNan0Collapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                  <span class="text-[9px] text-neutral-400 font-mono uppercase">
-                    Two-Hop Active
-                  </span>
-                </div>
-                <div v-if="!rightPanelNan0Collapsed">
-                  <ChatNan0CognitionPanel />
-                </div>
-              </div>
-
-              <!-- Memories Section -->
-              <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelMemoriesCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelMemoriesCollapsed = !rightPanelMemoriesCollapsed"
-                  >
-                    Memories
-                    <span :class="rightPanelMemoriesCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                  <button
-                    class="select-none text-[10px] text-primary-500 font-bold transition-colors hover:text-primary-600"
-                    @click="handleOpenJournal"
-                  >
-                    + New
-                  </button>
-                </div>
-                <div v-if="!rightPanelMemoriesCollapsed" class="flex flex-col gap-1">
-                  <template v-for="entry in (interactiveAreaRef?.allTextEntries ?? [])" :key="entry.id">
-                    <!-- Echo chip -->
-                    <div
-                      v-if="entry.type === 'echo'"
-                      class="h-[26px] w-full flex cursor-pointer items-center gap-2 border rounded-lg px-2 py-1 text-[10px] font-bold leading-none transition-all"
-                      :class="entry.echoType === 'mood'
-                        ? 'border-rose-200/60 bg-rose-50/50 text-rose-600 dark:border-rose-800/60 dark:bg-rose-900/20 dark:text-rose-400'
-                        : entry.echoType === 'flavor'
-                          ? 'border-amber-200/60 bg-amber-50/50 text-amber-600 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-400'
-                          : 'border-indigo-200/60 bg-indigo-50/50 text-indigo-600 dark:border-indigo-800/60 dark:bg-indigo-900/20 dark:text-indigo-400'"
-                      @click="interactiveAreaRef?.openTextPreview?.(entry)"
-                    >
-                      <span class="shrink-0 opacity-70">{{ formatMonthDay(entry.timestamp) }}</span>
-                      <span
-                        :class="entry.echoType === 'mood'
-                          ? 'i-solar:heart-bold-duotone'
-                          : entry.echoType === 'flavor'
-                            ? 'i-solar:tag-bold-duotone'
-                            : 'i-solar:magic-stick-3-bold-duotone'"
-                        class="shrink-0 text-[10px]"
-                      />
-                      <span class="truncate">{{ entry.content }}</span>
-                    </div>
-
-                    <!-- STMM auto entry card -->
-                    <div
-                      v-else-if="entry.type === 'auto'"
-                      class="flex flex-col cursor-pointer gap-1 border border-primary-200/30 rounded-lg bg-primary-50/30 p-2.5 transition-colors dark:border-primary-800/30 hover:border-primary-300 dark:bg-primary-950/20 dark:hover:border-primary-700"
-                      @click="interactiveAreaRef?.openTextPreview?.(entry)"
-                    >
-                      <div class="flex items-center gap-1.5 text-[10px] text-primary-500 font-bold uppercase dark:text-primary-400">
-                        <span>{{ formatMonthDay(entry.timestamp) }}</span>
-                        <span class="i-solar:dna-bold-duotone text-[10px]" />
-                        <span>Daily Summary Block</span>
-                      </div>
-                      <div class="flex items-center gap-2 text-[9px] text-neutral-400 font-medium">
-                        <span>{{ entry.messageCount }} messages</span>
-                        <span>·</span>
-                        <span>{{ entry.sessionCount }} sessions</span>
-                        <span v-if="entry.estimatedTokens">·</span>
-                        <span v-if="entry.estimatedTokens">{{ entry.estimatedTokens }} tokens</span>
-                      </div>
-                      <p class="line-clamp-2 text-[10px] text-neutral-600 leading-relaxed dark:text-neutral-400">
-                        {{ entry.content }}
-                      </p>
-                    </div>
-
-                    <!-- Manual journal entry card -->
-                    <div
-                      v-else-if="entry.type === 'manual'"
-                      class="flex flex-col cursor-pointer gap-1 border border-emerald-200/30 rounded-lg bg-emerald-50/30 p-2.5 transition-colors dark:border-emerald-800/30 hover:border-emerald-300 dark:bg-emerald-950/20 dark:hover:border-emerald-700"
-                      @click="interactiveAreaRef?.openTextPreview?.(entry)"
-                    >
-                      <div class="flex items-center gap-1.5 text-[10px] text-emerald-500 font-bold uppercase dark:text-emerald-400">
-                        <span>{{ formatMonthDay(entry.timestamp) }}</span>
-                        <span class="i-solar:notebook-bold-duotone text-[10px]" />
-                        <span>Journal Entry</span>
-                      </div>
-                      <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">{{ entry.title }}</span>
-                      <p class="line-clamp-2 text-[10px] text-neutral-500 leading-relaxed dark:text-neutral-400">
-                        {{ entry.content }}
-                      </p>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              <!-- Current Scene Section -->
-              <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelCurrentSceneCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelCurrentSceneCollapsed = !rightPanelCurrentSceneCollapsed"
-                  >
-                    Current Scene
-                    <span :class="rightPanelCurrentSceneCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                </div>
-                <div v-if="!rightPanelCurrentSceneCollapsed">
-                  <template v-if="(interactiveAreaRef?.allImageEntries ?? []).length > 0">
-                    <div
-                      class="group relative aspect-[3/2] w-full cursor-pointer overflow-hidden border border-neutral-200/60 rounded-xl bg-neutral-200/50 transition-all dark:border-neutral-800/60 hover:border-primary-400 dark:bg-neutral-800/50 dark:hover:border-primary-500"
-                      @click="interactiveAreaRef?.openImagePreview?.((interactiveAreaRef?.allImageEntries ?? [])[0])"
-                    >
-                      <img
-                        v-if="(interactiveAreaRef?.allImageEntries ?? [])[0]?.url"
-                        :src="(interactiveAreaRef?.allImageEntries ?? [])[0]?.url"
-                        class="h-full w-full object-cover"
-                      >
-                      <div v-else class="h-full w-full" />
-                      <div class="absolute inset-0 flex items-end from-black/60 to-transparent bg-gradient-to-t p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span class="truncate text-[9px] text-white font-medium leading-tight">
-                          {{ (interactiveAreaRef?.allImageEntries ?? [])[0]?.title }}
-                        </span>
-                      </div>
-                    </div>
-                  </template>
-                  <div
-                    v-else
-                    class="h-20 w-full flex items-center justify-center border border-neutral-200/60 rounded-xl border-dashed bg-neutral-100/40 text-[10px] text-neutral-400 dark:border-neutral-800/60 dark:bg-neutral-900/30"
-                  >
-                    No scene yet
-                  </div>
-                </div>
-              </div>
-
-              <!-- Media Gallery Section -->
-              <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelMediaCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelMediaCollapsed = !rightPanelMediaCollapsed"
-                  >
-                    Media Gallery
-                    <span :class="rightPanelMediaCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                  <div class="flex items-center gap-2">
-                    <button
-                      class="select-none text-[10px] text-primary-500 font-bold transition-colors hover:text-primary-600"
-                      @click="interactiveAreaRef?.openImagineDialog()"
-                    >
-                      + Add
-                    </button>
-                    <button
-                      class="select-none text-[10px] text-neutral-400 font-bold transition-colors hover:text-neutral-600"
-                      @click="interactiveAreaRef?.openBackgroundDialog()"
-                    >
-                      View All
-                    </button>
-                  </div>
-                </div>
-                <div v-if="!rightPanelMediaCollapsed" class="flex flex-col gap-1.5">
-                  <div class="grid grid-cols-3 gap-1.5">
-                    <div
-                      v-for="entry in (interactiveAreaRef?.allImageEntries ?? []).slice(0, mediaDisplayCount)"
-                      :key="entry.id"
-                      :class="[
-                        'group relative aspect-square cursor-pointer overflow-hidden rounded-lg',
-                        'border border-neutral-200/60 transition-all hover:border-primary-400',
-                        'dark:border-neutral-800/60 dark:hover:border-primary-500',
-                        'bg-neutral-200/50 dark:bg-neutral-800/50',
-                      ]"
-                      @click="interactiveAreaRef?.openImagePreview?.(entry)"
-                    >
-                      <img
-                        v-if="entry.url"
-                        :src="entry.url"
-                        class="h-full w-full object-cover"
-                      >
-                      <!-- Placeholder square when no url -->
-                      <div v-else class="h-full w-full" />
-                      <!-- Hover overlay -->
-                      <div class="absolute inset-0 flex items-end from-black/50 to-transparent bg-gradient-to-t p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span class="truncate text-[8px] text-white font-medium leading-tight">{{ entry.title }}</span>
-                      </div>
-                    </div>
-                    <!-- Fill remaining slots with placeholders -->
-                    <div
-                      v-for="n in Math.max(0, mediaDisplayCount - (interactiveAreaRef?.allImageEntries?.length ?? 0))"
-                      :key="`fill-${n}`"
-                      class="aspect-square border border-neutral-200/60 rounded-lg bg-neutral-100/50 dark:border-neutral-800/60 dark:bg-neutral-800/30"
-                    />
-                  </div>
-
-                  <!-- View More -->
-                  <button
-                    class="w-full flex items-center justify-center gap-1.5 border border-neutral-200/60 rounded-xl bg-neutral-50/50 py-2 text-[10px] text-neutral-500 font-bold tracking-wider uppercase transition-all dark:border-neutral-800/60 hover:border-primary-200 dark:bg-neutral-950/50 dark:text-neutral-400 hover:text-primary-500 dark:hover:border-primary-800 dark:hover:text-primary-400"
-                    @click="mediaDisplayCount += 12"
-                  >
-                    View More
-                    <span class="i-solar:alt-arrow-down-bold text-[8px]" />
-                  </button>
-                </div>
-              </div>
-
-              <!-- Widgets Section -->
-              <div v-if="isSandboxActive" class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelWidgetsCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelWidgetsCollapsed = !rightPanelWidgetsCollapsed"
-                  >
-                    <span class="i-solar:widget-5-bold-duotone text-xs" />
-                    Widgets
-                    <span v-if="activeWidgetsCount > 0" class="rounded-full bg-primary-500/20 px-1.5 py-0.2 text-[9px] text-primary-400 font-bold font-mono">
-                      {{ activeWidgetsCount }}
-                    </span>
-                    <span :class="rightPanelWidgetsCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                </div>
-                <div v-if="!rightPanelWidgetsCollapsed">
-                  <ChatWorkspaceWidgetsPanel />
-                </div>
-              </div>
-
-              <!-- Workspace / Terminal Section -->
-              <div v-if="isSandboxActive" class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <span
-                    :class="['flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase transition-colors',
-                             rightPanelTerminalCollapsed
-                               ? 'bg-neutral-100/50 text-neutral-400 dark:bg-neutral-800/50'
-                               : 'bg-primary-50/50 text-primary-500 dark:bg-primary-950/30 dark:text-primary-400']"
-                    @click="rightPanelTerminalCollapsed = !rightPanelTerminalCollapsed"
-                  >
-                    <span class="i-solar:terminal-bold-duotone text-xs" />
-                    Virtual Terminal
-                    <span :class="rightPanelTerminalCollapsed ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'" class="text-xs" />
-                  </span>
-                  <span class="text-[9px] text-neutral-400 font-mono uppercase">
-                    /workspace
-                  </span>
-                </div>
-                <div v-if="!rightPanelTerminalCollapsed">
-                  <ChatWorkspaceTerminalPanel />
-                </div>
-              </div>
-            </div>
+            <ChatDashboardPanel
+              :active-card="activeCard"
+              :active-card-id="activeCardId"
+              :speaking-state="speakingState"
+              :stage-x-offset="stageXOffset"
+              :stage-y-offset="stageYOffset"
+              :stage-scale="stageScale"
+              :embedded-stage-supported="embeddedStageSupported"
+              :is-nan0-active="isNan0Active"
+              :is-sandbox-active="isSandboxActive"
+              :interactive-area-ref="interactiveAreaRef"
+              :format-month-day="formatMonthDay"
+              @close="isRightPanelOpen = false"
+              @stage-offset-change="handleStageOffsetChange"
+              @stage-scale-change="handleStageScaleChange"
+              @toggle-stage-visibility="visible => toggleStageVisibility(visible)"
+            />
           </div>
         </Transition>
       </div>
