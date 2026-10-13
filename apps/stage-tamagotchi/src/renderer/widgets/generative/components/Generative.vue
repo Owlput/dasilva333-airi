@@ -24,27 +24,37 @@ const props = withDefaults(defineProps<{
 const openDevTools = useElectronEventaInvoke(electronOpenMainDevtools)
 const { init, mountedWidgets, readFile } = useSandbox()
 
-const resolvedWidget = computed(() => {
+const targetCode = computed(() => {
+  if (props.code)
+    return props.code
   if (props.id) {
     const found = mountedWidgets.value.find(w => w.id === props.id)
-    if (found) {
-      return {
-        id: found.id,
-        title: found.title || props.title || 'Generative Widget',
-        path: found.path,
-        sourcePath: found.sourcePath,
-        code: found.code,
-        state: found.state,
-      }
-    }
+    if (found?.code)
+      return found.code
   }
+  return ''
+})
+
+const targetPath = computed(() => {
+  if (props.path)
+    return props.path
+  if (props.id) {
+    const found = mountedWidgets.value.find(w => w.id === props.id)
+    if (found?.path)
+      return found.path
+  }
+  return '/workspace/widget.js'
+})
+
+const resolvedWidget = computed(() => {
+  const found = props.id ? mountedWidgets.value.find(w => w.id === props.id) : undefined
   return {
-    id: props.id || 'widget-standalone',
-    title: props.title || 'Generative Widget',
-    path: props.path || '/workspace/widget.js',
-    sourcePath: undefined,
-    code: props.code || '',
-    state: undefined,
+    id: props.id || found?.id || 'widget-standalone',
+    title: props.title || found?.title || 'Generative Widget',
+    path: targetPath.value,
+    sourcePath: found?.sourcePath,
+    code: targetCode.value,
+    state: found?.state,
   }
 })
 
@@ -53,13 +63,17 @@ const iframeSrcdoc = ref('')
 const isLoading = ref(false)
 const iframeKey = ref(0)
 const errorMessage = ref<string | null>(null)
+let isRefreshing = false
 
 async function refresh() {
+  if (isRefreshing)
+    return
+  isRefreshing = true
   isLoading.value = true
   errorMessage.value = null
   try {
-    let code = resolvedWidget.value.code
-    const path = resolvedWidget.value.path
+    let code = targetCode.value
+    const path = targetPath.value
     if (!code && path) {
       try {
         code = await readFile(path)
@@ -81,6 +95,7 @@ async function refresh() {
   }
   finally {
     isLoading.value = false
+    isRefreshing = false
   }
 }
 
@@ -113,9 +128,9 @@ function handleIframeMessage(e: MessageEvent) {
   }
 }
 
-watch(() => [resolvedWidget.value.code, resolvedWidget.value.path], () => {
+watch([targetCode, targetPath], () => {
   void refresh()
-}, { immediate: true })
+})
 
 onMounted(async () => {
   window.addEventListener('message', handleIframeMessage)

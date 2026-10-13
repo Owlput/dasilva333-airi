@@ -27,10 +27,18 @@ export function useSandbox() {
 
   async function init() {
     if (sandbox.value) {
-      // Refresh from singleton in case another surface mutated it first.
+      // Refresh from singleton only if items or lengths actually diverged to avoid spurious reactive churn
       const current = sandbox.value
-      mountedWidgets.value = [...current.mountedWidgets]
-      commandHistory.value = [...current.commandHistory]
+      const isWidgetsDifferent = mountedWidgets.value.length !== current.mountedWidgets.length
+        || mountedWidgets.value.some((w, i) => w !== current.mountedWidgets[i])
+      if (isWidgetsDifferent) {
+        mountedWidgets.value = [...current.mountedWidgets]
+      }
+      const isHistoryDifferent = commandHistory.value.length !== current.commandHistory.length
+        || commandHistory.value.some((c, i) => c !== current.commandHistory[i])
+      if (isHistoryDifferent) {
+        commandHistory.value = [...current.commandHistory]
+      }
       isReady.value = true
       return
     }
@@ -42,11 +50,19 @@ export function useSandbox() {
     if (!sharedListenersRegistered) {
       sharedListenersRegistered = true
       instance.onMount(() => {
-        mountedWidgets.value = [...instance.mountedWidgets]
+        const isWidgetsDifferent = mountedWidgets.value.length !== instance.mountedWidgets.length
+          || mountedWidgets.value.some((w, i) => w !== instance.mountedWidgets[i])
+        if (isWidgetsDifferent) {
+          mountedWidgets.value = [...instance.mountedWidgets]
+        }
       })
 
       instance.onCommand(() => {
-        commandHistory.value = [...instance.commandHistory]
+        const isHistoryDifferent = commandHistory.value.length !== instance.commandHistory.length
+          || commandHistory.value.some((c, i) => c !== instance.commandHistory[i])
+        if (isHistoryDifferent) {
+          commandHistory.value = [...instance.commandHistory]
+        }
       })
     }
 
