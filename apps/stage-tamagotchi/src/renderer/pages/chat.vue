@@ -647,6 +647,36 @@ function handleToggleHeartbeats() {
   } as any)
 }
 
+const isAgentScreenshotAllowed = computed(() =>
+  Boolean(activeCard.value?.extensions?.airi?.generation?.known?.allowedTools?.includes('take_screenshot')),
+)
+
+function handleToggleAgentScreenshot() {
+  if (!activeCardId.value || !activeCard.value)
+    return
+  const generation = activeCard.value.extensions?.airi?.generation
+  // An unset allowlist means the default journal tools, same as the card editor's Tools tab.
+  const current = generation?.known?.allowedTools ?? ['text_journal', 'image_journal']
+  const allowedTools = isAgentScreenshotAllowed.value
+    ? current.filter(t => t !== 'take_screenshot')
+    : [...current, 'take_screenshot']
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions?.airi,
+        generation: {
+          ...generation,
+          known: {
+            ...generation?.known,
+            allowedTools,
+          },
+        },
+      },
+    },
+  } as any)
+}
+
 function handleToggleScreenWatching() {
   if (!activeCardId.value || !activeCard.value)
     return
@@ -1533,6 +1563,34 @@ function selectSurface(surface: typeof activeSurface.value) {
                   >
                     <span
                       :class="activeCard?.extensions?.airi?.screenWatching?.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                    />
+                  </div>
+                </div>
+
+                <!-- Toggle: Agent Screenshots -->
+                <div
+                  class="w-full flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  @click="handleToggleAgentScreenshot"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      class="text-base"
+                      :class="isAgentScreenshotAllowed
+                        ? 'text-primary-500 i-solar:camera-bold-duotone'
+                        : 'text-neutral-400 dark:text-neutral-500 i-solar:camera-linear'"
+                    />
+                    <div class="flex flex-col">
+                      <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Agent Screenshots</span>
+                      <span class="text-[9px] text-neutral-400">Character looks at screen on request</span>
+                    </div>
+                  </div>
+                  <div
+                    :class="isAgentScreenshotAllowed ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+                    class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+                  >
+                    <span
+                      :class="isAgentScreenshotAllowed ? 'translate-x-3.5' : 'translate-x-0.5'"
                       class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                     />
                   </div>

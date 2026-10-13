@@ -126,6 +126,29 @@ const resolvedImageUrl = computed(() => {
   return result.imageUrl
 })
 
+const screenshotResult = computed(() => {
+  if (props.toolName !== 'take_screenshot' || !props.result)
+    return null
+
+  // NOTICE: results persisted before structured tool results were preserved arrive as a
+  // JSON-stringified content-part array; parse them so the image still renders.
+  let parts: any = props.result
+  if (typeof parts === 'string') {
+    try {
+      parts = JSON.parse(parts)
+    }
+    catch {
+      return null
+    }
+  }
+  if (!Array.isArray(parts))
+    return null
+
+  const text = parts.filter((part: any) => part?.type === 'text').map((part: any) => part.text).join('\n')
+  const imageUrl: string | null = parts.find((part: any) => part?.type === 'image_url')?.image_url?.url ?? null
+  return { text, imageUrl }
+})
+
 const formattedArgs = computed(() => {
   try {
     const parsed = JSON.parse(props.args)
@@ -283,6 +306,19 @@ const toolSummary = computed(() => {
           >
         </div>
       </template>
+
+      <div v-else-if="screenshotResult" class="flex flex-col gap-2">
+        <div v-if="screenshotResult.imageUrl" class="max-w-sm w-fit overflow-hidden border border-primary-500/20 rounded-xl">
+          <img
+            :src="screenshotResult.imageUrl"
+            class="max-h-64 cursor-zoom-in object-contain transition-all hover:ring-2 hover:ring-primary-500/50"
+            @click="openImagePreview({ title: 'Screenshot', url: screenshotResult.imageUrl })"
+          >
+        </div>
+        <div v-if="screenshotResult.text" class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-xs op-80">
+          {{ screenshotResult.text }}
+        </div>
+      </div>
 
       <div v-else class="flex flex-col gap-2">
         <div class="whitespace-pre-wrap break-words text-[10px] font-mono op-80">
