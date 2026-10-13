@@ -37,35 +37,52 @@ const nameSummary = computed(() => {
 <template>
   <Collapsible
     :class="[
-      'bg-primary-100/40 dark:bg-primary-900/60 rounded-lg px-2 pb-2 pt-2',
-      'flex flex-col gap-2 items-start',
+      'bg-white/95 dark:bg-neutral-800/95 rounded-xl border border-neutral-200/60 dark:border-neutral-700/60 shadow-xs px-3.5 py-2.5',
+      'flex flex-col gap-2 items-start w-full transition-all',
     ]"
   >
     <template #trigger="{ visible, setVisible }">
       <button
         :class="[
-          'w-full text-start',
+          'w-full text-start flex items-center justify-between gap-2 group cursor-pointer select-none',
         ]"
         @click="setVisible(!visible)"
       >
+        <div class="min-w-0 flex flex-1 items-center gap-2.5">
+          <div
+            v-if="groupState === 'executing'"
+            i-eos-icons:loading class="shrink-0 text-base text-primary-500"
+          />
+          <div
+            v-else-if="groupState === 'error'"
+            i-ph:warning-circle-duotone class="shrink-0 text-base text-red-500"
+          />
+          <div
+            v-else
+            i-ph:check-circle-duotone class="shrink-0 text-base text-emerald-500"
+          />
+          <code class="shrink-0 text-xs text-neutral-800 font-medium tracking-tight font-mono dark:text-neutral-200">
+            {{ calls.length }} tool calls
+          </code>
+          <span class="truncate text-xs text-neutral-500 font-mono dark:text-neutral-400" :title="nameSummary">
+            {{ nameSummary }}
+          </span>
+          <span v-if="errorCount > 0" class="shrink-0 text-xs text-red-500 op-80">({{ errorCount }} failed)</span>
+        </div>
+
         <div
-          v-if="groupState === 'executing'"
-          i-eos-icons:loading class="mr-1 inline-block translate-y-0.5 op-50"
+          class="i-solar:alt-arrow-down-linear shrink-0 text-xs text-neutral-400 transition-transform duration-200 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300"
+          :class="[visible ? 'rotate-180' : '']"
         />
-        <div
-          v-else-if="groupState === 'error'"
-          i-ph:warning-circle-duotone class="mr-1 inline-block translate-y-0.5 text-red-500"
-        />
-        <div
-          v-else
-          i-ph:check-circle-duotone class="mr-1 inline-block translate-y-0.5 text-emerald-500"
-        />
-        <span class="text-sm font-medium">{{ calls.length }} tool calls</span>
-        <span class="ml-2 text-xs op-60">{{ nameSummary }}</span>
-        <span v-if="errorCount > 0" class="ml-2 text-xs text-red-500 op-80">({{ errorCount }} failed)</span>
       </button>
     </template>
-    <div class="w-full flex flex-col gap-2">
+    <div
+      :class="[
+        'rounded-lg p-2.5 w-full mt-1',
+        'bg-neutral-100/70 dark:bg-neutral-900/70',
+        'flex flex-col gap-2',
+      ]"
+    >
       <ChatToolCallBlock
         v-for="(slice, index) in calls"
         :key="index"
