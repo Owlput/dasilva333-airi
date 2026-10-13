@@ -41,6 +41,7 @@ const showJournalModal = ref(false)
 
 const chatSession = useChatSessionStore()
 const chatOrchestrator = useChatOrchestratorStore()
+const cardStore = useAiriCardStore()
 
 const formattedTime = computed(() => {
   if (!props.message.createdAt)
@@ -565,7 +566,6 @@ const dynamicStyles = computed(() => {
       actorIds.add(slice.actorId)
   }
 
-  const cardStore = useAiriCardStore()
   const visualAssets = cardStore.activeCard?.extensions?.airi?.visual_assets || {}
 
   // Combine visual asset keys and parsed actor IDs to ensure we cover all candidates
@@ -609,8 +609,9 @@ const dynamicStyles = computed(() => {
   }
 
   let css = ''
+  const cardDefaultColor = cardStore.activeCard?.extensions?.airi?.textColor
   for (const actorId of actorIds) {
-    const customColor = visualAssets[actorId]?.textColor
+    const customColor = visualAssets[actorId]?.textColor ?? cardDefaultColor
     if (customColor) {
       const isHex = customColor.startsWith('#') && customColor.length === 7
       const bgOpacity = isHex ? `${customColor}14` : customColor
@@ -636,6 +637,9 @@ const dynamicStyles = computed(() => {
   }
   return css
 })
+
+const cardDefaultColor = computed(() => cardStore.activeCard?.extensions?.airi?.textColor)
+const hasActorSlices = computed(() => actorAwareSlices.value.some(s => s.type === 'text' && isValidActorId(s.actorId)))
 </script>
 
 <template>
@@ -691,7 +695,12 @@ const dynamicStyles = computed(() => {
             <div v-if="message.content === 'NO_REPLY' || message.rawContent === 'NO_REPLY'" class="py-1 text-sm text-neutral-500/70 italic dark:text-neutral-400/70">
               The character chose not to respond in this turn
             </div>
-            <div v-else-if="resolvedSlices.length > 0 && !isEditing" class="break-words" :class="mood ? 'text-neutral-800 dark:text-neutral-200' : 'text-primary-700 dark:primary-100'">
+            <div
+              v-else-if="resolvedSlices.length > 0 && !isEditing"
+              class="break-words"
+              :class="mood ? 'text-neutral-800 dark:text-neutral-200' : (cardDefaultColor && !hasActorSlices ? '' : 'text-primary-700 dark:primary-100')"
+              :style="!hasActorSlices && cardDefaultColor ? { color: cardDefaultColor } : undefined"
+            >
               <template v-for="(slice, sliceIndex) in resolvedSlices" :key="sliceIndex">
                 <ChatToolCallBlock
                   v-if="slice.type === 'tool-call'"

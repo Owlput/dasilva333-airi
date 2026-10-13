@@ -373,6 +373,7 @@ const AiriExtensionSchema = looseObject({
     description: string(),
     prompt: optional(string()),
     isBase: optional(boolean()),
+    textColor: optional(string()),
     artistry: optional(looseObject({
       provider: optional(string()),
       model: optional(string()),
@@ -383,6 +384,7 @@ const AiriExtensionSchema = looseObject({
       mood: optional(string()),
     })),
   }))),
+  textColor: optional(string()),
   active_concepts: optional(array(string())),
   eternal_record: optional(looseObject({
     relational_milestones: optional(array(string())),

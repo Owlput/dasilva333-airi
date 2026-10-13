@@ -82,6 +82,16 @@ function handleOpenCharacterConfig() {
   })
 }
 
+function handleOpenStagingSettings() {
+  const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
+  const route = `/settings/airi-card/edit?id=${targetId}&tab=staging`
+  void openSettings({
+    route,
+  }).catch((err: any) => {
+    console.error('Failed to open Staging settings:', err)
+  })
+}
+
 function handleApplyChatPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
   applySizePreset({ target: 'chat', preset })
   isSettingsOpen.value = false
@@ -1482,6 +1492,7 @@ function selectSurface(surface: typeof activeSurface.value) {
             trigger-variant="dots"
             :show-chat-layout="true"
             :on-apply-chat-preset="handleApplyChatPreset"
+            @open-staging-settings="handleOpenStagingSettings"
           />
 
           <!-- Right Context Panel Toggle (md+) -->

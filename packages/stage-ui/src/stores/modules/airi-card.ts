@@ -304,6 +304,7 @@ export interface AiriExtension {
     temporalBoost?: boolean
   }
   recentTopics?: Array<{ topic: string, weight: number }>
+  textColor?: string
   visual_assets?: Record<string, {
     description: string
     prompt?: string
