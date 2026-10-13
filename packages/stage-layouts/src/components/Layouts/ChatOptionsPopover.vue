@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { StageAtmosphere } from '@proj-airi/stage-ui/stores'
 
-import { StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
+import { SettingsThemeHeaderWidget, StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
@@ -1295,14 +1295,19 @@ function handleOpenBrowseScenes() {
             <!-- ================= APPEARANCE VIEW ================= -->
             <div v-else-if="currentView === 'appearance'" key="appearance" class="flex flex-col gap-2">
               <!-- Appearance Header Banner -->
-              <div class="flex items-center gap-3 px-1 py-1">
-                <div class="size-9 flex shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 dark:bg-amber-400/15 dark:text-amber-400">
-                  <div class="i-solar:magic-stick-3-bold-duotone size-5" />
+              <div class="flex items-center justify-between px-1 py-1">
+                <div class="flex items-center gap-2.5">
+                  <div class="size-9 flex shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 dark:bg-amber-400/15 dark:text-amber-400">
+                    <div class="i-solar:magic-stick-3-bold-duotone size-5" />
+                  </div>
+                  <div class="flex flex-col text-left">
+                    <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">Appearance</span>
+                    <span class="text-[10px] text-neutral-400">Atmosphere and wallpaper</span>
+                  </div>
                 </div>
-                <div class="flex flex-col text-left">
-                  <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">Appearance</span>
-                  <span class="text-[10px] text-neutral-400">Atmosphere and wallpaper</span>
-                </div>
+
+                <!-- Color Palette & Theme Mode Header Widget -->
+                <SettingsThemeHeaderWidget shrink-0 />
               </div>
 
               <!-- ATMOSPHERE SECTION -->
