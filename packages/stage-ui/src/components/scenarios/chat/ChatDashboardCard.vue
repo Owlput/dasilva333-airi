@@ -16,12 +16,12 @@ const emit = defineEmits<{
   <div
     :class="[
       'flex flex-col border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl',
-      'bg-white/70 dark:bg-neutral-900/60 p-3 shadow-xs backdrop-blur-sm transition-all duration-200',
+      'bg-white/70 dark:bg-neutral-900/60 shadow-xs backdrop-blur-sm transition-all duration-200',
     ]"
   >
     <!-- Card Header Row -->
     <div
-      class="flex cursor-pointer select-none items-center justify-between"
+      class="flex cursor-pointer select-none items-center justify-between pl-3 pt-1"
       @click="emit('toggle')"
     >
       <!-- Title & Icon -->
@@ -64,7 +64,7 @@ const emit = defineEmits<{
     </div>
 
     <!-- Collapsible Body (v-show preserves iframe & terminal lifecycles) -->
-    <div v-show="!collapsed" class="mt-2.5 flex flex-col">
+    <div v-show="!collapsed" class="mt-1.5 flex flex-col p-1">
       <slot />
     </div>
   </div>

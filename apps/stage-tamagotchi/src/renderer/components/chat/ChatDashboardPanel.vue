@@ -219,9 +219,9 @@ function handleRestoreDefaults() {
     </div>
 
     <!-- ================= DASHBOARD SCROLLABLE BODY ================= -->
-    <div class="flex-1 overflow-y-auto p-3.5 scrollbar-none">
+    <div class="flex-1 overflow-y-auto p-2 scrollbar-none">
       <!-- ================= RUNTIME VIEW MODE ================= -->
-      <div v-if="dashboard.mode.value === 'view'" class="flex flex-col gap-3">
+      <div v-if="dashboard.mode.value === 'view'" class="flex flex-col gap-1">
         <!-- Dynamic Module Loop -->
         <template v-for="moduleId in dashboard.activeModuleIds.value" :key="moduleId">
           <!-- 1. STAGE MODULE -->

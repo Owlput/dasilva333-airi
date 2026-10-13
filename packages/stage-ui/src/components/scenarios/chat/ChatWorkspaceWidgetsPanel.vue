@@ -294,7 +294,7 @@ onUnmounted(() => {
       'relative flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-100 transition-all',
       props.fillContainer
         ? 'h-full w-full flex-1 min-h-0 bg-transparent'
-        : 'border border-neutral-200/60 dark:border-primary-500/20 rounded-2xl bg-white/70 dark:bg-neutral-900/80 backdrop-blur-md shadow-xl p-2.5 gap-2',
+        : 'border border-neutral-200/60 dark:border-primary-500/20 rounded-2xl bg-white/70 dark:bg-neutral-900/80 backdrop-blur-md shadow-xl p-2 gap-1',
     ]"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
