@@ -773,6 +773,17 @@ console.log('SUM:' + res.sum);
       expect(mounted?.state).toEqual({ level: 3, xp: 450 })
     })
 
+    it('retrieves persisted widget by ID or path via widgetsRepo.getWidget', async () => {
+      const byId = await widgetsRepo.getWidget('widget-rehydrate-test')
+      expect(byId?.title).toBe('Rehydrate Test')
+
+      const byPath = await widgetsRepo.getWidget('/workspace/rehydrate.js')
+      expect(byPath?.id).toBe('widget-rehydrate-test')
+
+      const nonExistent = await widgetsRepo.getWidget('non-existent-widget')
+      expect(nonExistent).toBeUndefined()
+    })
+
     it('packages srcdoc with state, setState, onStateChange, and message handlers', async () => {
       const srcdoc = await buildWidgetIframeSrcdoc({
         path: '/workspace/pet.js',

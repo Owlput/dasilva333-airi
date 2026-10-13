@@ -548,6 +548,31 @@ export class SandboxManager {
       })
       this.postChannelMessage({ type: 'widget-mount', widget: w })
       this.notifyMountListeners(w)
+
+      // If switching to standalone widget surface and Electron is available, pop out the standalone desktop window
+      if (surface === 'widget' && typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+        try {
+          const win = window as any
+          const { context } = createContext(win.electron.ipcRenderer as any)
+          const widgetsAddEventa = defineInvokeEventa<string | undefined, any>('eventa:invoke:electron:windows:widgets:add')
+          const invokeAddWidget = defineInvoke(context, widgetsAddEventa)
+          await invokeAddWidget({
+            id: w.id,
+            componentName: 'generative',
+            componentProps: {
+              id: w.id,
+              title: w.title,
+              path: w.path,
+              code: w.code,
+            },
+            size: 'm',
+            ttlMs: 0,
+          })
+        }
+        catch (err) {
+          console.warn('[SandboxManager] Failed to invoke widgetsAdd for breakout widget window:', err)
+        }
+      }
     }
   }
 
@@ -860,6 +885,7 @@ export class SandboxManager {
           const widgetsAddEventa = defineInvokeEventa<string | undefined, any>('eventa:invoke:electron:windows:widgets:add')
           const invokeAddWidget = defineInvoke(context, widgetsAddEventa)
           await invokeAddWidget({
+            id: widget.id,
             componentName: 'generative',
             componentProps: {
               id: widget.id,

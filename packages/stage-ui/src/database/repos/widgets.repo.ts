@@ -26,6 +26,11 @@ export const widgetsRepo = {
     return data || []
   },
 
+  async getWidget(idOrPath: string): Promise<PersistedWidget | undefined> {
+    const all = await this.getWidgets()
+    return all.find(w => w.id === idOrPath || w.path === idOrPath)
+  },
+
   async getMountedWidgets(): Promise<PersistedWidget[]> {
     const all = await this.getWidgets()
     return all.filter(w => w.isMounted)

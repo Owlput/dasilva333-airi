@@ -250,6 +250,12 @@ export async function buildWidgetIframeSrcdoc(
       }
     });
 
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'i')) {
+        window.parent.postMessage({ type: 'open-devtools' }, '*');
+      }
+    });
+
     const baseContext = {
       container: root,
       sidecar: sidecarData,

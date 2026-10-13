@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { buildWidgetIframeSrcdoc } from '@proj-airi/stage-ui/libs/sandbox'
 import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+
+import { electronOpenMainDevtools } from '../../../../shared/eventa'
 
 const props = withDefaults(defineProps<{
   id?: string
@@ -18,7 +21,8 @@ const props = withDefaults(defineProps<{
   code: '',
 })
 
-const { mountedWidgets, readFile } = useSandbox()
+const openDevTools = useElectronEventaInvoke(electronOpenMainDevtools)
+const { init, mountedWidgets, readFile } = useSandbox()
 
 const resolvedWidget = computed(() => {
   if (props.id) {
@@ -81,6 +85,11 @@ async function refresh() {
 }
 
 function handleIframeMessage(e: MessageEvent) {
+  if (e.data?.type === 'open-devtools') {
+    void openDevTools?.()
+    return
+  }
+
   if (e.data?.type === 'mcp-call') {
     const { id, name, args } = e.data
     const bridge = tryGetMcpToolBridge()
@@ -108,8 +117,9 @@ watch(() => [resolvedWidget.value.code, resolvedWidget.value.path], () => {
   void refresh()
 }, { immediate: true })
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('message', handleIframeMessage)
+  await init?.()
   void refresh()
 })
 
