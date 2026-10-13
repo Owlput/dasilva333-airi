@@ -110,6 +110,7 @@ watch(provider, async (prov) => {
     isManualModel.value = false
     return
   }
+  const currentSelectedModel = model.value
   isLoadingModels.value = true
   try {
     await consciousnessStore.loadModelsForProvider(prov)
@@ -120,6 +121,10 @@ watch(provider, async (prov) => {
       return nameA.localeCompare(nameB)
     })
     isManualModel.value = availableModels.value.length === 0
+    // Restore model if it was already selected
+    if (currentSelectedModel) {
+      model.value = currentSelectedModel
+    }
   }
   catch {
     availableModels.value = []
@@ -335,8 +340,15 @@ function handleSave() {
                     class="w-full appearance-none border border-neutral-700/80 rounded-xl bg-neutral-800/60 py-2 pl-8 pr-8 text-xs text-neutral-100 outline-none transition-all focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20"
                     :disabled="isLoadingModels"
                   >
-                    <option value="" disabled selected>
+                    <option v-if="!model" value="" disabled>
                       {{ isLoadingModels ? 'Loading models...' : 'Select a model' }}
+                    </option>
+                    <!-- If currently selected model is not in discovered list, preserve it as an option so it does not disappear -->
+                    <option
+                      v-if="model && !availableModels.some(m => m.id === model)"
+                      :value="model"
+                    >
+                      {{ model }} (Current)
                     </option>
                     <option v-for="m in availableModels" :key="m.id" :value="m.id">
                       {{ m.name || m.id.split('/').pop() || m.id }}
