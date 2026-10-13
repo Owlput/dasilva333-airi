@@ -136,50 +136,24 @@ export function resolvePersona(draft: OnboardingV3DraftState, userName: string):
     }
   }
 
-  const personaCardId = draft.personaCardId || 'default'
-
-  if (STARTER_CHARACTERS[personaCardId]) {
-    const p = getStarterCharacter(personaCardId)
-    const greetings = p.greetings.map(g => applyPronounsAndUser(g, userName, userGender))
-    const firstGreeting = greetings[0] || `Hello ${userName}! Everything is calibrated and ready to go. Let's step onto the stage together!`
-
-    const isKnownPreset = Object.values(STARTER_CHARACTERS).some(c => c.name === draft.companionName) || ['ReLU', 'Dr. Aria', 'Lupin', 'Airi'].includes(draft.companionName || '')
-    const nickname = (draft.companionName && !isKnownPreset) ? draft.companionName : p.name
-
-    return {
-      name: p.name,
-      nickname,
-      description: applyPronounsAndUser(p.description, userName, userGender),
-      personality: applyPronounsAndUser(p.personality, userName, userGender),
-      scenario: applyPronounsAndUser(p.scenario, userName, userGender),
-      systemPrompt: applyPronounsAndUser(p.systemPrompt, userName, userGender),
-      postHistoryInstructions: DEFAULT_POST_HISTORY_INSTRUCTIONS,
-      greetings,
-      messageExample: (p.messageExample || []).map(([uMsg, cMsg]) => [
-        applyPronounsAndUser(uMsg, userName, userGender),
-        applyPronounsAndUser(cMsg, userName, userGender),
-      ]) as [string, string][],
-      firstGreeting,
-    }
-  }
-
-  const d = STARTER_CHARACTERS.default
-  const greetings = d.greetings.map(g => applyPronounsAndUser(g, userName, userGender))
+  const personaCardId = draft.personaCardId || 'relu'
+  const p = getStarterCharacter(personaCardId)
+  const greetings = p.greetings.map(g => applyPronounsAndUser(g, userName, userGender))
   const firstGreeting = greetings[0] || `Hello ${userName}! Everything is calibrated and ready to go. Let's step onto the stage together!`
 
   const isKnownPreset = Object.values(STARTER_CHARACTERS).some(c => c.name === draft.companionName) || ['ReLU', 'Dr. Aria', 'Lupin', 'Airi'].includes(draft.companionName || '')
-  const nickname = (draft.companionName && !isKnownPreset) ? draft.companionName : d.name
+  const nickname = (draft.companionName && !isKnownPreset) ? draft.companionName : p.name
 
   return {
-    name: d.name,
+    name: p.name,
     nickname,
-    description: applyPronounsAndUser(d.description, userName, userGender),
-    personality: applyPronounsAndUser(d.personality, userName, userGender),
-    scenario: applyPronounsAndUser(d.scenario, userName, userGender),
-    systemPrompt: applyPronounsAndUser(d.systemPrompt, userName, userGender),
+    description: applyPronounsAndUser(p.description, userName, userGender),
+    personality: applyPronounsAndUser(p.personality, userName, userGender),
+    scenario: applyPronounsAndUser(p.scenario, userName, userGender),
+    systemPrompt: applyPronounsAndUser(p.systemPrompt, userName, userGender),
     postHistoryInstructions: DEFAULT_POST_HISTORY_INSTRUCTIONS,
     greetings,
-    messageExample: (d.messageExample || []).map(([uMsg, cMsg]) => [
+    messageExample: (p.messageExample || []).map(([uMsg, cMsg]) => [
       applyPronounsAndUser(uMsg, userName, userGender),
       applyPronounsAndUser(cMsg, userName, userGender),
     ]) as [string, string][],
@@ -593,8 +567,8 @@ export function compileCardPayload(
         .join('\n\n'),
       tags: [
         draft.experienceArchetype,
-        ...(STARTER_CHARACTERS[draft.personaCardId || 'default']?.tag
-          ? [STARTER_CHARACTERS[draft.personaCardId || 'default'].tag.toLowerCase()]
+        ...(STARTER_CHARACTERS[draft.personaCardId || 'relu']?.tag
+          ? [STARTER_CHARACTERS[draft.personaCardId || 'relu'].tag.toLowerCase()]
           : []),
       ].filter(Boolean),
       extensions: {

@@ -280,7 +280,7 @@ export const useOnboardingV3Draft = defineStore('onboarding-v3-draft', () => {
     mcpFilesystemEnabled: false,
     toolMotionGeneratorEnabled: false,
     artistryImageJournalToolEnabled: false,
-    personaCardId: 'default',
+    personaCardId: 'relu',
     personaSource: 'creator',
     sttProvider: 'whisper-local',
     sttModel: 'onnx-community/whisper-tiny',
@@ -314,7 +314,7 @@ export const useOnboardingV3Draft = defineStore('onboarding-v3-draft', () => {
     }
   }
   if (!state.value.personaCardId) {
-    state.value.personaCardId = 'default'
+    state.value.personaCardId = 'relu'
     state.value.personaSource = 'creator'
   }
   if (!state.value.sttProvider) {

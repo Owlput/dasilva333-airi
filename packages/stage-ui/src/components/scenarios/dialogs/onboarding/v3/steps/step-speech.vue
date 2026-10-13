@@ -10,7 +10,7 @@ import { parseActor } from '../../../../../../composables/queues'
 import { stripMarkers, stripPacingEnvelopes } from '../../../../../../composables/response-categoriser'
 import { useLocalVoiceClone } from '../../../../../../composables/use-local-voice-clone'
 import { useProcessSpawner } from '../../../../../../composables/use-process-spawner'
-import { getStarterCharacter, STARTER_CHARACTERS } from '../../../../../../constants/prompts/character-defaults'
+import { getStarterCharacter } from '../../../../../../constants/prompts/character-defaults'
 import { STARTER_VOICE_CATALOG } from '../../../../../../constants/voices/starter-voice-catalog'
 import { getKokoroAdapter } from '../../../../../../libs/inference/adapters/kokoro'
 import { useSpeechStore } from '../../../../../../stores/modules/speech'
@@ -770,7 +770,7 @@ watch(selectedProvider, async (providerId) => {
 
 // 4. Greeting Text Resolution
 const resolvedPersona = computed(() => {
-  const personaCardId = draftStore.state.personaCardId || 'default'
+  const personaCardId = draftStore.state.personaCardId || 'relu'
   const userName = draftStore.state.userName || userProfileStore.name || 'Richy'
 
   if (draftStore.state.importedCardDraft) {
@@ -791,20 +791,10 @@ const resolvedPersona = computed(() => {
     }
   }
 
-  if (STARTER_CHARACTERS[personaCardId]) {
-    const p = getStarterCharacter(personaCardId)
-    const substituted = (p.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
-    return {
-      name: p.name,
-      actorName: undefined,
-      greeting: stripPacingEnvelopes(stripMarkers(substituted)).trim(),
-    }
-  }
-
-  const d = STARTER_CHARACTERS.default
-  const substituted = (d.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
+  const p = getStarterCharacter(personaCardId)
+  const substituted = (p.greetings[0] || '').replace(USER_TOKEN_REGEX, userName)
   return {
-    name: d.name,
+    name: p.name,
     actorName: undefined,
     greeting: stripPacingEnvelopes(stripMarkers(substituted)).trim(),
   }
@@ -1119,7 +1109,7 @@ function handleContinue() {
       </div>
 
       <!-- Two-panel workspace -->
-      <div :class="['w-full max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-[minmax(0,42fr)_minmax(0,58fr)] gap-5 lg:gap-6 items-stretch']">
+      <div :class="['w-full max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-[minmax(0,50fr)_minmax(0,50fr)] gap-5 lg:gap-6 items-stretch']">
         <!-- Left panel: speech engine -->
         <div
           v-motion
@@ -1676,16 +1666,13 @@ function handleContinue() {
                 :key="provider.id"
                 type="button"
                 :class="[
-                  'p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer',
+                  'p-3 rounded-xl border text-center transition-all flex items-center justify-center cursor-pointer',
                   selectedProvider === provider.id
                     ? 'border-primary-500/80 bg-primary-500/10 text-primary-600 dark:text-primary-400 ring-1 ring-primary-500/30'
                     : 'border-neutral-200/60 dark:border-white/5 bg-white dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-white/20',
                 ]"
                 @click="selectedProvider = provider.id"
               >
-                <div :class="['w-7 h-7 rounded-lg bg-neutral-100 dark:bg-white/10 flex items-center justify-center text-sm flex-shrink-0']">
-                  <div :class="[provider.icon || 'i-solar:cloud-bold-duotone', 'w-4 h-4']" />
-                </div>
                 <span :class="['text-xs font-semibold truncate']">
                   {{ provider.name }}
                 </span>

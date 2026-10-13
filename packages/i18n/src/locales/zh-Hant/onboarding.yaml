@@ -2623,3 +2623,8 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+onboarding:
+  steps:
+    appearance:
+      languages:
+        th: 泰語

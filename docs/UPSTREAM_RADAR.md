@@ -20,6 +20,1324 @@
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-12] Upstream Delta: `749d915f..0df39eb9` (16 commits, 1186 files, 33 PR update(s))
+
+### 🎯 Executive Highlights
+Upstream pushed 16 commits (749d915f ➔ 0df39eb9) and recorded 33 PR updates (14 new, 8 lifecycle transitions, 11 active discussions).
+
+- **Core Voice Pipeline & Character Wake Words Landed (#2726, #2712, #2732, #2729, #2928)**: Coordinated voice pipeline overhaul by @nekomeowww. Merged character-owned wake words powered by Sherpa-ONNX KWS (keyword spotting), dedicated wake-word owner assignment in Hearing settings, Push-to-Talk triggers with global shortcut support, and browser audio test suites. Followed immediately by new PR #2928 adding an always-on voice inlay, end-of-speech judge, and reliability improvements.
+- **Home Assistant Device Exposure & Security Guardrails (#2903)**: Merged after 199 comments. Provides granular device/entity filtering (exposure.ts, presentation.ts, entity-tile.vue), preventing LLM tools from discovering or issuing commands to unapproved smart home devices.
+- **Documentation Monorepo Extraction (#2924)**: Upstream moved the VitePress documentation site to an external standalone repo (moeru-ai/airi-docs), stripping 977 files and ~42,000 LOC of docs from the core monorepo.
+- **Inference & UI Workspace Experiments (#2920, #2926, #1427)**: New PR #2920 adds OpenRouter transcription support to provider-inference; PR #2926 introduces a fullscreen workspace experiment with dual window modes in stage-tamagotchi. Legacy Tamagotchi dashboard PR #1427 was officially closed.
+- **Internationalization & Localization DX (#2929, #2930, #2904, #2923, #2914)**: Added Thai language support (#2929), suppressed non-English locale missing key warning spam (#2930), merged Anthropic provider pipe escape (#2904, already squatted in our fork), and refreshed automated translations.
+
+#### 💬 Discussion & Community Buzz
+- **#2903: feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches (+25 new comments, total 199)**: Intense discussions around IoT device filtering and user security consent, concluding in merge.
+- **#2904: fix(i18n): show the pipe in the Anthropic provider title (+26 new comments, total 57)**: Extended debate regarding vue-i18n choice delimiter parsing and table alignment in CI scripts before landing.
+- **#2920: feat(provider-inference): add OpenRouter transcription provider (26 comments)**: Fast-moving community discussion on expanding OpenRouter support to audio STT.
+- **#2918: ci(server): deploy a chosen branch to the dev environment (19 comments)**: Active devops collaboration around server deployment automation.
+- **#2729: feat(stage-ui): add Push to Talk on the voice pipeline (+8 new comments, total 19)**: Discussion on push-to-talk triggers, voice hold ergonomics, and shortcut recording.
+- **#2895: fix(auth): support confirmed account deletion with recent sign-in (+8 new comments, total 15)**: Review comments on session re-authentication prior to account purging.
+- **#2458: feat(stage): add character-owned Live2D controls (+3 new comments, total 68)**: Ongoing architectural review regarding Live2D parameter mappings.
+
+#### 🍒 Cherry-Pick Candidates (Worth Porting to dasilva333/airi)
+1. **PR #2920: feat(provider-inference): add OpenRouter transcription provider**: High value for packages/provider-inference. We heavily utilize OpenRouter for LLM dispatch; extending it to speech-to-text / transcription is an additive, clean port with zero architectural collision.
+2. **PR #2930: chore(i18n): warn only when English lacks a message**: Valuable developer-experience improvement in .github/scripts/check-locales.ts and i18n build steps to eliminate noisy warnings for non-English translation gaps.
+3. **PR #2929: feat(i18n): add Thai**: Clean additive localization package (packages/i18n/src/locales/th/).
+4. **Home Assistant Exposure & Presentation Logic from #2903**: The entity filtering models (packages/stage-ui/src/libs/home-assistant/exposure.ts, presentation.ts, and tools/home-assistant.ts) provide excellent security guardrails for smart homes. (Desktop UI components must be adapted to Control Strip rather than Tamagotchi pages).
+5. **PR #2911: fix(core-agent): preserve whitespace in streamed speech literals**: Already squatted in our fork on Oct 11 in packages/stage-ui/src/stores/chat.ts and proactivity.ts.
+6. **PR #2904: fix(i18n): show the pipe in the Anthropic provider title**: Already squatted in our fork on Oct 11 across all 10 locale files.
+
+#### ⚠️ Divergence / Collision Warnings
+- **controls-island modifications (#2726, #2729)**: Upstream continues modifying controls-island components (apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/). This fork permanently removed controls-island in favor of the decoupled ControlStrip and ControlStripHost. Reject all upstream controls-island patches.
+- **chat.ts collision (#2726)**: Upstream patched packages/stage-ui/src/stores/chat.ts to hardcode configure_wake_words directly into useChatStore. In our fork, chat.ts hosts the decoupled Eight Pillars memory pipeline and multi-actor staging (<|ACTOR|>). Never merge upstream's chat.ts directly; wake-word tools should be registered via our modular tool registry.
+- **Electron Desktop Shell & Global Shortcuts (#2729, #2903)**: Upstream added global shortcut services and voice inlays directly into apps/stage-tamagotchi/src/main/services/electron/global-shortcut.ts. In our fork, the desktop windowing model is strictly partitioned (windows/stage vs windows/main).
+- **Docs Monorepo Purge (#2924)**: Upstream deleted 977 files and 41,895 lines of documentation to spin off moeru-ai/airi-docs. Our fork maintains living documentation in docs/ (ADRs, memory lab, rosetta stone, radar). Never sync or port upstream docs deletions.
+- **Watched PRs Monitor Status**:
+  - **PR #2634 (Cortico persona daemon)**: Still Draft (1 comment). High Alert remains active. No maintainer buy-in recorded.
+  - **PR #2672 (Window-local character binding)**: Draft (48 comments). Monitor for shared CharacterCard component extractions.
+  - **PR #2541 (MCP tool plugins)**: Open (59 comments). Track author rebase against main.
+  - **PR #2290 (ASR over WebSocket)**: Open (59 comments). Track potential SSE transport rebase.
+  - **PR #2120 (Card editor overhaul)**: Open (41 comments). Track dirty-draft protection architecture.
+
+### 📋 Upstream Commits
+- `0df39eb9e1` chore(i18n): warn only when English lacks a message (#2930) [#2930](https://github.com/moeru-ai/airi/pull/2930) _(蓝莓🫐, 2026-10-12)_
+- `c23feeba91` feat(i18n): add Thai (#2929) [#2929](https://github.com/moeru-ai/airi/pull/2929) _(蓝莓🫐, 2026-10-12)_
+- `ca251577dc` fix(i18n): show the pipe in the Anthropic provider title (#2904) [#2904](https://github.com/moeru-ai/airi/pull/2904) _(凌莞~(=^▽^=), 2026-10-12)_
+- `8e0b5398b1` feat(stage-pages): split Hearing settings and choose wake word owners (#2732) [#2732](https://github.com/moeru-ai/airi/pull/2732) _(Neko, 2026-10-12)_
+- `c0528af817` chore(nix): update pnpmDeps hash (#2925) [#2925](https://github.com/moeru-ai/airi/pull/2925) _(Weathercold, 2026-10-12)_
+- `e9251fc356` chore(docs): move the documentation site to moeru-ai/airi-docs (#2924) [#2924](https://github.com/moeru-ai/airi/pull/2924) _(Neko, 2026-10-12)_
+- `27b41961e3` chore(i18n): update translations (#2923) [#2923](https://github.com/moeru-ai/airi/pull/2923) _(github-actions[bot], 2026-10-12)_
+- `70d0226ca8` chore(i18n): update translations (#2914) [#2914](https://github.com/moeru-ai/airi/pull/2914) _(github-actions[bot], 2026-10-12)_
+- `2507f32948` test(testing-audio): cover wake word detection (#2712) [#2712](https://github.com/moeru-ai/airi/pull/2712) _(Neko, 2026-10-12)_
+- `a4141f506c` chore(nix): update pnpmDeps hash (#2922) [#2922](https://github.com/moeru-ai/airi/pull/2922) _(Weathercold, 2026-10-11)_
+- `7341363cf9` chore(nix): update assets hash (#2921) [#2921](https://github.com/moeru-ai/airi/pull/2921) _(Weathercold, 2026-10-11)_
+- `ea5ceecc5f` feat(stage-ui): detect character wake words on the voice pipeline (#2726) [#2726](https://github.com/moeru-ai/airi/pull/2726) _(Neko, 2026-10-12)_
+- `4108c516c3` feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches (#2903) [#2903](https://github.com/moeru-ai/airi/pull/2903) _(凌莞~(=^▽^=), 2026-10-12)_
+- `ae07426892` feat(stage-ui): add Push to Talk on the voice pipeline (#2729) [#2729](https://github.com/moeru-ai/airi/pull/2729) _(Neko, 2026-10-12)_
+- `42d1510734` chore(nix): update pnpmDeps hash (#2919) [#2919](https://github.com/moeru-ai/airi/pull/2919) _(Weathercold, 2026-10-11)_
+- `2122d4b984` chore(deps): bump pinia-plugin-synced to 0.1.5 (#2917) [#2917](https://github.com/moeru-ai/airi/pull/2917) _(凌莞~(=^▽^=), 2026-10-11)_
+
+### 🔬 Subsystem Breakdown
+#### Documentation & Scaffolding (`⚪ ignore`) — 977 file(s) (+726/-41895)
+- `.agents/skills/agent-browser-electron/SKILL.md` *(+1/-1)*
+- `.github/CONTRIBUTING.md` *(+1/-11)*
+- `.github/scripts/check-locales.test.ts` *(+122/-1)*
+- `.github/scripts/check-locales.ts` *(+69/-2)*
+- `.github/workflows/ci.yml` *(+1/-1)*
+- `.github/workflows/deploy-cloudflare-workers-dev-server.yml` *(+0/-4)*
+- `.github/workflows/deploy-cloudflare-workers-preview-deploy.yml` *(+0/-4)*
+- `.github/workflows/deploy-cloudflare-workers.yml` *(+39/-4)*
+- `.github/workflows/sponsors-svg.yml` *(+3/-3)*
+- `README.md` *(+23/-25)*
+- `docs/.vitepress/assets/home-cover-2025-07-23.avif` *(+0/-0)*
+- `docs/.vitepress/assets/home-cover-2025-10-29-bg.avif` *(+0/-0)*
+- `docs/.vitepress/assets/home-cover-2025-10-29.avif` *(+0/-0)*
+- `docs/.vitepress/assets/home-cover-2025-12-24-bg.avif` *(+0/-0)*
+- `docs/.vitepress/assets/home-cover-2025-12-24.avif` *(+0/-0)*
+- `docs/.vitepress/assets/home-patterns-ghost.svg` *(+0/-6)*
+- `docs/.vitepress/assets/home-patterns-lollipop.svg` *(+0/-7)*
+- `docs/.vitepress/components/Banner.vue` *(+0/-37)*
+- `docs/.vitepress/components/BlogPosts.vue` *(+0/-287)*
+- `docs/.vitepress/components/Button.vue` *(+0/-106)*
+- `docs/.vitepress/components/CardLink.vue` *(+0/-36)*
+- `docs/.vitepress/components/Chip.vue` *(+0/-14)*
+- `docs/.vitepress/components/Chronicles.vue` *(+0/-3)*
+- `docs/.vitepress/components/Contributors.vue` *(+0/-57)*
+- `docs/.vitepress/components/DocCarbonAds.vue` *(+0/-82)*
+- `docs/.vitepress/components/DocCommunity.vue` *(+0/-49)*
+- `docs/.vitepress/components/DocFooter.vue` *(+0/-139)*
+- `docs/.vitepress/components/DocFooterLastUpdated.vue` *(+0/-33)*
+- `docs/.vitepress/components/DocOutline.vue` *(+0/-54)*
+- `docs/.vitepress/components/DocOutlineItem.vue` *(+0/-68)*
+- `docs/.vitepress/components/DocSidebar.vue` *(+0/-17)*
+- `docs/.vitepress/components/DocSidebarItem.vue` *(+0/-93)*
+- `docs/.vitepress/components/DocTopbar.vue` *(+0/-126)*
+- `docs/.vitepress/components/DropdownMenu.vue` *(+0/-75)*
+- `docs/.vitepress/components/Home.vue` *(+0/-223)*
+- `docs/.vitepress/components/HomeButton.vue` *(+0/-28)*
+- `docs/.vitepress/components/HomeButtonSet.vue` *(+0/-19)*
+- `docs/.vitepress/components/MotionToggle.vue` *(+0/-34)*
+- `docs/.vitepress/components/Navbar.vue` *(+0/-248)*
+- `docs/.vitepress/components/NavbarLanguage.vue` *(+0/-46)*
+- `docs/.vitepress/components/NavbarLanguageSubMenu.vue` *(+0/-69)*
+- `docs/.vitepress/components/ParallaxCover.vue` *(+0/-109)*
+- `docs/.vitepress/components/ParallaxCoverChristmas20251224.vue` *(+0/-93)*
+- `docs/.vitepress/components/ParallaxCoverHalloween20251029.vue` *(+0/-109)*
+- `docs/.vitepress/components/ReleaseDownloads.vue` *(+0/-147)*
+- `docs/.vitepress/components/ReleasesList.vue` *(+0/-177)*
+- `docs/.vitepress/components/SearchCommandBox.vue` *(+0/-233)*
+- `docs/.vitepress/components/SearchTrigger.vue` *(+0/-124)*
+- `docs/.vitepress/components/Snowfall.vue` *(+0/-156)*
+- `docs/.vitepress/components/Spinner.vue` *(+0/-10)*
+- `docs/.vitepress/components/ThemeToggle.vue` *(+0/-63)*
+- `docs/.vitepress/components/ThemedVideo.vue` *(+0/-107)*
+- `docs/.vitepress/composables/date.ts` *(+0/-17)*
+- `docs/.vitepress/composables/edit-link.ts` *(+0/-21)*
+- `docs/.vitepress/composables/outline.ts` *(+0/-268)*
+- `docs/.vitepress/composables/prev-next.ts` *(+0/-197)*
+- `docs/.vitepress/composables/sidebar.ts` *(+0/-300)*
+- `docs/.vitepress/composables/theme-color.ts` *(+0/-52)*
+- `docs/.vitepress/config.ts` *(+0/-1025)*
+- `docs/.vitepress/constants.ts` *(+0/-1)*
+- `docs/.vitepress/contributor-names.json` *(+0/-27)*
+- `docs/.vitepress/contributors.ts` *(+0/-52)*
+- `docs/.vitepress/custom/Docs.vue` *(+0/-246)*
+- `docs/.vitepress/custom/Layout.vue` *(+0/-85)*
+- `docs/.vitepress/custom/Showcase.vue` *(+0/-71)*
+- `docs/.vitepress/data/releases.data.ts` *(+0/-148)*
+- `docs/.vitepress/functions/all-documents.data.ts` *(+0/-45)*
+- `docs/.vitepress/functions/authors.data.ts` *(+0/-90)*
+- `docs/.vitepress/functions/blog.data.ts` *(+0/-139)*
+- `docs/.vitepress/functions/chronicles.data.ts` *(+0/-50)*
+- `docs/.vitepress/meta.ts` *(+0/-21)*
+- `docs/.vitepress/modules/openpanel.ts` *(+0/-23)*
+- `docs/.vitepress/plugins/vite-frontmatter-assets.ts` *(+0/-183)*
+- `docs/.vitepress/theme/config.ts` *(+0/-30)*
+- `docs/.vitepress/theme/custom-nixie.css` *(+0/-149)*
+- `docs/.vitepress/theme/index.ts` *(+0/-41)*
+- `docs/.vitepress/theme/style.css` *(+0/-184)*
+- `docs/.vitepress/theme/theme-details-animated-with-input.css` *(+0/-74)*
+- `docs/.vitepress/theme/theme-kbd.css` *(+0/-126)*
+- `docs/.vitepress/theme/theme-markdown.css` *(+0/-53)*
+- `docs/.vitepress/theme/theme-media.css` *(+0/-37)*
+- `docs/.vitepress/theme/theme-vitepress.css` *(+0/-185)*
+- `docs/.vitepress/utils/cache.ts` *(+0/-39)*
+- `docs/.vitepress/utils/flatten.ts` *(+0/-8)*
+- `docs/.vitepress/utils/utils.ts` *(+0/-16)*
+- `docs/README.fr.md` *(+23/-25)*
+- `docs/README.ja-JP.md` *(+23/-25)*
+- `docs/README.ko-KR.md` *(+23/-25)*
+- `docs/README.ru-RU.md` *(+23/-25)*
+- `docs/README.vi.md` *(+23/-25)*
+- `docs/README.zh-CN.md` *(+23/-25)*
+- `docs/ai/adr/2026-09-22-sherpaw-model-assets.md` *(+15/-1)*
+- `docs/ai/adr/2026-10-06-home-assistant-integration.md` *(+124/-2)*
+- `docs/ai/adr/2026-10-09-detect-wake-words-in-shared-audio.md` *(+55/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.dark.ja-JP.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.dark.kr-KR.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.dark.ru-RU.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.light.ja-JP.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.light.kr-KR.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.light.ru-RU.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/QR code button/section.cards.qrcode.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => assets}/banner-dark-1280x640.avif` *(+0/-0)*
+- `docs/{content/public => assets}/banner-light-1280x640.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.browser.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.browser.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.browser.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.browser.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.linux.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.linux.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.linux.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.linux.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.macos.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.macos.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.macos.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.macos.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.mobile.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.mobile.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.mobile.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.mobile.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.windows.dark.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.windows.dark.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.windows.light.en-US.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/download-buttons/download-buttons.windows.light.zh-Hans.avif` *(+0/-0)*
+- `docs/{content/public => }/assets/sponsors/kofi-supporters.json` *(+1/-1)*
+- `docs/{content/public => }/assets/sponsors/sponsors.json` *(+0/-0)*
+- `docs/{content/public => }/assets/sponsors/sponsors.svg` *(+0/-0)*
+- `docs/{content/public => assets}/wechat-qr.avif` *(+0/-0)*
+- `docs/content/en/about/privacy.md` *(+0/-80)*
+- `docs/content/en/about/terms.md` *(+0/-42)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-build-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-build-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logo-v2-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logo-v2.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-final.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-v1.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-v2.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-v3.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-v4.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/airi-logos-v5.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/animation-transitions.gif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/assets/customizable-theme-colors.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.05/index.md` *(+0/-110)*
+- `docs/content/en/blog/DevLog-2025.03.06/assets/animation-transitions.gif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.06/assets/live-stream-layout-update.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.06/index.md` *(+0/-98)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/customizable-theme-colors.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/new-ui-v1-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/new-ui-v1.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/new-ui-v2.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/new-ui-v3-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/assets/new-ui-v3.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.10/index.md` *(+0/-117)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/airi-demo.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/ashley-pitch-test.mp3` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/elevenlabs-api-key.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/elevenlabs.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/histoire-color-slider-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/histoire-color-slider.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/histoire-first-look.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/histoire-logo-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/histoire-logo.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/modules-i18n.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/new-ui-v4-speech-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/new-ui-v4-speech.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/settings-i18n.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/steins-gate-gelnana-from-elpsycongrooblog.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/assets/steins-gate-mayori.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.03.20/index.md` *(+0/-189)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/awesome-ai-vtuber-logo-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/character-card-detail.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/character-card.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/memory-decay.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/memory-retrieval.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/more-theme-colors.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/assets/relu-sticker-wow.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.06/index.md` *(+0/-467)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-controler.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-decay.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-driver.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-emotional-model.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-emotional-score.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-emotional-simulator.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/memory-retrieval.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/review-1.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/assets/review-2.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.14/index.md` *(+0/-235)*
+- `docs/content/en/blog/DevLog-2025.04.22/assets/cursor-open-settings.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.22/assets/develop-with-cursor.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.22/index.md` *(+0/-71)*
+- `docs/content/en/blog/DevLog-2025.04.28/assets/airi-mcp-arch.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.28/assets/airi-mcp-input-text.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.28/assets/airi-mcp-settings.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.04.28/index.md` *(+0/-187)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-menu-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-menu-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-settings-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-settings-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-showcase-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/character-card-showcase-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-1.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-2.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-3.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/velin-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/velin-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/velin-playground-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/velin-playground-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/assets/webai-examples-demo.MP4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.05.16/index.md` *(+0/-318)*
+- `docs/content/en/blog/DevLog-2025.06.08/assets/250608-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.06.08/assets/250608-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.06.08/assets/airi-tamagotchi-focus.gif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.06.08/assets/screen.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.06.08/index.md` *(+0/-110)*
+- `docs/content/en/blog/DevLog-2025.07.18/assets/factorio-belt.gif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.07.18/assets/structure-after.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.07.18/assets/structure-before.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.07.18/index.md` *(+0/-85)*
+- `docs/content/en/blog/DevLog-2025.08.01/CharacterMatcher.vue` *(+0/-223)*
+- `docs/content/en/blog/DevLog-2025.08.01/CharacterShowcase.vue` *(+0/-40)*
+- `docs/content/en/blog/DevLog-2025.08.01/GraphemeClusterAssembler.vue` *(+0/-34)*
+- `docs/content/en/blog/DevLog-2025.08.01/GraphemeClusterInspector.vue` *(+0/-107)*
+- `docs/content/en/blog/DevLog-2025.08.01/RollingText.vue` *(+0/-60)*
+- `docs/content/en/blog/DevLog-2025.08.01/assets/animated-chat-bubble.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.01/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.01/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.01/index.md` *(+0/-152)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-clustr-dark.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-clustr-light.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-fade-on-hover.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-move.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-dark.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-light.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-mobile-dark.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-mobile-light.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-quick-editor-mobile-dark.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-quick-editor-mobile-light.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-resize.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-resource-island.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-settings-hearing.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-vrm-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-demo-vrm-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-docs-blogs-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-docs-blogs-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-docs-dark.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-docs-light.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-packages-i18n-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-packages-i18n-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-ui-level-meter-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-ui-level-meter-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-ui-time-series-chart-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-ui-time-series-chart-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/airi-vrm.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/assets/relu-sticker-thinks.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.05/index.md` *(+0/-594)*
+- `docs/content/en/blog/DevLog-2025.08.26/assets/airi-factorio-yolo-v0-playground-vnc.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.26/assets/factorio-ultralytics-hub-preview.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.08.26/components/nms-iou.vue` *(+0/-203)*
+- `docs/content/en/blog/DevLog-2025.08.26/index.md` *(+0/-198)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/airi.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/control-island.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/electron.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/moeru.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/project-airi.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/rust-tts.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/three-mmd.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/assets/velin.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2025.10.20/index.md` *(+0/-97)*
+- `docs/content/en/blog/DevLog-2026.01.01/assets/airi-notification-capability.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.01.01/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.01.01/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.01.01/assets/flow-chat-basic-memory.mp4` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.01.01/assets/helldiver-laughing.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.01.01/index.md` *(+0/-132)*
+- `docs/content/en/blog/DevLog-2026.02.16/assets/add-button-to-menu.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.02.16/assets/some-collected-data.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.02.16/index.md` *(+0/-86)*
+- `docs/content/en/blog/DevLog-2026.03.14/assets/ThreeScene-after.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.14/assets/ThreeScene-before.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.14/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.14/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.14/index.md` *(+0/-316)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Live2D-android-renderer.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Live2D-threejs.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Live2D-webgl.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Screenshot-AIRI-Live2D.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Screenshot-AIRI-VRM.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Unity-android-export.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/Unity-web-export.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/VRM-airi.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/VRM-android-renderer.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/VRM-webgl.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DevLog-2026.03.23/index.md` *(+0/-263)*
+- `docs/content/en/blog/DreamLog-0x1/assets/airi-demo-first-day.mp4` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/airis-screenshot-1.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/banner-dark-1280x640.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/banner-light-1280x640.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/building-a-virtual-machine-inside-image-1.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/dreamlog1-dark.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/dreamlog1-light.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/emosys-logo.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/live2d-inc-hiyori.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/relu-sticker-wow.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/assets/steins-gate-sticker-1.avif` *(+0/-0)*
+- `docs/content/en/blog/DreamLog-0x1/index.md` *(+0/-513)*
+- `docs/content/en/blog/happy-halloween-2025/assets/halloween-airi.avif` *(+0/-0)*
+- `docs/content/en/blog/happy-halloween-2025/index.md` *(+0/-15)*
+- `docs/content/en/blog/index.md` *(+0/-12)*
+- `docs/content/en/blog/merry-christmas-2025/assets/merry-christmas-iru.avif` *(+0/-0)*
+- `docs/content/en/blog/merry-christmas-2025/assets/neuro-sama-happy-birthday-live.avif` *(+0/-0)*
+- `docs/content/en/blog/merry-christmas-2025/index.md` *(+0/-50)*
+- `docs/content/en/docs/chronicles/version-v0.0.1/index.md` *(+0/-505)*
+- `docs/content/en/docs/chronicles/version-v0.1.0/index.md` *(+0/-78)*
+- `docs/content/en/docs/contributing/design-guidelines/index.md` *(+0/-13)*
+- `docs/content/en/docs/contributing/design-guidelines/resources.md` *(+0/-21)*
+- `docs/content/en/docs/contributing/design-guidelines/tools.md` *(+0/-29)*
+- `docs/content/en/docs/contributing/desktop-developer-tools.md` *(+0/-142)*
+- `docs/content/en/docs/contributing/docs.md` *(+0/-27)*
+- `docs/content/en/docs/contributing/index.md` *(+0/-191)*
+- `docs/content/en/docs/contributing/tamagotchi.md` *(+0/-29)*
+- `docs/content/en/docs/contributing/webui.md` *(+0/-31)*
+- `docs/content/en/docs/integrations/discord.md` *(+0/-64)*
+- `docs/content/en/docs/integrations/factorio.md` *(+0/-30)*
+- `docs/content/en/docs/integrations/minecraft.md` *(+0/-71)*
+- `docs/content/en/docs/integrations/satori.md` *(+0/-34)*
+- `docs/content/en/docs/integrations/telegram.md` *(+0/-52)*
+- `docs/content/en/docs/integrations/x.md` *(+0/-26)*
+- `docs/content/en/docs/manual/config/audio.md` *(+0/-41)*
+- `docs/content/en/docs/manual/config/common.md` *(+0/-45)*
+- `docs/content/en/docs/manual/config/index.md` *(+0/-56)*
+- `docs/content/en/docs/manual/config/llm.md` *(+0/-46)*
+- `docs/content/en/docs/manual/config/providers/artistry/comfyui.md` *(+0/-42)*
+- `docs/content/en/docs/manual/config/providers/artistry/nanobanana.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/artistry/replicate.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/consciousness/302ai.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/aihubmix.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/amazon-bedrock.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/anthropic.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/consciousness/atlascloud.md` *(+0/-35)*
+- `docs/content/en/docs/manual/config/providers/consciousness/azure-ai-foundry.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/azure-openai.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/byteplus-coding-plan.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/byteplus.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/cerebras.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/cloudflare-workers-ai.md` *(+0/-35)*
+- `docs/content/en/docs/manual/config/providers/consciousness/comet-api.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/deepseek.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/featherless.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/fireworks.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/google-gemini.md` *(+0/-35)*
+- `docs/content/en/docs/manual/config/providers/consciousness/groq.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/lm-studio.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/consciousness/mimo.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/minimax-global.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/consciousness/minimax.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/mistral.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/modelscope.md` *(+0/-31)*
+- `docs/content/en/docs/manual/config/providers/consciousness/moonshot.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/n1n.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/novita.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/nvidia.md` *(+0/-40)*
+- `docs/content/en/docs/manual/config/providers/consciousness/official.md` *(+0/-45)*
+- `docs/content/en/docs/manual/config/providers/consciousness/ollama.md` *(+0/-48)*
+- `docs/content/en/docs/manual/config/providers/consciousness/openai.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/openpaths.md` *(+0/-35)*
+- `docs/content/en/docs/manual/config/providers/consciousness/openrouter.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/consciousness/perplexity.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/together.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/consciousness/volcengine-coding-plan.md` *(+0/-32)*
+- `docs/content/en/docs/manual/config/providers/consciousness/xai.md` *(+0/-35)*
+- `docs/content/en/docs/manual/config/providers/consciousness/zhipu.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/speech/alibaba-cloud-model-studio.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/speech/azure-speech.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/speech/browser-local.md` *(+0/-14)*
+- `docs/content/en/docs/manual/config/providers/speech/comet-api.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/speech/deepgram.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/speech/desktop-local.md` *(+0/-14)*
+- `docs/content/en/docs/manual/config/providers/speech/elevenlabs.md` *(+0/-39)*
+- `docs/content/en/docs/manual/config/providers/speech/google-gemini.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/speech/index-tts.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/speech/kokoro.md` *(+0/-34)*
+- `docs/content/en/docs/manual/config/providers/speech/mimo.md` *(+0/-43)*
+- `docs/content/en/docs/manual/config/providers/speech/minimax.md` *(+0/-14)*
+- `docs/content/en/docs/manual/config/providers/speech/official.md` *(+0/-39)*
+- `docs/content/en/docs/manual/config/providers/speech/openai.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/speech/openrouter.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/speech/player2.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/speech/volcengine.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/transcription/aliyun.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/transcription/browser-local.md` *(+0/-14)*
+- `docs/content/en/docs/manual/config/providers/transcription/comet-api.md` *(+0/-38)*
+- `docs/content/en/docs/manual/config/providers/transcription/desktop-local.md` *(+0/-14)*
+- `docs/content/en/docs/manual/config/providers/transcription/mimo.md` *(+0/-37)*
+- `docs/content/en/docs/manual/config/providers/transcription/official.md` *(+0/-34)*
+- `docs/content/en/docs/manual/config/providers/transcription/openai.md` *(+0/-36)*
+- `docs/content/en/docs/manual/config/providers/transcription/web-speech-api.md` *(+0/-34)*
+- `docs/content/en/docs/manual/config/vision.md` *(+0/-58)*
+- `docs/content/en/docs/manual/config/web-search.md` *(+0/-59)*
+- `docs/content/en/docs/manual/tamagotchi/character-card-template.md` *(+0/-66)*
+- `docs/content/en/docs/manual/tamagotchi/index.md` *(+0/-104)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-airi-card.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-chat-window.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-consciousness.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-controls-island-expanded.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-data-settings.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-beat-sync.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-context-flow.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-displays.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-plugin-host.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-relative-mouse.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-screen-capture.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-use-window-mouse.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-vision-capture.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-websocket-inspector.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-widgets-calling.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-hearing.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-main-web.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-main-window.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-models.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-modules.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-providers.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-settings-window.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-speech.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-system-color-scheme.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-system-developer.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-system-general.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-vision.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/manual-websocket-settings.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/assets/web-position-size.avif` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/image-16.png` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/image-7.png` *(+0/-0)*
+- `docs/content/en/docs/manual/tamagotchi/setup-and-use/index.md` *(+0/-651)*
+- `docs/content/en/docs/manual/web/index.md` *(+0/-57)*
+- `docs/content/en/docs/overview/about-ai-vtuber.md` *(+0/-7)*
+- `docs/content/en/docs/overview/about-neuro-sama.md` *(+0/-24)*
+- `docs/content/en/docs/overview/index.md` *(+0/-98)*
+- `docs/content/en/docs/overview/other-similar-projects.md` *(+0/-5)*
+- `docs/content/en/docs/overview/versions.md` *(+0/-33)*
+- `docs/content/en/index.md` *(+0/-5)*
+- `docs/content/en/references/research/gaming/minecraft.md` *(+0/-5)*
+- `docs/content/en/references/research/lipsync.md` *(+0/-28)*
+- `docs/content/en/references/research/live2d-recording-curve-fitting.md` *(+0/-177)*
+- `docs/content/en/references/research/mocap.md` *(+0/-11)*
+- `docs/content/en/references/research/text-to-motion.md` *(+0/-24)*
+- `docs/content/en/references/research/tts.md` *(+0/-3)*
+- `docs/content/ja/about/privacy.md` *(+0/-83)*
+- `docs/content/ja/about/terms.md` *(+0/-42)*
+- `docs/content/ja/blog/DevLog-2025.03.05/index.md` *(+0/-97)*
+- `docs/content/ja/blog/DevLog-2025.03.06/index.md` *(+0/-59)*
+- `docs/content/ja/blog/DevLog-2025.03.10/index.md` *(+0/-85)*
+- `docs/content/ja/blog/DevLog-2025.03.20/index.md` *(+0/-154)*
+- `docs/content/ja/blog/DevLog-2025.04.06/index.md` *(+0/-522)*
+- `docs/content/ja/blog/DevLog-2025.04.14/index.md` *(+0/-235)*
+- `docs/content/ja/blog/DevLog-2025.04.22/index.md` *(+0/-71)*
+- `docs/content/ja/blog/DevLog-2025.04.28/index.md` *(+0/-187)*
+- `docs/content/ja/blog/DevLog-2025.05.16/index.md` *(+0/-246)*
+- `docs/content/ja/blog/DevLog-2025.06.08/index.md` *(+0/-86)*
+- `docs/content/ja/blog/DevLog-2025.07.18/index.md` *(+0/-85)*
+- `docs/content/ja/blog/DevLog-2025.08.01/index.md` *(+0/-152)*
+- `docs/content/ja/blog/DevLog-2025.08.05/index.md` *(+0/-541)*
+- `docs/content/ja/blog/DevLog-2025.08.26/index.md` *(+0/-199)*
+- `docs/content/ja/blog/Devlog-2025.10.20/index.md` *(+0/-95)*
+- `docs/content/ja/blog/DreamLog-0x1/index.md` *(+0/-426)*
+- `docs/content/ja/blog/happy-halloween-2025/index.md` *(+0/-15)*
+- `docs/content/ja/blog/index.md` *(+0/-12)*
+- `docs/content/ja/blog/merry-christmas-2025/index.md` *(+0/-44)*
+- `docs/content/ja/docs/chronicles/version-v0.0.1/index.md` *(+0/-200)*
+- `docs/content/ja/docs/chronicles/version-v0.1.0/index.md` *(+0/-78)*
+- `docs/content/ja/docs/contributing/design-guidelines/index.md` *(+0/-13)*
+- `docs/content/ja/docs/contributing/design-guidelines/resources.md` *(+0/-21)*
+- `docs/content/ja/docs/contributing/design-guidelines/tools.md` *(+0/-29)*
+- `docs/content/ja/docs/contributing/docs.md` *(+0/-20)*
+- `docs/content/ja/docs/contributing/index.md` *(+0/-222)*
+- `docs/content/ja/docs/contributing/services/discord.md` *(+0/-34)*
+- `docs/content/ja/docs/contributing/services/minecraft.md` *(+0/-36)*
+- `docs/content/ja/docs/contributing/services/satori.md` *(+0/-34)*
+- `docs/content/ja/docs/contributing/services/telegram.md` *(+0/-44)*
+- `docs/content/ja/docs/contributing/tamagotchi.md` *(+0/-20)*
+- `docs/content/ja/docs/contributing/webui.md` *(+0/-20)*
+- `docs/content/ja/docs/manual/config/index.md` *(+0/-41)*
+- `docs/content/ja/docs/manual/tamagotchi/character-card-template.md` *(+0/-39)*
+- `docs/content/ja/docs/manual/tamagotchi/index.md` *(+0/-104)*
+- `docs/content/ja/docs/manual/web/index.md` *(+0/-10)*
+- `docs/content/ja/docs/overview/about-ai-vtuber.md` *(+0/-7)*
+- `docs/content/ja/docs/overview/about-neuro-sama.md` *(+0/-24)*
+- `docs/content/ja/docs/overview/index.md` *(+0/-91)*
+- `docs/content/ja/docs/overview/other-similar-projects.md` *(+0/-5)*
+- `docs/content/ja/docs/overview/versions.md` *(+0/-33)*
+- `docs/content/ja/index.md` *(+0/-5)*
+- `docs/content/ko/about/privacy.md` *(+0/-85)*
+- `docs/content/ko/about/terms.md` *(+0/-42)*
+- `docs/content/ko/blog/DevLog-2025.03.05/index.md` *(+0/-101)*
+- `docs/content/ko/blog/DevLog-2025.03.06/index.md` *(+0/-81)*
+- `docs/content/ko/blog/DevLog-2025.03.10/index.md` *(+0/-110)*
+- `docs/content/ko/blog/DevLog-2025.03.20/index.md` *(+0/-177)*
+- `docs/content/ko/blog/DevLog-2025.04.06/index.md` *(+0/-449)*
+- `docs/content/ko/blog/DevLog-2025.04.14/index.md` *(+0/-235)*
+- `docs/content/ko/blog/DevLog-2025.04.22/index.md` *(+0/-75)*
+- `docs/content/ko/blog/DevLog-2025.04.28/index.md` *(+0/-189)*
+- `docs/content/ko/blog/DevLog-2025.05.16/index.md` *(+0/-290)*
+- `docs/content/ko/blog/DevLog-2025.06.08/index.md` *(+0/-86)*
+- `docs/content/ko/blog/DevLog-2025.07.18/index.md` *(+0/-85)*
+- `docs/content/ko/blog/DevLog-2025.08.01/index.md` *(+0/-174)*
+- `docs/content/ko/blog/DevLog-2025.08.05/index.md` *(+0/-541)*
+- `docs/content/ko/blog/DevLog-2025.08.26/index.md` *(+0/-199)*
+- `docs/content/ko/blog/DevLog-2025.10.20/index.md` *(+0/-97)*
+- `docs/content/ko/blog/DevLog-2026.01.01/index.md` *(+0/-132)*
+- `docs/content/ko/blog/DevLog-2026.02.16/index.md` *(+0/-86)*
+- `docs/content/ko/blog/DevLog-2026.03.14/index.md` *(+0/-316)*
+- `docs/content/ko/blog/DevLog-2026.03.23/index.md` *(+0/-263)*
+- `docs/content/ko/blog/DreamLog-0x1/index.md` *(+0/-439)*
+- `docs/content/ko/blog/happy-halloween-2025/index.md` *(+0/-15)*
+- `docs/content/ko/blog/index.md` *(+0/-12)*
+- `docs/content/ko/blog/merry-christmas-2025/index.md` *(+0/-44)*
+- `docs/content/ko/docs/chronicles/version-v0.0.1/index.md` *(+0/-505)*
+- `docs/content/ko/docs/chronicles/version-v0.1.0/index.md` *(+0/-78)*
+- `docs/content/ko/docs/contributing/design-guidelines/index.md` *(+0/-13)*
+- `docs/content/ko/docs/contributing/design-guidelines/resources.md` *(+0/-21)*
+- `docs/content/ko/docs/contributing/design-guidelines/tools.md` *(+0/-29)*
+- `docs/content/ko/docs/contributing/desktop-developer-tools.md` *(+0/-142)*
+- `docs/content/ko/docs/contributing/docs.md` *(+0/-27)*
+- `docs/content/ko/docs/contributing/index.md` *(+0/-191)*
+- `docs/content/ko/docs/contributing/tamagotchi.md` *(+0/-29)*
+- `docs/content/ko/docs/contributing/webui.md` *(+0/-31)*
+- `docs/content/ko/docs/integrations/discord.md` *(+0/-64)*
+- `docs/content/ko/docs/integrations/factorio.md` *(+0/-30)*
+- `docs/content/ko/docs/integrations/minecraft.md` *(+0/-46)*
+- `docs/content/ko/docs/integrations/satori.md` *(+0/-34)*
+- `docs/content/ko/docs/integrations/telegram.md` *(+0/-52)*
+- `docs/content/ko/docs/integrations/x.md` *(+0/-26)*
+- `docs/content/ko/docs/manual/config/audio.md` *(+0/-41)*
+- `docs/content/ko/docs/manual/config/common.md` *(+0/-45)*
+- `docs/content/ko/docs/manual/config/index.md` *(+0/-56)*
+- `docs/content/ko/docs/manual/config/llm.md` *(+0/-46)*
+- `docs/content/ko/docs/manual/config/providers/artistry/comfyui.md` *(+0/-42)*
+- `docs/content/ko/docs/manual/config/providers/artistry/nanobanana.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/artistry/replicate.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/302ai.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/aihubmix.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/amazon-bedrock.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/anthropic.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/atlascloud.md` *(+0/-35)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/azure-ai-foundry.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/azure-openai.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/byteplus-coding-plan.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/byteplus.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/cerebras.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/cloudflare-workers-ai.md` *(+0/-35)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/comet-api.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/deepseek.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/featherless.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/fireworks.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/google-gemini.md` *(+0/-35)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/groq.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/lm-studio.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/mimo.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/minimax-global.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/minimax.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/mistral.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/modelscope.md` *(+0/-31)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/moonshot.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/n1n.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/novita.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/nvidia.md` *(+0/-40)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/official.md` *(+0/-45)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/ollama.md` *(+0/-48)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/openai.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/openpaths.md` *(+0/-35)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/openrouter.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/perplexity.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/together.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/volcengine-coding-plan.md` *(+0/-32)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/xai.md` *(+0/-35)*
+- `docs/content/ko/docs/manual/config/providers/consciousness/zhipu.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/speech/alibaba-cloud-model-studio.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/speech/azure-speech.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/speech/browser-local.md` *(+0/-14)*
+- `docs/content/ko/docs/manual/config/providers/speech/comet-api.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/speech/deepgram.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/speech/desktop-local.md` *(+0/-14)*
+- `docs/content/ko/docs/manual/config/providers/speech/elevenlabs.md` *(+0/-39)*
+- `docs/content/ko/docs/manual/config/providers/speech/google-gemini.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/speech/index-tts.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/speech/kokoro.md` *(+0/-34)*
+- `docs/content/ko/docs/manual/config/providers/speech/mimo.md` *(+0/-43)*
+- `docs/content/ko/docs/manual/config/providers/speech/minimax.md` *(+0/-14)*
+- `docs/content/ko/docs/manual/config/providers/speech/official.md` *(+0/-39)*
+- `docs/content/ko/docs/manual/config/providers/speech/openai.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/speech/openrouter.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/speech/player2.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/speech/volcengine.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/transcription/aliyun.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/transcription/browser-local.md` *(+0/-14)*
+- `docs/content/ko/docs/manual/config/providers/transcription/comet-api.md` *(+0/-38)*
+- `docs/content/ko/docs/manual/config/providers/transcription/desktop-local.md` *(+0/-14)*
+- `docs/content/ko/docs/manual/config/providers/transcription/mimo.md` *(+0/-37)*
+- `docs/content/ko/docs/manual/config/providers/transcription/official.md` *(+0/-34)*
+- `docs/content/ko/docs/manual/config/providers/transcription/openai.md` *(+0/-36)*
+- `docs/content/ko/docs/manual/config/providers/transcription/web-speech-api.md` *(+0/-34)*
+- `docs/content/ko/docs/manual/config/vision.md` *(+0/-58)*
+- `docs/content/ko/docs/manual/config/web-search.md` *(+0/-59)*
+- `docs/content/ko/docs/manual/tamagotchi/character-card-template.md` *(+0/-66)*
+- `docs/content/ko/docs/manual/tamagotchi/index.md` *(+0/-104)*
+- `docs/content/ko/docs/manual/tamagotchi/setup-and-use/index.md` *(+0/-651)*
+- `docs/content/ko/docs/manual/web/index.md` *(+0/-57)*
+- `docs/content/ko/docs/overview/about-ai-vtuber.md` *(+0/-7)*
+- `docs/content/ko/docs/overview/about-neuro-sama.md` *(+0/-24)*
+- `docs/content/ko/docs/overview/index.md` *(+0/-94)*
+- `docs/content/ko/docs/overview/other-similar-projects.md` *(+0/-5)*
+- `docs/content/ko/docs/overview/versions.md` *(+0/-33)*
+- `docs/content/ko/index.md` *(+0/-5)*
+- `docs/content/ko/references/research/gaming/minecraft.md` *(+0/-5)*
+- `docs/content/ko/references/research/lipsync.md` *(+0/-28)*
+- `docs/content/ko/references/research/live2d-recording-curve-fitting.md` *(+0/-177)*
+- `docs/content/ko/references/research/mocap.md` *(+0/-11)*
+- `docs/content/ko/references/research/text-to-motion.md` *(+0/-24)*
+- `docs/content/ko/references/research/tts.md` *(+0/-3)*
+- `docs/content/privacy.md` *(+0/-80)*
+- `docs/content/public/_redirects` *(+0/-16)*
+- `docs/content/public/app-dark.svg` *(+0/-42)*
+- `docs/content/public/app-light.svg` *(+0/-42)*
+- `docs/content/public/assets/screenshot-api-example.avif` *(+0/-0)*
+- `docs/content/public/assets/screenshot-chat.avif` *(+0/-0)*
+- `docs/content/public/assets/screenshot-system-tray.avif` *(+0/-0)*
+- `docs/content/public/assets/screenshot-ui.avif` *(+0/-0)*
+- `docs/content/public/assets/screenshot-window-mode.avif` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-disable-fade-on-hover.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-fade-on-hover.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-move.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-open-chat.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-open-settings-poster.avif` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-open-settings.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-resize.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-basic-setup-providers.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-demo-browsing-crunchy-roll.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-demo-browsing-steam.mp4` *(+0/-0)*
+- `docs/content/public/assets/tutorial-settings-change-model-poster.avif` *(+0/-0)*
+- `docs/content/public/assets/tutorial-settings-change-model.mp4` *(+0/-0)*
+- `docs/content/public/assets/version-v0.0.1/screenshot-1.avif` *(+0/-0)*
+- `docs/content/public/assets/version-v0.0.1/screenshot-2.avif` *(+0/-0)*
+- `docs/content/public/assets/version-v0.0.1/screenshot-3.avif` *(+0/-0)*
+- `docs/content/public/banner-dark.avif` *(+0/-0)*
+- `docs/content/public/banner-light.avif` *(+0/-0)*
+- `docs/content/public/bekuto3d-dark.svg` *(+0/-26)*
+- `docs/content/public/bekuto3d-light.svg` *(+0/-26)*
+- `docs/content/public/favicon.svg` *(+0/-61)*
+- `docs/content/public/fonts/GeistMono[wght].ttf` *(+0/-0)*
+- `docs/content/public/fonts/Geist[wght].ttf` *(+0/-0)*
+- `docs/content/public/logo-dark.avif` *(+0/-0)*
+- `docs/content/public/logo-light.avif` *(+0/-0)*
+- `docs/content/public/maskable_icon_x192.avif` *(+0/-0)*
+- `docs/content/public/maskable_icon_x512.avif` *(+0/-0)*
+- `docs/content/public/new-bg-halloween.avif` *(+0/-0)*
+- `docs/content/public/new-bg.avif` *(+0/-0)*
+- `docs/content/public/open-graph.png` *(+0/-0)*
+- `docs/content/public/web-app-manifest-192x192.avif` *(+0/-0)*
+- `docs/content/public/web-app-manifest-512x512.avif` *(+0/-0)*
+- `docs/content/terms-of-use.md` *(+0/-39)*
+- `docs/content/zh-Hans/about/privacy.md` *(+0/-83)*
+- `docs/content/zh-Hans/about/terms.md` *(+0/-42)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-build-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-build-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logo-v2-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logo-v2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-final.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-v1.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-v2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-v3.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-v4.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/airi-logos-v5.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/animation-transitions.gif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/assets/customizable-theme-colors.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.05/index.md` *(+0/-97)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.06/assets/animation-transitions.gif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.06/assets/live-stream-layout-update.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.06/index.md` *(+0/-59)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/customizable-theme-colors.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/new-ui-v1-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/new-ui-v1.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/new-ui-v2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/new-ui-v3-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/assets/new-ui-v3.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.10/index.md` *(+0/-85)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/airi-demo.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/ashley-pitch-test.mp3` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/elevenlabs-api-key.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/elevenlabs.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/histoire-color-slider-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/histoire-color-slider.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/histoire-first-look.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/histoire-logo-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/histoire-logo.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/modules-i18n.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/new-ui-v4-speech-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/new-ui-v4-speech.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/settings-i18n.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/steins-gate-gelnana-from-elpsycongrooblog.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/assets/steins-gate-mayori.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.03.20/index.md` *(+0/-154)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/awesome-ai-vtuber-logo-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/character-card-detail.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/character-card.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/memory-decay.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/memory-retrieval.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/more-theme-colors.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/assets/relu-sticker-wow.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.06/index.md` *(+0/-522)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-controler.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-decay.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-driver.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-emotional-model.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-emotional-score.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-emotional-simulator.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/memory-retrieval.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/review-1.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/assets/review-2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.14/index.md` *(+0/-235)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.22/assets/cursor-open-settings.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.22/assets/develop-with-cursor.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.22/index.md` *(+0/-71)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.28/assets/airi-mcp-arch.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.28/assets/airi-mcp-input-text.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.28/assets/airi-mcp-settings.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.04.28/index.md` *(+0/-187)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-menu-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-menu-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-settings-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-settings-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-showcase-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/character-card-showcase-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-1.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/demo-day-hangzhou-3.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/velin-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/velin-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/velin-playground-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/velin-playground-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/assets/webai-examples-demo.MP4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.05.16/index.md` *(+0/-246)*
+- `docs/content/zh-Hans/blog/DevLog-2025.06.08/assets/250608-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.06.08/assets/250608-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.06.08/assets/airi-tamagotchi-focus.gif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.06.08/assets/screen.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.06.08/index.md` *(+0/-110)*
+- `docs/content/zh-Hans/blog/DevLog-2025.07.18/assets/structure-after.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.07.18/assets/structure-before.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.07.18/index.md` *(+0/-85)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.01/index.md` *(+0/-152)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-clustr-dark.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-clustr-light.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-fade-on-hover.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-move.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-dark.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-light.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-mobile-dark.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-onboarding-mobile-light.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-quick-editor-mobile-dark.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-quick-editor-mobile-light.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-resize.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-resource-island.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-settings-hearing.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-vrm-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-demo-vrm-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-docs-blogs-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-docs-blogs-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-docs-dark.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-docs-light.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-packages-i18n-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-packages-i18n-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-ui-level-meter-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-ui-level-meter-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-ui-time-series-chart-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-ui-time-series-chart-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/airi-vrm.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/assets/relu-sticker-thinks.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.05/index.md` *(+0/-552)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.26/assets/airi-factorio-yolo-v0-playground-vnc.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.26/assets/factorio-ultralytics-hub-preview.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.26/components/nms-iou.vue` *(+0/-203)*
+- `docs/content/zh-Hans/blog/DevLog-2025.08.26/index.md` *(+0/-199)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/assets/airi-notification-capability.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/assets/flow-chat-basic-memory.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/assets/helldiver-laughing.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.01.01/index.md` *(+0/-128)*
+- `docs/content/zh-Hans/blog/DevLog-2026.02.16/assets/add-button-to-menu.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.02.16/assets/some-collected-data.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.02.16/index.md` *(+0/-86)*
+- `docs/content/zh-Hans/blog/DevLog-2026.03.29/assets/airi-pocket-android-godot-vrm-bg.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.03.29/assets/cover-dark.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.03.29/assets/cover-light.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/DevLog-2026.03.29/index.md` *(+0/-160)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/airi.mp4` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/control-island.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/electron.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/moeru.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/project-airi.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/rust-tts.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/three-mmd.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/assets/velin.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/Devlog-2025.10.20/index.md` *(+0/-95)*
+- `docs/content/zh-Hans/blog/DreamLog-0x1/index.md` *(+0/-427)*
+- `docs/content/zh-Hans/blog/happy-halloween-2025/assets/halloween-airi.avif` *(+0/-0)*
+- `docs/content/zh-Hans/blog/happy-halloween-2025/index.md` *(+0/-15)*
+- `docs/content/zh-Hans/blog/index.md` *(+0/-12)*
+- `docs/content/zh-Hans/blog/merry-christmas-2025/index.md` *(+0/-44)*
+- `docs/content/zh-Hans/docs/chronicles/version-v0.0.1/index.md` *(+0/-508)*
+- `docs/content/zh-Hans/docs/chronicles/version-v0.1.0/index.md` *(+0/-76)*
+- `docs/content/zh-Hans/docs/contributing/design-guidelines/index.md` *(+0/-13)*
+- `docs/content/zh-Hans/docs/contributing/design-guidelines/resources.md` *(+0/-21)*
+- `docs/content/zh-Hans/docs/contributing/design-guidelines/tools.md` *(+0/-29)*
+- `docs/content/zh-Hans/docs/contributing/desktop-developer-tools.md` *(+0/-140)*
+- `docs/content/zh-Hans/docs/contributing/docs.md` *(+0/-29)*
+- `docs/content/zh-Hans/docs/contributing/index.md` *(+0/-201)*
+- `docs/content/zh-Hans/docs/contributing/tamagotchi.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/contributing/webui.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/integrations/discord.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/integrations/factorio.md` *(+0/-30)*
+- `docs/content/zh-Hans/docs/integrations/minecraft.md` *(+0/-71)*
+- `docs/content/zh-Hans/docs/integrations/satori.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/integrations/telegram.md` *(+0/-44)*
+- `docs/content/zh-Hans/docs/integrations/x.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/audio.md` *(+0/-41)*
+- `docs/content/zh-Hans/docs/manual/config/common.md` *(+0/-44)*
+- `docs/content/zh-Hans/docs/manual/config/index.md` *(+0/-60)*
+- `docs/content/zh-Hans/docs/manual/config/llm.md` *(+0/-46)*
+- `docs/content/zh-Hans/docs/manual/config/providers/artistry/comfyui.md` *(+0/-39)*
+- `docs/content/zh-Hans/docs/manual/config/providers/artistry/nanobanana.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/artistry/replicate.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/302ai.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/aihubmix.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/amazon-bedrock.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/anthropic.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/atlascloud.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/azure-ai-foundry.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/azure-openai.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/byteplus-coding-plan.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/byteplus.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/cerebras.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/cloudflare-workers-ai.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/comet-api.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/deepseek.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/featherless.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/fireworks.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/google-gemini.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/groq.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/lm-studio.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/mimo.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/minimax-global.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/minimax.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/mistral.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/modelscope.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/moonshot.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/n1n.md` *(+0/-32)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/novita.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/nvidia.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/official.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/ollama.md` *(+0/-48)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/openai.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/openpaths.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/openrouter.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/perplexity.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/together.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/volcengine-coding-plan.md` *(+0/-31)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/xai.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/consciousness/zhipu.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/alibaba-cloud-model-studio.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/azure-speech.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/browser-local.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/comet-api.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/deepgram.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/desktop-local.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/elevenlabs.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/google-gemini.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/index-tts.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/kokoro.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/mimo.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/minimax.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/official.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/openai.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/openrouter.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/player2.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/speech/volcengine.md` *(+0/-35)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/aliyun.md` *(+0/-37)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/browser-local.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/comet-api.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/desktop-local.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/mimo.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/official.md` *(+0/-33)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/openai.md` *(+0/-36)*
+- `docs/content/zh-Hans/docs/manual/config/providers/transcription/web-speech-api.md` *(+0/-34)*
+- `docs/content/zh-Hans/docs/manual/config/vision.md` *(+0/-56)*
+- `docs/content/zh-Hans/docs/manual/config/web-search.md` *(+0/-59)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/character-card-template.md` *(+0/-39)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/index.md` *(+0/-104)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-airi-card.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-chat-window.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-consciousness.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-controls-island-expanded.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-data-settings.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-beat-sync.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-context-flow.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-displays.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-plugin-host.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-relative-mouse.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-screen-capture.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-use-window-mouse.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-vision-capture.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-websocket-inspector.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-devtools-widgets-calling.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-hearing.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-main-web.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-main-window.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-models.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-modules.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-providers.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-settings-window.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-speech.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-system-color-scheme.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-system-developer.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-system-general.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-vision.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/manual-websocket-settings.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/assets/web-position-size.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-10.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-11.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-12.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-14.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-15.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-16.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-17.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-2.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-3.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-4.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-6.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-7.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-8.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/image-9.avif` *(+0/-0)*
+- `docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/index.md` *(+0/-699)*
+- `docs/content/zh-Hans/docs/manual/web/index.md` *(+0/-61)*
+- `docs/content/zh-Hans/docs/overview/about-ai-vtuber.md` *(+0/-7)*
+- `docs/content/zh-Hans/docs/overview/about-neuro-sama.md` *(+0/-24)*
+- `docs/content/zh-Hans/docs/overview/index.md` *(+0/-121)*
+- `docs/content/zh-Hans/docs/overview/other-similar-projects.md` *(+0/-4)*
+- `docs/content/zh-Hans/docs/overview/versions.md` *(+0/-33)*
+- `docs/content/zh-Hans/index.md` *(+0/-5)*
+- `docs/content/zh-Hans/references/research/gaming/minecraft.md` *(+0/-5)*
+- `docs/content/zh-Hans/references/research/lipsync.md` *(+0/-28)*
+- `docs/content/zh-Hans/references/research/mocap.md` *(+0/-1)*
+- `docs/content/zh-Hans/references/research/text-to-motion.md` *(+0/-24)*
+- `docs/content/zh-Hans/references/research/tts.md` *(+0/-3)*
+- `docs/netlify.toml` *(+0/-8)*
+- `docs/package.json` *(+0/-67)*
+- `docs/scripts/avif.ts` *(+0/-41)*
+- `docs/scripts/update-contributors.ts` *(+0/-34)*
+- `docs/scripts/utils.ts` *(+0/-28)*
+- `docs/tsconfig.json` *(+0/-42)*
+- `docs/uno.config.ts` *(+0/-315)*
+- `docs/vite-env.d.ts` *(+0/-6)*
+- `docs/wechat.md` *(+1/-1)*
+- `packages/scenarios-stage-tamagotchi-browser/README.md` *(+8/-6)*
+- `packages/stage-ui/README.md` *(+49/-3)*
+- `packages/testing-audio/README.md` *(+66/-0)*
+- `packages/vite-plugin-sherpaw/README.md` *(+10/-6)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 86 file(s) (+4620/-285)
+- `.dockerignore` *(+1/-0)*
+- `apps/ui-server-auth/src/modules/i18n.ts` *(+2/-2)*
+- `"docs/content/public/assets/Sponsor's avatar/\343\203\237\343\202\253.avif" => "docs/assets/sponsors/avatars/\343\203\237\343\202\253.avif"` *(+0/-0)*
+- `"docs/content/en/blog/DreamLog-0x1/assets/world.execute(me); (Mili)\357\274\217DAZBEE COVER.avif"` *(+0/-0)*
+- `nix/assets-hash.txt` *(+1/-1)*
+- `nix/pnpm-deps-hash.txt` *(+1/-1)*
+- `packages/provider-inference/src/providers/local/sherpaw-transcription/models.ts` *(+15/-8)*
+- `packages/scenarios-stage-tamagotchi-electron/src/scenarios/demo-controls-settings-chat-websocket/sections/settings.ts` *(+1/-1)*
+- `packages/stage-shared/src/global-shortcut/accelerators.test.ts` *(+26/-0)*
+- `packages/stage-shared/src/global-shortcut/accelerators.ts` *(+47/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/voice-composer.vue` *(+1/-1)*
+- `packages/stage-ui/src/components/scenarios/chat/components/voice-drafts.browser.test.ts` *(+20/-1)*
+- `packages/stage-ui/src/components/scenarios/chat/components/voice-drafts.vue` *(+12/-3)*
+- `packages/stage-ui/src/components/scenarios/chat/components/voice-input-button.browser.test.ts` *(+29/-2)*
+- `packages/stage-ui/src/components/scenarios/chat/components/voice-input-button.vue` *(+29/-6)*
+- `packages/stage-ui/src/components/scenarios/dialogs/audio-input/hearing-config-dialog.vue` *(+27/-23)*
+- `packages/stage-ui/src/components/scenarios/dialogs/audio-input/hearing-config.browser.test.ts` *(+51/-20)*
+- `packages/stage-ui/src/components/scenarios/dialogs/audio-input/hearing-config.vue` *(+84/-103)*
+- `packages/stage-ui/src/components/scenarios/dialogs/audio-input/index.ts` *(+1/-0)*
+- `packages/stage-ui/src/components/scenarios/dialogs/audio-input/wake-word-status.vue` *(+48/-0)*
+- `packages/stage-ui/src/components/scenarios/home-assistant/entity-tile.vue` *(+67/-0)*
+- `packages/stage-ui/src/components/scenarios/home-assistant/index.ts` *(+1/-0)*
+- `packages/stage-ui/src/components/scenarios/index.ts` *(+1/-0)*
+- `packages/stage-ui/src/composables/push-to-talk-trigger.ts` *(+38/-0)*
+- `packages/stage-ui/src/composables/use-data-maintenance.browser.test.ts` *(+8/-0)*
+- `packages/stage-ui/src/composables/use-data-maintenance.ts` *(+3/-0)*
+- `packages/stage-ui/src/composables/voice-hold.browser.test.ts` *(+86/-0)*
+- `packages/stage-ui/src/composables/voice-hold.test.ts` *(+148/-0)*
+- `packages/stage-ui/src/composables/voice-hold.ts` *(+164/-0)*
+- `packages/stage-ui/src/composables/voice-input-mode.ts` *(+61/-0)*
+- `packages/stage-ui/src/libs/home-assistant/client.test.ts` *(+65/-11)*
+- `packages/stage-ui/src/libs/home-assistant/client.ts` *(+87/-16)*
+- `packages/stage-ui/src/libs/home-assistant/exposure.test.ts` *(+144/-0)*
+- `packages/stage-ui/src/libs/home-assistant/exposure.ts` *(+115/-0)*
+- `packages/stage-ui/src/libs/home-assistant/presentation.test.ts` *(+202/-0)*
+- `packages/stage-ui/src/libs/home-assistant/presentation.ts` *(+270/-0)*
+- `packages/stage-ui/src/libs/home-assistant/services.ts` *(+96/-0)*
+- `packages/stage-ui/src/libs/providers/providers/sherpaw/model-assets.ts` *(+12/-1)*
+- `packages/stage-ui/src/libs/voice/kws-model-info.ts` *(+14/-0)*
+- `packages/stage-ui/src/libs/voice/kws-model.ts` *(+82/-0)*
+- `packages/stage-ui/src/libs/voice/kws-vocabulary.json` *(+265/-0)*
+- `packages/stage-ui/src/libs/voice/voice-activity-plugin.test.ts` *(+41/-0)*
+- `packages/stage-ui/src/libs/voice/wake-word-detector.test.ts` *(+259/-0)*
+- `packages/stage-ui/src/libs/voice/wake-word-detector.ts` *(+314/-0)*
+- `packages/stage-ui/src/libs/voice/wake-words.ts` *(+12/-1)*
+- `packages/stage-ui/src/services/speech/bus.ts` *(+3/-0)*
+- `packages/stage-ui/src/stores/modules/hearing.ts` *(+35/-0)*
+- `packages/stage-ui/src/stores/modules/home-assistant.browser.test.ts` *(+52/-0)*
+- `packages/stage-ui/src/stores/modules/home-assistant.ts` *(+97/-1)*
+- `packages/stage-ui/src/stores/settings/audio-device.browser.test.ts` *(+24/-1)*
+- `packages/stage-ui/src/stores/settings/audio-device.ts` *(+6/-2)*
+- `packages/stage-ui/src/stores/voice.ts` *(+15/-5)*
+- `packages/stage-ui/src/stores/wake-word-detection.ts` *(+76/-0)*
+- `packages/stage-ui/src/tools/home-assistant.test.ts` *(+496/-9)*
+- `packages/stage-ui/src/tools/home-assistant.ts` *(+133/-19)*
+- `packages/stage-ui/src/tools/wake-words.test.ts` *(+64/-0)*
+- `packages/stage-ui/src/tools/wake-words.ts` *(+58/-0)*
+- `packages/stage-ui/stories/modules/i18n.ts` *(+2/-2)*
+- `packages/testing-audio/cases/apple-speech/case.audio.electron.test.ts` *(+1/-1)*
+- `packages/testing-audio/cases/long-leading-silence/case.audio.test.ts` *(+1/-1)*
+- `packages/testing-audio/cases/shared/configurations/index.ts` *(+2/-0)*
+- `packages/testing-audio/cases/shared/configurations/wake-word.ts` *(+93/-0)*
+- `packages/testing-audio/cases/shared/interactions/chat-sessions.ts` *(+44/-0)*
+- `packages/testing-audio/cases/shared/interactions/hearing-playground.ts` *(+1/-1)*
+- `packages/testing-audio/cases/shared/interactions/index.ts` *(+1/-0)*
+- `packages/testing-audio/cases/wake-word-routing/case.audio.test.ts` *(+30/-0)*
+- `packages/testing-audio/cases/wake-word-routing/input.test.wav` *(+0/-0)*
+- `packages/testing-audio/cases/wake-word-second-pronunciation/case.audio.test.ts` *(+31/-0)*
+- `packages/testing-audio/cases/wake-word-second-pronunciation/input.test.wav` *(+0/-0)*
+- `packages/testing-audio/cases/wake-word/case.audio.test.ts` *(+25/-0)*
+- `packages/testing-audio/cases/wake-word/input.test.wav` *(+0/-0)*
+- `packages/testing-audio/scripts/generate-wake-word-fixtures.ts` *(+116/-0)*
+- `packages/testing-audio/src/describe.ts` *(+9/-3)*
+- `packages/testing-audio/src/expect-extend.test.ts` *(+3/-0)*
+- `packages/testing-audio/src/index.ts` *(+2/-0)*
+- `packages/testing-audio/src/runtimes/prepare-electron.ts` *(+3/-5)*
+- `packages/testing-audio/src/runtimes/prepare-web.ts` *(+2/-4)*
+- `packages/testing-audio/src/setup/browser-probe.ts` *(+60/-3)*
+- `packages/testing-audio/src/setup/session.ts` *(+16/-0)*
+- `packages/testing-audio/src/setup/wake-word-model.ts` *(+74/-0)*
+- `packages/testing-audio/src/types.ts` *(+30/-1)*
+- `packages/testing-audio/src/types/browser.d.ts` *(+6/-0)*
+- `packages/vite-plugin-sherpaw/src/index.test.ts` *(+45/-1)*
+- `packages/vite-plugin-sherpaw/src/index.ts` *(+4/-4)*
+- `pnpm-workspace.yaml` *(+8/-20)*
+- `sponsorkit.config.js` *(+1/-1)*
+
+#### Mobile & Web Platforms (`⚪ ignore / low-priority`) — 9 file(s) (+41/-37)
+- `apps/stage-pocket/src/modules/i18n.ts` *(+2/-2)*
+- `apps/stage-pocket/src/pages/index.vue` *(+4/-14)*
+- `apps/stage-pocket/vite.config.ts` *(+8/-1)*
+- `apps/stage-web/Dockerfile` *(+1/-2)*
+- `apps/stage-web/netlify.toml` *(+1/-1)*
+- `apps/stage-web/src/main.ts` *(+8/-0)*
+- `apps/stage-web/src/modules/i18n.ts` *(+2/-2)*
+- `apps/stage-web/src/pages/index.vue` *(+12/-14)*
+- `apps/stage-web/vite.config.ts` *(+3/-1)*
+
+#### Deprecated Surfaces (Control Island) (`⚪ ignore / rejected in fork (decoupled into Control Strip)`) — 5 file(s) (+219/-95)
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/components/stage-islands/controls-island/controls-island-hearing-config.vue` *(+0/-4)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/controls-island-hearing-config.vue` *(+0/-62)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/controls-island-microphone.browser.test.ts` *(+141/-0)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/controls-island-overflow.browser.test.ts` *(+1/-1)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue` *(+77/-28)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 26 file(s) (+1879/-134)
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/modules/i18n.ts` *(+2/-2)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/pages/index.vue` *(+4/-12)*
+- `apps/stage-tamagotchi/electron.vite.config.ts` *(+6/-2)*
+- `apps/stage-tamagotchi/src/main/index.ts` *(+1/-1)*
+- `apps/stage-tamagotchi/src/main/services/airi/home-assistant/index.ts` *(+6/-0)*
+- `apps/stage-tamagotchi/src/main/services/electron/global-shortcut.test.ts` *(+43/-1)*
+- `apps/stage-tamagotchi/src/main/services/electron/global-shortcut.ts` *(+23/-1)*
+- `apps/stage-tamagotchi/src/main/windows/main/index.ts` *(+3/-0)*
+- `apps/stage-tamagotchi/src/main/windows/main/rpc/index.electron.ts` *(+4/-0)*
+- `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` *(+1/-1)*
+- `apps/stage-tamagotchi/src/renderer/components/inlay/voice-inlay.vue` *(+2/-1)*
+- `apps/stage-tamagotchi/src/renderer/components/settings/push-to-talk-shortcut.browser.test.ts` *(+118/-0)*
+- `apps/stage-tamagotchi/src/renderer/components/settings/push-to-talk-shortcut.vue` *(+138/-0)*
+- `apps/stage-tamagotchi/src/renderer/composables/use-push-to-talk-shortcut.browser.test.ts` *(+151/-0)*
+- `apps/stage-tamagotchi/src/renderer/composables/use-push-to-talk-shortcut.ts` *(+108/-0)*
+- `apps/stage-tamagotchi/src/renderer/main.ts` *(+3/-0)*
+- `apps/stage-tamagotchi/src/renderer/modules/i18n.ts` *(+2/-2)*
+- `apps/stage-tamagotchi/src/renderer/pages/index.vue` *(+15/-12)*
+- `apps/stage-tamagotchi/src/renderer/pages/settings/modules/home-assistant.browser.test.ts` *(+356/-0)*
+- `apps/stage-tamagotchi/src/renderer/pages/settings/modules/home-assistant.vue` *(+623/-60)*
+- `apps/stage-tamagotchi/src/renderer/pages/settings/system/window-shortcuts.vue` *(+6/-19)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/home-assistant.browser.test.ts` *(+144/-0)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/home-assistant.ts` *(+74/-18)*
+- `apps/stage-tamagotchi/src/renderer/utils/shortcut-recording.ts` *(+28/-0)*
+- `apps/stage-tamagotchi/src/shared/eventa/home-assistant.ts` *(+10/-1)*
+- `apps/stage-tamagotchi/vitest.config.ts` *(+8/-1)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 6 file(s) (+101/-625)
+- `package.json` *(+2/-5)*
+- `packages/stage-ui/package.json` *(+2/-0)*
+- `packages/testing-audio/package.json` *(+2/-0)*
+- `packages/testing-audio/tsconfig.json` *(+1/-0)*
+- `pnpm-lock.yaml` *(+62/-620)*
+- `scripts/build-airi-docs.sh` *(+32/-0)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 60 file(s) (+3544/-721)
+- `packages/i18n/glossary/build-tbx.test.ts` *(+3/-2)*
+- `packages/i18n/src/fallback.ts` *(+20/-0)*
+- `packages/i18n/src/index.ts` *(+4/-0)*
+- `packages/i18n/src/locales/en/docs/index.ts` *(+0/-7)*
+- `packages/i18n/src/locales/en/docs/theme.yaml` *(+0/-51)*
+- `packages/i18n/src/locales/en/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/en/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/en/settings.yaml` *(+218/-1)*
+- `packages/i18n/src/locales/en/stage.yaml` *(+3/-0)*
+- `packages/i18n/src/locales/en/tamagotchi/settings.yaml` *(+7/-0)*
+- `packages/i18n/src/locales/en/tamagotchi/stage.yaml` *(+2/-0)*
+- `packages/i18n/src/locales/es/docs/index.ts` *(+0/-5)*
+- `packages/i18n/src/locales/es/docs/theme.yaml` *(+0/-48)*
+- `packages/i18n/src/locales/es/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/es/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/es/stage.yaml` *(+0/-1)*
+- `packages/i18n/src/locales/fr/docs/index.ts` *(+0/-5)*
+- `packages/i18n/src/locales/fr/docs/theme.yaml` *(+0/-47)*
+- `packages/i18n/src/locales/fr/docs/versions.yaml` *(+0/-21)*
+- `packages/i18n/src/locales/fr/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/index.ts` *(+2/-0)*
+- `packages/i18n/src/locales/ja/docs/index.ts` *(+0/-7)*
+- `packages/i18n/src/locales/ja/docs/theme.yaml` *(+0/-50)*
+- `packages/i18n/src/locales/ja/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/ja/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/ko/docs/index.ts` *(+0/-7)*
+- `packages/i18n/src/locales/ko/docs/theme.yaml` *(+0/-50)*
+- `packages/i18n/src/locales/ko/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/ko/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/ru/docs/index.ts` *(+0/-5)*
+- `packages/i18n/src/locales/ru/docs/theme.yaml` *(+0/-50)*
+- `packages/i18n/src/locales/ru/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/ru/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/ru/stage.yaml` *(+0/-1)*
+- `packages/i18n/src/locales/th/base.yaml` *(+60/-0)*
+- `packages/i18n/src/locales/th/index.ts` *(+11/-0)*
+- `packages/i18n/src/locales/th/server/auth.yaml` *(+201/-0)*
+- `packages/i18n/src/locales/th/settings.yaml` *(+2240/-0)*
+- `packages/i18n/src/locales/th/stage.yaml` *(+232/-0)*
+- `packages/i18n/src/locales/th/tamagotchi/electron/index.ts` *(+5/-0)*
+- `packages/i18n/src/locales/th/tamagotchi/electron/tray.yaml` *(+25/-0)*
+- `packages/i18n/src/locales/th/tamagotchi/index.ts` *(+9/-0)*
+- `packages/i18n/src/locales/th/tamagotchi/settings.yaml` *(+137/-0)*
+- `packages/i18n/src/locales/th/tamagotchi/stage.yaml` *(+135/-0)*
+- `packages/i18n/src/locales/vi/docs/index.ts` *(+0/-5)*
+- `packages/i18n/src/locales/vi/docs/theme.yaml` *(+0/-50)*
+- `packages/i18n/src/locales/vi/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/vi/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/zh-Hans/docs/index.ts` *(+0/-7)*
+- `packages/i18n/src/locales/zh-Hans/docs/theme.yaml` *(+0/-48)*
+- `packages/i18n/src/locales/zh-Hans/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/zh-Hans/index.ts` *(+0/-2)*
+- `packages/i18n/src/locales/zh-Hans/settings.yaml` *(+218/-3)*
+- `packages/i18n/src/locales/zh-Hans/stage.yaml` *(+3/-0)*
+- `packages/i18n/src/locales/zh-Hans/tamagotchi/settings.yaml` *(+7/-0)*
+- `packages/i18n/src/locales/zh-Hans/tamagotchi/stage.yaml` *(+2/-0)*
+- `packages/i18n/src/locales/zh-Hant/docs/index.ts` *(+0/-7)*
+- `packages/i18n/src/locales/zh-Hant/docs/theme.yaml` *(+0/-49)*
+- `packages/i18n/src/locales/zh-Hant/docs/versions.yaml` *(+0/-22)*
+- `packages/i18n/src/locales/zh-Hant/index.ts` *(+0/-2)*
+
+#### Stage Layouts & Shells (`🔍 inspect`) — 2 file(s) (+2/-2)
+- `packages/stage-layouts/src/components/Layouts/MobileInteractiveArea.vue` *(+1/-1)*
+- `packages/stage-layouts/src/components/Widgets/ChatArea.vue` *(+1/-1)*
+
+#### UI Primitives & Pages (`📦 import / inspect`) — 13 file(s) (+863/-220)
+- `packages/stage-pages/README.md` *(+9/-0)*
+- `packages/stage-pages/src/pages/settings/airi-card/components/wake-word-conflict-alert.browser.test.ts` *(+54/-0)*
+- `packages/stage-pages/src/pages/settings/airi-card/components/wake-word-conflict-alert.vue` *(+31/-0)*
+- `packages/stage-pages/src/pages/settings/airi-card/index.vue` *(+46/-39)*
+- `packages/stage-pages/src/pages/settings/data/components/downloaded-models-section.browser.test.ts` *(+9/-0)*
+- `packages/stage-pages/src/pages/settings/data/components/downloaded-models-section.vue` *(+3/-1)*
+- `packages/stage-pages/src/pages/settings/modules/components/wake-word-conflicts.vue` *(+74/-0)*
+- `packages/stage-pages/src/pages/settings/modules/hearing/index.browser.test.ts` *(+108/-0)*
+- `packages/stage-pages/src/pages/settings/modules/hearing/index.vue` *(+157/-0)*
+- `packages/stage-pages/src/pages/settings/modules/hearing/transcriber.browser.test.ts` *(+55/-0)*
+- `packages/stage-pages/src/pages/settings/modules/{hearing.vue => hearing/transcriber.vue}` *(+81/-180)*
+- `packages/stage-pages/src/pages/settings/modules/hearing/wake-words.browser.test.ts` *(+105/-0)*
+- `packages/stage-pages/src/pages/settings/modules/hearing/wake-words.vue` *(+131/-0)*
+
+#### Cognitive & Consciousness (`⚠️ hand-merge`) — 2 file(s) (+8/-3)
+- `packages/stage-ui/src/stores/chat.contract.test.ts` *(+3/-2)*
+- `packages/stage-ui/src/stores/chat.ts` *(+5/-1)*
+
+### 📬 Upstream PR Radar
+#### 🆕 New PRs Opened (14)
+- [#2930](https://github.com/moeru-ai/airi/pull/2930) `chore(i18n): warn only when English lacks a message` by **@chiba233** *(4 comments)*
+- [#2931](https://github.com/moeru-ai/airi/pull/2931) `feat(api): store the tool call count on the request log` by **@luoling8192** *(4 comments)*
+- [#2929](https://github.com/moeru-ai/airi/pull/2929) `feat(i18n): add Thai` by **@chiba233** *(6 comments)*
+- [#2928](https://github.com/moeru-ai/airi/pull/2928) `feat(stage-ui,stage-tamagotchi): reliable wake words, end-of-speech judge, and an always-on voice inlay` by **@nekomeowww** *(9 comments)*
+- [#2918](https://github.com/moeru-ai/airi/pull/2918) `ci(server): deploy a chosen branch to the dev environment` by **@luoling8192** *(19 comments)*
+- [#2926](https://github.com/moeru-ai/airi/pull/2926) `feat(stage-tamagotchi): add a fullscreen workspace experiment with two window modes` by **@chiba233** *(10 comments)*
+- [#2920](https://github.com/moeru-ai/airi/pull/2920) `feat(provider-inference): add OpenRouter transcription provider` by **@nayounsang** *(26 comments)*
+- [#2925](https://github.com/moeru-ai/airi/pull/2925) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2924](https://github.com/moeru-ai/airi/pull/2924) `chore(docs): move the documentation site to moeru-ai/airi-docs` by **@nekomeowww** *(2 comments)*
+- [#2923](https://github.com/moeru-ai/airi/pull/2923) `chore(i18n): update translations` by **@github-actions** *(2 comments)*
+- [#2922](https://github.com/moeru-ai/airi/pull/2922) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2921](https://github.com/moeru-ai/airi/pull/2921) `chore(nix): update assets hash` by **@Weathercold** *(2 comments)*
+- [#2919](https://github.com/moeru-ai/airi/pull/2919) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2917](https://github.com/moeru-ai/airi/pull/2917) `chore(deps): bump pinia-plugin-synced to 0.1.5` by **@clansty** *(2 comments)*
+
+#### 🔄 PR Status & Lifecycle Changes (8)
+- [#2904](https://github.com/moeru-ai/airi/pull/2904) `fix(i18n): show the pipe in the Anthropic provider title` — `OPEN` ➔ `MERGED`
+- [#2732](https://github.com/moeru-ai/airi/pull/2732) `feat(stage-pages): split Hearing settings and choose wake word owners` — `OPEN` ➔ `MERGED`, `Draft` ➔ `Ready`
+- [#2914](https://github.com/moeru-ai/airi/pull/2914) `chore(i18n): update translations` — `OPEN` ➔ `MERGED`
+- [#1427](https://github.com/moeru-ai/airi/pull/1427) `feat(stage-tamagotchi): dashboard ui` — `OPEN` ➔ `CLOSED`
+- [#2712](https://github.com/moeru-ai/airi/pull/2712) `test(testing-audio): cover wake word detection` — `OPEN` ➔ `MERGED`
+- [#2726](https://github.com/moeru-ai/airi/pull/2726) `feat(stage-ui): detect character wake words on the voice pipeline` — `OPEN` ➔ `MERGED`, `Draft` ➔ `Ready`
+- [#2903](https://github.com/moeru-ai/airi/pull/2903) `feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches` — `OPEN` ➔ `MERGED`
+- [#2729](https://github.com/moeru-ai/airi/pull/2729) `feat(stage-ui): add Push to Talk on the voice pipeline` — `OPEN` ➔ `MERGED`
+
+#### 💬 Discussion Activity (11)
+- [#2904](https://github.com/moeru-ai/airi/pull/2904) `fix(i18n): show the pipe in the Anthropic provider title` — *+26 comments (31 ➔ 57 total)*
+- [#2895](https://github.com/moeru-ai/airi/pull/2895) `fix(auth): support confirmed account deletion with recent sign-in` — *+8 comments (7 ➔ 15 total)*
+- [#2732](https://github.com/moeru-ai/airi/pull/2732) `feat(stage-pages): split Hearing settings and choose wake word owners` — *+5 comments (0 ➔ 5 total)*
+- [#2567](https://github.com/moeru-ai/airi/pull/2567) `feat(provider-inference): add AnonRouter chat provider` — *+4 comments (5 ➔ 9 total)*
+- [#2458](https://github.com/moeru-ai/airi/pull/2458) `feat(stage): add character-owned Live2D controls` — *+3 comments (65 ➔ 68 total)*
+- [#1427](https://github.com/moeru-ai/airi/pull/1427) `feat(stage-tamagotchi): dashboard ui` — *+1 comments (13 ➔ 14 total)*
+- [#2712](https://github.com/moeru-ai/airi/pull/2712) `test(testing-audio): cover wake word detection` — *+6 comments (6 ➔ 12 total)*
+- [#2911](https://github.com/moeru-ai/airi/pull/2911) `fix(core-agent): preserve whitespace in streamed speech literals` — *+1 comments (4 ➔ 5 total)*
+- [#2726](https://github.com/moeru-ai/airi/pull/2726) `feat(stage-ui): detect character wake words on the voice pipeline` — *+4 comments (0 ➔ 4 total)*
+- [#2903](https://github.com/moeru-ai/airi/pull/2903) `feat(stage-tamagotchi): let the user choose which Home Assistant devices the model reaches` — *+25 comments (174 ➔ 199 total)*
+- [#2729](https://github.com/moeru-ai/airi/pull/2729) `feat(stage-ui): add Push to Talk on the voice pipeline` — *+8 comments (11 ➔ 19 total)*
+
+### 👁️ Watched PRs Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+
+---
 ## [2026-10-11] Upstream Delta: `2efaa888..749d915f` (8 commits, 84 files, 19 PR update(s))
 
 ### 🎯 Executive Highlights

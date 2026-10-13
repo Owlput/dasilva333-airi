@@ -2445,3 +2445,8 @@ quickStart:
   hearing:
     listening: 正在聆听…
   baseUrl: 基础 URL
+onboarding:
+  steps:
+    appearance:
+      languages:
+        th: 泰语

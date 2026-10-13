@@ -133,14 +133,14 @@ function applyPersonaToDraft(persona: { cardId?: string, source?: 'preset' | 'im
 }
 
 const selectedPresetId = computed({
-  get: () => draft.state.personaCardId || 'default',
+  get: () => draft.state.personaCardId || 'relu',
   set: (id: string) => {
     applyPersonaToDraft({ cardId: id, source: 'preset' })
   },
 })
 
 const selectedPreset = computed(() => {
-  const id = selectedPresetId.value || 'default'
+  const id = selectedPresetId.value || 'relu'
   return starterPresets.value.find(p => p.id === id) || starterPresets.value[0]
 })
 
@@ -352,9 +352,9 @@ const importedName = computed(() => {
 })
 
 function clearImported() {
-  applyPersonaToDraft({ source: 'preset', cardId: 'default', importedCardDraft: undefined })
+  applyPersonaToDraft({ source: 'preset', cardId: 'relu', importedCardDraft: undefined })
   if (draft.state) {
-    draft.state.companionName = STARTER_CHARACTERS.default?.name || 'ReLU'
+    draft.state.companionName = STARTER_CHARACTERS.relu?.name || 'ReLU'
   }
   toast.info(t('onboarding.steps.persona.clearedImportedCardRevertedToReluPreset'))
 }
@@ -816,8 +816,8 @@ function onSelectTab(tab: PersonaTab) {
     syncCreatorDraft()
   }
   else if (tab === 'presets') {
-    applyPersonaToDraft({ cardId: selectedPresetId.value || 'default', source: 'preset' })
-    const preset = STARTER_CHARACTERS[selectedPresetId.value || 'default']
+    applyPersonaToDraft({ cardId: selectedPresetId.value || 'relu', source: 'preset' })
+    const preset = STARTER_CHARACTERS[selectedPresetId.value || 'relu']
     if (preset && draft.state) {
       draft.state.companionName = preset.name
     }
@@ -1181,7 +1181,7 @@ const activePersonaLabel = computed(() => {
   if (draft.state.personaSource === 'import' && importedName.value) {
     return t('onboarding.steps.persona.selection.imported', { name: importedName.value })
   }
-  const id = draft.state.personaCardId || 'default'
+  const id = draft.state.personaCardId || 'relu'
   const preset = STARTER_CHARACTERS[id]
   return preset ? t('onboarding.steps.persona.presets.displayName', { value0: preset.name, value1: t(`onboarding.steps.persona.presets.${id}.tag`) }) : 'ReLU'
 })
@@ -1208,7 +1208,7 @@ function handleNextStep() {
 onMounted(() => {
   if (draft.state?.personaSource === 'preset') {
     activeTab.value = 'presets'
-    const id = draft.state?.personaCardId || 'default'
+    const id = draft.state?.personaCardId || 'relu'
     const preset = STARTER_CHARACTERS[id]
     const knownPresets = Object.values(STARTER_CHARACTERS).map(c => c.name)
     if (preset && draft.state && (!draft.state.companionName || knownPresets.includes(draft.state.companionName) || ['ReLU', 'Dr. Aria', 'Lupin', 'Airi'].includes(draft.state.companionName))) {

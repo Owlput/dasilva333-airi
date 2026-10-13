@@ -63,7 +63,7 @@ interface StarterCompanion {
 
 const starterCompanions: StarterCompanion[] = [
   {
-    id: 'default',
+    id: 'relu',
     name: 'ReLU',
     title: 'ReLU',
     tag: '🌸 Empathetic Companion',
@@ -72,7 +72,7 @@ const starterCompanions: StarterCompanion[] = [
     personalityKey: 'onboarding.quickStart.starterCompanions.default.personality',
     previewImg: new URL('../../../../../assets/live2d/models/hiyori/preview.png', import.meta.url).href,
     greeting: (name: string) => `Good morning, ${name || 'there'}! Nya~ I've been waiting for the screen to light up. Did you sleep well?`,
-    personaCardId: 'default',
+    personaCardId: 'relu',
     vesselModelId: 'preset-live2d-2',
     defaultKokoroVoice: 'af_bella',
     defaultPocketVoice: 'airi_relu',
@@ -117,7 +117,7 @@ const selectedCompanionId = ref<string>(
     ? 'aria'
     : draftStore.state.personaCardId === 'lupin'
       ? 'lupin'
-      : 'default',
+      : 'relu',
 )
 
 const activeCompanion = computed(() => {
