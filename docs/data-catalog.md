@@ -1018,9 +1018,14 @@ interface VoiceProfile {
 | `airi:chat:memories-preview-expanded` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
 | `airi:chat:scratchpad-preview-expanded` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
 | `airi:chat:topics-preview-expanded` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
-| `airi:chat:rp-current-scene-collapsed` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
-| `airi:chat:rp-media-collapsed` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
-| `airi:chat:rp-memories-collapsed` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
+| `airi:chat:rp-current-scene-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-media-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-memories-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-terminal-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-widgets-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-nan0-collapsed` | `boolean` | `false` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:rp-stage-collapsed` | `boolean` | `true` | `apps/stage-tamagotchi/.../pages/chat.vue` |
+| `airi:chat:dashboard-layout` | `DashboardLayoutState` | `{ version: 1, activeModuleIds: [...], collapsedStates: {...} }` | `composables/use-chat-dashboard.ts` \| `pages/chat.vue` |
 
 ### 4.11 Control Strip
 

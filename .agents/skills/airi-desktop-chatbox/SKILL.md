@@ -11,6 +11,7 @@ Own desktop chat surfaces and shared transcript presentation. Read only the refe
 | Task | Reference |
 | --- | --- |
 | Workspace routes, subviews, window shell, right panel | [Workspace navigation](references/workspace-navigation.md) |
+| Chat options popover, atmosphere, wallpaper, customize dashboard panel | [Chat options & Dashboard](references/chat-options-and-dashboard.md) |
 | Drafts, send/stop buttons, attachments, suggestions, composer variants | [Composer](references/composer.md) |
 | Bubbles, action menus, grounding, journal chips, streaming performance | [Transcript rendering](references/transcript-rendering.md) |
 

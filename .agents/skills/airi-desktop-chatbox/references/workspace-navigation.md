@@ -34,4 +34,4 @@ Each Electron window has its own Pinia instance. A local mutation is not cross-w
 
 Open every changed route through sidebar and drawer, restore its persisted selection, switch characters, and test a missing card. Verify right-panel actions on Chat View after returning from another route.
 
-Design context: `docs/design-tamagotchi-chatbox-ux-improvements.md`. Treat proposed UX as rationale, not proof that a component exists.
+Design context: `docs/design-tamagotchi-chatbox-ux-improvements.md` and `docs/design-chatbox-options-and-customizable-dashboard.md`. Treat proposed UX as rationale, not proof that a component exists.

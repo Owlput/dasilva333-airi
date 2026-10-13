@@ -31,7 +31,15 @@ The core principle driving this redesign:
   * Done: Created three-column diagnostic card feed for Director's Monitor in chat_director.vue with two-way prompt-to-image matching
   * Pending: Token capacity progress bar indicator
 
-* **Phase 4 (Extended System Layer)**
+* **Phase 4 (Nested Chat Options & Atmosphere Hub)**
+  Hierarchical options popover (`ChatOptionsPopover.vue`) with 4 root submenus (`capabilities`, `tools`, `injections`, `appearance`), animated slide transitions, mini-canvas particle previews (`Hearts`, `Sakura`, `Stars`, `Bubbles`, `Crosses`, `Melody`), wallpaper gallery with 700ms GPU crossfades, and embedded `SettingsThemeHeaderWidget` (dark/light toggle + 24-color preset spectrum).
+  *(Completed)*
+
+* **Phase 5 (Customizable Dashboard Chassis)**
+  Two-state right context panel (View Mode vs. Customize Mode), drag-and-drop reordering with accessible keyboard moves, module availability gating (`isSandboxActive`, `nan0Cognition`), clean separation of Dashboard Modules vs. Sandbox Generative Widgets, persistent layout store (`useChatDashboard`), and migration of legacy `airi:chat:rp-*-collapsed` preferences. See `docs/design-chatbox-options-and-customizable-dashboard.md`.
+  *(In Design)*
+
+* **Phase 6 (Extended System Layer)**
   Input preprocessing pipeline, contextual bubble reply & attention grounding (bubble context menu + composer quote banner + model provenance anchor), enriched attachments, Director’s Monitor surface, token visualization refinement, expanded attachment system.
   *(Future)*
 
