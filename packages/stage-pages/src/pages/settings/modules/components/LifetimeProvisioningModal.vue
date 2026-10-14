@@ -5,10 +5,13 @@ import { storeToRefs } from 'pinia'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   characterId: string
+  universeId?: string
   open: boolean
-}>()
+}>(), {
+  universeId: 'global',
+})
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
@@ -68,7 +71,7 @@ const estimatedDuration = computed(() => {
 async function loadCounts() {
   isLoadingCounts.value = true
   try {
-    const docs = await store.collectSourceDocs(props.characterId)
+    const docs = await store.collectSourceDocs(props.characterId, props.universeId)
     sourceDocs.value = docs
     sourceCounts.value = {
       raw: docs.filter(d => d.layer === 'raw').length,
@@ -76,7 +79,7 @@ async function loadCounts() {
       ltmm: docs.filter(d => d.layer === 'ltmm').length,
     }
     // Also load session state
-    await store.loadForCharacter(props.characterId)
+    await store.loadForCharacter(props.characterId, props.universeId)
   }
   finally {
     isLoadingCounts.value = false
@@ -84,15 +87,15 @@ async function loadCounts() {
 }
 
 async function startProvisioning() {
-  await store.provision(props.characterId, 'global', false, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.provision(props.characterId, props.universeId, false, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 async function resumeProvisioning() {
-  await store.provision(props.characterId, 'global', true, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.provision(props.characterId, props.universeId, true, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 async function restartProvisioning() {
-  await store.restart(props.characterId, 'global', contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.restart(props.characterId, props.universeId, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 function close() {

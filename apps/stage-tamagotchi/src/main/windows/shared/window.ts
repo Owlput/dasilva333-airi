@@ -147,8 +147,11 @@ export async function setupBaseWindowElectronInvokes(params: {
   // Renderer reports its canonical document.title; keep the native window chrome
   // in sync as in-page routes change. The initial BrowserWindow `title` option is
   // just a fallback for the very first paint / hard-crashed renderers.
-  defineInvokeHandler(params.context, electronWindowSetTitle, (payload) => {
+  defineInvokeHandler(params.context, electronWindowSetTitle, (payload, options) => {
     if (params.window.isDestroyed())
+      return
+    // Sender validation: ensure invocation strictly belongs to this window
+    if (options?.raw?.ipcMainEvent?.sender?.id && options.raw.ipcMainEvent.sender.id !== params.window.webContents.id)
       return
     const title = payload?.title
     if (typeof title === 'string' && title.length > 0)

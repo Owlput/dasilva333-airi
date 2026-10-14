@@ -4,10 +4,13 @@ import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   characterId: string
-}>()
+  universeId?: string
+}>(), {
+  universeId: 'global',
+})
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
@@ -46,7 +49,7 @@ function close() {
 
 async function handleResynthesize() {
   if (confirm('This will skip the history collection phase and re-run the synthesis and distillation based on these chunks. Proceed?')) {
-    await lifetimeStore.reprovisionFromChunks(props.characterId, 'global', 2, artifact.value?.metadata?.targetTokens) // Default 2s interval
+    await lifetimeStore.reprovisionFromChunks(props.characterId, props.universeId, 2, artifact.value?.metadata?.targetTokens) // Default 2s interval
   }
 }
 </script>
