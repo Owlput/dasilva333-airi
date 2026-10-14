@@ -1143,8 +1143,8 @@ Persisted Three.js scene state — camera rig, model transform, lighting, and sk
 
 | Key | Type | Default | File |
 | :--- | :--- | :--- | :--- |
-| `onboarding/completed` | `boolean` | `false` | `stores/onboarding.ts` |
-| `onboarding/skipped` | `boolean` | `false` | `stores/onboarding.ts` |
+| `onboarding/v3-completed` | `boolean` | `false` | `stores/onboarding.ts` |
+| `onboarding/v3-skipped` | `boolean` | `false` | `stores/onboarding.ts` |
 | `onboarding/v2-draft` | `OnboardingV2DraftState` | `{}` | `dialogs/onboarding/v2/draft-store.ts` |
 | `onboarding/v2-state` | `{ stepId, path }` | `'welcome'` / `'new'` | `dialogs/onboarding/v2/onboarding-v2.vue` |
 | `onboarding/v2-skipped` | `boolean` | `false` | `dialogs/onboarding/v2/onboarding-v2.vue` |
