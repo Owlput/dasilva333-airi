@@ -250,26 +250,45 @@ function handleSave() {
     <Transition name="modal-fade">
       <div
         v-if="open"
-        class="fixed inset-0 z-[10020] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+        :class="[
+          'fixed inset-0 z-[10020] p-4',
+          'flex items-center justify-center',
+          'bg-neutral-900/40 dark:bg-black/70 backdrop-blur-sm',
+        ]"
         @click.self="$emit('close')"
       >
         <div
-          class="relative max-h-[90vh] max-w-xl w-full flex flex-col overflow-hidden border border-neutral-200/40 rounded-2xl bg-neutral-900 text-neutral-100 shadow-2xl dark:border-neutral-800"
+          :class="[
+            'relative max-h-[90vh] max-w-xl w-full',
+            'flex flex-col overflow-hidden',
+            'rounded-2xl shadow-2xl backdrop-blur-xl',
+            'border border-neutral-200/80 dark:border-neutral-800',
+            'bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100',
+          ]"
           @click="showExampleDropdown = false"
         >
           <!-- Header -->
-          <div class="flex items-start justify-between border-b border-neutral-800/80 px-6 py-4.5">
+          <div
+            :class="[
+              'flex items-start justify-between px-6 py-4.5',
+              'border-b border-neutral-200/80 dark:border-neutral-800/80',
+            ]"
+          >
             <div class="flex flex-col">
-              <h2 class="text-base text-neutral-100 font-bold">
+              <h2 class="text-base text-neutral-900 font-bold dark:text-neutral-100">
                 {{ favorite ? 'Edit favorite' : 'Add favorite' }}
               </h2>
-              <p class="mt-0.5 text-xs text-neutral-400">
+              <p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
                 Save a model and its request options together.
               </p>
             </div>
             <button
               type="button"
-              class="cursor-pointer rounded-lg p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+              :class="[
+                'cursor-pointer rounded-lg p-1 text-neutral-400 transition-colors',
+                'hover:bg-neutral-100 hover:text-neutral-700',
+                'dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
+              ]"
               @click="$emit('close')"
             >
               <div class="i-solar:close-circle-bold size-5" />
@@ -280,12 +299,20 @@ function handleSave() {
           <div class="flex-1 overflow-y-auto px-6 py-4 scrollbar-thin space-y-4">
             <!-- Label -->
             <div class="space-y-1.5">
-              <label class="text-xs text-neutral-300 font-medium">Label</label>
+              <label class="text-xs text-neutral-700 font-medium dark:text-neutral-300">Label</label>
               <input
                 v-model="label"
                 type="text"
                 placeholder="e.g. maika · quick chat"
-                class="w-full border border-neutral-700/80 rounded-xl bg-neutral-800/60 px-3 py-2 text-xs text-neutral-100 outline-none transition-all focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 placeholder-neutral-500"
+                :class="[
+                  'w-full px-3 py-2 text-xs',
+                  'rounded-xl outline-none transition-all',
+                  'border border-neutral-300/80 dark:border-neutral-700/80',
+                  'bg-neutral-50 dark:bg-neutral-800/60',
+                  'text-neutral-900 dark:text-neutral-100',
+                  'placeholder-neutral-400 dark:placeholder-neutral-500',
+                  'focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20',
+                ]"
               >
             </div>
 
@@ -293,28 +320,43 @@ function handleSave() {
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <!-- Provider -->
               <div class="space-y-1.5">
-                <label class="text-xs text-neutral-300 font-medium">Provider</label>
+                <label class="text-xs text-neutral-700 font-medium dark:text-neutral-300">Provider</label>
                 <div class="relative">
                   <select
                     v-model="provider"
-                    class="w-full appearance-none border border-neutral-700/80 rounded-xl bg-neutral-800/60 px-3 py-2 pr-8 text-xs text-neutral-100 outline-none transition-all focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20"
+                    :class="[
+                      'w-full appearance-none px-3 py-2 pr-8 text-xs',
+                      'rounded-xl outline-none transition-all',
+                      'border border-neutral-300/80 dark:border-neutral-700/80',
+                      'bg-neutral-50 dark:bg-neutral-800/60',
+                      'text-neutral-900 dark:text-neutral-100',
+                      'focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20',
+                    ]"
                   >
-                    <option v-for="prov in configuredProviderOptions" :key="prov.value" :value="prov.value">
+                    <option
+                      v-for="prov in configuredProviderOptions"
+                      :key="prov.value"
+                      :value="prov.value"
+                      class="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
+                    >
                       {{ prov.label }}
                     </option>
                   </select>
-                  <div class="i-solar:alt-arrow-down-linear pointer-events-none absolute right-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2" />
+                  <div class="i-solar:alt-arrow-down-linear pointer-events-none absolute right-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2 dark:text-neutral-500" />
                 </div>
               </div>
 
               <!-- Model -->
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between">
-                  <label class="text-xs text-neutral-300 font-medium">Model</label>
+                  <label class="text-xs text-neutral-700 font-medium dark:text-neutral-300">Model</label>
                   <button
                     v-if="availableModels.length > 0"
                     type="button"
-                    class="cursor-pointer text-[10px] text-sky-400 font-medium hover:underline"
+                    :class="[
+                      'cursor-pointer text-[10px] font-medium transition-colors hover:underline',
+                      'text-primary-600 dark:text-primary-400',
+                    ]"
                     @click="isManualModel = !isManualModel"
                   >
                     {{ isManualModel ? 'Choose from list' : 'Manual ID' }}
@@ -322,7 +364,7 @@ function handleSave() {
                 </div>
 
                 <div class="relative">
-                  <div class="i-solar:magnifer-linear pointer-events-none absolute left-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2" />
+                  <div class="i-solar:magnifer-linear pointer-events-none absolute left-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2 dark:text-neutral-500" />
 
                   <!-- Manual input -->
                   <input
@@ -330,31 +372,57 @@ function handleSave() {
                     v-model="model"
                     type="text"
                     placeholder="e.g. deepseek/deepseek-v4-flash"
-                    class="w-full border border-neutral-700/80 rounded-xl bg-neutral-800/60 py-2 pl-8 pr-3 text-xs text-neutral-100 outline-none transition-all focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 placeholder-neutral-500"
+                    :class="[
+                      'w-full py-2 pl-8 pr-3 text-xs',
+                      'rounded-xl outline-none transition-all',
+                      'border border-neutral-300/80 dark:border-neutral-700/80',
+                      'bg-neutral-50 dark:bg-neutral-800/60',
+                      'text-neutral-900 dark:text-neutral-100',
+                      'placeholder-neutral-400 dark:placeholder-neutral-500',
+                      'focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20',
+                    ]"
                   >
 
                   <!-- Discovered dropdown -->
                   <select
                     v-else
                     v-model="model"
-                    class="w-full appearance-none border border-neutral-700/80 rounded-xl bg-neutral-800/60 py-2 pl-8 pr-8 text-xs text-neutral-100 outline-none transition-all focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20"
+                    :class="[
+                      'w-full appearance-none py-2 pl-8 pr-8 text-xs',
+                      'rounded-xl outline-none transition-all',
+                      'border border-neutral-300/80 dark:border-neutral-700/80',
+                      'bg-neutral-50 dark:bg-neutral-800/60',
+                      'text-neutral-900 dark:text-neutral-100',
+                      'focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20',
+                    ]"
                     :disabled="isLoadingModels"
                   >
-                    <option v-if="!model" value="" disabled>
+                    <option
+                      v-if="!model"
+                      value=""
+                      disabled
+                      class="bg-white text-neutral-400 dark:bg-neutral-900 dark:text-neutral-500"
+                    >
                       {{ isLoadingModels ? 'Loading models...' : 'Select a model' }}
                     </option>
                     <!-- If currently selected model is not in discovered list, preserve it as an option so it does not disappear -->
                     <option
                       v-if="model && !availableModels.some(m => m.id === model)"
                       :value="model"
+                      class="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
                     >
                       {{ model }} (Current)
                     </option>
-                    <option v-for="m in availableModels" :key="m.id" :value="m.id">
+                    <option
+                      v-for="m in availableModels"
+                      :key="m.id"
+                      :value="m.id"
+                      class="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
+                    >
                       {{ m.name || m.id.split('/').pop() || m.id }}
                     </option>
                   </select>
-                  <div v-if="!isManualModel" class="i-solar:alt-arrow-down-linear pointer-events-none absolute right-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2" />
+                  <div v-if="!isManualModel" class="i-solar:alt-arrow-down-linear pointer-events-none absolute right-3 top-1/2 size-3.5 text-neutral-400 -translate-y-1/2 dark:text-neutral-500" />
                 </div>
               </div>
             </div>
@@ -363,10 +431,10 @@ function handleSave() {
             <div class="pt-2">
               <div class="flex items-center justify-between">
                 <div>
-                  <h3 class="text-xs text-neutral-200 font-bold">
+                  <h3 class="text-xs text-neutral-900 font-bold dark:text-neutral-200">
                     Request options &bull; JSON
                   </h3>
-                  <p class="text-[10px] text-neutral-400">
+                  <p class="text-[10px] text-neutral-500 dark:text-neutral-400">
                     Start with an example or edit the JSON directly.
                   </p>
                 </div>
@@ -375,7 +443,11 @@ function handleSave() {
                 <div class="relative" @click.stop>
                   <button
                     type="button"
-                    class="flex cursor-pointer items-center gap-1.5 border border-sky-500/30 rounded-lg bg-sky-500/10 px-2.5 py-1 text-xs text-sky-400 font-medium transition-all hover:bg-sky-500/20"
+                    :class="[
+                      'flex cursor-pointer items-center gap-1.5',
+                      'border border-primary-500/30 rounded-lg bg-primary-500/10 px-2.5 py-1 text-xs',
+                      'text-primary-600 font-medium transition-all hover:bg-primary-500/20 dark:text-primary-400',
+                    ]"
                     @click="showExampleDropdown = !showExampleDropdown"
                   >
                     <span>Insert example</span>
@@ -385,25 +457,33 @@ function handleSave() {
                   <!-- Popover list -->
                   <div
                     v-if="showExampleDropdown"
-                    class="absolute right-0 top-full z-50 mt-1.5 max-h-80 w-64 overflow-y-auto border border-neutral-700/80 rounded-xl bg-neutral-900/98 p-1.5 shadow-2xl backdrop-blur-xl space-y-2"
+                    :class="[
+                      'absolute right-0 top-full z-50 mt-1.5',
+                      'max-h-80 w-64 overflow-y-auto p-1.5 space-y-2',
+                      'border border-neutral-200/90 rounded-xl shadow-2xl backdrop-blur-xl',
+                      'bg-white/98 text-neutral-900 dark:border-neutral-700/80 dark:bg-neutral-900/98 dark:text-neutral-100',
+                    ]"
                   >
                     <div v-for="grp in PRESET_GROUPS" :key="grp.group" class="space-y-0.5">
-                      <div class="px-2 pt-1 text-[9px] text-neutral-400 font-bold tracking-wider uppercase">
+                      <div class="px-2 pt-1 text-[9px] text-neutral-400 font-bold tracking-wider uppercase dark:text-neutral-500">
                         {{ grp.group }}
                       </div>
                       <button
                         v-for="item in grp.items"
                         :key="item.title"
                         type="button"
-                        class="w-full flex flex-col cursor-pointer rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sky-500/15"
+                        :class="[
+                          'w-full flex flex-col cursor-pointer rounded-lg px-2 py-1.5 text-left transition-colors',
+                          'hover:bg-primary-500/10 dark:hover:bg-primary-500/15',
+                        ]"
                         @click="insertPreset(item.payload)"
                       >
-                        <span class="text-xs text-neutral-200 font-medium">{{ item.title }}</span>
-                        <span class="text-[10px] text-neutral-400 font-mono">{{ item.subtitle }}</span>
+                        <span class="text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ item.title }}</span>
+                        <span class="text-[10px] text-neutral-500 font-mono dark:text-neutral-400">{{ item.subtitle }}</span>
                       </button>
                     </div>
 
-                    <div class="border-t border-neutral-800 px-2 pt-1 text-[9px] text-neutral-400 italic">
+                    <div class="border-t border-neutral-200 px-2 pt-1 text-[9px] text-neutral-400 italic dark:border-neutral-800 dark:text-neutral-500">
                       Support and effects vary by model.
                     </div>
                   </div>
@@ -411,9 +491,15 @@ function handleSave() {
               </div>
 
               <!-- JSON Editor Block -->
-              <div class="relative mt-2 flex border border-neutral-700/80 rounded-xl bg-neutral-950 text-xs font-mono">
+              <div
+                :class="[
+                  'relative mt-2 flex text-xs font-mono rounded-xl border transition-colors',
+                  'border-neutral-300/80 bg-neutral-100/70',
+                  'dark:border-neutral-700/80 dark:bg-neutral-950',
+                ]"
+              >
                 <!-- Line Numbers -->
-                <div class="select-none py-2.5 pl-3 pr-2 text-right text-neutral-600 leading-5 space-y-0">
+                <div class="select-none py-2.5 pl-3 pr-2 text-right text-neutral-400 leading-5 space-y-0 dark:text-neutral-600">
                   <div v-for="n in lineNumbers" :key="n" class="h-5">
                     {{ n }}
                   </div>
@@ -423,7 +509,11 @@ function handleSave() {
                 <textarea
                   v-model="optionsJson"
                   rows="7"
-                  class="flex-1 resize-none bg-transparent py-2.5 pl-1 pr-3 text-neutral-200 leading-5 outline-none scrollbar-thin"
+                  :class="[
+                    'flex-1 resize-none bg-transparent py-2.5 pl-1 pr-3 leading-5 outline-none scrollbar-thin',
+                    'text-neutral-900 placeholder-neutral-400',
+                    'dark:text-neutral-200 dark:placeholder-neutral-600',
+                  ]"
                   placeholder="{}"
                   spellcheck="false"
                 />
@@ -436,19 +526,22 @@ function handleSave() {
                     class="size-2 rounded-full"
                     :class="isValidJson ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'"
                   />
-                  <span :class="isValidJson ? 'text-neutral-300' : 'text-red-400 font-medium'">
+                  <span :class="isValidJson ? 'text-neutral-600 dark:text-neutral-300' : 'text-red-600 dark:text-red-400 font-medium'">
                     {{ isValidJson ? 'Valid JSON' : (jsonError || 'Invalid JSON') }}
                   </span>
                 </div>
 
                 <div class="flex items-center gap-3">
-                  <span class="text-[10px] text-neutral-500">
+                  <span class="text-[10px] text-neutral-500 dark:text-neutral-400">
                     Examples merge into your JSON.
                   </span>
                   <button
                     v-if="isValidJson"
                     type="button"
-                    class="cursor-pointer text-sky-400 font-medium transition-colors hover:underline"
+                    :class="[
+                      'cursor-pointer text-primary-600 font-medium transition-colors hover:underline',
+                      'dark:text-primary-400',
+                    ]"
                     @click="formatJson"
                   >
                     Format JSON
@@ -459,22 +552,36 @@ function handleSave() {
           </div>
 
           <!-- Footer -->
-          <div class="flex items-center justify-between border-t border-neutral-800/80 bg-neutral-900/60 px-6 py-3.5">
-            <span class="text-[11px] text-neutral-500">
+          <div
+            :class="[
+              'flex items-center justify-between px-6 py-3.5',
+              'border-t border-neutral-200/80 bg-neutral-50/80',
+              'dark:border-neutral-800/80 dark:bg-neutral-900/60',
+            ]"
+          >
+            <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
               Saved with this favorite.
             </span>
 
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                class="cursor-pointer border border-neutral-700/80 rounded-xl px-3.5 py-1.5 text-xs text-neutral-300 font-medium transition-all hover:bg-neutral-800"
+                :class="[
+                  'cursor-pointer rounded-xl px-3.5 py-1.5 text-xs font-medium transition-all',
+                  'border border-neutral-300/80 text-neutral-700 hover:bg-neutral-100',
+                  'dark:border-neutral-700/80 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                ]"
                 @click="$emit('close')"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                class="cursor-pointer rounded-xl bg-sky-500 px-4 py-1.5 text-xs text-white font-semibold transition-all disabled:cursor-not-allowed hover:bg-sky-400 disabled:opacity-40"
+                :class="[
+                  'cursor-pointer rounded-xl px-4 py-1.5 text-xs text-white font-semibold transition-all',
+                  'bg-primary-500 hover:bg-primary-600 dark:bg-primary-500 dark:hover:bg-primary-400',
+                  'disabled:cursor-not-allowed disabled:opacity-40',
+                ]"
                 :disabled="!model.trim() || !isValidJson"
                 @click="handleSave"
               >
