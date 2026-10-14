@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MicroAppCatalog } from '@proj-airi/stage-ui/components'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { ansiToHtml } from '@proj-airi/stage-ui/libs/sandbox'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores'
@@ -54,9 +55,6 @@ const {
   exec,
   clearLogs,
   reset,
-  mountedWidgets,
-  setWidgetSurface,
-  mountPersistedWidget,
   getPersistedWidgets,
 } = useSandbox()
 
@@ -129,8 +127,6 @@ function handleHistoryNav(direction: 'up' | 'down') {
 
 // --- Widgets State ---
 const persistedWidgets = ref<any[]>([])
-const onStageSectionOpen = ref(true)
-const moreWidgetsSectionOpen = ref(true)
 
 async function reloadPersistedWidgets() {
   try {
@@ -144,73 +140,6 @@ async function reloadPersistedWidgets() {
 onMounted(async () => {
   await reloadPersistedWidgets()
 })
-
-const onStageWidgets = computed(() => {
-  return mountedWidgets.value.filter(w => w.surface === 'widget')
-})
-
-const offlineWidgets = computed(() => {
-  const mountedIds = new Set(mountedWidgets.value.map(w => w.id))
-  return persistedWidgets.value.filter(w => !mountedIds.has(w.id))
-})
-
-async function handleToggleOnStage(widget: any) {
-  const isCurrentlyMountedOnStage = mountedWidgets.value.some(w => (w.id === widget.id || w.path === widget.path) && w.surface === 'widget')
-  if (isCurrentlyMountedOnStage) {
-    // NOTICE: toggling off stage docks back to panel instead of unmounting,
-    // so the widget stays available in the panel/library.
-    await setWidgetSurface(widget.id, 'panel')
-  }
-  else {
-    const targetId = widget.id || widget.sourcePath || widget.path
-    await mountPersistedWidget(targetId, 'widget')
-    await setWidgetSurface(targetId, 'widget')
-  }
-  await reloadPersistedWidgets()
-}
-
-async function handleMountOfflineWidget(widget: any) {
-  const targetId = widget.id || widget.sourcePath || widget.path
-  await mountPersistedWidget(targetId, 'widget')
-  await setWidgetSurface(targetId, 'widget')
-  await reloadPersistedWidgets()
-}
-
-function getWidgetTitle(widget: any): string {
-  if (widget.title)
-    return widget.title
-  const path = widget.sourcePath || widget.path || ''
-  const filename = path.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Widget'
-  if (filename.includes('strawberry'))
-    return 'Arona\'s Strawberry Pet 🍓'
-  if (filename.includes('relu') || filename.includes('companion'))
-    return 'ReLU Debugger Buddy'
-  if (filename.includes('cafe') || filename.includes('pos'))
-    return 'Haven Cafe POS'
-  if (filename.includes('vit') || filename.includes('vitals'))
-    return 'Vit-AIRI Dev Pulse'
-  return filename.replace(/[-_]/g, ' ')
-}
-
-function getWidgetSubtitle(widget: any): string {
-  if (widget.description)
-    return widget.description
-  const title = (widget.title || widget.sourcePath || widget.path || '').toLowerCase()
-  if (title.includes('strawberry') || title.includes('pet'))
-    return 'Your little stage companion.'
-  if (title.includes('relu') || title.includes('companion'))
-    return 'Companion tools at a glance.'
-  if (title.includes('cafe') || title.includes('pos'))
-    return 'Your café’s little counter.'
-  if (title.includes('vit') || title.includes('pulse') || title.includes('vitals'))
-    return 'Workspace activity at a glance.'
-  return widget.sourcePath || widget.path || 'Interactive stage widget'
-}
-
-function isStrawberryWidget(widget: any): boolean {
-  const name = (widget.title || widget.sourcePath || widget.path || '').toLowerCase()
-  return name.includes('strawberry') || name.includes('pet')
-}
 </script>
 
 <template>
@@ -304,145 +233,14 @@ function isStrawberryWidget(widget: any): boolean {
         Choose what appears on your stage.
       </div>
 
-      <!-- Section: On Stage -->
-      <div class="shadow-2xs border border-neutral-200/50 rounded-2xl bg-neutral-100/70 p-2.5 dark:border-white/5 dark:bg-black/25">
-        <button
-          type="button"
-          class="w-full flex select-none items-center justify-between rounded-lg px-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-          @click="onStageSectionOpen = !onStageSectionOpen"
-        >
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-neutral-900 font-bold dark:text-neutral-100">On stage</span>
-            <span class="rounded-full bg-primary-500/15 px-2 py-0.2 text-[10px] text-primary-700 font-bold dark:bg-primary-500/20 dark:text-primary-300">
-              {{ onStageWidgets.length }}
-            </span>
-          </div>
-          <div
-            class="i-solar:alt-arrow-down-bold text-xs text-neutral-500 transition-transform duration-200 dark:text-neutral-400"
-            :class="onStageSectionOpen ? 'rotate-180' : ''"
-          />
-        </button>
-
-        <div v-if="onStageSectionOpen" class="mt-2 space-y-2">
-          <div
-            v-for="widget in onStageWidgets"
-            :key="widget.id"
-            class="shadow-2xs flex items-center justify-between border border-neutral-200/60 rounded-xl bg-white p-2.5 dark:border-neutral-700/40 dark:bg-[#1e2128]"
-          >
-            <div class="min-w-0 flex items-center gap-2.5 pr-2">
-              <div
-                v-if="isStrawberryWidget(widget)"
-                class="shadow-2xs size-9 flex shrink-0 items-center justify-center border border-pink-500/20 rounded-xl bg-pink-500/10 text-lg text-pink-600 dark:border-pink-900/30 dark:bg-pink-950/30 dark:text-pink-400"
-              >
-                🍓
-              </div>
-              <div
-                v-else
-                class="shadow-2xs size-9 flex shrink-0 items-center justify-center border border-violet-500/20 rounded-xl bg-violet-500/10 text-base text-violet-600 dark:border-violet-900/30 dark:bg-violet-950/30 dark:text-violet-400"
-              >
-                <div class="i-solar:widget-bold text-base" />
-              </div>
-              <div class="min-w-0 flex flex-col">
-                <span class="truncate text-xs text-neutral-900 font-bold dark:text-neutral-100">
-                  {{ getWidgetTitle(widget) }}
-                </span>
-                <span class="truncate text-[10px] text-neutral-600 dark:text-neutral-400">
-                  {{ getWidgetSubtitle(widget) }}
-                </span>
-              </div>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                :class="[
-                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none',
-                  'bg-primary-600 dark:bg-primary-500',
-                ]"
-                title="Toggle stage visibility"
-                @click="handleToggleOnStage(widget)"
-              >
-                <span
-                  aria-hidden="true"
-                  class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                />
-              </button>
-            </div>
-          </div>
-
-          <div
-            v-if="onStageWidgets.length === 0"
-            class="py-3 text-center text-xs text-neutral-500 dark:text-neutral-400"
-          >
-            No widgets currently mounted on the stage.
-          </div>
-        </div>
-      </div>
-
-      <!-- Section: More Widgets -->
-      <div class="shadow-2xs border border-neutral-200/50 rounded-2xl bg-neutral-100/70 p-2.5 dark:border-white/5 dark:bg-black/25">
-        <button
-          type="button"
-          class="w-full flex select-none items-center justify-between rounded-lg px-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-          @click="moreWidgetsSectionOpen = !moreWidgetsSectionOpen"
-        >
-          <span class="text-xs text-neutral-900 font-bold dark:text-neutral-100">More widgets</span>
-          <div
-            class="i-solar:alt-arrow-down-bold text-xs text-neutral-500 transition-transform duration-200 dark:text-neutral-400"
-            :class="moreWidgetsSectionOpen ? 'rotate-180' : ''"
-          />
-        </button>
-
-        <div v-if="moreWidgetsSectionOpen" class="mt-2 space-y-2">
-          <div
-            v-for="widget in offlineWidgets"
-            :key="widget.id"
-            class="shadow-2xs flex items-center justify-between border border-neutral-200/60 rounded-xl bg-white p-2.5 dark:border-neutral-700/40 dark:bg-[#1e2128]"
-          >
-            <div class="min-w-0 flex items-center gap-2.5 pr-2">
-              <div
-                v-if="isStrawberryWidget(widget)"
-                class="shadow-2xs size-9 flex shrink-0 items-center justify-center border border-pink-500/20 rounded-xl bg-pink-500/10 text-lg text-pink-600 dark:border-pink-900/30 dark:bg-pink-950/30 dark:text-pink-400"
-              >
-                🍓
-              </div>
-              <div
-                v-else
-                class="shadow-2xs size-9 flex shrink-0 items-center justify-center border border-violet-500/20 rounded-xl bg-violet-500/10 text-base text-violet-600 dark:border-violet-900/30 dark:bg-violet-950/30 dark:text-violet-400"
-              >
-                <div class="i-solar:widget-bold text-base" />
-              </div>
-              <div class="min-w-0 flex flex-col">
-                <span class="truncate text-xs text-neutral-900 font-bold dark:text-neutral-100">
-                  {{ getWidgetTitle(widget) }}
-                </span>
-                <span class="truncate text-[10px] text-neutral-600 dark:text-neutral-400">
-                  {{ getWidgetSubtitle(widget) }}
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              class="flex shrink-0 items-center gap-1 border border-primary-500/40 rounded-full px-3 py-1 text-xs text-primary-600 font-semibold transition-colors dark:border-primary-500/50 hover:bg-primary-50 dark:text-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-primary-950/40"
-              @click="handleMountOfflineWidget(widget)"
-            >
-              <div class="i-solar:add-circle-linear text-sm" />
-              Add
-            </button>
-          </div>
-
-          <div
-            v-if="offlineWidgets.length === 0"
-            class="py-3 text-center text-xs text-neutral-500 dark:text-neutral-400"
-          >
-            No other persisted widgets in <code class="font-mono">/workspace</code>.
-          </div>
-        </div>
-      </div>
+      <MicroAppCatalog
+        :show-header="false"
+        default-surface="widget"
+        @mount="reloadPersistedWidgets"
+      />
 
       <!-- Footer Persistence Note -->
-      <div class="flex items-center gap-1.5 pt-1 text-[11px] text-neutral-600 dark:text-neutral-400">
+      <div class="mt-2 flex items-center gap-1.5 pt-1 text-[11px] text-neutral-600 dark:text-neutral-400">
         <div class="i-solar:info-circle-bold size-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
         <span>Widgets stay on your stage when you close this window.</span>
       </div>

@@ -1,4 +1,5 @@
 export { default as FloatingWidgetsLayer } from '../scenarios/widgets/FloatingWidgetsLayer.vue'
+export { default as MicroAppCatalog } from '../scenarios/widgets/MicroAppCatalog.vue'
 export { default as StageWidgetOverlay } from '../scenarios/widgets/StageWidgetOverlay.vue'
 export { default as StageWidgetsContainer } from '../scenarios/widgets/StageWidgetsContainer.vue'
 export { default as CloudflareAccountHeaderWidget } from './CloudflareAccountHeaderWidget.vue'

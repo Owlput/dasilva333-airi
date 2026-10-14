@@ -6,12 +6,12 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
+import MicroAppCatalog from '../widgets/MicroAppCatalog.vue'
+
 import { useSandbox } from '../../../composables/use-sandbox'
 import {
   buildWidgetIframeSrcdoc,
   BUNDLED_STARTER_WIDGETS,
-  copyWidgetManifestToClipboard,
-  downloadWidgetManifestFile,
   handleWidgetMcpMessage,
 } from '../../../libs/sandbox'
 
@@ -29,9 +29,6 @@ const {
   clearWidgets,
   setWidgetSurface,
   readFile,
-  mountPersistedWidget,
-  getPersistedWidgets,
-  deletePersistedWidget,
   importWidget,
 } = useSandbox()
 
@@ -44,8 +41,6 @@ const iframeHeight = ref(240)
 
 // Micro-App Library State
 const isLibraryOpen = ref(false)
-const isCatalogLoading = ref(false)
-const persistedCatalog = ref<PersistedWidget[]>([])
 
 const activeWidget = computed<MountedWidget | null>(() => {
   if (mountedWidgets.value.length === 0)
@@ -75,49 +70,12 @@ watch(() => mountedWidgets.value, (list) => {
   previousWidgetIds.value = new Set(list.map(w => w.id))
 }, { immediate: true, deep: true })
 
-async function openLibrary() {
+function openLibrary() {
   isLibraryOpen.value = true
-  isCatalogLoading.value = true
-  try {
-    persistedCatalog.value = await getPersistedWidgets()
-  }
-  finally {
-    isCatalogLoading.value = false
-  }
 }
 
 function closeLibrary() {
   isLibraryOpen.value = false
-}
-
-function isWidgetMounted(widget: PersistedWidget): boolean {
-  return mountedWidgets.value.some(m => m.id === widget.id || m.path === widget.path)
-}
-
-async function handleMountWidget(widget: PersistedWidget) {
-  await mountPersistedWidget(widget.id)
-  selectedWidgetId.value = widget.id
-  closeLibrary()
-}
-
-async function handleSelectOrUnmount(widget: PersistedWidget) {
-  if (selectedWidgetId.value === widget.id) {
-    unmountWidget(widget.id)
-    persistedCatalog.value = await getPersistedWidgets()
-  }
-  else {
-    selectedWidgetId.value = widget.id
-    closeLibrary()
-  }
-}
-
-async function handleDeleteWidget(widget: PersistedWidget) {
-  await deletePersistedWidget(widget.id)
-  persistedCatalog.value = await getPersistedWidgets()
-}
-
-function isStarterMounted(starter: any): boolean {
-  return mountedWidgets.value.some(m => m.id === starter.id || m.title === starter.title || m.path === starter.sourcePath?.replace(/\.ts$/, '.js'))
 }
 
 async function handleInstallStarter(starter: any) {
@@ -130,46 +88,11 @@ async function handleInstallStarter(starter: any) {
   try {
     const imported = await importWidget(starter)
     selectedWidgetId.value = imported.id
-    persistedCatalog.value = await getPersistedWidgets()
     closeLibrary()
     toast.success(`Mounted "${starter.title}"`)
   }
   catch (err: any) {
     toast.error(`Failed to mount starter: ${err.message}`)
-  }
-}
-
-function formatDate(timestamp?: number): string {
-  if (!timestamp)
-    return ''
-  const date = new Date(timestamp)
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-async function handleExportCatalogWidget(widget: PersistedWidget, event?: MouseEvent) {
-  if (event?.shiftKey || event?.altKey) {
-    downloadWidgetManifestFile(widget)
-    toast.success(`Downloaded "${widget.title || 'Widget'}" manifest (.json)`)
-    return
-  }
-
-  const copied = await copyWidgetManifestToClipboard(widget)
-  if (copied) {
-    toast.success(`Copied "${widget.title || 'Widget'}" JSON to clipboard!`, {
-      action: {
-        label: 'Download .json',
-        onClick: () => downloadWidgetManifestFile(widget),
-      },
-    })
-  }
-  else {
-    downloadWidgetManifestFile(widget)
-    toast.info(`Downloaded "${widget.title || 'Widget'}" manifest (.json)`)
   }
 }
 
@@ -202,7 +125,6 @@ async function handleImportFiles(files: FileList | File[]) {
   if (lastImported) {
     selectedWidgetId.value = lastImported.id
     if (isLibraryOpen.value) {
-      persistedCatalog.value = await getPersistedWidgets()
       closeLibrary()
     }
     if (successCount === 1) {
@@ -605,232 +527,17 @@ onUnmounted(() => {
         >
           <div
             :class="[
-              'relative max-w-md w-full overflow-hidden rounded-2xl',
-              'bg-white/95 dark:bg-neutral-900/95 border border-neutral-200/80 dark:border-neutral-700/60 shadow-2xl backdrop-blur-xl',
-              'flex flex-col max-h-[85vh] text-neutral-800 dark:text-neutral-100',
+              'relative max-w-xl w-full rounded-3xl',
+              'bg-[#fcfbf9] dark:bg-[#16181d] border border-neutral-200/80 dark:border-neutral-800 shadow-2xl',
+              'flex flex-col h-[85vh] max-h-[85vh] text-neutral-800 dark:text-neutral-100 overflow-hidden',
             ]"
-            @dragover="handleDragOver"
-            @dragleave="handleDragLeave"
-            @drop="handleDrop"
           >
-            <!-- Modal Header -->
-            <div class="flex items-center justify-between border-b border-neutral-200/80 px-4 py-3 dark:border-neutral-800/80">
-              <div class="flex items-center gap-2.5">
-                <div class="h-8 w-8 flex items-center justify-center border border-primary-500/20 rounded-xl bg-primary-500/15 text-primary-600 dark:text-primary-400">
-                  <span class="i-solar:widget-add-bold-duotone text-lg" />
-                </div>
-                <div>
-                  <h3 class="text-xs text-neutral-900 font-bold dark:text-neutral-100">
-                    Micro-App Library
-                  </h3>
-                  <p class="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Persisted widgets in local storage
-                  </p>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  title="Import widget from .json"
-                  :class="[
-                    'flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold',
-                    'bg-primary-500/10 text-primary-600 hover:bg-primary-500/20 dark:bg-primary-500/20 dark:text-primary-300 dark:hover:bg-primary-500/30',
-                    'border border-primary-500/30 transition-colors shadow-xs',
-                  ]"
-                  @click="triggerImportFilePicker"
-                >
-                  <span class="i-solar:import-bold-duotone text-sm" />
-                  <span>Import</span>
-                </button>
-                <button
-                  type="button"
-                  class="flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-                  @click="closeLibrary"
-                >
-                  <span class="i-solar:close-circle-bold-duotone text-lg" />
-                </button>
-              </div>
-            </div>
-
-            <!-- Modal Content List -->
-            <div class="flex-1 overflow-y-auto p-4 space-y-4">
-              <!-- Starter Presets Section -->
-              <div class="space-y-2">
-                <div class="flex items-center justify-between px-0.5">
-                  <span class="text-[11px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
-                    Starter Presets
-                  </span>
-                  <span class="text-[10px] text-neutral-400 font-medium">
-                    Built-in Micro-Apps
-                  </span>
-                </div>
-                <div class="space-y-1.5">
-                  <div
-                    v-for="starter in BUNDLED_STARTER_WIDGETS"
-                    :key="starter.id"
-                    :class="[
-                      'flex items-center justify-between gap-3 p-2.5 rounded-xl border transition-all duration-200',
-                      isStarterMounted(starter)
-                        ? 'bg-primary-500/10 border-primary-500/30 shadow-2xs'
-                        : 'bg-neutral-50/80 hover:bg-neutral-100/80 dark:bg-neutral-800/40 dark:hover:bg-neutral-800/60 border-neutral-200/70 dark:border-neutral-700/40',
-                    ]"
-                  >
-                    <div class="min-w-0 flex-1 space-y-0.5">
-                      <div class="flex items-center gap-2">
-                        <span class="truncate text-xs text-neutral-900 font-bold dark:text-neutral-100">
-                          {{ starter.title }}
-                        </span>
-                        <span
-                          v-if="isStarterMounted(starter)"
-                          class="border border-primary-500/30 rounded bg-primary-500/20 px-1.5 py-0.2 text-[9px] text-primary-600 font-bold font-mono dark:text-primary-300"
-                        >
-                          ACTIVE
-                        </span>
-                      </div>
-                      <div class="flex items-center gap-2 truncate text-[10px] text-neutral-500 font-mono dark:text-neutral-400">
-                        <span class="truncate">{{ starter.sourcePath }}</span>
-                        <span class="shrink-0 text-neutral-400 dark:text-neutral-500">• {{ starter.surface === 'widget' ? 'Standalone' : 'Panel' }}</span>
-                      </div>
-                    </div>
-                    <div class="flex shrink-0 items-center gap-1.5">
-                      <button
-                        type="button"
-                        :class="[
-                          'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all shadow-xs',
-                          isStarterMounted(starter)
-                            ? 'bg-neutral-200/80 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-700 border border-neutral-300 dark:border-neutral-700/50'
-                            : 'bg-primary-500 hover:bg-primary-600 text-white',
-                        ]"
-                        @click="handleInstallStarter(starter)"
-                      >
-                        <span :class="isStarterMounted(starter) ? 'i-solar:eye-bold-duotone text-xs' : 'i-solar:play-bold-duotone text-xs'" />
-                        <span>{{ isStarterMounted(starter) ? 'View' : 'Mount' }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Saved Widgets Section -->
-              <div class="border-t border-neutral-200/60 pt-2 space-y-2 dark:border-neutral-800/60">
-                <div class="flex items-center justify-between px-0.5">
-                  <span class="text-[11px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
-                    Saved Widgets ({{ persistedCatalog.length }})
-                  </span>
-                </div>
-
-                <div v-if="isCatalogLoading" class="flex flex-col items-center justify-center gap-2 py-8 text-neutral-400">
-                  <span class="i-solar:refresh-linear animate-spin text-xl text-primary-500" />
-                  <span class="text-xs">Loading widgets...</span>
-                </div>
-
-                <div
-                  v-else-if="persistedCatalog.length === 0"
-                  class="flex flex-col items-center justify-center py-6 text-center text-neutral-400 space-y-1"
-                >
-                  <p class="text-xs text-neutral-600 font-medium dark:text-neutral-400">
-                    No custom micro-apps yet
-                  </p>
-                  <p class="max-w-[240px] text-[10px] text-neutral-500">
-                    Mount a starter above or create custom widgets in the terminal.
-                  </p>
-                </div>
-
-                <div
-                  v-for="widget in persistedCatalog"
-                  v-else
-                  :key="widget.id"
-                  :class="[
-                    'flex items-center justify-between gap-3 p-3 rounded-xl border transition-all duration-200',
-                    isWidgetMounted(widget)
-                      ? 'bg-primary-500/10 border-primary-500/30 shadow-xs'
-                      : 'bg-neutral-50 hover:bg-neutral-100/80 dark:bg-neutral-800/40 dark:hover:bg-neutral-800/60 border-neutral-200/70 dark:border-neutral-700/40',
-                  ]"
-                >
-                  <div class="min-w-0 flex-1 space-y-1">
-                    <div class="flex items-center gap-2">
-                      <span class="truncate text-xs text-neutral-900 font-bold dark:text-neutral-100">
-                        {{ widget.title || widget.path.split('/').pop() }}
-                      </span>
-                      <span
-                        v-if="isWidgetMounted(widget)"
-                        class="border border-primary-500/30 rounded bg-primary-500/20 px-1.5 py-0.2 text-[9px] text-primary-600 font-bold font-mono dark:text-primary-300"
-                      >
-                        ACTIVE
-                      </span>
-                    </div>
-                    <div class="flex items-center gap-2 truncate text-[10px] text-neutral-500 font-mono dark:text-neutral-400">
-                      <span class="truncate">{{ widget.sourcePath || widget.path }}</span>
-                      <span v-if="widget.updatedAt" class="shrink-0 text-neutral-400 dark:text-neutral-500">
-                        • {{ formatDate(widget.updatedAt) }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="flex shrink-0 items-center gap-1.5">
-                    <button
-                      v-if="!isWidgetMounted(widget)"
-                      type="button"
-                      :class="[
-                        'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer',
-                        'bg-primary-500 hover:bg-primary-600 text-white transition-all shadow-xs',
-                      ]"
-                      @click="handleMountWidget(widget)"
-                    >
-                      <span class="i-solar:play-bold-duotone text-xs" />
-                      <span>Mount</span>
-                    </button>
-
-                    <button
-                      v-else
-                      type="button"
-                      :class="[
-                        'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer',
-                        selectedWidgetId === widget.id
-                          ? 'bg-neutral-200/80 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 border border-neutral-300 dark:border-neutral-700/50'
-                          : 'bg-primary-500/20 text-primary-600 dark:text-primary-300 hover:bg-primary-500/30 border border-primary-500/40',
-                      ]"
-                      @click="handleSelectOrUnmount(widget)"
-                    >
-                      <span :class="selectedWidgetId === widget.id ? 'i-solar:close-circle-bold-duotone text-xs' : 'i-solar:eye-bold-duotone text-xs'" />
-                      <span>{{ selectedWidgetId === widget.id ? 'Unmount' : 'View' }}</span>
-                    </button>
-
-                    <button
-                      title="Export widget as JSON (Shift+Click to download)"
-                      type="button"
-                      class="flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200/50 hover:text-primary-600 dark:hover:bg-neutral-800/50 dark:hover:text-primary-400"
-                      @click.stop="handleExportCatalogWidget(widget, $event)"
-                    >
-                      <span class="i-solar:diskette-bold text-sm" />
-                    </button>
-
-                    <button
-                      title="Delete widget from storage"
-                      type="button"
-                      class="flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-rose-500/10 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
-                      @click="handleDeleteWidget(widget)"
-                    >
-                      <span class="i-solar:trash-bin-trash-linear text-sm" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="flex items-center justify-between border-t border-neutral-200/80 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800/80 dark:bg-neutral-950/40">
-              <span class="text-[10px] text-neutral-500 font-mono">
-                {{ persistedCatalog.length }} widget{{ persistedCatalog.length === 1 ? '' : 's' }} registered
-              </span>
-              <button
-                type="button"
-                class="cursor-pointer rounded-lg bg-neutral-200 px-3 py-1 text-xs text-neutral-800 font-medium transition-colors dark:bg-neutral-800 hover:bg-neutral-300 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                @click="closeLibrary"
-              >
-                Close
-              </button>
-            </div>
+            <MicroAppCatalog
+              :show-header="true"
+              :show-close-button="true"
+              @close="closeLibrary"
+              @select="(id) => { selectedWidgetId = id; closeLibrary(); }"
+            />
           </div>
         </div>
       </Transition>
