@@ -1910,8 +1910,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       if (item && item.id) {
         const existing = mergedMap.get(item.id)
         if (existing) {
-          const existingTime = existing.updatedAt || existing.createdAt || 0
-          const remoteTime = item.updatedAt || item.createdAt || 0
+          const existingTime = existing.updatedAt || existing.deletedAt || existing.createdAt || 0
+          const remoteTime = item.updatedAt || item.deletedAt || item.createdAt || 0
           if (remoteTime > existingTime) {
             mergedMap.set(item.id, item)
           }

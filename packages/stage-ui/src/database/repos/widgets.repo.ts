@@ -14,6 +14,8 @@ export interface PersistedWidget {
   isMounted: boolean
   mountedAt: number
   updatedAt: number
+  isDeleted?: boolean
+  deletedAt?: number
   scope?: 'global' | 'card'
   cardId?: string
 }
@@ -22,6 +24,13 @@ export const WIDGETS_REGISTRY_KEY = 'local:widgets/registry'
 
 export const widgetsRepo = {
   async getWidgets(): Promise<PersistedWidget[]> {
+    const data = await storage.getItemRaw<PersistedWidget[]>(WIDGETS_REGISTRY_KEY)
+    if (!data)
+      return []
+    return data.filter(w => !w.isDeleted)
+  },
+
+  async getAllRawWidgets(): Promise<PersistedWidget[]> {
     const data = await storage.getItemRaw<PersistedWidget[]>(WIDGETS_REGISTRY_KEY)
     return data || []
   },
@@ -37,20 +46,26 @@ export const widgetsRepo = {
   },
 
   async saveWidget(widget: PersistedWidget): Promise<void> {
-    const all = await this.getWidgets()
+    const all = await this.getAllRawWidgets()
     const index = all.findIndex(w => w.id === widget.id || w.path === widget.path)
+    const cleanWidget: PersistedWidget = {
+      ...widget,
+      isDeleted: false,
+      deletedAt: undefined,
+      updatedAt: Date.now(),
+    }
     if (index >= 0) {
-      all[index] = { ...all[index], ...widget, updatedAt: Date.now() }
+      all[index] = { ...all[index], ...cleanWidget }
     }
     else {
-      all.push({ ...widget, updatedAt: Date.now() })
+      all.push(cleanWidget)
     }
     const clean = JSON.parse(JSON.stringify(all))
     await storage.setItemRaw(WIDGETS_REGISTRY_KEY, clean)
   },
 
   async updateWidgetState(idOrPath: string, state: any): Promise<void> {
-    const all = await this.getWidgets()
+    const all = await this.getAllRawWidgets()
     const found = all.find(w => w.id === idOrPath || w.path === idOrPath)
     if (found) {
       found.state = state
@@ -61,7 +76,7 @@ export const widgetsRepo = {
   },
 
   async updateWidgetPosition(idOrPath: string, position: { x: number, y: number }): Promise<void> {
-    const all = await this.getWidgets()
+    const all = await this.getAllRawWidgets()
     const found = all.find(w => w.id === idOrPath || w.path === idOrPath)
     if (found) {
       found.position = position
@@ -72,7 +87,7 @@ export const widgetsRepo = {
   },
 
   async setMounted(idOrPath: string, isMounted: boolean): Promise<void> {
-    const all = await this.getWidgets()
+    const all = await this.getAllRawWidgets()
     const found = all.find(w => w.id === idOrPath || w.path === idOrPath)
     if (found) {
       found.isMounted = isMounted
@@ -83,14 +98,41 @@ export const widgetsRepo = {
   },
 
   async removeWidget(idOrPath: string): Promise<void> {
-    const all = await this.getWidgets()
-    const filtered = all.filter(w => w.id !== idOrPath && w.path !== idOrPath)
-    const clean = JSON.parse(JSON.stringify(filtered))
+    const all = await this.getAllRawWidgets()
+    const now = Date.now()
+    let found = false
+    const updated = all.map((w) => {
+      if (w.id === idOrPath || w.path === idOrPath) {
+        found = true
+        return {
+          ...w,
+          isMounted: false,
+          isDeleted: true,
+          deletedAt: now,
+          updatedAt: now,
+        }
+      }
+      return w
+    })
+    if (!found) {
+      updated.push({
+        id: idOrPath,
+        title: idOrPath,
+        path: idOrPath,
+        code: '',
+        isMounted: false,
+        mountedAt: 0,
+        isDeleted: true,
+        deletedAt: now,
+        updatedAt: now,
+      })
+    }
+    const clean = JSON.parse(JSON.stringify(updated))
     await storage.setItemRaw(WIDGETS_REGISTRY_KEY, clean)
   },
 
   async clearMounted(): Promise<void> {
-    const all = await this.getWidgets()
+    const all = await this.getAllRawWidgets()
     for (const w of all) {
       w.isMounted = false
       w.updatedAt = Date.now()

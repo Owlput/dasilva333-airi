@@ -1,9 +1,18 @@
 import type { WidgetExportManifest } from '../export'
 
 import { DAILY_CHECKLIST_STARTER } from './daily-checklist'
+import { FOCUS_TIMER_STARTER } from './focus-timer'
+import { HONEY_NOTES_STARTER } from './honey-notes'
+import { STRAWBERRY_PET_STARTER } from './strawberry-pet'
 
 export * from './daily-checklist'
+export * from './focus-timer'
+export * from './honey-notes'
+export * from './strawberry-pet'
 
 export const BUNDLED_STARTER_WIDGETS: WidgetExportManifest[] = [
+  STRAWBERRY_PET_STARTER,
+  FOCUS_TIMER_STARTER,
   DAILY_CHECKLIST_STARTER,
+  HONEY_NOTES_STARTER,
 ]
