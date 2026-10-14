@@ -99,6 +99,48 @@ function handleOpenJournal() {
   }
 }
 
+function formatMemorySnippet(content?: string): string {
+  if (!content)
+    return ''
+
+  let text = content.trim()
+
+  // 1. Strip code fences if present (```markdown ... ``` or ~~~)
+  text = text.replace(/^(?:`{3,}|~{3,})[\w-]*\n?([\s\S]*?)\n?(?:`{3,}|~{3,})$/g, '$1').trim()
+
+  // 2. If the text starts with a top-level markdown heading (# Title), strip that leading heading line
+  text = text.replace(/^#+\s+(?:\S[^\n]*|[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF])(?:\n+|$)/, '').trim()
+
+  // 3. Format subheadings nicely (e.g. "## Tone Arc" -> "Tone Arc:")
+  text = text.replace(/^#+\s+([^\n]+)$/gm, '$1:')
+
+  // 4. Strip markdown formatting syntax (bold, italic, strikethrough, backticks, blockquotes, bullets)
+  text = text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^>\s+/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    // Replace multiple newlines and spaces with single space
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return text
+}
+
+function getMemoryEntryTitle(entry: { type?: string, title?: string, content?: string }): string {
+  if (entry.type === 'auto') {
+    const headingMatch = entry.content?.match(/^#+\s+([^\n]+)/)
+    if (headingMatch) {
+      return headingMatch[1].trim()
+    }
+  }
+  return entry.title || 'Daily Summary'
+}
+
 // Ensure widgets module is added & expanded when new widget arrives
 watch(() => mountedWidgets.value.length, (newCount, oldCount) => {
   if (newCount > (oldCount ?? 0)) {
@@ -329,15 +371,21 @@ function handleRestoreDefaults() {
                   <div
                     v-else-if="entry.type === 'auto'"
                     class="flex flex-col cursor-pointer gap-1 border border-primary-200/30 rounded-lg bg-primary-50/30 p-2 transition-colors dark:border-primary-800/30 hover:border-primary-300 dark:bg-primary-950/20 dark:hover:border-primary-700"
-                    @click="interactiveAreaRef?.openTextPreview?.(entry)"
+                    @click="interactiveAreaRef?.openTextPreview?.({
+                      ...entry,
+                      title: getMemoryEntryTitle(entry),
+                    })"
                   >
                     <div class="flex items-center gap-1.5 text-[10px] text-primary-500 font-bold uppercase dark:text-primary-400">
                       <span>{{ formatMonthDay ? formatMonthDay(entry.timestamp ?? 0) : '' }}</span>
                       <span class="i-solar:dna-bold-duotone text-[10px]" />
                       <span>Daily Summary</span>
                     </div>
+                    <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">
+                      {{ getMemoryEntryTitle(entry) }}
+                    </span>
                     <p class="line-clamp-2 text-[10px] text-neutral-600 leading-relaxed dark:text-neutral-400">
-                      {{ entry.content }}
+                      {{ formatMemorySnippet(entry.content) }}
                     </p>
                   </div>
 
@@ -354,7 +402,7 @@ function handleRestoreDefaults() {
                     </div>
                     <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">{{ entry.title }}</span>
                     <p class="line-clamp-2 text-[10px] text-neutral-500 leading-relaxed dark:text-neutral-400">
-                      {{ entry.content }}
+                      {{ formatMemorySnippet(entry.content) }}
                     </p>
                   </div>
                 </template>

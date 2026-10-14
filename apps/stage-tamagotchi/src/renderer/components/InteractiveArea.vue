@@ -290,13 +290,15 @@ const latestTextEntries = computed(() => {
       // Robust stripping of markdown code fences (``` or ~~~) with optional language tag
       const fenceMatch = b.summary.trim().match(/^(?:`{3,}|~{3,})[\w-]*\n?([\s\S]*?)\n?(?:`{3,}|~{3,})$/)
       const content = fenceMatch ? fenceMatch[1].trim() : b.summary.trim()
+      const headingMatch = content.match(/^#+\s+([^\n]+)/)
+      const title = headingMatch ? headingMatch[1].trim() : `Daily Recap — ${b.date}`
 
       return ({
         id: b.id,
         type: 'auto' as const,
         timestamp: b.updatedAt || b.createdAt,
         messageCount: b.messageCount,
-        title: 'Daily Recap',
+        title,
         content,
       })
     })
@@ -335,6 +337,8 @@ const allTextEntries = computed(() => {
     .map((b) => {
       const fenceMatch = b.summary.trim().match(/^(?:`{3,}|~{3,})[\w-]*\n?([\s\S]*?)\n?(?:`{3,}|~{3,})$/)
       const content = fenceMatch ? fenceMatch[1].trim() : b.summary.trim()
+      const headingMatch = content.match(/^#+\s+([^\n]+)/)
+      const title = headingMatch ? headingMatch[1].trim() : `Daily Recap — ${b.date}`
       return {
         id: b.id,
         type: 'auto' as const,
@@ -342,7 +346,7 @@ const allTextEntries = computed(() => {
         messageCount: b.messageCount,
         sessionCount: b.sessionCount,
         estimatedTokens: b.estimatedTokens,
-        title: `Daily Recap — ${b.date}`,
+        title,
         content,
       }
     })
