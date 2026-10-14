@@ -73,6 +73,11 @@ const WATCHED_PRS = [
     title: 'refactor(stage-pages): rebuild AIRI Card editor',
     focus: 'Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles',
   },
+  {
+    number: 2980,
+    title: 'feat(stage-ui,stage-pages): add voiceprint enrollment',
+    focus: 'Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port',
+  },
 ]
 
 // 2. Subsystem Definitions & Selective-Sync Classification
@@ -158,6 +163,9 @@ const SUBSYSTEM_RULES = [
     risk: '⚪ ignore / rejected in fork (offline-first architecture)',
     patterns: [
       /^server\//,
+      /display-model-sync/,
+      /file-transfer/,
+      /display-models\.repo/,
     ],
   },
   {

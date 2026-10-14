@@ -15,11 +15,256 @@
 | [#2541](https://github.com/moeru-ai/airi/pull/2541) | `Telltworose/feat/drop in plugins` (MCP-first tool architecture) | `@telltworose` | `Open` (Changes Requested) | 🟢 **Direct Fork Influence** (Security & MCP) | Author pivoted 180° away from in-process Node loader to MCP stdio child processes + card-level scoping (`tools.allowed`) per `@dasilva333`'s comment. **Directive**: Monitor author rebase and explanation to maintainer `@0xSelenicDove` regarding deleted files and merge conflicts. |
 | [#2290](https://github.com/moeru-ai/airi/pull/2290) | `feat(server): stream official ASR over WebSocket` | `@luoling8192` | `Open` (Changes Requested) | 🟡 **Audio Architecture** (ASR transport) | Official ASR streaming transport. User `@dasilva333` suggested OpenAI-compatible HTTP SSE (`stream: true`) to avoid per-utterance WS handshake overhead. **Directive**: Track author rebase and backend transport/billing decisions. |
 | [#2120](https://github.com/moeru-ai/airi/pull/2120) | `refactor(stage-pages): rebuild AIRI Card editor` | `@luoling8192` | `Open` (Changes Requested) | 🟡 **UI Architecture** (Editor lifecycle) | Rebuilding card editor in `stage-pages`. User `@dasilva333` shared dedicated route design. **Directive**: Track dirty-draft browser unload protection and component decoupling. |
+| [#2980](https://github.com/moeru-ai/airi/pull/2980) | `feat(stage-ui,stage-pages): add voiceprint enrollment` | `@sumimakito` | `Open` (8 comments) | 🟢 **Acoustic Intelligence** (Local diarization) | Follow-up to merged PR #2975. Implements local voiceprint enrollment UX and CAM++ tracker integration. **Directive**: Track WebAssembly/worker bundling, false-rejection handling, and evaluate for local Mode 1/Mode 2 port per `docs/proposal-speaker-diarization-and-voiceprint-tracker.md`. |
 
 ---
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-14] Upstream Delta: `4e4f5bb7..febfd707` (14 commits, 97 files, 41 PR update(s))
+
+### 🎯 Executive Highlights
+Upstream pushed 14 commits (4e4f5bb7 ➔ febfd707) across 97 files and recorded 41 PR updates (20 new, 6 lifecycle transitions, 15 active discussions).
+
+- **Speaker Recognition & Voiceprint Tracker (#2975, #2980, #2971)**: Upstream merged the foundational speaker tracker runtime powered by `@sherpaw/speaker-diarization` 0.3.0 and the CAM++ model (`speaker-tracker.ts`, `speaker-model.ts`), immediately followed by PR #2980 introducing voiceprint enrollment workflows in `stage-ui` and `stage-pages`.
+- **Cloud Model Storage Sync & Deduplication (#2869, #2973, #2972)**: Upstream merged private S3-backed cloud model syncing for Live2D and VRM assets (+5,682 server lines, S3 upload sessions, and transfer queues). Followed by #2973 deduplicating concurrent in-flight downloads for picked cloud models.
+- **Spoken Turn Tool Parity (#2956)**: Merged fix synchronizing tool selection state between spoken voice turns and chat composer turns (`selection.ts`, `voice-drafts.ts`), allowing vocal prompts to invoke composer-selected tools.
+- **Weather Forecast & Stage Presentation (#2955)**: Merged enhancement upgrading the built-in weather tool to return multi-day forecasts and render weather cards on stage.
+- **Mobile Voice Volume Control (#2953)**: Merged character voice volume slider into the mobile settings drawer (`mobile-settings-drawer.vue`).
+- **Telemetry & IO Trace Hierarchy (#2954, #2963, #2959, #2961, #2962, #2964)**: Continued expansion of client/server OpenTelemetry tracing, nesting speech turn spans under interaction turns and proposing server trace ingestion.
+- **Local Character Card Revision History (#2967)**: New community PR opened adding local revision history for character cards in `stage-ui`.
+
+#### 💬 Discussion & Community Buzz
+- **#2948: fix(server): serialize dev environment deployments (+33 new comments, total 106)**: Intense review and testing around Railway deployment serialization and deployment lock contention.
+- **#2934: fix(tamagotchi): use showWindowOnAllWorkspaces to prevent Dock icon restoring on macOS (+15 new comments, total 21)**: Active discussion verifying macOS multi-workspace window behavior and Dock visibility.
+- **#2935: fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction (+14 new comments, total 28)**: Verification of Node.js 32-bit signed integer limits (>24.8 days) for timer handlers.
+- **#2937: fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache (+10 new comments, total 23)**: Cross-platform Electron directory resolution discussions.
+- **#2953: feat(stage-ui,stage-layouts): add character voice volume control to the mobile settings drawer (+8 new comments, total 16, MERGED)**: Mobile settings layout polish and volume curve tuning.
+- **#2932: fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup (+6 new comments, total 20)**: Addressing IPC race conditions during window initialization.
+- **#2957: fix(stage-ui): give the built-in card the language chosen during onboarding (+5 new comments, total 7)**: Ensuring starter card language matches onboarding choice.
+- **#2936: fix(tamagotchi): guard payload.url access in artistryTestComfyUIConnection (+4 new comments, total 14)**: Defensive null checking in ComfyUI connection testing.
+- **#2458: feat(stage): add character-owned Live2D controls (+3 new comments, total 71)**: Discussion on avatar control ownership and Live2D model encapsulation.
+- **#2459: fix(core-agent): prevent plain-text tool call leaks (+3 new comments, total 48)**: Hardening agent tool invocation against raw text leaks.
+- **#2959: docs(api): propose agent traces from client spans and request logs (21 comments)**: Architectural debate over server ingestion of client agent trace spans.
+
+#### 🍒 Cherry-Pick Candidates (Worth Porting to dasilva333/airi)
+1. **PR #2956 / Commit `e6d15e0fb6`: fix(stage-ui,stage-tamagotchi): give spoken turns the tools of the composer**: High value. Fixes tool disparity between vocal commands and composer text inputs.
+2. **PR #2958 / Commit `7859c117d3`: fix(stage-ui,stage-tamagotchi): stream replies in minimal chat windows**: Clean fix restoring streaming reply chunks in compact/minimal window modes (`context-bridge.ts`).
+3. **PR #2955 / Commit `80af0dae4c`: feat(stage-tamagotchi): return a weather forecast and let the model show it**: Extends built-in weather tool with multi-day forecasts and stage visualization.
+4. **PR #2967: feat(stage-ui): add local revision history for character cards**: Monitor closely. Adds local revision history to card editing, perfectly aligning with our local-first philosophy.
+5. **PR #2973 / Commit `6f40ae7d2b`: fix(stage-ui): download a picked cloud model once**: In-flight promise deduplication pattern in `display-models.ts` prevents redundant parallel downloads.
+6. **PR #2975 & PR #2980: Speaker Tracker Runtime & Voiceprint Enrollment**: High architectural interest for local speaker diarization via `@sherpaw/speaker-diarization`. Evaluate once PR #2980 matures for multi-actor integration.
+
+#### ⚠️ Divergence / Collision Warnings
+- **`packages/stage-ui/src/stores/chat.ts` (Commits `5e51ad60bc`, `f3e6a244e1`)**: Upstream refactored `openTurnSpan`, `ownedTurnSpans`, and IO trace linkage. `chat.ts` in our fork is heavily customized with Eight Pillars memory injection, `<|ACTOR|>` token routing, and prompt composition. Do NOT cherry-pick `chat.ts` directly; manually port individual features if desired.
+- **Cloud Model Storage Sync (#2869, #2970)**: 5,600+ lines of central S3 syncing, upload sessions, and RevenueCat subscription tiers in `server/apps/api`. Permanent auto-reject; our fork uses BYOS (Bring Your Own Storage) with zero central server accounts.
+- **Server Trace Uploads (#2959, #2961, #2962, #2964)**: Uploading client agent traces to upstream's hosted API is an auto-reject for offline-first privacy.
+- **Watched PRs Monitor Status**:
+  - **PR #2634 (Cortico persona daemon)**: Still Draft (1 comment). High Alert remains active. No maintainer buy-in recorded.
+  - **PR #2672 (Window-local character binding)**: Draft (48 comments). Monitor for shared CharacterCard component extractions.
+  - **PR #2541 (MCP tool plugins)**: Open (59 comments). Track author rebase against main.
+  - **PR #2290 (ASR over WebSocket)**: Open (59 comments). Track potential SSE transport rebase.
+  - **PR #2120 (Card editor overhaul)**: Open (41 comments). Track dirty draft protection.
+
+### 📋 Upstream Commits
+- `febfd707ff` feat(stage-ui,stage-layouts): add character voice volume control to the mobile settings drawer (#2953) [#2953](https://github.com/moeru-ai/airi/pull/2953) _(RainbowBird, 2026-10-14)_
+- `bf9cc9af82` chore(nix): update pnpmDeps hash (#2977) [#2977](https://github.com/moeru-ai/airi/pull/2977) _(Weathercold, 2026-10-14)_
+- `d7c9737118` feat(stage-ui): add speaker tracker runtime (#2975) [#2975](https://github.com/moeru-ai/airi/pull/2975) _(Makito, 2026-10-14)_
+- `6f40ae7d2b` fix(stage-ui): download a picked cloud model once (#2973) [#2973](https://github.com/moeru-ai/airi/pull/2973) _(RainbowBird, 2026-10-14)_
+- `9b8f50dd8d` chore(nix): update pnpmDeps hash (#2974) [#2974](https://github.com/moeru-ai/airi/pull/2974) _(Weathercold, 2026-10-14)_
+- `831d07811e` fix(api): grant only the RevenueCat subscriptions of the deployment environment (#2970) [#2970](https://github.com/moeru-ai/airi/pull/2970) _(RainbowBird, 2026-10-14)_
+- `ef13f5bd30` chore(deps): bump sherpaw to 0.3.0 (#2971) [#2971](https://github.com/moeru-ai/airi/pull/2971) _(Makito, 2026-10-14)_
+- `f3bf7709be` test(stage-ui): compare model digests in the browser storage test (#2972) [#2972](https://github.com/moeru-ai/airi/pull/2972) _(RainbowBird, 2026-10-14)_
+- `dfb59461d3` feat(api,stage-ui): sync Live2D and VRM models to private storage (#2869) [#2869](https://github.com/moeru-ai/airi/pull/2869) _(RainbowBird, 2026-10-14)_
+- `f3e6a244e1` fix(stage-ui): give every IO trace span the turn it belongs to (#2963) [#2963](https://github.com/moeru-ai/airi/pull/2963) _(RainbowBird, 2026-10-14)_
+- `7859c117d3` fix(stage-ui,stage-tamagotchi): stream replies in minimal chat windows (#2958) [#2958](https://github.com/moeru-ai/airi/pull/2958) _(Neko, 2026-10-14)_
+- `e6d15e0fb6` fix(stage-ui,stage-tamagotchi): give spoken turns the tools of the composer (#2956) [#2956](https://github.com/moeru-ai/airi/pull/2956) _(Neko, 2026-10-13)_
+- `80af0dae4c` feat(stage-tamagotchi): return a weather forecast and let the model show it (#2955) [#2955](https://github.com/moeru-ai/airi/pull/2955) _(Neko, 2026-10-13)_
+- `5e51ad60bc` fix(stage-ui): nest the speech turn span under its interaction turn (#2954) [#2954](https://github.com/moeru-ai/airi/pull/2954) _(Neko, 2026-10-13)_
+
+### 🔬 Subsystem Breakdown
+#### Mobile & Web Platforms (`⚪ ignore / low-priority`) — 2 file(s) (+6/-4)
+- `apps/stage-pocket/vite.config.ts` *(+3/-2)*
+- `apps/stage-web/vite.config.ts` *(+3/-2)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 14 file(s) (+391/-67)
+- `apps/stage-tamagotchi/electron.vite.config.ts` *(+3/-2)*
+- `apps/stage-tamagotchi/src/main/services/electron/sherpaw-model-assets.ts` *(+3/-1)*
+- `apps/stage-tamagotchi/src/renderer/App.vue` *(+7/-0)*
+- `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.browser.test.ts` *(+4/-5)*
+- `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` *(+6/-5)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/resource-status-island/model-asset-progress.vue` *(+4/-1)*
+- `apps/stage-tamagotchi/src/renderer/pages/index.vue` *(+5/-1)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/builtin/weather-api.ts` *(+93/-25)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/builtin/weather.test.ts` *(+108/-8)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/builtin/weather.ts` *(+27/-17)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/index.ts` *(+1/-0)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/selection.browser.test.ts` *(+93/-0)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/selection.ts` *(+30/-0)*
+- `apps/stage-tamagotchi/src/renderer/widgets/weather/components/Weather.vue` *(+7/-2)*
+
+#### Documentation & Scaffolding (`⚪ ignore`) — 3 file(s) (+17/-0)
+- `docs/ai/adr/2026-09-22-sherpaw-model-assets.md` *(+7/-0)*
+- `packages/stage-shared/README.md` *(+6/-0)*
+- `packages/stage-ui/README.md` *(+4/-0)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 39 file(s) (+1961/-219)
+- `nix/pnpm-deps-hash.txt` *(+1/-1)*
+- `packages/stage-shared/src/perf/io-trace.ts` *(+3/-0)*
+- `packages/stage-shared/src/speaker-model.ts` *(+13/-0)*
+- `packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue` *(+78/-10)*
+- `packages/stage-ui/src/composables/speech-output-trace.test.ts` *(+54/-3)*
+- `packages/stage-ui/src/composables/speech-output-trace.ts` *(+9/-5)*
+- `packages/stage-ui/src/composables/use-io-tracer.ts` *(+21/-1)*
+- `packages/stage-ui/src/composables/voice-drafts.browser.test.ts` *(+27/-2)*
+- `packages/stage-ui/src/composables/voice-drafts.ts` *(+9/-3)*
+- `packages/stage-ui/src/database/repos/display-models.repo.browser.test.ts` *(+53/-0)*
+- `packages/stage-ui/src/database/repos/display-models.repo.test.ts` *(+72/-0)*
+- `packages/stage-ui/src/database/repos/display-models.repo.ts` *(+65/-0)*
+- `packages/stage-ui/src/libs/feature-flags.ts` *(+10/-1)*
+- `packages/stage-ui/src/libs/file-transfer/transfer-queue.test.ts` *(+120/-0)*
+- `packages/stage-ui/src/libs/file-transfer/transfer-queue.ts` *(+151/-0)*
+- `packages/stage-ui/src/libs/file-transfer/transfer.ts` *(+36/-0)*
+- `packages/stage-ui/src/libs/providers/providers/official/shared.test.ts` *(+30/-0)*
+- `packages/stage-ui/src/libs/providers/providers/official/shared.ts` *(+2/-1)*
+- `packages/stage-ui/src/libs/providers/providers/sherpaw/model-assets.ts` *(+47/-2)*
+- `packages/stage-ui/src/libs/voice/kws-model.ts` *(+2/-33)*
+- `packages/stage-ui/src/libs/voice/speaker-model.ts` *(+25/-0)*
+- `packages/stage-ui/src/libs/voice/speaker-tracker.test.ts` *(+134/-0)*
+- `packages/stage-ui/src/libs/voice/speaker-tracker.ts` *(+127/-0)*
+- `packages/stage-ui/src/services/display-model-sync.ts` *(+90/-0)*
+- `packages/stage-ui/src/stores/ai/chat-llm/streaming-control.test.ts` *(+19/-2)*
+- `packages/stage-ui/src/stores/ai/chat-llm/streaming-control.ts` *(+3/-2)*
+- `packages/stage-ui/src/stores/devtools/io-tracer.ts` *(+1/-4)*
+- `packages/stage-ui/src/stores/display-models.test.ts` *(+91/-9)*
+- `packages/stage-ui/src/stores/display-models.ts` *(+309/-28)*
+- `packages/stage-ui/src/stores/mods/api/context-bridge.contract.browser.test.ts` *(+43/-0)*
+- `packages/stage-ui/src/stores/mods/api/context-bridge.ts` *(+138/-90)*
+- `packages/stage-ui/src/stores/modules/hearing.ts` *(+3/-2)*
+- `packages/stage-ui/src/stores/settings/stage-model.test.ts` *(+18/-5)*
+- `packages/stage-ui/src/stores/settings/stage-model.ts` *(+9/-1)*
+- `packages/stage-ui/src/stores/speaker-tracker.ts` *(+43/-0)*
+- `packages/stage-ui/src/stores/speech-output-control.browser.test.ts` *(+41/-0)*
+- `packages/stage-ui/src/stores/speech-output-control.ts` *(+32/-2)*
+- `packages/stage-ui/src/stores/voice.ts` *(+18/-3)*
+- `pnpm-workspace.yaml` *(+14/-9)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 2 file(s) (+30/-0)
+- `packages/i18n/src/locales/en/settings.yaml` *(+15/-0)*
+- `packages/i18n/src/locales/zh-Hans/settings.yaml` *(+15/-0)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 4 file(s) (+71/-30)
+- `packages/provider-inference/package.json` *(+1/-1)*
+- `packages/stage-shared/package.json` *(+1/-0)*
+- `packages/stage-ui/package.json` *(+1/-0)*
+- `pnpm-lock.yaml` *(+68/-29)*
+
+#### Stage Layouts & Shells (`🔍 inspect`) — 1 file(s) (+64/-8)
+- `packages/stage-layouts/src/components/Layouts/mobile-settings-drawer.vue` *(+64/-8)*
+
+#### UI Primitives & Pages (`📦 import / inspect`) — 1 file(s) (+8/-2)
+- `packages/stage-pages/src/pages/settings/data/components/downloaded-models-section.vue` *(+8/-2)*
+
+#### 3D, Live2D & Motion (`🔍 inspect`) — 1 file(s) (+14/-4)
+- `packages/stage-ui/src/components/scenes/Stage.vue` *(+14/-4)*
+
+#### Audio & Speech Pipeline (`🔍 inspect`) — 2 file(s) (+40/-4)
+- `packages/stage-ui/src/libs/audio/hearing-transcriber.test.ts` *(+25/-0)*
+- `packages/stage-ui/src/libs/audio/hearing-transcriber.ts` *(+15/-4)*
+
+#### Cognitive & Consciousness (`⚠️ hand-merge`) — 2 file(s) (+106/-38)
+- `packages/stage-ui/src/stores/chat.contract.test.ts` *(+61/-10)*
+- `packages/stage-ui/src/stores/chat.ts` *(+45/-28)*
+
+#### Cloud Services, Billing & Auth (`⚪ ignore / rejected in fork (offline-first architecture)`) — 26 file(s) (+5682/-55)
+- `server/apps/api/README.md` *(+8/-5)*
+- `server/apps/api/drizzle/0033_display_models.sql` *(+35/-0)*
+- `server/apps/api/drizzle/meta/0033_snapshot.json` *(+4328/-0)*
+- `server/apps/api/drizzle/meta/_journal.json` *(+7/-0)*
+- `server/apps/api/src/app.test.ts` *(+1/-0)*
+- `server/apps/api/src/app.ts` *(+20/-2)*
+- `server/apps/api/src/libs/env.ts` *(+8/-0)*
+- `server/apps/api/src/libs/tests/env.test.ts` *(+2/-2)*
+- `server/apps/api/src/routes/display-models/index.ts` *(+45/-0)*
+- `server/apps/api/src/schemas/display-models.ts` *(+29/-0)*
+- `server/apps/api/src/schemas/index.ts` *(+2/-0)*
+- `server/apps/api/src/schemas/upload-sessions.ts` *(+35/-0)*
+- `server/apps/api/src/services/adapters/object-store.integration.test.ts` *(+51/-2)*
+- `server/apps/api/src/services/adapters/object-store.test.ts` *(+15/-5)*
+- `server/apps/api/src/services/adapters/object-store.ts` *(+17/-12)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriber.test.ts` *(+56/-7)*
+- `server/apps/api/src/services/adapters/revenuecat-subscriber.ts` *(+32/-4)*
+- `server/apps/api/src/services/adapters/s3-config.test.ts` *(+1/-1)*
+- `server/apps/api/src/services/adapters/s3-config.ts` *(+12/-15)*
+- `server/apps/api/src/services/domain/display-models.test.ts` *(+163/-0)*
+- `server/apps/api/src/services/domain/display-models.ts` *(+246/-0)*
+- `server/apps/api/src/services/domain/upload-sessions.ts` *(+179/-0)*
+- `server/dev/s3/cors.json` *(+11/-0)*
+- `server/docker-compose.yaml` *(+45/-0)*
+- `server/docs/ai/adr/2026-10-08-display-model-cloud-sync.md` *(+251/-0)*
+- `server/docs/ai/adr/2026-10-14-revenuecat-sandbox-subscriptions.md` *(+83/-0)*
+
+### 📬 Upstream PR Radar
+#### 🆕 New PRs Opened (20)
+- [#2980](https://github.com/moeru-ai/airi/pull/2980) `feat(stage-ui,stage-pages): add voiceprint enrollment` by **@sumimakito** *(8 comments)*
+- [#2979](https://github.com/moeru-ai/airi/pull/2979) `WIP voice pipeline stuff` by **@shinohara-rin** *(Draft)* *(0 comments)*
+- [#2977](https://github.com/moeru-ai/airi/pull/2977) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2978](https://github.com/moeru-ai/airi/pull/2978) `chore(nix): update assets hash` by **@Weathercold** *(2 comments)*
+- [#2975](https://github.com/moeru-ai/airi/pull/2975) `feat(stage-ui): add speaker tracker runtime` by **@sumimakito** *(5 comments)*
+- [#2973](https://github.com/moeru-ai/airi/pull/2973) `fix(stage-ui): download a picked cloud model once` by **@luoling8192** *(7 comments)*
+- [#2974](https://github.com/moeru-ai/airi/pull/2974) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(2 comments)*
+- [#2970](https://github.com/moeru-ai/airi/pull/2970) `fix(api): grant only the RevenueCat subscriptions of the deployment environment` by **@luoling8192** *(2 comments)*
+- [#2971](https://github.com/moeru-ai/airi/pull/2971) `chore(deps): bump sherpaw to 0.3.0` by **@sumimakito** *(2 comments)*
+- [#2972](https://github.com/moeru-ai/airi/pull/2972) `test(stage-ui): compare model digests in the browser storage test` by **@luoling8192** *(2 comments)*
+- [#2969](https://github.com/moeru-ai/airi/pull/2969) `chore(i18n): translate new strings and fix translation review findings` by **@chiba233** *(5 comments)*
+- [#2968](https://github.com/moeru-ai/airi/pull/2968) `Claude/awesome meitner jdgb9p` by **@evillwb** *(9 comments)*
+- [#2967](https://github.com/moeru-ai/airi/pull/2967) `feat(stage-ui): add local revision history for character cards` by **@lorenzozanee** *(7 comments)*
+- [#2964](https://github.com/moeru-ai/airi/pull/2964) `feat(stage-ui): record one span for each chat request and each tool call` by **@luoling8192** *(5 comments)*
+- [#2961](https://github.com/moeru-ai/airi/pull/2961) `feat(api): ingest client agent trace spans and keep one run row per turn` by **@luoling8192** *(Draft)* *(1 comments)*
+- [#2962](https://github.com/moeru-ai/airi/pull/2962) `feat(stage-ui): upload the agent trace spans of turns that used only the official provider` by **@luoling8192** *(Draft)* *(1 comments)*
+- [#2963](https://github.com/moeru-ai/airi/pull/2963) `fix(stage-ui): give every IO trace span the turn it belongs to` by **@luoling8192** *(5 comments)*
+- [#2959](https://github.com/moeru-ai/airi/pull/2959) `docs(api): propose agent traces from client spans and request logs` by **@luoling8192** *(21 comments)*
+- [#2958](https://github.com/moeru-ai/airi/pull/2958) `fix(stage-ui,stage-tamagotchi): stream replies in minimal chat windows` by **@nekomeowww** *(4 comments)*
+- [#2960](https://github.com/moeru-ai/airi/pull/2960) `feat(api): return the request log ID in a gateway response header` by **@luoling8192** *(Draft)* *(0 comments)*
+
+#### 🔄 PR Status & Lifecycle Changes (6)
+- [#2953](https://github.com/moeru-ai/airi/pull/2953) `feat(stage-ui,stage-layouts): add character voice volume control to the mobile settings drawer` — `OPEN` ➔ `MERGED`
+- [#2051](https://github.com/moeru-ai/airi/pull/2051) `feat(stage-tamagotchi): add opt-in companion observation mode` — `OPEN` ➔ `CLOSED`
+- [#2869](https://github.com/moeru-ai/airi/pull/2869) `feat(api,stage-ui): sync Live2D and VRM models to private storage` — `OPEN` ➔ `MERGED`
+- [#2956](https://github.com/moeru-ai/airi/pull/2956) `fix(stage-ui,stage-tamagotchi): give spoken turns the tools of the composer` — `OPEN` ➔ `MERGED`
+- [#2955](https://github.com/moeru-ai/airi/pull/2955) `feat(stage-tamagotchi): return a weather forecast and let the model show it` — `OPEN` ➔ `MERGED`
+- [#2954](https://github.com/moeru-ai/airi/pull/2954) `fix(stage-ui): nest the speech turn span under its interaction turn` — `OPEN` ➔ `MERGED`
+
+#### 💬 Discussion Activity (15)
+- [#2458](https://github.com/moeru-ai/airi/pull/2458) `feat(stage): add character-owned Live2D controls` — *+3 comments (68 ➔ 71 total)*
+- [#2953](https://github.com/moeru-ai/airi/pull/2953) `feat(stage-ui,stage-layouts): add character voice volume control to the mobile settings drawer` — *+8 comments (8 ➔ 16 total)*
+- [#2934](https://github.com/moeru-ai/airi/pull/2934) `fix(tamagotchi): use showWindowOnAllWorkspaces to prevent Dock icon restoring on macOS` — *+15 comments (6 ➔ 21 total)*
+- [#2932](https://github.com/moeru-ai/airi/pull/2932) `fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup` — *+6 comments (14 ➔ 20 total)*
+- [#2935](https://github.com/moeru-ai/airi/pull/2935) `fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction` — *+14 comments (14 ➔ 28 total)*
+- [#2937](https://github.com/moeru-ai/airi/pull/2937) `fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache` — *+10 comments (13 ➔ 23 total)*
+- [#2936](https://github.com/moeru-ai/airi/pull/2936) `fix(tamagotchi): guard payload.url access in artistryTestComfyUIConnection to prevent TypeError` — *+4 comments (10 ➔ 14 total)*
+- [#2941](https://github.com/moeru-ai/airi/pull/2941) `feat(i18n): complete missing locale translations` — *+2 comments (10 ➔ 12 total)*
+- [#2926](https://github.com/moeru-ai/airi/pull/2926) `feat(stage-tamagotchi): add a fullscreen workspace experiment with two window modes` — *+2 comments (21 ➔ 23 total)*
+- [#2957](https://github.com/moeru-ai/airi/pull/2957) `fix(stage-ui): give the built-in card the language chosen during onboarding` — *+5 comments (2 ➔ 7 total)*
+- [#2947](https://github.com/moeru-ai/airi/pull/2947) `feat(nix): pin pnpm and electron to project version & various` — *+1 comments (7 ➔ 8 total)*
+- [#2944](https://github.com/moeru-ai/airi/pull/2944) `feat(api): store each message and tool call of a request as one row` — *+1 comments (0 ➔ 1 total)*
+- [#2943](https://github.com/moeru-ai/airi/pull/2943) `docs(api): propose one stored row for each message and tool call of a request` — *+3 comments (6 ➔ 9 total)*
+- [#2948](https://github.com/moeru-ai/airi/pull/2948) `fix(server): serialize dev environment deployments` — *+33 comments (73 ➔ 106 total)*
+- [#2459](https://github.com/moeru-ai/airi/pull/2459) `fix(core-agent): prevent plain-text tool call leaks` — *+3 comments (45 ➔ 48 total)*
+
+### 👁️ Watched PRs Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+
+---
 ## [2026-10-13] Upstream Delta: `0df39eb9..4e4f5bb7` (8 commits, 143 files, 31 PR update(s))
 
 ### 🎯 Executive Highlights

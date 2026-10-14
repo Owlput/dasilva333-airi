@@ -61,6 +61,10 @@ This fork (`dasilva333/airi`) has undergone deep, structural architectural shift
    - This fork is strictly 100% in-process: character memory is powered natively by the Eight Pillars (STMM daily summaries, LTMM immutable Sacred Journal, Echo chips, distilled Lifetime Artifacts, and Orama hybrid search) stored directly in client-side IndexedDB (`local:*`) and `localforage`.
    - It requires zero secondary terminal processes, zero daemons, and maintains full parity across Desktop (Electron), Web, and Mobile (Capacitor).
    - Upstream PR #2634 proposes offloading character cognition and persona to an external Cortico daemon (`@proj-airi/cortico-bridge` on `ws://localhost:6122`), breaking single-command launch (`pnpm dev:bridge` requirement), gutting native memory settings pages, breaking Web/Mobile compatibility, and relying on raw unindexed host directory scans. **External persona daemons are auto-rejects for core adoption.**
+10. **Hosted Cloud Display Model Sync vs. BYOS / Local Asset Catalogs**:
+   - This fork is strictly client/local-first: avatars, Live2D assets, VRMs, and display models are stored directly in local client storage (`localforage` / IndexedDB) or backed up via Bring Your Own Storage (BYOS: S3/R2/Google Drive backup), with zero server accounts, zero remote auth requirements, and zero centralized model sync.
+   - Upstream actively develops hosted central S3 upload sessions, cloud model syncing, transfer queues, and subscription gates (`server/apps/api/src/routes/display-models`, `display-model-sync.ts`, `transfer-queue.ts`, `display-models.repo.ts`, PRs #2869, #2970, #2972, #2973).
+   - **Filter Rule**: All upstream PRs, commits, and fixes touching hosted cloud display model sync or cloud model downloading/deduplication (e.g. PR #2869, PR #2973) are permanent auto-rejects for cherry-picking. Never recommend upstream cloud display model syncing changes as cherry-pick candidates.
 
 ## Upstream Radar Watchlist (High-Interest Monitored PRs)
 
@@ -86,6 +90,10 @@ Maintain an active rolling monitor of high-impact upstream PRs during scheduled 
   - **Author**: `@luoling8192` | **State**: Open (Changes Requested)
   - **Focus**: Character card editor overhaul in `stage-pages`. User `@dasilva333` shared dedicated page/route architecture from fork.
   - **Monitoring Objective**: Track dirty-draft browser unload protection and component decoupling.
+- **PR #2980: `feat(stage-ui,stage-pages): add voiceprint enrollment`**
+  - **Author**: `@sumimakito` | **State**: Open
+  - **Focus**: Local speaker diarization via `@sherpaw/speaker-diarization` (0.3.0) and the CAM++ 28 MB ONNX model. Enrolls user voiceprints to enable Mode 1 biometric wake-word gating ("owner only") and opens the path to Mode 2 multi-speaker conversational tagging.
+  - **Monitoring Objective**: Track WebAssembly/worker bundling, false-rejection handling, and evaluate for local Mode 1/Mode 2 port per `docs/proposal-speaker-diarization-and-voiceprint-tracker.md`.
 
 ## Upstream Radar vs. Cherry-Pick Triage SOP
 
