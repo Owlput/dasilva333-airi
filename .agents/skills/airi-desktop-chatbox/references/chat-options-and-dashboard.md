@@ -13,13 +13,36 @@
 
 ## 1. Chat Options Popover (`ChatOptionsPopover.vue`)
 
+### Decomposed Modular Architecture
+The popover is decomposed into isolated subviews located in `packages/stage-layouts/src/components/Layouts/ChatOptions/`:
+- **`ChatOptionsPopover.vue`**: Root orchestrator (~200 lines) owning `PopoverRoot`, header bar, dynamic view switching, and dialog wrappers (`StageBackgroundDialogPicker`).
+- **`ChatOptionsRootView.vue`**: Image spawn mode segmented control (`bg`, `widget`, `inline`), chat layout presets (`mini`, `medium`, `large`, `full`), and 6 category navigation buttons.
+- **`ChatOptionsCapabilitiesView.vue`**: Heartbeats, screen watching, offline dreams, visual novel / autonomous artistry, sticker widgets, auto-cues, and cognitive pipeline.
+- **`ChatOptionsToolsView.vue`**: Terminal sandbox (`bash`), local filesystem access, web search, screenshots, MCP tools, generative motion, and text/image journals.
+- **`ChatOptionsInjectionsView.vue`**: System sensors telemetry, 3-day recent memory summaries, Universe RAG retrieval, visual scene state scratchpad, and dream/journal/artistry intrusions.
+- **`ChatOptionsAppearanceView.vue`**: Theme/color mode widget (`SettingsThemeHeaderWidget`), 3-column particle atmosphere cards, and quick wallpaper grid with scene browser picker trigger.
+- **`ChatOptionsStagingView.vue`**: Dialogue text color customization. Supports card default swatch picker and per-actor color overrides with hex input and live preview box. Emits `openStagingSettings`.
+- **`ChatOptionsVoiceView.vue`**: Speech playback and actor voice assignments. Emits `openVoiceSettings`.
+
 ### Navigation State Machine
 ```ts
-type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appearance'
+type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appearance' | 'staging' | 'voice'
 ```
 - Closing the popover resets `currentView` to `'root'`.
 - Horizontal subview navigation uses `<Transition mode="out-in">` with 200ms ease-out enter and 150ms ease-in leave.
 - Back button (`< Chat options`) returns to `'root'`.
+
+### Voice & Audio Subview Contracts (`ChatOptionsVoiceView.vue`)
+- **Speaker Volume (0%–100%)**: Range slider bound to `settings/speech/output-volume`. Subtext: *"At 0%, speech still generates; lip-sync and captions continue."*
+- **Generate Speech (TTS)**: Toggle switch bound to `settings/speech/enabled`. Subtext: *"Turn off to stop TTS requests. Text chat continues."*
+- **Adaptive Character Voices**:
+  - **Single-Character Mode (`!isMultiActorCard`)**:
+    - Callout banner: *"Silent speakers ≠ disabled speech. Use volume for silence. Switch TTS off to stop synthesis requests entirely."*
+    - Single card voice profile row with audition preview button (`▶`) and voice dropdown.
+  - **Multi-Actor Mode (`isMultiActorCard`)**:
+    - **Card default row**: Document icon, system default voice selection, audition preview.
+    - **Actor override rows**: Iterates `actorConcepts`, displaying `CharacterAvatar`, actor name, current voice name (*"Uses card default"* with link chain icon or override voice name), audition preview (`▶`), voice dropdown selector, and reset button.
+- **Deep Link**: *"Manage voice profiles ↗"* button emitting `openVoiceSettings`.
 
 ### Appearance Subview Structure
 - **Theme Widget**: `<SettingsThemeHeaderWidget shrink-0 />` embedded in the header banner. Controls dark/light mode and 24-color preset primary accent popover (`z-[10050]`).
@@ -61,6 +84,6 @@ type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appea
 
 ## Verification
 
-1. **Popover**: Navigate into each subview (`capabilities`, `tools`, `injections`, `appearance`), verify slide transition, test atmosphere selection, toggle dark/light mode, pick a color swatch, and verify popup closes properly.
+1. **Popover**: Navigate into each subview (`capabilities`, `tools`, `injections`, `appearance`, `staging`, `voice`), verify slide transition, test volume slider and TTS toggle, test atmosphere selection, toggle dark/light mode, pick a color swatch, and verify popup closes properly.
 2. **Dashboard**: Test reordering modules, collapsing cards, hiding/showing via customize mode, toggling sandbox availability, and refreshing page to ensure layout persists.
 3. **Typecheck**: Run `pnpm -F @proj-airi/stage-layouts typecheck` and `pnpm -F @proj-airi/stage-tamagotchi typecheck`.
