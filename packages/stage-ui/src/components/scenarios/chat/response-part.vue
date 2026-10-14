@@ -3,7 +3,7 @@ import type { ChatAssistantMessage } from '../../../types/chat'
 import type { PacingMetrics, PacingState, PacingStateLogEntry } from '../../../types/pacing'
 
 import { useBroadcastChannel, useElementSize, useIntervalFn } from '@vueuse/core'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useChatOrchestratorStore } from '../../../stores/chat'
@@ -353,6 +353,10 @@ const { pause: stopSnippetTicker, resume: startSnippetTicker } = useIntervalFn((
     const startChar = ambientCharIndex.value - maxChars
     displayedSnippet.value = fullText.slice(startChar, ambientCharIndex.value)
   }
+
+  // Keep the lens anchored under a stationary cursor while the crawl advances.
+  if (inspectActive.value && lastClientX.value != null)
+    updateInspectRatio(lastClientX.value)
 }, 50, { immediate: false })
 
 watch(isThinking, (thinking) => {
@@ -398,8 +402,147 @@ const snippetMaskStyle = computed(() => {
   return undefined
 })
 
+// NOTICE: Inline focus lens (mockup B) inspects in place without pausing
+// the ambient crawl ticker. Hover (mouse) or long-press (touch) sets an
+// anchor ratio; the ticker keeps advancing displayedSnippet underneath it.
+const inspectActive = ref(false)
+const inspectRatio = ref(0.5)
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let touchStartX = 0
+let touchStartY = 0
+let suppressNextClick = false
+
+function clearLongPressTimer() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+onBeforeUnmount(() => clearLongPressTimer())
+
+function updateInspectRatio(clientX: number) {
+  const el = snippetContainerRef.value
+  if (!el)
+    return
+  const rect = el.getBoundingClientRect()
+  if (rect.width <= 0)
+    return
+  inspectRatio.value = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+}
+
+// Last known viewport X of the inspecting pointer. Re-read on every crawl
+// tick so a stationary mouse keeps tracking the text sliding underneath it
+// instead of freezing at the strip-entry point.
+const lastClientX = ref<number | null>(null)
+
+function handleSnippetPointerMove(e: PointerEvent) {
+  lastClientX.value = e.clientX
+  if (e.pointerType === 'mouse') {
+    inspectActive.value = true
+    updateInspectRatio(e.clientX)
+  }
+  else if (inspectActive.value) {
+    updateInspectRatio(e.clientX)
+  }
+}
+
+function handleSnippetPointerEnter(e: PointerEvent) {
+  if (e.pointerType === 'mouse') {
+    lastClientX.value = e.clientX
+    inspectActive.value = true
+    updateInspectRatio(e.clientX)
+  }
+}
+
+function handleSnippetPointerLeave(e: PointerEvent) {
+  if (e.pointerType === 'mouse') {
+    inspectActive.value = false
+    lastClientX.value = null
+  }
+}
+
+function handleSnippetPointerDown(e: PointerEvent) {
+  if (e.pointerType === 'mouse')
+    return
+  touchStartX = e.clientX
+  touchStartY = e.clientY
+  lastClientX.value = e.clientX
+  clearLongPressTimer()
+  longPressTimer = setTimeout(() => {
+    updateInspectRatio(e.clientX)
+    inspectActive.value = true
+    suppressNextClick = true
+  }, 350)
+}
+
+function handleSnippetPointerUp(e: PointerEvent) {
+  if (e.pointerType === 'mouse')
+    return
+  const dx = Math.abs(e.clientX - touchStartX)
+  const dy = Math.abs(e.clientY - touchStartY)
+  if (dx > 8 || dy > 8)
+    suppressNextClick = false
+  clearLongPressTimer()
+  lastClientX.value = null
+  if (inspectActive.value) {
+    inspectActive.value = false
+    // Let the synthetic click fire first so a hold never expands.
+    setTimeout(() => { suppressNextClick = false }, 250)
+  }
+}
+
+function handleSnippetPointerCancel() {
+  clearLongPressTimer()
+  inspectActive.value = false
+  lastClientX.value = null
+}
+
+const lensActive = computed(() => {
+  return inspectActive.value && !isExpanded.value && !!displayedSnippet.value.trim()
+})
+
+const lensParts = computed(() => {
+  const text = displayedSnippet.value
+  if (!text)
+    return { before: '', focus: '', after: '' }
+  if (text.length < 15)
+    return { before: '', focus: text, after: '' }
+  const charIdx = Math.min(text.length - 1, Math.max(0, Math.floor(inspectRatio.value * text.length)))
+  const words: Array<{ start: number, end: number }> = []
+  for (const m of text.matchAll(/\S+/g)) {
+    const start = m.index ?? 0
+    words.push({ start, end: start + m[0].length })
+  }
+  if (!words.length)
+    return { before: '', focus: text, after: '' }
+  let wi = words.findIndex(w => charIdx >= w.start && charIdx < w.end)
+  if (wi === -1) {
+    wi = words.findIndex(w => w.start > charIdx)
+    if (wi === -1)
+      wi = words.length - 1
+  }
+  const from = Math.max(0, wi - 1)
+  const to = Math.min(words.length, wi + 2)
+  const focusStart = words[from].start
+  const focusEnd = words[to - 1].end
+  return {
+    before: text.slice(0, focusStart),
+    focus: text.slice(focusStart, focusEnd),
+    after: text.slice(focusEnd),
+  }
+})
+
 function toggleExpanded() {
   isExpanded.value = !isExpanded.value
+}
+
+function handleHeaderClick() {
+  if (suppressNextClick) {
+    suppressNextClick = false
+    return
+  }
+  toggleExpanded()
 }
 
 function scrollToBottom() {
@@ -447,9 +590,9 @@ watch(isExpanded, (expanded) => {
       tabindex="0"
       :aria-expanded="isExpanded"
       class="max-w-full min-w-0 w-full flex cursor-pointer select-none items-center justify-between gap-2 px-2.5 py-1.5 text-xs text-neutral-600 outline-none transition-colors hover:bg-neutral-200/40 dark:text-neutral-400 dark:hover:bg-neutral-800/40"
-      @click="toggleExpanded"
-      @keydown.enter.prevent="toggleExpanded"
-      @keydown.space.prevent="toggleExpanded"
+      @click="handleHeaderClick"
+      @keydown.enter.prevent="handleHeaderClick"
+      @keydown.space.prevent="handleHeaderClick"
     >
       <div class="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
         <div
@@ -461,25 +604,42 @@ watch(isExpanded, (expanded) => {
           v-show="!isExpanded"
           ref="snippetContainerRef"
           :class="[
-            'relative h-4 min-w-0 flex-1 overflow-hidden',
+            'relative min-w-0 flex-1 overflow-hidden [touch-action:pan-y]',
+            lensActive ? 'h-auto min-h-6 py-0.5' : 'h-4',
             'text-[11px] text-neutral-600 leading-4 font-mono italic dark:text-neutral-350',
           ]"
-          :style="snippetMaskStyle"
-          :title="cleanFullReasoning || displayedSnippet"
+          :style="lensActive ? undefined : snippetMaskStyle"
+          :title="lensActive ? undefined : (cleanFullReasoning || displayedSnippet)"
+          @pointermove="handleSnippetPointerMove"
+          @pointerenter="handleSnippetPointerEnter"
+          @pointerleave="handleSnippetPointerLeave"
+          @pointerdown="handleSnippetPointerDown"
+          @pointerup="handleSnippetPointerUp"
+          @pointercancel="handleSnippetPointerCancel"
         >
           <Transition name="snippet-fade" mode="out-in">
             <span
               :key="salienceKey"
               ref="snippetTrackRef"
-              class="absolute left-0 top-0 min-w-full w-max whitespace-nowrap text-left"
+              :class="lensActive
+                ? 'relative flex items-center min-w-full w-max max-w-none whitespace-nowrap text-left'
+                : 'absolute left-0 top-0 min-w-full w-max whitespace-nowrap text-left'"
             >
-              <span v-if="salienceSource === 'think_aloud'" class="mr-1 inline-flex items-center text-amber-500 font-semibold font-sans not-italic">
-                🎙️
-              </span>
-              <span v-else-if="salienceSource === 'heuristic'" class="mr-1 inline-flex items-center text-primary-500 font-semibold font-sans not-italic">
-                💡
-              </span>
-              {{ displayedSnippet || cleanFullReasoning || t('stage.chat.reasoning') }}
+              <template v-if="lensActive">
+                <span class="opacity-60">{{ lensParts.before }}</span><span
+                  class="mx-1 inline-flex shrink-0 items-center border rounded-full bg-white/95 px-2.5 align-middle text-[15px] text-neutral-800 font-medium leading-5 italic shadow-md transition-all duration-150"
+                  :class="['border-primary-300/60 dark:border-primary-500/40 dark:bg-neutral-900/95 dark:text-neutral-100']"
+                >{{ lensParts.focus }}</span><span class="opacity-60">{{ lensParts.after }}</span>
+              </template>
+              <template v-else>
+                <span v-if="salienceSource === 'think_aloud'" class="mr-1 inline-flex items-center text-amber-500 font-semibold font-sans not-italic">
+                  🎙️
+                </span>
+                <span v-else-if="salienceSource === 'heuristic'" class="mr-1 inline-flex items-center text-primary-500 font-semibold font-sans not-italic">
+                  💡
+                </span>
+                {{ displayedSnippet || cleanFullReasoning || t('stage.chat.reasoning') }}
+              </template>
             </span>
           </Transition>
         </span>
