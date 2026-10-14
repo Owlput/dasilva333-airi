@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
-import { buildWidgetIframeSrcdoc } from '@proj-airi/stage-ui/libs/sandbox'
+import { buildWidgetIframeSrcdoc, executeJevMcpTool, isJevMcpTool } from '@proj-airi/stage-ui/libs/sandbox'
 import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -107,8 +107,25 @@ function handleIframeMessage(e: MessageEvent) {
 
   if (e.data?.type === 'mcp-call') {
     const { id, name, args } = e.data
-    const bridge = tryGetMcpToolBridge()
     const target = e.source as WindowProxy | null
+
+    if (isJevMcpTool(name)) {
+      executeJevMcpTool(name, args)
+        .then((res) => {
+          if (res.isError) {
+            target?.postMessage({ type: 'mcp-call-result', id, error: String(res.toolResult || 'Jev MCP execution failed') }, '*')
+          }
+          else {
+            target?.postMessage({ type: 'mcp-call-result', id, result: res.structuredContent ?? res.toolResult ?? res.content }, '*')
+          }
+        })
+        .catch((err: any) => {
+          target?.postMessage({ type: 'mcp-call-result', id, error: err.message || 'Jev MCP error' }, '*')
+        })
+      return
+    }
+
+    const bridge = tryGetMcpToolBridge()
     if (!bridge) {
       target?.postMessage({ type: 'mcp-call-result', id, error: 'MCP tool bridge not available' }, '*')
       return

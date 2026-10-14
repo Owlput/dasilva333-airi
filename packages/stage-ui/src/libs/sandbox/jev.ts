@@ -1,5 +1,6 @@
 import type { ExecResult, ResolvedCommandContext } from 'just-bash'
 
+import type { McpCallToolResult, McpToolDescriptor } from '../../stores/mcp-tool-bridge'
 import type { System1Response } from '../providers/types'
 
 import { getActivePinia } from 'pinia'
@@ -85,12 +86,19 @@ export interface VirtualJevModule {
     context?: string | object,
     options?: { threshold?: number, model?: string, signal?: AbortSignal },
   ) => Promise<boolean>
-  choose: (
-    question: string,
-    context: string | object,
-    choices: string[] | Record<string, string>,
-    config?: { model?: string, signal?: AbortSignal },
-  ) => Promise<string>
+  choose: {
+    (
+      question: string,
+      choices: string[] | Record<string, string>,
+      config?: { model?: string, signal?: AbortSignal },
+    ): Promise<string>
+    (
+      question: string,
+      context: string | object,
+      choices: string[] | Record<string, string>,
+      config?: { model?: string, signal?: AbortSignal },
+    ): Promise<string>
+  }
   score: (
     question: string,
     context?: string | object,
@@ -131,20 +139,59 @@ export function createVirtualJevEnvironment(): VirtualJevModule {
       return prob >= threshold
     },
 
-    choose: async (question, context, choices, config = {}) => {
+    choose: (async (
+      question: string,
+      arg2: any,
+      arg3?: any,
+      arg4?: { model?: string, signal?: AbortSignal },
+    ) => {
       if (!question || typeof question !== 'string')
         throw new Error('jev.choose: question must be a non-empty string')
+
+      let context: string | object = ''
+      let rawChoices: any
+      let config: { model?: string, signal?: AbortSignal } = {}
+
+      if (Array.isArray(arg2)) {
+        // choose(question, choicesArray, config?)
+        rawChoices = arg2
+        context = ''
+        config = (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) ? arg3 : {}
+      }
+      else if (Array.isArray(arg3)) {
+        // choose(question, context, choicesArray, config?)
+        context = arg2
+        rawChoices = arg3
+        config = (arg4 && typeof arg4 === 'object') ? arg4 : {}
+      }
+      else if (arg3 !== undefined && typeof arg3 === 'object' && !('model' in arg3) && !('signal' in arg3)) {
+        // choose(question, context, choicesRecord, config?)
+        context = arg2
+        rawChoices = arg3
+        config = (arg4 && typeof arg4 === 'object') ? arg4 : {}
+      }
+      else if (arg2 && typeof arg2 === 'object') {
+        // choose(question, choicesRecord, config?)
+        rawChoices = arg2
+        context = ''
+        config = (arg3 && typeof arg3 === 'object') ? arg3 : {}
+      }
+      else {
+        context = arg2
+        rawChoices = arg3
+        config = (arg4 && typeof arg4 === 'object') ? arg4 : {}
+      }
 
       const s1 = getSystemOne()
       const state = typeof context === 'object' ? JSON.stringify(context, null, 2) : (context || 'Context: none')
       let criteria: Record<string, string> = {}
-      if (Array.isArray(choices)) {
-        if (choices.length === 0)
+      if (Array.isArray(rawChoices)) {
+        if (rawChoices.length === 0)
           throw new Error('jev.choose: choices array must not be empty')
-        criteria = Object.fromEntries(choices.map(c => [String(c), String(c)]))
+        criteria = Object.fromEntries(rawChoices.map(c => [String(c), String(c)]))
       }
-      else if (choices && typeof choices === 'object') {
-        criteria = { ...choices }
+      else if (rawChoices && typeof rawChoices === 'object') {
+        criteria = { ...rawChoices }
       }
       else {
         throw new Error('jev.choose: choices must be an array of strings or criteria record')
@@ -163,7 +210,7 @@ export function createVirtualJevEnvironment(): VirtualJevModule {
         { signal: config.signal },
       )
       return res.answers?.choice_decision?.choice ?? ''
-    },
+    }) as VirtualJevModule['choose'],
 
     score: async (question, context = '', options = {}) => {
       if (!question || typeof question !== 'string')
@@ -591,5 +638,207 @@ Examples:
       stderr: `jev: ${err.message || String(err)}\n`,
       exitCode: 1,
     }
+  }
+}
+
+export function isJevMcpTool(name: string): boolean {
+  if (!name || typeof name !== 'string')
+    return false
+  const norm = name.toLowerCase()
+  return (
+    norm.startsWith('jev::')
+    || norm.startsWith('system_one::')
+    || norm.startsWith('system1::')
+  )
+}
+
+export function getJevMcpToolDescriptors(): McpToolDescriptor[] {
+  return [
+    {
+      serverName: 'jev',
+      name: 'jev::choose',
+      toolName: 'choose',
+      description: 'System-1 fast discrete classifier. Deterministically selects the best option among candidates given a question and optional context.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'Question or decision prompt' },
+          options: { type: 'array', items: { type: 'string' }, description: 'Candidate options list' },
+          choices: { type: 'array', items: { type: 'string' }, description: 'Alias for options' },
+          context: { type: ['string', 'object'], description: 'Optional background context or dialogue turn' },
+          model: { type: 'string', description: 'Optional model override' },
+        },
+        required: ['question'],
+      },
+    },
+    {
+      serverName: 'jev',
+      name: 'jev::is',
+      toolName: 'is',
+      description: 'System-1 binary semantic predicate classifier. Returns probability and boolean check.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          predicate: { type: 'string', description: 'Boolean proposition to evaluate' },
+          context: { type: ['string', 'object'], description: 'Context to evaluate against' },
+          threshold: { type: 'number', description: 'Probability threshold (default 0.5)' },
+          model: { type: 'string', description: 'Optional model override' },
+        },
+        required: ['predicate'],
+      },
+    },
+    {
+      serverName: 'jev',
+      name: 'jev::score',
+      toolName: 'score',
+      description: 'System-1 scalar scoring evaluation (e.g. 1-10 scale).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'Evaluation criteria question' },
+          context: { type: ['string', 'object'], description: 'Content to score' },
+          min: { type: 'number', description: 'Minimum score (default 0)' },
+          max: { type: 'number', description: 'Maximum score (default 10)' },
+          model: { type: 'string', description: 'Optional model override' },
+        },
+        required: ['question'],
+      },
+    },
+    {
+      serverName: 'jev',
+      name: 'jev::triage',
+      toolName: 'triage',
+      description: 'System-1 memory query triage into canonical cognitive categories (c1_multihop, c2_temporal, c3_detective, c4_literal).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'User query or statement to classify' },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      serverName: 'jev',
+      name: 'jev::decide',
+      toolName: 'decide',
+      description: 'System-1 multi-head structured schema decision.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          schema: { type: 'object', description: 'Jev decision schema specification' },
+          context: { type: ['string', 'object'], description: 'Evaluation context' },
+          model: { type: 'string', description: 'Optional model override' },
+        },
+        required: ['schema'],
+      },
+    },
+  ]
+}
+
+export async function executeJevMcpTool(name: string, args: Record<string, any> = {}): Promise<McpCallToolResult> {
+  const norm = name.toLowerCase()
+  const toolName = norm.includes('::') ? norm.split('::')[1] : norm
+  const jev = createVirtualJevEnvironment()
+  const s1 = getSystemOne()
+
+  try {
+    switch (toolName) {
+      case 'choose': {
+        const question = args.question
+        if (!question || typeof question !== 'string') {
+          return { isError: true, toolResult: 'jev::choose: missing required "question" string argument' }
+        }
+        const choices = args.options || args.choices
+        if (!choices || (!Array.isArray(choices) && typeof choices !== 'object')) {
+          return { isError: true, toolResult: 'jev::choose: missing required "options" or "choices" array/record' }
+        }
+        const context = args.context ?? ''
+        const model = args.model
+        const choice = await jev.choose(question, context, choices, { model })
+        const resObj = {
+          choice,
+          options: Array.isArray(choices) ? choices : Object.keys(choices),
+          latencyMs: s1.lastLatencyMs ?? null,
+        }
+        return {
+          structuredContent: resObj,
+          toolResult: resObj,
+          content: [{ type: 'text', text: JSON.stringify(resObj, null, 2) }],
+        }
+      }
+      case 'is': {
+        const predicate = args.predicate
+        if (!predicate || typeof predicate !== 'string') {
+          return { isError: true, toolResult: 'jev::is: missing required "predicate" string argument' }
+        }
+        const context = args.context ?? ''
+        const threshold = args.threshold ?? 0.5
+        const model = args.model
+        const result = await jev.is(predicate, context, { threshold, model })
+        const resObj = {
+          result,
+          threshold,
+          latencyMs: s1.lastLatencyMs ?? null,
+        }
+        return {
+          structuredContent: resObj,
+          toolResult: resObj,
+          content: [{ type: 'text', text: JSON.stringify(resObj, null, 2) }],
+        }
+      }
+      case 'score': {
+        const question = args.question
+        if (!question || typeof question !== 'string') {
+          return { isError: true, toolResult: 'jev::score: missing required "question" string argument' }
+        }
+        const context = args.context ?? ''
+        const min = args.min ?? 0
+        const max = args.max ?? 10
+        const model = args.model
+        const score = await jev.score(question, context, { min, max, model })
+        const resObj = {
+          score,
+          min,
+          max,
+          latencyMs: s1.lastLatencyMs ?? null,
+        }
+        return {
+          structuredContent: resObj,
+          toolResult: resObj,
+          content: [{ type: 'text', text: JSON.stringify(resObj, null, 2) }],
+        }
+      }
+      case 'triage': {
+        const query = args.query
+        if (!query || typeof query !== 'string') {
+          return { isError: true, toolResult: 'jev::triage: missing required "query" string argument' }
+        }
+        const triageRes = await jev.triage(query)
+        return {
+          structuredContent: triageRes,
+          toolResult: triageRes,
+          content: [{ type: 'text', text: JSON.stringify(triageRes, null, 2) }],
+        }
+      }
+      case 'decide': {
+        const schema = args.schema
+        if (!schema || typeof schema !== 'object') {
+          return { isError: true, toolResult: 'jev::decide: missing required "schema" object argument' }
+        }
+        const context = args.context ?? ''
+        const model = args.model
+        const decisions = await jev.decide(context, schema, { model })
+        return {
+          structuredContent: decisions,
+          toolResult: decisions,
+          content: [{ type: 'text', text: JSON.stringify(decisions, null, 2) }],
+        }
+      }
+      default:
+        return { isError: true, toolResult: `Unknown Jev MCP tool: ${name}` }
+    }
+  }
+  catch (err: any) {
+    return { isError: true, toolResult: `Jev MCP execution failed: ${err.message}` }
   }
 }

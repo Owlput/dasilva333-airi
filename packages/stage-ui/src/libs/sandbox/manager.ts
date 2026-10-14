@@ -8,7 +8,13 @@ import { Bash } from 'just-bash'
 import { widgetsRepo } from '../../database/repos/widgets.repo'
 import { tryGetMcpToolBridge } from '../../stores/mcp-tool-bridge'
 import { compileTypeScriptInSandbox } from './compiler-bridge'
-import { createVirtualJevEnvironment, handleJevCommand } from './jev'
+import {
+  createVirtualJevEnvironment,
+  executeJevMcpTool,
+  getJevMcpToolDescriptors,
+  handleJevCommand,
+  isJevMcpTool,
+} from './jev'
 import {
   buildCognitionProjection,
   buildMessagesProjection,
@@ -1043,22 +1049,26 @@ Examples:
         }
       }
 
-      const bridge = tryGetMcpToolBridge()
-      if (!bridge) {
-        return {
-          stdout: '',
-          stderr: 'mcp: MCP tool bridge is not available in this runtime.\nTip: Ensure MCP servers are configured in Settings > MCP.\n',
-          exitCode: 1,
-        }
-      }
-
       const sub = args[0]
 
       // Listing tools
       if (sub === 'list' || sub === 'tools') {
+        const isJson = args.includes('--json')
+        const showAll = args.includes('--all') || args.includes('-a') || args[1] === 'jev' || args[1] === 'system_one'
+        const bridge = tryGetMcpToolBridge()
+
+        if (!bridge && !showAll) {
+          return {
+            stdout: '',
+            stderr: 'mcp: MCP tool bridge is not available in this runtime.\nTip: Ensure MCP servers are configured in Settings > MCP.\n',
+            exitCode: 1,
+          }
+        }
+
         try {
-          const isJson = args.includes('--json')
-          const tools = await bridge.listTools()
+          const external = bridge ? await bridge.listTools() : []
+          const jevTools = showAll ? getJevMcpToolDescriptors() : []
+          const tools = [...external, ...jevTools]
           if (isJson) {
             return {
               stdout: `${JSON.stringify(tools, null, 2)}\n`,
@@ -1112,6 +1122,62 @@ Examples:
             stderr: `mcp: invalid JSON arguments for '${toolName}': ${err.message}\nReceived: ${rawArgs}\n`,
             exitCode: 1,
           }
+        }
+      }
+
+      if (isJevMcpTool(toolName)) {
+        try {
+          const res = await executeJevMcpTool(toolName, parsedArgs)
+          if (res.isError) {
+            const errMsg = typeof res.toolResult === 'string'
+              ? res.toolResult
+              : JSON.stringify(res.toolResult || res.content || 'Unknown error', null, 2)
+            return {
+              stdout: '',
+              stderr: `mcp error [${toolName}]: ${errMsg}\n`,
+              exitCode: 1,
+            }
+          }
+
+          let outputText = ''
+          if (res.structuredContent) {
+            outputText = JSON.stringify(res.structuredContent, null, 2)
+          }
+          else if (res.toolResult !== undefined) {
+            outputText = typeof res.toolResult === 'object'
+              ? JSON.stringify(res.toolResult, null, 2)
+              : String(res.toolResult)
+          }
+          else if (Array.isArray(res.content)) {
+            outputText = res.content
+              .map((c: any) => c.text ?? JSON.stringify(c, null, 2))
+              .join('\n')
+          }
+          else {
+            outputText = JSON.stringify(res, null, 2)
+          }
+
+          return {
+            stdout: `${outputText}\n`,
+            stderr: '',
+            exitCode: 0,
+          }
+        }
+        catch (err: any) {
+          return {
+            stdout: '',
+            stderr: `mcp: invocation failed for '${toolName}': ${err.message}\n`,
+            exitCode: 1,
+          }
+        }
+      }
+
+      const bridge = tryGetMcpToolBridge()
+      if (!bridge) {
+        return {
+          stdout: '',
+          stderr: 'mcp: MCP tool bridge is not available in this runtime.\nTip: Ensure MCP servers are configured in Settings > MCP.\n',
+          exitCode: 1,
         }
       }
 
@@ -1379,6 +1445,13 @@ Examples:
           return await b.listTools()
         },
         callTool: async (name: string, args: Record<string, unknown> = {}) => {
+          if (isJevMcpTool(name)) {
+            const res = await executeJevMcpTool(name, args)
+            if (res.isError) {
+              throw new Error(`MCP tool error [${name}]: ${JSON.stringify(res.toolResult || res.content)}`)
+            }
+            return res.structuredContent ?? res.toolResult ?? res.content
+          }
           const b = tryGetMcpToolBridge()
           if (!b)
             throw new Error('MCP tool bridge is not available in this runtime.')

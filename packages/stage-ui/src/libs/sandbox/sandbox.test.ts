@@ -900,6 +900,50 @@ console.log(JSON.stringify({ decisions, triageRes }));
         expect(parsed.decisions.status.choice).toBe('healthy')
         expect(parsed.triageRes.choice).toBe('c2_temporal')
       })
+
+      it('supports choose(question, choices) overload without explicit context', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        const script = `
+const { choose } = require('jev');
+// Overload 1: 2 arguments (question, choicesArray)
+const opt1 = await choose('Select snack', ['danish', 'espresso']);
+// Overload 2: 2 arguments (question, choicesRecord)
+const opt2 = await choose('Pick mood', { relaxed: 'Calm', energized: 'Active' });
+console.log(JSON.stringify({ opt1, opt2 }));
+`
+        await sandbox.writeFile('/workspace/overload.js', script)
+        const res = await sandbox.exec('node /workspace/overload.js')
+        expect(res.exitCode).toBe(0)
+        const parsed = JSON.parse(res.stdout.trim())
+        expect(parsed.opt1).toBe('danish')
+        expect(parsed.opt2).toBe('relaxed')
+      })
+
+      it('supports executing Jev decisions via MCP bridge and CLI', async () => {
+        const sandbox = new SandboxManager()
+        await sandbox.init()
+
+        // 1. mcp CLI with jev::choose
+        const cliRes = await sandbox.exec('mcp jev::choose \'{"question": "Select drink", "options": ["latte", "water"]}\'')
+        expect(cliRes.exitCode).toBe(0)
+        expect(cliRes.stdout).toContain('latte')
+
+        // 2. node require('mcp').callTool('jev::choose')
+        const scriptMcp = `
+const mcp = require('mcp');
+const res = await mcp.callTool('jev::choose', {
+  question: 'Select pastry',
+  options: ['croissant', 'scone'],
+});
+console.log('MCP_RES:' + res.choice);
+`
+        await sandbox.writeFile('/workspace/mcp_jev.js', scriptMcp)
+        const nodeRes = await sandbox.exec('node /workspace/mcp_jev.js')
+        expect(nodeRes.exitCode).toBe(0)
+        expect(nodeRes.stdout).toContain('MCP_RES:croissant')
+      })
     })
 
     describe('bash semantic cli (jev command)', () => {
