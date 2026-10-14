@@ -5,6 +5,7 @@ export interface WidgetIframeOptions {
   code: string
   title?: string
   state?: any
+  isDark?: boolean
 }
 
 export async function buildWidgetIframeSrcdoc(
@@ -99,17 +100,28 @@ export async function buildWidgetIframeSrcdoc(
     catch {}
   }
 
+  const initialDark = widget.isDark !== undefined
+    ? widget.isDark
+    : (typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true)
+  const initialClass = initialDark ? 'dark' : ''
+  const initialColorScheme = initialDark ? 'dark' : 'light'
+
   if (widget.path.endsWith('.html')) {
     return `<!DOCTYPE html>
-<html class="dark" style="background: transparent !important; color-scheme: dark;">
+<html class="${initialClass}" style="background: transparent !important; color-scheme: ${initialColorScheme};">
 <head>
   <meta charset="UTF-8">
+  <${'script'}>
+    tailwind = {
+      darkMode: 'class',
+    };
+  </${'script'}>
   <${'script'} src="https://cdn.tailwindcss.com"></${'script'}>
   <style>
     * { box-sizing: border-box; }
     html, body {
       background: transparent !important;
-      color: #f8fafc;
+      color: #0f172a;
       font-family: ui-sans-serif, system-ui, sans-serif;
       margin: 0;
       padding: 0;
@@ -117,6 +129,9 @@ export async function buildWidgetIframeSrcdoc(
       height: auto;
       min-height: 0;
       overflow-x: hidden;
+    }
+    html.dark, html.dark body {
+      color: #f8fafc;
     }
     #root {
       width: 100%;
@@ -149,6 +164,14 @@ export async function buildWidgetIframeSrcdoc(
     }
     window.addEventListener('load', () => setTimeout(reportH, 20));
     if (window.ResizeObserver && root) new ResizeObserver(reportH).observe(root);
+
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') {
+        const isDark = Boolean(e.data.isDark);
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      }
+    });
   </${'script'}>
 </body>
 </html>`
@@ -156,15 +179,20 @@ export async function buildWidgetIframeSrcdoc(
 
   // ES Module (.js / .ts output)
   return `<!DOCTYPE html>
-<html class="dark" style="background: transparent !important; color-scheme: dark;">
+<html class="${initialClass}" style="background: transparent !important; color-scheme: ${initialColorScheme};">
 <head>
   <meta charset="UTF-8">
+  <${'script'}>
+    tailwind = {
+      darkMode: 'class',
+    };
+  </${'script'}>
   <${'script'} src="https://cdn.tailwindcss.com"></${'script'}>
   <style>
     * { box-sizing: border-box; }
     html, body {
       background: transparent !important;
-      color: #f8fafc;
+      color: #0f172a;
       font-family: ui-sans-serif, system-ui, sans-serif;
       margin: 0;
       padding: 0;
@@ -172,6 +200,9 @@ export async function buildWidgetIframeSrcdoc(
       height: auto;
       min-height: 0;
       overflow-x: hidden;
+    }
+    html.dark, html.dark body {
+      color: #f8fafc;
     }
     #root {
       width: 100%;
@@ -210,13 +241,27 @@ export async function buildWidgetIframeSrcdoc(
     if (window.ResizeObserver && root) new ResizeObserver(reportH).observe(root);
 
     function setState(val) {
+      let nextState;
       if (typeof val === 'function') {
-        widgetState = val(widgetState);
+        nextState = val(widgetState);
       } else if (val && typeof val === 'object' && !Array.isArray(val)) {
-        widgetState = { ...widgetState, ...val };
+        nextState = { ...widgetState, ...val };
       } else {
-        widgetState = val;
+        nextState = val;
       }
+
+      if (widgetState && typeof widgetState === 'object' && !Array.isArray(widgetState) &&
+          nextState && typeof nextState === 'object' && !Array.isArray(nextState)) {
+        for (const k of Object.keys(widgetState)) {
+          if (!(k in nextState)) {
+            delete widgetState[k];
+          }
+        }
+        Object.assign(widgetState, nextState);
+      } else {
+        widgetState = nextState;
+      }
+
       window.parent.postMessage({
         type: 'widget-state-update',
         id: widgetId,
@@ -240,9 +285,25 @@ export async function buildWidgetIframeSrcdoc(
     }
 
     window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'widget-state-sync') {
+      if (!e.data) return;
+      if (e.data.type === 'theme-change') {
+        const isDark = Boolean(e.data.isDark);
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      }
+      else if (e.data.type === 'widget-state-sync') {
         if (!widgetId || !e.data.id || e.data.id === widgetId || e.data.path === widgetPath) {
-          widgetState = e.data.state;
+          if (widgetState && typeof widgetState === 'object' && !Array.isArray(widgetState) &&
+              e.data.state && typeof e.data.state === 'object' && !Array.isArray(e.data.state)) {
+            for (const k of Object.keys(widgetState)) {
+              if (!(k in e.data.state)) {
+                delete widgetState[k];
+              }
+            }
+            Object.assign(widgetState, e.data.state);
+          } else {
+            widgetState = e.data.state;
+          }
           for (const cb of stateListeners) {
             try { cb(widgetState); } catch (err) { console.error(err); }
           }

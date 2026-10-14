@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MountedWidget } from '../../../libs/sandbox'
 
+import { useTheme } from '@proj-airi/ui'
 import { useDraggable } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -20,10 +21,12 @@ const props = withDefaults(defineProps<{
   index: 0,
 })
 
+const { isDark } = useTheme()
 const { unmountWidget, setWidgetSurface, updateWidgetPosition, readFile } = useSandbox()
 
 const cardEl = ref<HTMLElement | null>(null)
 const dragHandleRef = ref<HTMLElement | null>(null)
+const iframeRef = ref<HTMLIFrameElement | null>(null)
 
 const isCollapsed = ref(false)
 const isLoading = ref(false)
@@ -31,6 +34,13 @@ const errorMessage = ref<string | null>(null)
 const iframeKey = ref(0)
 const iframeHeight = ref(160)
 const iframeSrcdoc = ref('')
+
+watch(isDark, (val) => {
+  iframeRef.value?.contentWindow?.postMessage({
+    type: 'theme-change',
+    isDark: val,
+  }, '*')
+})
 
 // NOTICE: persisted coordinates can predate the current viewport (e.g. saved
 // on a larger monitor), leaving the card mounted but off-screen. Clamp every
@@ -83,7 +93,10 @@ async function refreshActiveWidget() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    iframeSrcdoc.value = await buildWidgetIframeSrcdoc(props.widget, readFile)
+    iframeSrcdoc.value = await buildWidgetIframeSrcdoc({
+      ...props.widget,
+      isDark: isDark.value,
+    }, readFile)
     iframeKey.value++
   }
   catch (err: any) {
@@ -237,6 +250,7 @@ onUnmounted(() => {
     <!-- Card Viewport (Hidden when collapsed) -->
     <div v-show="!isCollapsed" class="relative w-full overflow-hidden bg-transparent">
       <iframe
+        ref="iframeRef"
         :key="iframeKey"
         :srcdoc="iframeSrcdoc"
         allowtransparency="true"

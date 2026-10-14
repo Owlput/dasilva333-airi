@@ -172,7 +172,11 @@ When creating interactive cards, tools, trackers, or HUDs:
 4. **Live Data & Tools**:
    - \`sidecar\`: Rich reactive state including \`telemetry\` (e.g. idleSeconds, activeApp, cpuLoad, windowHistory), \`cognition\` (e.g. emotion, energy, somaticState, nan0), and \`session\` (e.g. messageCount, activeCardName, hoursSinceLastMessage).
    - \`callMcpTool(name, args)\`: Query live external tools directly from the widget (search, weather, finance).
-5. **Mounting**:
+5. **Theme & Styling (Tailwind Preloaded)**:
+   - Tailwind CSS is preloaded inside the sandbox iframe.
+   - **Always author responsive light/dark styles**: Use Tailwind \`dark:\` variants (e.g. \`bg-[#FFF8F1] dark:bg-[#141414] text-[#8A5A3B] dark:text-[#FAD2B8] placeholder-[#9A8478] dark:placeholder-[#6b5a4d]\` or \`bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-800\`).
+   - Do NOT hardcode a single static theme color without its \`dark:\` complement; the host dynamically forwards the \`.dark\` class to the widget root so it adapts smoothly between day and night modes.
+6. **Mounting**:
    - Run \`mount_widget /workspace/<file>.ts --title "<Title>" [--surface panel|widget]\`
    - \`--surface panel\` (default): Docks into the chat inspector widgets tab.
    - \`--surface widget\`: Spawns an in-page floating draggable card (Web/Mobile) or standalone window (Desktop).`
@@ -183,7 +187,7 @@ You have access to an isolated in-memory POSIX environment via the **bash** tool
 - Fast System 1 semantic triage & shell predicates via \`jev is <predicate>\` (exit code 0 on true, 1 on false; pipe via \`cat data | jev is "..."\`), \`jev choose "question" --options a,b,c\`, \`jev score\`, and \`require('jev')\` (\`is\`, \`choose\`, \`score\`, \`decide\`) in node scripts.
 - Call MCP tools directly in the terminal via \`mcp <server::tool> [json_args]\` or via \`require('mcp')\` in node scripts, piping responses to files or \`jq\` to eliminate context token bloat.
 - Run JavaScript snippets via \`node -e "..."\` or scripts via \`node\` (preloaded with virtual \`fs\`, \`mcp\`, and \`jev\`).
-- Mount interactive UI widgets via \`mount_widget /workspace/<file>.ts --title "<Title>" [--surface panel|widget]\`. Widgets run in an iframe DOM; manage persistent state via \`setState(data)\` which lazily binds to \`/workspace/<name>.json\`. Do NOT import \`fs\` inside widgets.
+- Mount interactive UI widgets via \`mount_widget /workspace/<file>.ts --title "<Title>" [--surface panel|widget]\`. Widgets run in an iframe DOM; manage persistent state via \`setState(data)\` which lazily binds to \`/workspace/<name>.json\`. Use Tailwind \`dark:\` variants for seamless light/dark theme adaptation. Do NOT import \`fs\` inside widgets.
 - Compile TypeScript scripts via \`tsc\` (defaults to \`--target es2022 --lib es2022,dom\`; emits directly without needing \`--outDir\`).`
 
 export interface StarterCharacterDefinition {

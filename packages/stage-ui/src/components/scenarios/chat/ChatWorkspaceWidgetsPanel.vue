@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MountedWidget, PersistedWidget } from '../../../libs/sandbox'
 
+import { useTheme } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
   fillContainer: false,
 })
 
+const { isDark } = useTheme()
 const {
   isReady,
   mountedWidgets,
@@ -35,6 +37,7 @@ const {
 const selectedWidgetId = useLocalStorage<string>('airi:widgets:selected-id', '')
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const iframeRef = ref<HTMLIFrameElement | null>(null)
 const iframeKey = ref(0)
 const iframeHeight = ref(240)
 
@@ -235,7 +238,10 @@ async function refreshActiveWidget() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    iframeSrcdoc.value = await buildWidgetIframeSrcdoc(activeWidget.value, readFile)
+    iframeSrcdoc.value = await buildWidgetIframeSrcdoc({
+      ...activeWidget.value,
+      isDark: isDark.value,
+    }, readFile)
     iframeKey.value++
   }
   catch (err: any) {
@@ -245,6 +251,13 @@ async function refreshActiveWidget() {
     isLoading.value = false
   }
 }
+
+watch(isDark, (val) => {
+  iframeRef.value?.contentWindow?.postMessage({
+    type: 'theme-change',
+    isDark: val,
+  }, '*')
+})
 
 function handleIframeMessage(e: MessageEvent) {
   if (e.data?.type === 'widget-resize' && typeof e.data.height === 'number') {
@@ -331,7 +344,7 @@ onUnmounted(() => {
             @click="selectedWidgetId = w.id"
           >
             <span class="i-solar:widget-5-bold-duotone shrink-0 text-xs" />
-            <span class="max-w-[120px] truncate">{{ w.title || w.path.split('/').pop() }}</span>
+            <span class="max-w-[180px] truncate sm:max-w-[220px]">{{ w.title || w.path.split('/').pop() }}</span>
             <span
               v-if="w.surface === 'widget'"
               class="ml-0.5 rounded bg-primary-500/20 px-1 py-0.2 text-[8px] text-primary-600 font-bold dark:text-primary-300"
@@ -462,6 +475,7 @@ onUnmounted(() => {
           ]"
         >
           <iframe
+            ref="iframeRef"
             :key="iframeKey"
             :srcdoc="iframeSrcdoc"
             allowtransparency="true"

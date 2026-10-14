@@ -2,6 +2,7 @@
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { buildWidgetIframeSrcdoc, handleWidgetMcpMessage } from '@proj-airi/stage-ui/libs/sandbox'
+import { useTheme } from '@proj-airi/ui'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { electronOpenMainDevtools } from '../../../../shared/eventa'
@@ -20,8 +21,10 @@ const props = withDefaults(defineProps<{
   code: '',
 })
 
+const { isDark } = useTheme()
 const openDevTools = useElectronEventaInvoke(electronOpenMainDevtools)
 const { init, mountedWidgets, readFile } = useSandbox()
+const iframeRef = ref<HTMLIFrameElement | null>(null)
 
 const targetCode = computed(() => {
   if (props.code)
@@ -86,6 +89,7 @@ async function refresh() {
       code: code || '',
       title: displayTitle.value,
       state: resolvedWidget.value.state,
+      isDark: isDark.value,
     }, readFile)
     iframeKey.value++
   }
@@ -97,6 +101,13 @@ async function refresh() {
     isRefreshing = false
   }
 }
+
+watch(isDark, (val) => {
+  iframeRef.value?.contentWindow?.postMessage({
+    type: 'theme-change',
+    isDark: val,
+  }, '*')
+})
 
 function handleIframeMessage(e: MessageEvent) {
   if (e.data?.type === 'open-devtools') {
@@ -148,6 +159,7 @@ onUnmounted(() => {
         <span class="i-solar:refresh-linear animate-spin text-xl text-primary-400" />
       </div>
       <iframe
+        ref="iframeRef"
         :key="iframeKey"
         :srcdoc="iframeSrcdoc"
         sandbox="allow-scripts allow-forms allow-popups"

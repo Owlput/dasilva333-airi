@@ -11,6 +11,7 @@ export * from './manager'
 export * from './mcp-bridge'
 export * from './projections'
 export * from './srcdoc'
+export * from './starters'
 export * from './types'
 
 let defaultSandboxInstance: SandboxManager | null = null

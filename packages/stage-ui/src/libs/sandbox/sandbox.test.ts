@@ -798,6 +798,28 @@ console.log('SUM:' + res.sum);
       expect(srcdoc).toContain('widget-state-update')
       expect(srcdoc).toContain('widget-state-sync')
       expect(srcdoc).toContain('get state() { return widgetState; }')
+      expect(srcdoc).toContain('Object.assign(widgetState, nextState)')
+    })
+
+    it('supports light and dark theme configuration and runtime theme-change message in srcdoc', async () => {
+      const darkSrcdoc = await buildWidgetIframeSrcdoc({
+        path: '/workspace/dark.js',
+        code: 'export default function mount() {}',
+        isDark: true,
+      })
+      expect(darkSrcdoc).toContain('<html class="dark"')
+      expect(darkSrcdoc).toContain('color-scheme: dark')
+      expect(darkSrcdoc).toContain('darkMode: \'class\'')
+      expect(darkSrcdoc).toContain('e.data.type === \'theme-change\'')
+
+      const lightSrcdoc = await buildWidgetIframeSrcdoc({
+        path: '/workspace/light.js',
+        code: 'export default function mount() {}',
+        isDark: false,
+      })
+      expect(lightSrcdoc).toContain('<html class=""')
+      expect(lightSrcdoc).toContain('color-scheme: light')
+      expect(lightSrcdoc).toContain('darkMode: \'class\'')
     })
   })
 
