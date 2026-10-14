@@ -29,6 +29,22 @@ export interface StickerPlacement {
   expiresAt?: number
 }
 
+const KNOWN_STICKER_PREFIXES = new Set(['airi', 'lupin'])
+
+function tokenizeStickerId(id: string): string[] {
+  return id.toLowerCase().split(/[_-]+/).filter(Boolean)
+}
+
+function stripKnownStickerPrefix(tokens: string[]): string[] {
+  if (tokens.length > 1 && KNOWN_STICKER_PREFIXES.has(tokens[0]))
+    return tokens.slice(1)
+  return tokens
+}
+
+function normalizeStickerKey(id: string): string {
+  return tokenizeStickerId(id).join('-')
+}
+
 export const useStickersStore = Pinia.defineStore('stickers', () => {
   // Persisted metadata list
   const libraryMetadata = useLocalStorage<StickerMetadata[]>('stickers/library-v2', [])
@@ -59,6 +75,65 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
   }
 
   /**
+   * Resolve a model-emitted sticker id to a catalog id.
+   * Order: exact match, normalized exact (_/-/case-insensitive),
+   * then token-overlap fuzzy on prefix-stripped tokens so e.g.
+   * `arona_warm_smile` ([arona,warm,smile]) matches `lupin-warm-smile`
+   * ([warm,smile] after stripping the `lupin` prefix) with 2 shared tokens.
+   * Custom/character stickers win over builtin fuzzy matches via the
+   * normalized-exact step.
+   */
+  function resolveStickerId(rawId: string): string | undefined {
+    const raw = rawId?.trim()
+    if (!raw)
+      return undefined
+
+    if (chatStickers.some(s => s.id === raw))
+      return raw
+
+    let customIds: string[] = []
+    try {
+      const airiCardStore = useAiriCardStore()
+      customIds = Object.keys(airiCardStore.activeCard?.extensions?.airi?.stickers || {})
+      if (customIds.includes(raw))
+        return raw
+    }
+    catch {}
+
+    const candidates = [
+      ...chatStickers.map(s => s.id),
+      ...customIds,
+      ...currentLibrary.value.map(m => m.id),
+    ]
+
+    const normalizedRaw = normalizeStickerKey(raw)
+    const normalizedMatch = candidates.find(c => normalizeStickerKey(c) === normalizedRaw)
+    if (normalizedMatch)
+      return normalizedMatch
+
+    const inputTokens = stripKnownStickerPrefix(tokenizeStickerId(raw))
+    if (inputTokens.length === 0)
+      return undefined
+    const inputSet = new Set(inputTokens)
+
+    let best: string | undefined
+    let bestShared = 0
+    let bestLen = Number.POSITIVE_INFINITY
+    for (const candidate of candidates) {
+      const candidateTokens = stripKnownStickerPrefix(tokenizeStickerId(candidate))
+      const shared = candidateTokens.filter(t => inputSet.has(t)).length
+      if (shared === 0)
+        continue
+      if (shared > bestShared || (shared === bestShared && candidateTokens.length < bestLen)) {
+        best = candidate
+        bestShared = shared
+        bestLen = candidateTokens.length
+      }
+    }
+    return best
+  }
+
+  /**
    * Get target sticker image as as Object URL
    */
   async function getStickerUrl(id: string): Promise<string | undefined> {
@@ -71,16 +146,41 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
       return objectUrlCache.get(id)
     }
 
+    const resolved = resolveStickerId(id) ?? id
+    const resolvedBuiltin = resolved === id
+      ? undefined
+      : chatStickers.find(s => s.id === resolved)
+    if (resolvedBuiltin) {
+      return resolvedBuiltin.src
+    }
+    if (resolved !== id && objectUrlCache.has(resolved)) {
+      const cached = objectUrlCache.get(resolved)!
+      objectUrlCache.set(id, cached)
+      return cached
+    }
+
+    // NOTICE: persisted cards strip embedded dataUrls, but a freshly imported
+    // card (or a failed blob unpack) may still carry one — use it before giving up.
     try {
-      const blob = await localforage.getItem<Blob>(`sticker-data-${id}`)
+      const airiCardStore = useAiriCardStore()
+      const dataUrl = airiCardStore.activeCard?.extensions?.airi?.stickers?.[resolved]?.dataUrl
+      if (dataUrl)
+        return dataUrl
+    }
+    catch {}
+
+    try {
+      const blob = await localforage.getItem<Blob>(`sticker-data-${resolved}`)
       if (blob) {
         const url = URL.createObjectURL(blob)
-        objectUrlCache.set(id, url)
+        objectUrlCache.set(resolved, url)
+        if (resolved !== id)
+          objectUrlCache.set(id, url)
         return url
       }
     }
     catch (err) {
-      console.error(`[StickersStore] Failed to fetch sticker ${id}:`, err)
+      console.error(`[StickersStore] Failed to fetch sticker ${id} (resolved: ${resolved}):`, err)
     }
     return undefined
   }
@@ -152,9 +252,11 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
    */
   function spawnSticker(idOrLabel: string, options: { x?: number, y?: number, duration?: number } = {}) {
     const builtin = chatStickers.find(s => s.id === idOrLabel || s.description.toLowerCase() === idOrLabel.toLowerCase())
-    const sticker = builtin
-      ? { id: builtin.id, label: builtin.description }
-      : currentLibrary.value.find(m => m.id === idOrLabel || m.label === idOrLabel)
+    const resolvedId = builtin ? builtin.id : (resolveStickerId(idOrLabel) ?? idOrLabel)
+    const resolvedBuiltin = chatStickers.find(s => s.id === resolvedId)
+    const sticker = resolvedBuiltin
+      ? { id: resolvedBuiltin.id, label: resolvedBuiltin.description }
+      : currentLibrary.value.find(m => m.id === resolvedId || m.label === idOrLabel)
     if (!sticker) {
       const availableBuiltin = chatStickers.map(s => s.id).join(', ')
       const availableCustom = currentLibrary.value.map(s => s.label).join(', ')
@@ -244,6 +346,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     currentLibrary,
     standaloneMode,
     activePlacements,
+    resolveStickerId,
     getStickerUrl,
     addSticker,
     deleteSticker,

@@ -1170,15 +1170,24 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             }
 
             if (/^<\|STICKER\b/i.test(special)) {
-              const id = /^<\|STICKER\s+([\w-]+)/i.exec(special)?.[1]
-              if (id) {
+              const rawId = /^<\|STICKER\s+([\w-]+)/i.exec(special)?.[1]
+              if (rawId) {
+                // NOTICE: resolve fuzzy variants (arona_warm_smile -> lupin-warm-smile)
+                // to the canonical catalog id so persisted slices render without
+                // depending on render-time fuzzy matching.
+                let stickerId = rawId
+                try {
+                  const stickersStore = useStickersStore()
+                  stickerId = stickersStore.resolveStickerId(rawId) ?? rawId
+                }
+                catch {}
                 if (!buildingMessage.slices.some(s => s.type === 'sticker')) {
-                  buildingMessage.slices.push({ type: 'sticker', stickerId: id })
+                  buildingMessage.slices.push({ type: 'sticker', stickerId })
                   updateUI()
                 }
                 try {
                   const stickersStore = useStickersStore()
-                  stickersStore.spawnSticker(id)
+                  stickersStore.spawnSticker(stickerId)
                 }
                 catch {}
               }
