@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
 
 import { useShortTermMemoryStore } from '../../../stores/memory-short-term'
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
@@ -15,8 +14,8 @@ const props = withDefaults(defineProps<{
   /** Variant of the trigger button */
   variant?: 'default' | 'mobile'
 }>(), {
-  showCacheStatus: false,
-  title: 'Memory & Context',
+  showCacheStatus: true,
+  title: 'Memory & context',
   variant: 'default',
 })
 
@@ -26,63 +25,17 @@ const emit = defineEmits<{
   (e: 'search-memories'): void
   (e: 'clear-messages'): void
   (e: 'open-studio'): void
+  (e: 'open-memory-settings'): void
+  (e: 'open-card-settings'): void
 }>()
 
-const router = useRouter()
 const shortTermMemory = useShortTermMemoryStore()
 const airiCardStore = useAiriCardStore()
 const { activeCardId } = storeToRefs(airiCardStore)
 
-// --- Cache Status logic ---
-const todayDate = computed(() => {
-  const date = new Date()
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-})
-
-const characterBlocks = computed(() => {
-  if (!activeCardId.value)
-    return []
-  return shortTermMemory.getCharacterBlocks(activeCardId.value)
-})
-
-const isTodayCached = computed(() => {
-  return characterBlocks.value.some(b => b.date === todayDate.value)
-})
-
-const last3Dates = computed(() => {
-  const dates: string[] = []
-  for (let i = 1; i <= 3; i++) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    dates.push(`${year}-${month}-${day}`)
-  }
-  return dates
-})
-
-const cachedDayCount = computed(() => {
-  const blockDates = new Set(characterBlocks.value.map(b => b.date))
-  return last3Dates.value.filter(d => blockDates.has(d)).length
-})
-
-const allLast3Cached = computed(() => cachedDayCount.value === 3)
-
-async function handleCacheToday() {
-  if (!activeCardId.value)
-    return
-  await shortTermMemory.rebuildToday(activeCardId.value)
-}
-
-async function handleRebuildFromHistory() {
-  if (!activeCardId.value)
-    return
-  await shortTermMemory.rebuildFromHistory(activeCardId.value)
-}
+const isOpen = ref(false)
+const isRebuildingToday = ref(false)
+const isRebuildingHistory = ref(false)
 
 const activeCard = computed(() => {
   if (!activeCardId.value)
@@ -96,18 +49,41 @@ const isShortTermMemoryEnabled = computed(() => {
   return activeCard.value.extensions?.airi?.shortTermMemory?.enabled ?? true
 })
 
-function handleToggleShortTermMemory() {
-  if (activeCardId.value)
-    airiCardStore.toggleShortTermMemory(activeCardId.value)
+async function handleCacheToday() {
+  if (!activeCardId.value || isRebuildingToday.value)
+    return
+  isRebuildingToday.value = true
+  try {
+    await shortTermMemory.rebuildToday(activeCardId.value)
+  }
+  finally {
+    isRebuildingToday.value = false
+  }
+}
+
+async function handleRebuildFromHistory() {
+  if (!activeCardId.value || isRebuildingHistory.value)
+    return
+  isRebuildingHistory.value = true
+  try {
+    await shortTermMemory.rebuildFromHistory(activeCardId.value)
+  }
+  finally {
+    isRebuildingHistory.value = false
+  }
 }
 
 function navigateToMemory() {
-  router.push('/settings/memory')
+  emit('open-memory-settings')
+}
+
+function navigateToCardSettings() {
+  emit('open-card-settings')
 }
 </script>
 
 <template>
-  <PopoverRoot>
+  <PopoverRoot v-model:open="isOpen">
     <PopoverTrigger as-child>
       <button
         v-if="variant === 'mobile'"
@@ -130,165 +106,201 @@ function navigateToMemory() {
         side="bottom"
         :side-offset="8"
         align="end"
-        class="animate-in fade-in zoom-in z-100 w-72 border border-neutral-200/50 rounded-2xl bg-white/90 p-3 shadow-2xl backdrop-blur-xl duration-200 dark:border-neutral-700/50 dark:bg-neutral-900/90"
+        :class="[
+          'animate-in fade-in zoom-in-95 z-100 duration-150',
+          'w-80 border border-neutral-200/80 rounded-2xl bg-white/95 p-3.5 shadow-2xl backdrop-blur-xl',
+          'dark:border-neutral-800 dark:bg-neutral-900/95',
+          'flex flex-col gap-3',
+        ]"
       >
         <!-- Header -->
-        <div class="mb-3 flex items-center justify-between border-b border-neutral-100 pb-2 dark:border-neutral-800">
-          <span class="text-xs text-neutral-400 font-bold tracking-wider uppercase">Memory & Context</span>
-          <div class="i-solar:history-bold-duotone text-xs text-primary-500" />
+        <div class="flex items-center justify-between border-b border-neutral-100 pb-1 dark:border-neutral-800/80">
+          <div class="flex items-center gap-2">
+            <div class="i-solar:database-bold-duotone text-lg text-neutral-800 dark:text-neutral-100" />
+            <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Memory &amp; context</span>
+          </div>
+          <button
+            type="button"
+            class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+            aria-label="Close"
+            @click="isOpen = false"
+          >
+            <div class="i-solar:close-circle-linear text-lg" />
+          </button>
         </div>
 
-        <!-- System Prompt Quick View -->
-        <button
-          class="mb-2 w-full flex items-center gap-3 rounded-xl bg-primary-50/50 p-2.5 text-left transition-all dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-800/30"
-          @click="emit('view-context')"
-        >
-          <div class="i-solar:notes-bold-duotone text-lg text-primary-600 dark:text-primary-400" />
-          <div class="flex flex-col">
-            <span class="text-[13px] text-primary-900 font-semibold leading-none dark:text-primary-100">View System Prompt</span>
-            <span class="mt-1 text-[10px] text-primary-600/70 dark:text-primary-400/70">Check character instructions</span>
+        <!-- Section 1: INSPECT -->
+        <div class="flex flex-col gap-0.5">
+          <div class="px-1 pb-1 text-[10px] text-neutral-400 font-semibold tracking-wider uppercase dark:text-neutral-500">
+            INSPECT
           </div>
-        </button>
 
-        <!-- Search Memories Quick View -->
-        <button
-          class="mb-2 w-full flex items-center gap-3 rounded-xl bg-emerald-50/50 p-2.5 text-left transition-all dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-800/30"
-          @click="emit('search-memories')"
-        >
-          <div class="i-solar:magnifer-bold-duotone text-lg text-emerald-600 dark:text-emerald-400" />
-          <div class="flex flex-col">
-            <span class="text-[13px] text-emerald-900 font-semibold leading-none dark:text-primary-100">Search Memories</span>
-            <span class="mt-1 text-[10px] text-emerald-600/70 dark:text-emerald-400/70">Natural language searches</span>
+          <!-- View system prompt -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="emit('view-context'); isOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-solar:document-text-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">View system prompt</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Read-only prompt viewer</span>
+              </div>
+            </div>
+            <div class="i-solar:alt-arrow-right-linear shrink-0 text-xs text-neutral-400 dark:text-neutral-500" />
+          </button>
+
+          <!-- Search memories -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="emit('search-memories'); isOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-solar:magnifer-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Search memories</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Find remembered context</span>
+              </div>
+            </div>
+            <div class="i-solar:alt-arrow-right-linear shrink-0 text-xs text-neutral-400 dark:text-neutral-500" />
+          </button>
+        </div>
+
+        <!-- Section 2: RECENT MEMORY (Hidden if Short-Term Memory is disabled) -->
+        <div v-if="isShortTermMemoryEnabled" class="flex flex-col gap-0.5">
+          <div class="flex flex-col px-1 pb-1">
+            <span class="text-[10px] text-neutral-400 font-semibold tracking-wider uppercase dark:text-neutral-500">
+              RECENT MEMORY
+            </span>
+            <span class="text-[10px] text-neutral-400 dark:text-neutral-500">
+              Daily summaries · rolling 3-day window
+            </span>
           </div>
-        </button>
 
-        <!-- Toggle: Short-Term Memory (STMM) -->
-        <div
-          class="mb-2 w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          @click="handleToggleShortTermMemory"
-        >
-          <div class="flex items-center gap-2.5">
+          <!-- Summarize today -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+              (isRebuildingToday || shortTermMemory.rebuilding) ? 'opacity-70' : '',
+            ]"
+            :disabled="isRebuildingToday || shortTermMemory.rebuilding"
+            @click="handleCacheToday"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-solar:calendar-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Summarize today</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Update today's cached summary</span>
+              </div>
+            </div>
             <div
-              class="text-base"
-              :class="isShortTermMemoryEnabled
-                ? 'text-amber-500 i-solar:bolt-circle-bold-duotone'
-                : 'text-neutral-400 dark:text-neutral-500 i-solar:bolt-circle-linear'"
+              v-if="isRebuildingToday"
+              class="i-svg-spinners:pulse-ring shrink-0 text-sm text-primary-500"
             />
-            <div class="flex flex-col">
-              <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Short-Term Memory</span>
-              <span class="text-[9px] text-neutral-400">Inject 24h daily summary blocks</span>
-            </div>
-          </div>
-          <div
-            :class="isShortTermMemoryEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
-            class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+          </button>
+
+          <!-- Rebuild last 3 days -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+              (isRebuildingHistory || shortTermMemory.rebuilding) ? 'opacity-70' : '',
+            ]"
+            :disabled="isRebuildingHistory || shortTermMemory.rebuilding"
+            @click="handleRebuildFromHistory"
           >
-            <span
-              :class="isShortTermMemoryEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
-              class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            <div class="flex items-center gap-3">
+              <div class="i-solar:restart-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Rebuild last 3 days</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Regenerate all three daily summaries</span>
+              </div>
+            </div>
+            <div
+              v-if="isRebuildingHistory"
+              class="i-svg-spinners:pulse-ring shrink-0 text-sm text-primary-500"
             />
-          </div>
+          </button>
         </div>
 
-        <!-- Cache Status (Optional for full UI, hidden if STMM is disabled) -->
-        <div v-if="showCacheStatus && isShortTermMemoryEnabled" class="mb-2 space-y-2">
-          <!-- Rebuild Progress -->
-          <div v-if="shortTermMemory.rebuilding" class="rounded-lg bg-primary-50 p-2 dark:bg-primary-900/30">
-            <div class="flex items-center gap-2 text-xs text-primary-600 dark:text-primary-300">
-              <div class="i-svg-spinners:pulse-ring text-sm" />
-              <span>{{ shortTermMemory.rebuildProgress || 'Working...' }}</span>
-            </div>
+        <!-- Section 3: MANAGE -->
+        <div class="flex flex-col gap-0.5">
+          <div class="px-1 pb-1 text-[10px] text-neutral-400 font-semibold tracking-wider uppercase dark:text-neutral-500">
+            MANAGE
           </div>
 
-          <!-- Last 3 Days -->
-          <div class="flex items-center justify-between border border-neutral-100 rounded-xl p-2 dark:border-neutral-800">
-            <div class="flex items-center gap-2">
-              <div :class="allLast3Cached ? 'text-emerald-500' : 'text-amber-500'" class="text-base">
-                <div :class="allLast3Cached ? 'i-solar:check-circle-bold-duotone' : 'i-solar:danger-triangle-bold-duotone'" />
-              </div>
+          <!-- Manage timelines -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="emit('manage-sessions'); isOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-solar:history-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
               <div class="flex flex-col">
-                <span class="text-[11px] text-neutral-700 font-bold leading-none dark:text-neutral-200">Last 3 Days</span>
-                <span class="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">{{ cachedDayCount }}/3 Cached</span>
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Manage timelines</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Sessions and timeline tools</span>
               </div>
             </div>
-            <button
-              class="rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-400 dark:hover:bg-neutral-700"
-              :disabled="shortTermMemory.rebuilding"
-              @click="handleRebuildFromHistory"
-            >
-              Rebuild
-            </button>
-          </div>
+            <div class="i-solar:alt-arrow-right-linear shrink-0 text-xs text-neutral-400 dark:text-neutral-500" />
+          </button>
 
-          <!-- Today -->
-          <div class="flex items-center justify-between border border-neutral-100 rounded-xl p-2 dark:border-neutral-800">
-            <div class="flex items-center gap-2">
-              <div :class="isTodayCached ? 'text-emerald-500' : 'text-amber-500'" class="text-base">
-                <div :class="isTodayCached ? 'i-solar:check-circle-bold-duotone' : 'i-solar:danger-triangle-bold-duotone'" />
-              </div>
+          <!-- Memory Dashboard -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="navigateToMemory(); isOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-tabler:database-cog shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
               <div class="flex flex-col">
-                <span class="text-[11px] text-neutral-700 font-bold leading-none dark:text-neutral-200">Today</span>
-                <span class="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">{{ isTodayCached ? 'Cached' : 'Not Cached' }}</span>
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Memory Dashboard</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Storage and memory configuration</span>
               </div>
             </div>
-            <button
-              class="rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-400 dark:hover:bg-neutral-700"
-              :disabled="shortTermMemory.rebuilding"
-              @click="handleCacheToday"
-            >
-              {{ isTodayCached ? 'Refresh' : 'Cache Today' }}
-            </button>
-          </div>
+            <div class="i-solar:arrow-right-up-linear shrink-0 text-xs text-neutral-400 dark:text-neutral-500" />
+          </button>
+
+          <!-- Card settings -->
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition cursor-pointer',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="navigateToCardSettings(); isOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <div class="i-solar:user-id-linear shrink-0 text-lg text-neutral-700 dark:text-neutral-300" />
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-800 font-semibold leading-snug dark:text-neutral-100">Card settings</span>
+                <span class="text-[10px] text-neutral-400 leading-snug dark:text-neutral-500">Character configuration</span>
+              </div>
+            </div>
+            <div class="i-solar:arrow-right-up-linear shrink-0 text-xs text-neutral-400 dark:text-neutral-500" />
+          </button>
         </div>
 
-        <!-- Footer / Link -->
-        <div class="space-y-1">
-          <button
-            class="w-full flex items-center justify-between rounded-xl p-2 text-left transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            @click="emit('manage-sessions')"
-          >
-            <div class="flex items-center gap-2">
-              <div class="i-solar:layers-minimalistic-linear text-neutral-400" />
-              <span class="text-xs text-neutral-600 font-medium dark:text-neutral-300">Session Management</span>
-            </div>
-            <div class="i-solar:alt-arrow-right-linear text-xs text-neutral-400" />
-          </button>
-
-          <button
-            class="w-full flex items-center justify-between rounded-xl p-2 text-left transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            @click="navigateToMemory"
-          >
-            <div class="flex items-center gap-2">
-              <div class="i-solar:settings-minimalistic-linear text-neutral-400" />
-              <span class="text-xs text-neutral-600 font-medium dark:text-neutral-300">Memory Management</span>
-            </div>
-            <div class="i-solar:alt-arrow-right-linear text-xs text-neutral-400" />
-          </button>
-
-          <button
-            class="w-full flex items-center justify-between rounded-xl p-2 text-left transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            @click="emit('open-studio')"
-          >
-            <div class="flex items-center gap-2">
-              <div class="i-solar:clapperboard-play-linear text-neutral-400" />
-              <span class="text-xs text-neutral-600 font-medium dark:text-neutral-300">Studio Settings</span>
-            </div>
-            <div class="i-solar:alt-arrow-right-linear text-xs text-neutral-400" />
-          </button>
-
-          <!-- Destructive separator -->
-          <div class="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-
-          <!-- Clear Messages -->
-          <button
-            class="w-full flex items-center justify-between rounded-xl p-2 text-left transition-all hover:bg-red-50 dark:hover:bg-red-950/30"
-            @click="emit('clear-messages')"
-          >
-            <div class="flex items-center gap-2">
-              <div class="i-solar:trash-bin-2-bold-duotone text-red-400" />
-              <span class="text-xs text-red-500 font-medium dark:text-red-400">Clear Messages</span>
-            </div>
-          </button>
+        <!-- Footer -->
+        <div class="px-1 text-[10px] text-neutral-400 dark:text-neutral-500">
+          Settings open in a new window.
         </div>
       </PopoverContent>
     </PopoverPortal>

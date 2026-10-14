@@ -354,8 +354,24 @@ function handleEntryClick(fav: FavoriteModel) {
         :side-offset="8"
         :align="align"
         :collision-padding="12"
-        class="data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-[10010] max-h-[min(540px,85vh)] max-w-[calc(100vw-24px)] w-88 flex flex-col border border-neutral-200/50 rounded-2xl bg-white/95 p-3.5 shadow-2xl backdrop-blur-2xl duration-200 dark:border-neutral-800/80 dark:bg-neutral-900/95"
+        class="data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-[10010] max-h-[min(500px,85vh)] max-w-[calc(100vw-24px)] w-88 flex flex-col border border-neutral-200/50 rounded-2xl bg-white/95 p-3.5 shadow-2xl backdrop-blur-2xl duration-200 dark:border-neutral-800/80 dark:bg-neutral-900/95"
       >
+        <!-- Header -->
+        <div class="mb-2.5 flex items-center justify-between border-b border-neutral-100 pb-1 dark:border-neutral-800/80">
+          <div class="flex items-center gap-2">
+            <div class="i-ph:brain-duotone text-lg text-neutral-800 dark:text-neutral-100" />
+            <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Brain &amp; models</span>
+          </div>
+          <button
+            type="button"
+            class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+            aria-label="Close"
+            @click="isOpen = false"
+          >
+            <div class="i-solar:close-circle-linear text-lg" />
+          </button>
+        </div>
+
         <!-- Top Search Bar & Edit Button Row -->
         <div class="mb-2.5 flex items-center gap-2">
           <!-- Search Input -->

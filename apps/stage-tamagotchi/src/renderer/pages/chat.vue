@@ -82,6 +82,14 @@ function handleOpenCharacterConfig() {
   })
 }
 
+function handleOpenMemorySettings() {
+  void openSettings({
+    route: '/settings/memory',
+  }).catch((err: any) => {
+    console.error('Failed to open Memory settings:', err)
+  })
+}
+
 function handleOpenStagingSettings() {
   const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
   const route = `/settings/airi-card/edit?id=${targetId}&tab=staging`
@@ -1275,21 +1283,35 @@ function selectSurface(surface: typeof activeSurface.value) {
             </PopoverTrigger>
             <PopoverPortal>
               <PopoverContent
-                class="animate-in fade-in slide-in-from-top-1 z-[10000] w-72 flex flex-col gap-3 border border-neutral-200/60 rounded-2xl bg-white/95 p-3.5 shadow-2xl backdrop-blur-xl duration-150 dark:border-neutral-800 dark:bg-neutral-950/95"
+                class="animate-in fade-in slide-in-from-top-1 z-[10000] w-80 flex flex-col gap-3 border border-neutral-200/80 rounded-2xl bg-white/95 p-3.5 shadow-2xl backdrop-blur-xl duration-150 dark:border-neutral-800 dark:bg-neutral-900/95"
                 side="bottom"
                 align="end"
                 :side-offset="8"
               >
                 <!-- Section Header -->
-                <div class="flex items-center justify-between border-b border-neutral-200/40 pb-1.5 dark:border-neutral-800/40">
-                  <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Limits & Telemetry</span>
-                  <button
-                    v-if="popoverOverrideEnabled"
-                    class="text-[10px] text-red-500 font-bold tracking-tight transition dark:text-red-400 hover:text-red-600 hover:dark:text-red-300"
-                    @click="handleResetToDefaults"
-                  >
-                    Reset defaults
-                  </button>
+                <div class="flex items-center justify-between border-b border-neutral-100 pb-1 dark:border-neutral-800/80">
+                  <div class="flex items-center gap-2">
+                    <div class="i-solar:chart-2-bold-duotone text-lg text-neutral-800 dark:text-neutral-100" />
+                    <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Limits &amp; telemetry</span>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      v-if="popoverOverrideEnabled"
+                      type="button"
+                      class="cursor-pointer text-[10px] text-red-500 font-semibold tracking-tight transition dark:text-red-400 hover:text-red-600 hover:dark:text-red-300"
+                      @click="handleResetToDefaults"
+                    >
+                      Reset defaults
+                    </button>
+                    <button
+                      type="button"
+                      class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+                      aria-label="Close"
+                      @click="isStatsPopoverOpen = false"
+                    >
+                      <div class="i-solar:close-circle-linear text-lg" />
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Overrides Enable Toggle -->
@@ -1482,6 +1504,8 @@ function selectSurface(surface: typeof activeSurface.value) {
             @search-memories="handleSearchMemories"
             @clear-messages="handleClearMessages"
             @open-studio="handleOpenStudio"
+            @open-memory-settings="handleOpenMemorySettings"
+            @open-card-settings="handleOpenCharacterConfig"
           />
 
           <!-- Brain LLM Icon Button (opens downwards) -->

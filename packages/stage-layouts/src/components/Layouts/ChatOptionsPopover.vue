@@ -302,6 +302,17 @@ function handleToggleGrounding() {
   }
 }
 
+const isShortTermMemoryEnabled = computed(() => {
+  if (!activeCard.value)
+    return true
+  return activeCard.value.extensions?.airi?.shortTermMemory?.enabled ?? true
+})
+
+function handleToggleShortTermMemory() {
+  if (activeCardId.value)
+    airiCardStore.toggleShortTermMemory(activeCardId.value)
+}
+
 const isGroundingMemoryEnabled = computed(() => {
   return activeCard.value?.extensions?.airi?.groundingMemoryEnabled ?? false
 })
@@ -779,42 +790,47 @@ const previewChipStyle = computed(() => {
         <!-- Header Bar -->
         <div
           v-if="currentView === 'root'"
-          class="flex items-center justify-between border-b border-neutral-200/40 px-3.5 py-2.5 dark:border-neutral-800/40"
+          class="flex items-center justify-between border-b border-neutral-100 px-3.5 py-2.5 dark:border-neutral-800/80"
         >
-          <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">Chat options</span>
+          <div class="flex items-center gap-2">
+            <div class="i-solar:tuning-square-2-bold-duotone text-lg text-neutral-800 dark:text-neutral-100" />
+            <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Chat options</span>
+          </div>
           <button
             type="button"
-            class="flex cursor-pointer items-center justify-center rounded-lg p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+            aria-label="Close"
             @click="isOpen = false"
           >
-            <div class="i-solar:close-circle-linear size-4" />
+            <div class="i-solar:close-circle-linear text-lg" />
           </button>
         </div>
 
         <div
           v-else
-          class="flex items-center justify-between border-b border-neutral-200/40 px-2.5 py-2.5 dark:border-neutral-800/40"
+          class="flex items-center justify-between border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800/80"
         >
           <button
             type="button"
-            class="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] text-neutral-500 font-semibold transition hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-neutral-600 font-semibold transition hover:bg-neutral-100 dark:text-neutral-300 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
             @click="currentView = 'root'"
           >
-            <div class="i-solar:alt-arrow-left-linear size-3.5" />
+            <div class="i-solar:alt-arrow-left-linear size-4" />
             <span>Chat options</span>
           </button>
           <span
             v-if="currentView !== 'appearance' && currentView !== 'staging'"
-            class="text-xs text-neutral-800 font-bold dark:text-neutral-100"
+            class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100"
           >
             {{ viewTitle }}
           </span>
           <button
             type="button"
-            class="flex cursor-pointer items-center justify-center rounded-lg p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+            aria-label="Close"
             @click="isOpen = false"
           >
-            <div class="i-solar:close-circle-linear size-4" />
+            <div class="i-solar:close-circle-linear text-lg" />
           </button>
         </div>
 
@@ -1415,7 +1431,35 @@ const previewChipStyle = computed(() => {
                 </div>
               </div>
 
-              <!-- 2. Universe Memory (RAG) -->
+              <!-- 2. Recent Memory -->
+              <div
+                class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+                @click="handleToggleShortTermMemory"
+              >
+                <div class="flex items-center gap-2.5">
+                  <div
+                    class="size-4.5"
+                    :class="isShortTermMemoryEnabled
+                      ? 'text-amber-500 i-solar:calendar-date-bold-duotone'
+                      : 'text-neutral-400 dark:text-neutral-500 i-solar:calendar-date-linear'"
+                  />
+                  <div class="flex flex-col">
+                    <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Recent Memory</span>
+                    <span class="text-[9px] text-neutral-400">Include daily summaries from the rolling 3-day window</span>
+                  </div>
+                </div>
+                <div
+                  :class="isShortTermMemoryEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+                  class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+                >
+                  <span
+                    :class="isShortTermMemoryEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                    class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  />
+                </div>
+              </div>
+
+              <!-- 3. Universe Memory (RAG) -->
               <div
                 class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
                 @click="handleToggleGroundingMemory"
