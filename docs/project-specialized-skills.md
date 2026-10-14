@@ -54,7 +54,7 @@ The five groups below organize navigation. Historical “Phase” labels do not 
 
 ## 3. Domain skill catalog
 
-The catalog contains 72 discoverable skills. Desktop chatbox and interaction pipelines retain their entry points and load focused references; reference files are not additional skills.
+The catalog contains 73 discoverable skills. Desktop chatbox and interaction pipelines retain their entry points and load focused references; reference files are not additional skills.
 
 ### 🟢 Phase 1: Core Plumbing & Infrastructure
 
@@ -102,6 +102,11 @@ The catalog contains 72 discoverable skills. Desktop chatbox and interaction pip
 - **Target Domain**: Electron Window Lifecycle & OS Power Throttling (`powerMonitor`, `stagePaused`, Render Loop Freezing, Multi-Tier Deep Standby & VRAM Hibernation).
 - **Key Paths**: `apps/stage-tamagotchi/src/main/services/electron/window.ts`, `apps/stage-tamagotchi/src/shared/eventa.ts`, `apps/stage-tamagotchi/src/renderer/stores/stage-window-lifecycle.ts`, `apps/stage-tamagotchi/src/renderer/pages/index.vue`, `packages/stage-ui/src/components/scenes/ControlStripHost.vue`, `docs/design-vram-eviction-and-standby-hibernation.md`.
 - **Content**: Native Electron window state changes (`show`/`hide`/`minimize`/`restore`/`focus`/`blur`) and `powerMonitor` hooks (`suspend`/`resume`/`lock-screen`/`unlock-screen`), `ElectronWindowLifecycleState` eventa bridge, `stagePaused` state calculation, Tier 1 instant render loop freezing (3D/2D animation loops paused), Tier 2 Deep Standby VRAM hibernation (unmounting idle neural inference workers when screen locked > 10m or OS suspended, reclaiming 3–4GB VRAM), and sub-2s transparent re-hydration.
+
+#### 1.10 `airi-sandbox-virtual-workstation`
+- **Target Domain**: In-Memory Virtual POSIX Workstation, WebAssembly Terminal (`just-bash`), RAM Disk (`/workspace`), Ambient State Projections, and Node Runtime.
+- **Key Paths**: `.agents/skills/airi-sandbox-virtual-workstation/SKILL.md`, `packages/stage-ui/src/libs/sandbox/manager.ts`, `packages/stage-ui/src/libs/sandbox/projections.ts`, `packages/stage-ui/src/libs/sandbox/compiler-bridge.ts`, `packages/stage-ui/src/libs/sandbox/mcp-bridge.ts`, `packages/stage-ui/src/libs/sandbox/jev.ts`, `docs/proposal-in-memory-sandboxes-and-edge-wasm.md`.
+- **Content**: `just-bash` execution in WebAssembly, isolated RAM disk `/workspace`, state mirrors in `/workspace/.airi/` (`session`, `cognition`, `telemetry`, `messages`), Node.js `customRequire` shims (`fs`, `path`, `mcp`, `jev`), `tsc-rs` vs Sucrase AST compilation, CLI tool suite (`mount_widget`, `mcp`, `jev`), and universal MCP dispatch. Interlocking trio with `airi-generative-widgets` and `airi-jev-decision-engine`.
 
 ---
 
@@ -440,12 +445,12 @@ The catalog contains 72 discoverable skills. Desktop chatbox and interaction pip
 
 | Group | Discoverable skills |
 | --- | ---: |
-| Core plumbing and infrastructure | 9 |
+| Core plumbing and infrastructure | 10 |
 | Character, stage, motion and sensing | 15 |
 | Modules, cognition and memory | 23 |
 | Operational SOPs and research | 8 |
 | UI surfaces and adjacent services | 17 |
-| **Total** | **72** |
+| **Total** | **73** |
 
 The counts follow the catalog groups above, not a separate historical rollout table.
 
@@ -460,5 +465,6 @@ Use these examples when reviewing overlapping descriptions. They are expected ow
 | VoiceProfile bracket rules remove all speech | airi-audio-pipeline | Transformation and empty synthesis |
 | Add a desktop workspace route | airi-desktop-chatbox | Workspace reference only |
 | Mount a generated news or weather component into the sidepanel | airi-generative-widgets | In-memory sandbox widget lifecycle; ComfyUI uses artistry-comfyui-widgets |
+| Bash script or Node code fails inside virtual workspace RAM disk | airi-sandbox-virtual-workstation | POSIX sandbox runtime; widget mounting uses airi-generative-widgets |
 | Resume a lifetime job from its dialog | airi-memory-ui-pages | Controls; provisioning skill for job engine |
 | Persona refresh deletes environmental context | airi-prompt-builder-engine | Context classification and pruning |

@@ -47,14 +47,16 @@ Guidelines and exact code paths for AIRI's Generative UI widget subsystem. This 
 
 ### Key Paths & Entry Points
 
-- **Sandbox Manager & CLI Handlers**: `packages/stage-ui/src/libs/sandbox/manager.ts` (`mount_widget`, `unmount_widget`, `list_widgets`, `widgets`).
+- **Sandbox Manager & CLI Handlers**: `packages/stage-ui/src/libs/sandbox/manager.ts` (`mount_widget`, `unmount_widget`, `list_widgets`, `widgets`). See [airi-sandbox-virtual-workstation](../airi-sandbox-virtual-workstation/SKILL.md).
 - **Iframe Isolation & HTML Builder**: `packages/stage-ui/src/libs/sandbox/srcdoc.ts` (`buildWidgetIframeSrcdoc`).
 - **Widget Persistence**: `packages/stage-ui/src/database/repos/widgets.repo.ts` (`widgetsRepo`, storage key `local:widgets/registry`).
-- **Chat Inspector Panel**: `apps/stage-tamagotchi/src/renderer/components/chat/ChatWorkspaceWidgetsPanel.vue` (embedded in `pages/chat.vue`).
+- **Chat Inspector Panel**: `packages/stage-ui/src/components/scenarios/chat/ChatWorkspaceWidgetsPanel.vue` (embedded in `pages/chat.vue`).
 - **Standalone Widget Window (Desktop)**: `apps/stage-tamagotchi/src/renderer/pages/widgets.vue` and main window manager `apps/stage-tamagotchi/src/main/windows/widgets/index.ts`.
 - **Generative Iframe Host Component**: `apps/stage-tamagotchi/src/renderer/widgets/generative/components/Generative.vue`.
+- **Floating Widget Overlay (Web/Pocket)**: `packages/stage-ui/src/components/scenarios/widgets/FloatingWidgetCard.vue`.
 - **Ambient Type Declarations**: Seeded at `/workspace/types/airi-widget.d.ts` inside the sandbox filesystem.
-- **MCP Tool Bridge**: `packages/stage-ui/src/stores/mcp-tool-bridge.ts` (`tryGetMcpToolBridge`).
+- **Universal MCP Dispatcher**: `packages/stage-ui/src/libs/sandbox/mcp-bridge.ts` (`handleWidgetMcpMessage`, `executeUniversalMcpTool`).
+- **System-1 Jev Bridge**: Native discrete decisions (`jev::choose`, `jev::is`) execute via [airi-jev-decision-engine](../airi-jev-decision-engine/SKILL.md).
 
 ---
 
@@ -210,10 +212,17 @@ widget-3    Crypto Ticker panel     [OFFLINE]  /workspace/ticker.ts
 
 ## 6. MCP Tool Bridge Inside Widgets
 
-Widgets can call external Model Context Protocol (MCP) tools from within their sandboxed iframe without needing host credentials:
+Widgets can call tools from within their sandboxed iframe using `airi.callMcpTool(name, args)` or direct postMessage without needing host credentials:
 
 1. **Inside Widget JavaScript**:
    ```ts
+   // Via AiriWidgetContext:
+   const result = await airi.callMcpTool('jev::choose', {
+     question: 'Pick afternoon tea snack',
+     options: ['scone', 'cookie', 'macaron']
+   })
+
+   // Or raw postMessage:
    window.parent.postMessage({
      type: 'mcp-call',
      id: 'call-1',
@@ -221,9 +230,10 @@ Widgets can call external Model Context Protocol (MCP) tools from within their s
      args: { query: 'latest space discoveries', limit: 3 }
    }, '*')
    ```
-2. **Iframe Host Handling (`Generative.vue`)**:
-   - Intercepts `mcp-call` via `window.addEventListener('message')`.
-   - Delegates to `tryGetMcpToolBridge().callTool({ name, arguments: args })`.
+2. **Universal Host Handling (`handleWidgetMcpMessage`)**:
+   - All three iframe hosts (`Generative.vue`, `FloatingWidgetCard.vue`, `ChatWorkspaceWidgetsPanel.vue`) delegate to `handleWidgetMcpMessage(e)` from `packages/stage-ui/src/libs/sandbox/mcp-bridge.ts`.
+   - Native Jev tools (`jev::choose`, `jev::is`, `jev::score`, `jev::triage`, `jev::decide`) execute directly through the System-1 decision engine without requiring an external MCP server connection.
+   - External tools route to `tryGetMcpToolBridge().callTool({ name, arguments: args })`.
    - Posts `mcp-call-result` back to the widget iframe source window with structured JSON.
 
 ---

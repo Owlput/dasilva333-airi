@@ -32,6 +32,8 @@ Paths are repository-relative. Read the relevant implementation before changing 
 | AnimaDex Wizard Store | `packages/stage-ui/src/stores/animadex-wizard.ts` — `useAnimaDexWizardStore`, `boundVoices` |
 | Speech Runtime Store | `packages/stage-ui/src/stores/modules/speech.ts` — `useSpeechStore`, `availableVoices`, `savedVoiceProfiles` |
 | Arcade Agent Co-Pilot | `packages/stage-ui/src/composables/arcade/use-arcade-agent.ts` & `packages/stage-ui/src/pages/chat_arcade.vue` |
+| Virtual Workstation CLI & Shims | `packages/stage-ui/src/libs/sandbox/jev.ts` — `jev` CLI, `require('jev')`, native MCP tools. See [airi-sandbox-virtual-workstation](../airi-sandbox-virtual-workstation/SKILL.md) |
+| Widget Iframe MCP Dispatcher | `packages/stage-ui/src/libs/sandbox/mcp-bridge.ts` — `executeUniversalMcpTool()`, `handleWidgetMcpMessage()`. See [airi-generative-widgets](../airi-generative-widgets/SKILL.md) |
 | Canonical Architecture RFC | `docs/proposal-jev-integration.md` — Complete multi-domain specification and shootout traces |
 
 ## Contracts to preserve

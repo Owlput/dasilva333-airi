@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
-import { buildWidgetIframeSrcdoc, executeJevMcpTool, isJevMcpTool } from '@proj-airi/stage-ui/libs/sandbox'
-import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
+import { buildWidgetIframeSrcdoc, handleWidgetMcpMessage } from '@proj-airi/stage-ui/libs/sandbox'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { electronOpenMainDevtools } from '../../../../shared/eventa'
@@ -105,44 +104,7 @@ function handleIframeMessage(e: MessageEvent) {
     return
   }
 
-  if (e.data?.type === 'mcp-call') {
-    const { id, name, args } = e.data
-    const target = e.source as WindowProxy | null
-
-    if (isJevMcpTool(name)) {
-      executeJevMcpTool(name, args)
-        .then((res) => {
-          if (res.isError) {
-            target?.postMessage({ type: 'mcp-call-result', id, error: String(res.toolResult || 'Jev MCP execution failed') }, '*')
-          }
-          else {
-            target?.postMessage({ type: 'mcp-call-result', id, result: res.structuredContent ?? res.toolResult ?? res.content }, '*')
-          }
-        })
-        .catch((err: any) => {
-          target?.postMessage({ type: 'mcp-call-result', id, error: err.message || 'Jev MCP error' }, '*')
-        })
-      return
-    }
-
-    const bridge = tryGetMcpToolBridge()
-    if (!bridge) {
-      target?.postMessage({ type: 'mcp-call-result', id, error: 'MCP tool bridge not available' }, '*')
-      return
-    }
-    bridge.callTool({ name, arguments: args })
-      .then((res) => {
-        if (res.isError) {
-          target?.postMessage({ type: 'mcp-call-result', id, error: String(res.toolResult || 'MCP tool execution failed') }, '*')
-        }
-        else {
-          target?.postMessage({ type: 'mcp-call-result', id, result: res.structuredContent ?? res.toolResult ?? res.content }, '*')
-        }
-      })
-      .catch((err: any) => {
-        target?.postMessage({ type: 'mcp-call-result', id, error: err.message || 'MCP tool error' }, '*')
-      })
-  }
+  void handleWidgetMcpMessage(e)
 }
 
 watch([targetCode, targetPath], () => {

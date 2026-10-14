@@ -6,8 +6,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import { useSandbox } from '../../../composables/use-sandbox'
-import { buildWidgetIframeSrcdoc, copyWidgetManifestToClipboard, downloadWidgetManifestFile } from '../../../libs/sandbox'
-import { tryGetMcpToolBridge } from '../../../stores/mcp-tool-bridge'
+import {
+  buildWidgetIframeSrcdoc,
+  copyWidgetManifestToClipboard,
+  downloadWidgetManifestFile,
+  handleWidgetMcpMessage,
+} from '../../../libs/sandbox'
 
 const props = withDefaults(defineProps<{
   fillContainer?: boolean
@@ -250,28 +254,10 @@ function handleIframeMessage(e: MessageEvent) {
         iframeHeight.value = targetHeight
       }
     }
+    return
   }
-  else if (e.data?.type === 'mcp-call') {
-    const { id, name, args } = e.data
-    const bridge = tryGetMcpToolBridge()
-    const target = e.source as WindowProxy | null
-    if (!bridge) {
-      target?.postMessage({ type: 'mcp-call-result', id, error: 'MCP tool bridge not available' }, '*')
-      return
-    }
-    bridge.callTool({ name, arguments: args })
-      .then((res) => {
-        if (res.isError) {
-          target?.postMessage({ type: 'mcp-call-result', id, error: String(res.toolResult || 'MCP tool execution failed') }, '*')
-        }
-        else {
-          target?.postMessage({ type: 'mcp-call-result', id, result: res.structuredContent ?? res.toolResult ?? res.content }, '*')
-        }
-      })
-      .catch((err: any) => {
-        target?.postMessage({ type: 'mcp-call-result', id, error: err.message || 'MCP tool error' }, '*')
-      })
-  }
+
+  void handleWidgetMcpMessage(e)
 }
 
 watch([activeWidget, selectedWidgetId], () => {

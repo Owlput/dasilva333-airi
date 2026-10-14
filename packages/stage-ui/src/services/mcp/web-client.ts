@@ -14,6 +14,7 @@ import type {
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
+import { executeJevMcpTool, getJevMcpToolDescriptors, isJevMcpTool } from '../../libs/sandbox/jev'
 import { isHttpServerConfig, parseQualifiedToolName, registerLazyMcpToolBridgeFallback } from '../../stores/mcp-tool-bridge'
 import { useMcpWebConfigStore } from '../../stores/mcp-web-config'
 
@@ -146,7 +147,7 @@ export class WebMcpClient implements McpToolBridge {
   }
 
   async listTools(): Promise<McpToolDescriptor[]> {
-    const allTools: McpToolDescriptor[] = []
+    const allTools: McpToolDescriptor[] = [...getJevMcpToolDescriptors()]
 
     for (const [serverName, session] of this.sessions.entries()) {
       try {
@@ -174,6 +175,10 @@ export class WebMcpClient implements McpToolBridge {
   }
 
   async callTool(payload: McpCallToolPayload): Promise<McpCallToolResult> {
+    if (isJevMcpTool(payload.name)) {
+      return await executeJevMcpTool(payload.name, payload.arguments)
+    }
+
     const { serverName, toolName } = parseQualifiedToolName(payload.name)
     const session = this.sessions.get(serverName)
 
