@@ -5,7 +5,7 @@ import { ChatDashboardCard } from '@proj-airi/stage-ui/components'
 import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
 import { ALL_DASHBOARD_MODULES, useChatDashboard } from '@proj-airi/stage-ui/composables'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import ChatNan0CognitionPanel from './ChatNan0CognitionPanel.vue'
 import ChatWorkspaceTerminalPanel from './ChatWorkspaceTerminalPanel.vue'
@@ -29,7 +29,6 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'stageOffsetChange', offset: { x: number, y: number }): void
   (e: 'stageScaleChange', scale: number): void
-  (e: 'toggleStageVisibility', visible: boolean): void
 }>()
 
 const dashboard = useChatDashboard()
@@ -65,10 +64,8 @@ function handleDragEnd() {
   dropTargetIndex.value = null
 }
 
-// Stage toggle coordination
 function handleToggleStage() {
   dashboard.toggleCollapse('stage')
-  emit('toggleStageVisibility', dashboard.isCollapsed('stage'))
 }
 
 function handleStageOffsetChange(offset: { x: number, y: number }) {
@@ -81,16 +78,10 @@ function handleStageScaleChange(scale: number) {
 
 function handleHideModule(id: DashboardModuleId) {
   dashboard.hideModule(id)
-  if (id === 'stage') {
-    emit('toggleStageVisibility', true)
-  }
 }
 
 function handleAddModule(id: DashboardModuleId) {
   dashboard.addModule(id)
-  if (id === 'stage' && !dashboard.isCollapsed('stage')) {
-    emit('toggleStageVisibility', false)
-  }
 }
 
 function handleOpenJournal() {
@@ -163,16 +154,6 @@ onMounted(() => {
     hasScene: hasMedia,
     isSandboxActive: effectiveSandboxActive.value,
   })
-
-  if (!dashboard.isCollapsed('stage') && dashboard.isModuleActive('stage')) {
-    emit('toggleStageVisibility', false)
-  }
-})
-
-onUnmounted(() => {
-  if (!dashboard.isCollapsed('stage') && dashboard.isModuleActive('stage')) {
-    emit('toggleStageVisibility', true)
-  }
 })
 
 function getModuleDef(id: DashboardModuleId) {
@@ -192,13 +173,6 @@ function handleRestoreDefaults() {
     hasScene: hasMedia,
     isSandboxActive: effectiveSandboxActive.value,
   })
-
-  if (dashboard.isModuleActive('stage') && !dashboard.isCollapsed('stage')) {
-    emit('toggleStageVisibility', false)
-  }
-  else {
-    emit('toggleStageVisibility', true)
-  }
 }
 </script>
 

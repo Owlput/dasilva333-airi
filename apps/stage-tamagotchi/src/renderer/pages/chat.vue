@@ -24,7 +24,7 @@ import LogoDark from '../../../../../packages/stage-layouts/src/assets/logo-dark
 import ChatDashboardPanel from '../components/chat/ChatDashboardPanel.vue'
 import ChatWorkspaceCoordinator from '../components/chat/ChatWorkspaceCoordinator.vue'
 
-import { electronApplySizePreset, electronOpenSettings, electronStageToggleVisibility, electronWindowSetTitle } from '../../shared/eventa'
+import { electronApplySizePreset, electronOpenSettings, electronWindowSetTitle } from '../../shared/eventa'
 
 // Code-split workspace sub-surfaces to eliminate heavy initial bundle evaluation
 const chat_arcade = defineAsyncComponent(() => import('../components/chat/chat_arcade.vue'))
@@ -154,7 +154,6 @@ function handleClearMessages() {
 const isRightPanelOpen = useLocalStorage('airi:chat:right-panel-open', false)
 const { width } = useWindowSize()
 const showRightPanel = computed(() => isRightPanelOpen.value && width.value >= 768 && activeSurface.value === 'messages' && isCurrentSurfaceReady.value)
-const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
 
 const settingsStore = useSettings()
 const positioningStore = usePositioningStore()
@@ -1690,7 +1689,6 @@ function selectSurface(surface: typeof activeSurface.value) {
               @close="isRightPanelOpen = false"
               @stage-offset-change="handleStageOffsetChange"
               @stage-scale-change="handleStageScaleChange"
-              @toggle-stage-visibility="visible => toggleStageVisibility(visible)"
             />
           </div>
         </Transition>
