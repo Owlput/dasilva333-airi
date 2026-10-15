@@ -314,9 +314,11 @@ export const amadeusSkin: Live2dWidgetSkin = {
 │                                                                                        │
   │   PHASE 3: SANDBOX WORKSTATION BRIDGE & PROJECTIONS                                    │
   │   [x] Add /workspace/.airi/live2d.json ambient state projection in projections.ts      │
-│   [ ] Implement virtual require('live2d') shim in stage-ui/src/libs/sandbox/           │
-│   [ ] Add virtual live2d CLI command to SandboxManager                                 │
-│   [ ] Wire direct allowlisted postMessage ('airi:live2d:dispatch') in widget hosts     │
+  │   [x] Implement virtual require('live2d') shim in stage-ui/src/libs/sandbox/           │
+  │   [x] Add virtual live2d CLI command to SandboxManager                                 │
+  │   [x] Wire direct allowlisted postMessage ('airi:live2d:dispatch') in widget hosts     │
+  │   [ ] Remote VarFloat writes (require('live2d').setVar): deferred — needs its own     │
+  │       review as an unauthenticated memory-write primitive; Kurisu has no VarFloats     │
 │                                                                                        │
 │   PHASE 4: UNIVERSAL MENU ENGINE & AMADEUS SKIN                                        │
 │   [ ] Author Universal Live2D Menu Engine widget (Live2dMenuDriver.ts)                 │

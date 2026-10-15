@@ -363,6 +363,7 @@ describe('sandbox subsystem & in-memory posix execution', () => {
         modelId: 'kurisu-model-1',
         activeMotion: { group: 'phone', index: 0 },
         lastText: null,
+        lastDispatch: null,
         enabledHitAreas: ['phone'],
         hitAreas: [
           { name: 'phone', id: 'ArtMesh113', motion: 'phone' },
@@ -422,6 +423,7 @@ describe('sandbox subsystem & in-memory posix execution', () => {
         modelId: 'kurisu-model-1',
         activeMotion: null,
         lastText: null,
+        lastDispatch: null,
         enabledHitAreas: [],
         hitAreas: [{ name: 'stale-zone' }],
         reactions: [],
@@ -435,6 +437,120 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(projection.hitAreas).toHaveLength(1)
       expect(projection.hitAreas[0].name).toBe('phone')
       expect(projection.reactions).toHaveLength(1)
+    })
+
+    it('exposes live2d dispatch, hits, and state through the CLI', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const snapshotStore = useDslSnapshotStore()
+      snapshotStore.publish({
+        modelId: 'kurisu-model-1',
+        activeMotion: { group: 'Start', index: 0 },
+        lastText: null,
+        lastDispatch: { kind: 'dispatch', target: 'phone', at: Date.now() },
+        enabledHitAreas: ['phone'],
+        hitAreas: [
+          { name: 'phone', id: 'ArtMesh113', motion: 'phone' },
+          { name: '音乐（进入）', id: 'ArtMesh121', motion: '主界面（音乐进入）' },
+        ],
+        reactions: [],
+        varFloats: {},
+        updatedAt: Date.now(),
+      })
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      const stateRes = await sandbox.exec('live2d state')
+      expect(stateRes.exitCode).toBe(0)
+      expect(stateRes.stdout).toContain('kurisu-model-1')
+      expect(stateRes.stdout).toContain('gates: 1/2 open')
+      expect(stateRes.stdout).toContain('last: dispatch "phone"')
+
+      const hitsRes = await sandbox.exec('live2d hits --enabled-only')
+      expect(hitsRes.exitCode).toBe(0)
+      expect(hitsRes.stdout).toContain('phone')
+      expect(hitsRes.stdout).not.toContain('音乐（进入）')
+
+      const allRes = await sandbox.exec('live2d hits')
+      expect(allRes.stdout).toContain('音乐（进入）')
+
+      const dispatchRes = await sandbox.exec('live2d dispatch phone')
+      expect(dispatchRes.exitCode).toBe(0)
+      expect(dispatchRes.stdout).toContain('dispatched "phone"')
+
+      const usageRes = await sandbox.exec('live2d')
+      expect(usageRes.exitCode).toBe(1)
+      expect(usageRes.stderr).toContain('Usage: live2d')
+    })
+
+    it('exposes Live2D state through require(live2d) in node', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const snapshotStore = useDslSnapshotStore()
+      snapshotStore.publish({
+        modelId: 'kurisu-model-1',
+        activeMotion: { group: 'Start', index: 0 },
+        lastText: null,
+        lastDispatch: null,
+        enabledHitAreas: ['phone'],
+        hitAreas: [
+          { name: 'phone', id: 'ArtMesh113', motion: 'phone' },
+          { name: '音乐（进入）', id: 'ArtMesh121', motion: '主界面（音乐进入）' },
+        ],
+        reactions: [],
+        varFloats: {},
+        updatedAt: Date.now(),
+      })
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      const res = await sandbox.exec('node -e "const l=require(\'live2d\');console.log(JSON.stringify({open:l.isHitAreaEnabled(\'phone\'),closed:l.isHitAreaEnabled(\'音乐（进入）\'),caps:!!l.getDslState(),sent:typeof l.dispatch}))"')
+      expect(res.exitCode).toBe(0)
+      expect(JSON.parse(res.stdout.trim())).toEqual({ open: true, closed: false, caps: true, sent: 'function' })
+    })
+
+    it('surfaces lastDispatch from the snapshot', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const snapshotStore = useDslSnapshotStore()
+      snapshotStore.publish({
+        modelId: 'kurisu-model-1',
+        activeMotion: { group: 'phone', index: 0 },
+        lastText: null,
+        lastDispatch: { kind: 'dispatch', target: 'phone', at: 1792098603907 },
+        enabledHitAreas: ['phone'],
+        hitAreas: [{ name: 'phone' }],
+        reactions: [],
+        varFloats: {},
+        updatedAt: 1792098603907,
+      })
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      await sandbox.syncProjections()
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.lastDispatch).toEqual({ kind: 'dispatch', target: 'phone', at: 1792098603907 })
+
+      const stateRes = await sandbox.exec('live2d state')
+      expect(stateRes.stdout).toContain('last: dispatch "phone"')
     })
 
     it('refreshes gates on every sync without stale caching', async () => {

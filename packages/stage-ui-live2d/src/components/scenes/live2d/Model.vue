@@ -1396,13 +1396,17 @@ async function loadModel() {
       // Bridge resolution: when the dating-sim overlay replies with a chosen option,
       // resume the VM. Registered here so the adapter never needs a VM reference.
       dslAdapter.setSelectChoiceHandler((idx) => {
+        const pending = dslVM?.getPendingChoices?.()
+        const nextMtn = pending?.choices?.[idx]?.nextMtn
         dslVM?.selectChoice(idx)
+        lastDslDispatch = { kind: 'choice', target: nextMtn ?? `#${idx}`, at: Date.now() }
         publishDslSnapshot()
       })
       dslAdapter.setRemoteDispatchHandler((kind, payload) => {
         if (!dslVM)
           return
         try {
+          lastDslDispatch = { kind, target: payload, at: Date.now() }
           if (kind === 'command') {
             dslVM.dispatchCommand(payload)
           }
@@ -1476,6 +1480,7 @@ async function setMotion(motionName: string, index?: number) {
     }
     try {
       dslVM?.dispatch(motionName)
+      lastDslDispatch = { kind: 'dispatch', target: motionName, at: Date.now() }
       publishDslSnapshot()
     }
     catch (e) {
@@ -1905,6 +1910,7 @@ function onCanvasClick(event: MouseEvent) {
       const resolved = dslVM?.dispatch(target)
       if (resolved === undefined && target !== hitArea)
         dslVM?.dispatch(hitArea)
+      lastDslDispatch = { kind: 'tap', target, at: Date.now() }
       publishDslSnapshot()
     }
     catch (e) {
@@ -2044,6 +2050,8 @@ function selectDslChoice(index: number) {
   return dslVM?.selectChoice(index)
 }
 
+let lastDslDispatch: { kind: 'dispatch' | 'command' | 'choice' | 'tap', target: string, at: number } | null = null
+
 function publishDslSnapshot() {
   try {
     const modelId = props.modelId || ''
@@ -2057,6 +2065,7 @@ function publishDslSnapshot() {
       modelId,
       activeMotion: currentMotion.value ? { ...currentMotion.value } : null,
       lastText: live2dStore.activeMotionText?.text ?? null,
+      lastDispatch: lastDslDispatch ? { ...lastDslDispatch } : null,
       enabledHitAreas: named.map(h => (h.Name ?? h.name) as string).filter(name => dslVM?.isHitAreaEnabled(name) ?? true),
       hitAreas: named.map(h => ({ name: (h.Name ?? h.name) as string, id: h.Id ?? h.id, motion: h.Motion ?? h.motion })),
       reactions: activeDslGroups.flatMap(g => (g.entries ?? [])

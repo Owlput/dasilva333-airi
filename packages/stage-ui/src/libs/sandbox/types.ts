@@ -125,12 +125,19 @@ export interface SandboxVfsLive2dReaction {
   sound?: string
 }
 
+export interface SandboxVfsLive2dDispatch {
+  kind: 'dispatch' | 'command' | 'choice' | 'tap'
+  target: string
+  at: number
+}
+
 export interface SandboxVfsLive2dProjection {
   modelId: string
   hasModel: boolean
   live: boolean
   activeMotion: { group: string, index?: number } | null
   lastText: string | null
+  lastDispatch: SandboxVfsLive2dDispatch | null
   enabledHitAreas: string[]
   hitAreas: SandboxVfsLive2dHitArea[]
   hitAreasCount: number

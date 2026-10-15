@@ -16,6 +16,14 @@ import {
   isJevMcpTool,
 } from './jev'
 import {
+  formatLive2dHits,
+  formatLive2dState,
+  LIVE2D_PROJECTION_PATH,
+  parseLive2dProjection,
+  postLive2dCommand,
+  postLive2dDispatch,
+} from './live2d'
+import {
   buildCognitionProjection,
   buildLive2dProjection,
   buildMessagesProjection,
@@ -1243,6 +1251,48 @@ Examples:
       execute: handleJevCommand,
     })
 
+    this.bash.registerCommand({
+      name: 'live2d',
+      execute: async (args: string[], ctx: any) => {
+        const [sub, ...rest] = args
+        if (sub === 'dispatch' && rest.length > 0) {
+          const target = rest.join(' ')
+          const ok = postLive2dDispatch(target)
+          return ok
+            ? { stdout: `dispatched "${target}" to Live2D stage\n`, stderr: '', exitCode: 0 }
+            : { stdout: '', stderr: 'live2d dispatch: failed to post to stage bridge\n', exitCode: 1 }
+        }
+        if (sub === 'command' && rest.length > 0) {
+          const command = rest.join(' ')
+          const ok = postLive2dCommand(command)
+          return ok
+            ? { stdout: `sent "${command}" to Live2D stage\n`, stderr: '', exitCode: 0 }
+            : { stdout: '', stderr: 'live2d command: failed to post to stage bridge\n', exitCode: 1 }
+        }
+        if (sub === 'hits' || sub === 'state') {
+          let raw: string | null = null
+          try {
+            if (await ctx.fs.exists(LIVE2D_PROJECTION_PATH))
+              raw = await ctx.fs.readFile(LIVE2D_PROJECTION_PATH)
+          }
+          catch {}
+          const projection = parseLive2dProjection(raw)
+          if (!projection) {
+            return { stdout: '', stderr: 'No Live2D projection yet. Load a Live2D model on stage first.\n', exitCode: 1 }
+          }
+          if (sub === 'hits') {
+            return { stdout: formatLive2dHits(projection, rest.includes('--enabled-only')), stderr: '', exitCode: 0 }
+          }
+          return { stdout: formatLive2dState(projection), stderr: '', exitCode: 0 }
+        }
+        return {
+          stdout: '',
+          stderr: 'Usage: live2d dispatch <group> | live2d command <chain> | live2d hits [--enabled-only] | live2d state\n',
+          exitCode: 1,
+        }
+      },
+    })
+
     // 3. sed -i permission preservation wrapper
     const origSed = (this.bash as any).commands?.get?.('sed')
     if (origSed) {
@@ -1472,6 +1522,42 @@ Examples:
 
       const virtualJev = createVirtualJevEnvironment()
 
+      const readLive2dProjectionSync = () => {
+        try {
+          if (!virtualFs.existsSync(LIVE2D_PROJECTION_PATH))
+            return null
+          return parseLive2dProjection(virtualFs.readFileSync(LIVE2D_PROJECTION_PATH))
+        }
+        catch {
+          return null
+        }
+      }
+
+      const virtualLive2d = {
+        dispatch: async (target: string) => postLive2dDispatch(String(target ?? '')),
+        command: async (chain: string) => postLive2dCommand(String(chain ?? '')),
+        getDslState: () => readLive2dProjectionSync(),
+        isHitAreaEnabled: (name: string) => {
+          const projection = readLive2dProjectionSync()
+          if (!projection || !Array.isArray(projection.enabledHitAreas))
+            return false
+          return projection.enabledHitAreas.includes(name)
+        },
+        getCapabilities: () => {
+          const projection = readLive2dProjectionSync()
+          if (!projection) {
+            return null
+          }
+          return {
+            hasDsl: !!projection.hasDsl,
+            hitAreas: projection.hitAreas ?? [],
+            reactions: projection.reactions ?? [],
+            hitAreasCount: projection.hitAreasCount ?? 0,
+            reactionsCount: projection.reactionsCount ?? 0,
+          }
+        },
+      }
+
       const virtualModules: Record<string, any> = {
         'fs': virtualFs,
         'node:fs': virtualFs,
@@ -1479,6 +1565,8 @@ Examples:
         'node:path': virtualPath,
         'mcp': virtualMcp,
         'node:mcp': virtualMcp,
+        'live2d': virtualLive2d,
+        'node:live2d': virtualLive2d,
         'jev': virtualJev,
         'node:jev': virtualJev,
         'system1': virtualJev,
@@ -1719,6 +1807,7 @@ interface _AiriWidgetSidecar {
     live: boolean
     activeMotion: { group: string, index?: number } | null
     lastText: string | null
+    lastDispatch: { kind: string, target: string, at: number } | null
     enabledHitAreas: string[]
     hitAreas: { name: string, id?: string, motion?: string }[]
     hitAreasCount: number
@@ -1755,6 +1844,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
 - Live system projections: /workspace/.airi/*.json
 - TypeScript compiler: tsc <file.ts>
 - Generative UI: mount_widget <file.ts|file.js> [--surface panel|widget]
+- Live2D Stage: live2d dispatch <group> | live2d hits | live2d state | require('live2d')
 - Model Context Protocol: mcp list | mcp <server::tool> [json_args]
 - System 1 Semantic Decisions: jev is | jev choose | jev score | require('jev')
 - Micro-App Types: /workspace/types/airi-widget.d.ts

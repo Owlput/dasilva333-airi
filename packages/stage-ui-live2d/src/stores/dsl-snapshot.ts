@@ -13,10 +13,17 @@ export interface DslSnapshotReaction {
   sound?: string
 }
 
+export interface DslSnapshotDispatch {
+  kind: 'dispatch' | 'command' | 'choice' | 'tap'
+  target: string
+  at: number
+}
+
 export interface DslSnapshot {
   modelId: string
   activeMotion: { group: string, index?: number } | null
   lastText: string | null
+  lastDispatch: DslSnapshotDispatch | null
   enabledHitAreas: string[]
   hitAreas: DslSnapshotHitArea[]
   reactions: DslSnapshotReaction[]
