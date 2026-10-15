@@ -91,9 +91,13 @@ export class ElectronFSClient implements StorageClient {
 
   async readFile(relPath: string, encoding?: 'utf-8' | 'base64'): Promise<{ success: boolean, content?: string, error?: string }> {
     if (!this.hasElectron()) {
-      return { success: false, error: 'File system access is only available in the desktop application.' }
+      return { success: false, error: `File system access is only available in the desktop application (path: "${relPath}").` }
     }
-    return await this.electron.ipcRenderer.invoke('byos-fs:read-file', { dir: this.fsBackupPath, relPath, encoding })
+    const res = await this.electron.ipcRenderer.invoke('byos-fs:read-file', { dir: this.fsBackupPath, relPath, encoding })
+    if (res && !res.success && res.error) {
+      return { success: false, error: `${res.error} (path: "${relPath}" in "${this.fsBackupPath}")` }
+    }
+    return res
   }
 
   async writeFile(relPath: string, content: string | Blob | Uint8Array, encoding?: 'utf-8' | 'base64', append?: boolean): Promise<{ success: boolean, mtime?: number, error?: string }> {
@@ -219,14 +223,15 @@ export class S3StorageClient implements StorageClient {
   }
 
   async readFile(relPath: string, encoding?: 'utf-8' | 'base64'): Promise<{ success: boolean, content?: string, error?: string }> {
+    let url = ''
     try {
-      const url = this.getS3Url(relPath)
+      url = this.getS3Url(relPath)
       const res = await this.client.fetch(url)
       if (res.status === 404) {
-        return { success: false, error: 'ENOENT' }
+        return { success: false, error: `ENOENT (path: "${relPath}", url: "${url}")` }
       }
       if (!res.ok) {
-        return { success: false, error: `S3 GET failed: ${res.status} ${res.statusText}` }
+        return { success: false, error: `S3 GET failed: ${res.status} ${res.statusText} (path: "${relPath}", url: "${url}")` }
       }
 
       if (encoding === 'base64') {
@@ -249,7 +254,7 @@ export class S3StorageClient implements StorageClient {
       }
     }
     catch (err: any) {
-      return { success: false, error: err.message || String(err) }
+      return { success: false, error: `Failed to fetch "${relPath}" (${url || 'unresolved'}): ${err.message || String(err)}` }
     }
   }
 
@@ -562,30 +567,37 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     const client = getActiveClient(providerOverride)
     // Read remote manifest
     let remoteModel: any = null
+    const manifestPath = 'assets/models/manifest.json'
     try {
-      const modelsRes = await client.readFile('assets/models/manifest.json')
+      const modelsRes = await client.readFile(manifestPath)
       if (modelsRes.success && modelsRes.content) {
         const manifest = JSON.parse(modelsRes.content)
         remoteModel = manifest.models?.[id]
       }
+      else if (!modelsRes.success) {
+        return { success: false, error: modelsRes.error || `Failed to read remote manifest at "${manifestPath}"` }
+      }
     }
-    catch (e) {
-      console.error('[SyncEngine] Failed to read remote manifest for specific model:', e)
-      return { success: false, error: 'Failed to read remote manifest' }
+    catch (e: any) {
+      console.error(`[SyncEngine] Failed to read remote manifest for specific model "${id}" at "${manifestPath}":`, e)
+      return { success: false, error: `Failed to read remote manifest at "${manifestPath}": ${e.message || String(e)}` }
     }
 
     if (!remoteModel) {
-      return { success: false, error: `Model ${id} not found in remote manifest` }
+      return { success: false, error: `Model "${id}" not found in remote manifest ("${manifestPath}")` }
     }
 
+    let currentStep = `assets/models/${id}.bin`
     try {
-      debug(`[SyncEngine] Targeted download for model: ${id} (${remoteModel.name})`)
-      const readBinRes = await client.readFile(`assets/models/${id}.bin`, 'base64')
+      debug(`[SyncEngine] Targeted download for model: ${id} (${remoteModel.name}) from "${currentStep}"`)
+      currentStep = `assets/models/${id}.bin`
+      const readBinRes = await client.readFile(currentStep, 'base64')
       if (!readBinRes.success || !readBinRes.content) {
-        return { success: false, error: readBinRes.error || 'Failed to read model binary' }
+        return { success: false, error: readBinRes.error || `Failed to read model binary at "${currentStep}"` }
       }
 
       // Reconstruct File object
+      currentStep = `blob-reconstruction:${id}.bin (${remoteModel.name})`
       const mimeType = 'application/octet-stream'
       const binRes = await fetch(`data:${mimeType};base64,${readBinRes.content}`)
       const blob = await binRes.blob()
@@ -594,10 +606,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       // Download preview sidecar if present
       let previewImage: string | undefined
       if (remoteModel.hasPreview) {
-        debug(`[SyncEngine] Downloading model preview: ${id}`)
-        const readPreviewRes = await client.readFile(`assets/models/${id}-preview.png`, 'base64')
+        currentStep = `assets/models/${id}-preview.png`
+        debug(`[SyncEngine] Downloading model preview: ${id} from "${currentStep}"`)
+        const readPreviewRes = await client.readFile(currentStep, 'base64')
         if (readPreviewRes.success && readPreviewRes.content) {
           previewImage = `data:image/png;base64,${readPreviewRes.content}`
+        }
+        else if (!readPreviewRes.success) {
+          console.warn(`[SyncEngine] Failed to read model preview at "${currentStep}":`, readPreviewRes.error)
         }
       }
 
@@ -622,11 +638,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // Download textures if present
       if (remoteModel.hasTextures) {
-        const readTexRes = await client.readFile(`assets/models/${id}-textures.json`)
+        currentStep = `assets/models/${id}-textures.json`
+        const readTexRes = await client.readFile(currentStep)
         if (readTexRes.success && readTexRes.content) {
           const texturesData = JSON.parse(readTexRes.content)
           const textures: any[] = []
           for (const tex of texturesData) {
+            currentStep = `textures:${tex.relativePath || tex.name}`
             const texMime = tex.type || 'image/png'
             const texRes = await fetch(`data:${texMime};base64,${tex.base64}`)
             const texBlob = await texRes.blob()
@@ -637,6 +655,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             })
           }
           await localforage.setItem(`${id}-textures`, textures)
+        }
+        else if (!readTexRes.success) {
+          console.warn(`[SyncEngine] Failed to read model textures at "${currentStep}":`, readTexRes.error)
         }
       }
 
@@ -659,8 +680,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       return { success: true }
     }
     catch (e: any) {
-      console.error('[SyncEngine] Error during targeted model download:', e)
-      return { success: false, error: e.message || 'Error occurred during download' }
+      console.error(`[SyncEngine] Error during targeted model download for "${remoteModel?.name || id}" at "${currentStep}":`, e)
+      return { success: false, error: `${e.message || 'Error occurred during download'} (path: "${currentStep}")` }
     }
   }
 
