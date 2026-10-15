@@ -47,7 +47,9 @@ Every stable release must adhere to the following standard template and quality 
 - **No Raw Commit Dumps**: Do not append raw `git log` hashes or commit messages to user-facing release notes.
 - **Accurate Feature Framing**: Clearly distinguish brand-new features (e.g. Arcade, Sound Studio) from bug fixes, and flag early-access surfaces with explicit Work in Progress (WIP) notices.
 - **Step-by-Step Stepper Organization**: When documenting extensive onboarding overhauls, organize changes by numbered steps (`Step X (Name)`) for scannability.
-- **Upstream Contributor Attribution & Radar Shoutouts**: Whenever cherry-picking, adopting, or adapting upstream contributions (tracked in `docs/UPSTREAM_RADAR.md` or git commit logs), always acknowledge the original PRs with markdown links and credit the authors (e.g., `Special thanks to upstream contributor @author for PR [#1234](url)`). This honors community contributions and signals proactive monitoring of upstream advancements.
+- **Actual Shipped User Benefits Only**: Every bullet point must cite a concrete, tangible benefit shipped in this exact release—whether a brand-new user capability, a performance improvement, or a resolved annoyance/bug. Never narrate speculative plans, unmerged experiments, or dormant files.
+- **Never Include Upstream Radar, Surveillance, or Divergence Audits**: Internal upstream radar tracking, divergence analyses, rejection rationale, and surveillance logs from `docs/UPSTREAM_RADAR.md` or proposal RFCs are strictly internal maintainer intelligence. They NEVER translate to a feature end-users can touch and MUST NEVER be included in release notes.
+- **Strict Community PR Scoping**: Only cite community pull requests that were *actually merged and shipped* in the commit range since the previous release tag (under `### 🤝 Community Pull Requests`). Never include unmerged PRs, upstream PRs that were not cherry-picked into this release, or repeat community shoutouts.
 
 ---
 
