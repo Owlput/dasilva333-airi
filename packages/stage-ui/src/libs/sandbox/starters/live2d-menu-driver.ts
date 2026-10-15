@@ -67,10 +67,6 @@ export default function mount(context: AiriWidgetContext<DriverState>) {
         type: 'airi:live2d:command',
         command,
       }, '*');
-      window.parent.postMessage({
-        type: 'airi:live2d:dispatch',
-        target: command,
-      }, '*');
     } catch {}
 
     setState(prev => ({
@@ -310,10 +306,6 @@ export default function mount(context) {
             window.parent.postMessage({
                 type: 'airi:live2d:command',
                 command,
-            }, '*');
-            window.parent.postMessage({
-                type: 'airi:live2d:dispatch',
-                target: command,
             }, '*');
         }
         catch { }

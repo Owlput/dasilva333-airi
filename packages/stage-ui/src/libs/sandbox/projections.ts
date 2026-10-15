@@ -7,7 +7,7 @@ import type {
 } from './types'
 
 import { deriveMood } from '@proj-airi/nan0-runtime'
-import { useLive2d } from '@proj-airi/stage-ui-live2d/stores'
+import { useDslSnapshotStore, useLive2d } from '@proj-airi/stage-ui-live2d/stores'
 
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
@@ -172,31 +172,48 @@ export function buildLive2dProjection(): SandboxVfsLive2dProjection {
   try {
     const live2d = useLive2d()
     const cardStore = useAiriCardStore()
+    const snapshotStore = useDslSnapshotStore()
+    const modelId = (cardStore.activeCard as any)?.extensions?.airi?.modules?.displayModelId ?? ''
     const dslVM = live2d.dslVM as any
+    const live = !!dslVM && typeof dslVM.isHitAreaEnabled === 'function'
+    const snapshot = snapshotStore.get(modelId)
     const raw = live2d.rawSettings as any
     const manifestHitAreas = raw?.HitAreas ?? raw?.hitAreas
-    const names: string[] = Array.isArray(manifestHitAreas)
+    const liveNames: string[] = Array.isArray(manifestHitAreas)
       ? manifestHitAreas.map((h: any) => h?.Name ?? h?.name).filter((n: any) => typeof n === 'string' && n)
       : []
     const groups = (live2d.dslGroups ?? []) as any[]
-    let reactionsCount = 0
-    for (const group of groups) {
-      for (const entry of group?.entries ?? []) {
-        if (entry?.Sound)
-          reactionsCount += 1
-      }
-    }
 
+    const hitAreas = (liveNames.length > 0
+      ? manifestHitAreas
+          .filter((h: any) => typeof (h?.Name ?? h?.name) === 'string' && (h?.Name ?? h?.name))
+          .map((h: any) => ({ name: (h.Name ?? h.name) as string, id: h.Id ?? h.id, motion: h.Motion ?? h.motion }))
+      : (snapshot?.hitAreas ?? []).map((h: any) => ({ ...h })))
+    const names = hitAreas.map((h: any) => h.name as string)
+    const snapshotGates = new Set(snapshot?.enabledHitAreas ?? [])
+    const enabledHitAreas = live
+      ? names.filter((name: string) => dslVM.isHitAreaEnabled(name))
+      : names.filter((name: string) => snapshot ? snapshotGates.has(name) : true)
+    const reactions = groups.length > 0
+      ? groups.flatMap(g => ((g?.entries ?? []) as any[])
+          .filter((e: any) => e?.Sound)
+          .map((e: any) => ({ group: g.name, text: e.Text ? String(e.Text) : undefined, sound: e.Sound as string })))
+      : (snapshot?.reactions ?? []).map((r: any) => ({ ...r }))
+
+    const localMotion = live2d.currentMotion ? { ...live2d.currentMotion } : null
     return {
-      modelId: (cardStore.activeCard as any)?.extensions?.airi?.modules?.displayModelId ?? '',
-      hasModel: !!live2d.model,
-      activeMotion: live2d.currentMotion ? { ...live2d.currentMotion } : null,
-      lastText: live2d.activeMotionText?.text ?? null,
-      enabledHitAreas: names.filter(name => dslVM?.isHitAreaEnabled?.(name) ?? true),
-      hitAreasCount: names.length,
-      reactionsCount,
+      modelId,
+      hasModel: !!live2d.model || !!snapshot,
+      live,
+      activeMotion: live ? (localMotion ?? snapshot?.activeMotion ?? null) : (snapshot?.activeMotion ?? localMotion),
+      lastText: live2d.activeMotionText?.text ?? snapshot?.lastText ?? null,
+      enabledHitAreas,
+      hitAreas,
+      hitAreasCount: hitAreas.length,
+      reactions,
+      reactionsCount: reactions.length,
       hasDsl: groups.length > 0 || names.length > 0,
-      varFloats: dslVM?.vars?.snapshot?.() ?? {},
+      varFloats: live ? (dslVM.vars?.snapshot?.() ?? {}) : (snapshot?.varFloats ?? {}),
       updatedAt: Date.now(),
     }
   }
@@ -205,10 +222,13 @@ export function buildLive2dProjection(): SandboxVfsLive2dProjection {
     return {
       modelId: '',
       hasModel: false,
+      live: false,
       activeMotion: null,
       lastText: null,
       enabledHitAreas: [],
+      hitAreas: [],
       hitAreasCount: 0,
+      reactions: [],
       reactionsCount: 0,
       hasDsl: false,
       varFloats: {},

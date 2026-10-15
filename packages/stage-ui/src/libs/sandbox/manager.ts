@@ -1716,10 +1716,13 @@ interface _AiriWidgetSidecar {
   live2d?: {
     modelId: string
     hasModel: boolean
+    live: boolean
     activeMotion: { group: string, index?: number } | null
     lastText: string | null
     enabledHitAreas: string[]
+    hitAreas: { name: string, id?: string, motion?: string }[]
     hitAreasCount: number
+    reactions: { group: string, text?: string, sound?: string }[]
     reactionsCount: number
     hasDsl: boolean
     varFloats: Record<string, number>

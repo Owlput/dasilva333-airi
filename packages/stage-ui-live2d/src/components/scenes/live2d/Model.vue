@@ -36,6 +36,7 @@ import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { consumePendingDslGroups } from '../../../runtime/dsl-capture'
 import { buildAdapterPorts, Live2DRuntimeAdapter } from '../../../runtime/live2d-runtime-adapter'
 import { DSL_INTIMACY_MAX, useDslIntimacyStore } from '../../../stores/dsl-intimacy'
+import { useDslSnapshotStore } from '../../../stores/dsl-snapshot'
 import { useLive2d } from '../../../stores/live2d'
 import { getLive2DMotionControlModelOffset, useLive2DMotionControl } from '../../../stores/motion-control'
 import { evaluateLive2dBlend } from '../../../utils/blend-math'
@@ -1366,6 +1367,7 @@ async function loadModel() {
           changeCostume: (_modelFile: string, _index?: number) => {},
           showSpeechText: (text) => {
             live2dStore.activeMotionText = { text }
+            publishDslSnapshot()
           },
           showChoices: () => {},
         },
@@ -1393,7 +1395,28 @@ async function loadModel() {
       live2dStore.dslVM = dslVM
       // Bridge resolution: when the dating-sim overlay replies with a chosen option,
       // resume the VM. Registered here so the adapter never needs a VM reference.
-      dslAdapter.setSelectChoiceHandler(idx => dslVM?.selectChoice(idx))
+      dslAdapter.setSelectChoiceHandler((idx) => {
+        dslVM?.selectChoice(idx)
+        publishDslSnapshot()
+      })
+      dslAdapter.setRemoteDispatchHandler((kind, payload) => {
+        if (!dslVM)
+          return
+        try {
+          if (kind === 'command') {
+            dslVM.dispatchCommand(payload)
+          }
+          else {
+            if (isRemoteTargetGated(payload))
+              return
+            dslVM.dispatch(payload)
+            playPhysicalMotion(payload)
+          }
+          publishDslSnapshot()
+        }
+        catch {}
+      })
+      publishDslSnapshot()
       // When a DSL `motions disable <group>` fires, ensure a currently-looping motion in
       // that group stops even if the pool was mid-idle. The adapter already stops the exact
       // active group; this guard clears a lingering currentMotion so the restart path below
@@ -1453,6 +1476,7 @@ async function setMotion(motionName: string, index?: number) {
     }
     try {
       dslVM?.dispatch(motionName)
+      publishDslSnapshot()
     }
     catch (e) {
       console.warn('[Live2D DSL] setMotion dispatch failed (non-fatal):', e)
@@ -1881,6 +1905,7 @@ function onCanvasClick(event: MouseEvent) {
       const resolved = dslVM?.dispatch(target)
       if (resolved === undefined && target !== hitArea)
         dslVM?.dispatch(hitArea)
+      publishDslSnapshot()
     }
     catch (e) {
       console.warn('[Live2D DSL] dispatch failed (non-fatal):', e)
@@ -2017,6 +2042,60 @@ function dispatchDsl(group: string) {
 /** Resolve the currently pending Choices menu by index (resumes the VM chain). */
 function selectDslChoice(index: number) {
   return dslVM?.selectChoice(index)
+}
+
+function publishDslSnapshot() {
+  try {
+    const modelId = props.modelId || ''
+    if (!modelId || !model.value)
+      return
+    const settings = (model.value.internalModel as any)?.settings as any
+    const declared = (settings?.hitAreas ?? []) as any[]
+    const named = declared.filter(h => typeof (h?.Name ?? h?.name) === 'string' && (h?.Name ?? h?.name))
+    const snapshotStore = useDslSnapshotStore()
+    snapshotStore.publish({
+      modelId,
+      activeMotion: currentMotion.value ? { ...currentMotion.value } : null,
+      lastText: live2dStore.activeMotionText?.text ?? null,
+      enabledHitAreas: named.map(h => (h.Name ?? h.name) as string).filter(name => dslVM?.isHitAreaEnabled(name) ?? true),
+      hitAreas: named.map(h => ({ name: (h.Name ?? h.name) as string, id: h.Id ?? h.id, motion: h.Motion ?? h.motion })),
+      reactions: activeDslGroups.flatMap(g => (g.entries ?? [])
+        .filter(e => e?.Sound)
+        .map(e => ({ group: g.name, text: e.Text ? String(e.Text) : undefined, sound: e.Sound as string }))),
+      varFloats: dslVM?.vars?.snapshot?.() ?? {},
+      updatedAt: Date.now(),
+    })
+  }
+  catch {}
+}
+
+function isRemoteTargetGated(target: string): boolean {
+  try {
+    const settings = (model.value?.internalModel as any)?.settings as any
+    const declared = (settings?.hitAreas ?? []) as any[]
+    for (const h of declared) {
+      const name = h?.Name ?? h?.name
+      const motion = h?.Motion ?? h?.motion
+      if (name === target || motion === target)
+        return dslVM?.isHitAreaEnabled(name) === false
+    }
+    return false
+  }
+  catch {
+    return false
+  }
+}
+
+function playPhysicalMotion(group: string) {
+  try {
+    const motionManager = model.value?.internalModel?.motionManager
+    const definitions = motionManager?.definitions?.[group]
+    if (!motionManager || !definitions || definitions.length === 0)
+      return
+    const randomIndex = Math.floor(Math.random() * definitions.length)
+    model.value?.motion(group, randomIndex, MotionPriority.FORCE)
+  }
+  catch {}
 }
 
 /** Read-only snapshot of the live DSL runtime for the VarFloats inspector UI. */

@@ -135,4 +135,44 @@ describe('universal MCP Bridge & Widget Message Dispatcher', () => {
     const handled = await handleWidgetMcpMessage(event)
     expect(handled).toBe(false)
   })
+
+  it('forwards allowlisted live2d dispatch over the DSL bridge', async () => {
+    const received: any[] = []
+    const receiver = new BroadcastChannel('live2d-dsl-bridge')
+    receiver.onmessage = (e: MessageEvent) => received.push(e.data)
+
+    const event = {
+      data: { type: 'airi:live2d:dispatch', target: 'phone' },
+    } as MessageEvent
+    const handled = await handleWidgetMcpMessage(event)
+    expect(handled).toBe(true)
+
+    await vi.waitFor(() => expect(received).toContainEqual({ type: 'dsl-widget-dispatch', target: 'phone' }))
+    receiver.close()
+  })
+
+  it('forwards raw live2d commands and drops unallowlisted payloads', async () => {
+    const received: any[] = []
+    const receiver = new BroadcastChannel('live2d-dsl-bridge')
+    receiver.onmessage = (e: MessageEvent) => received.push(e.data)
+
+    const cmdEvent = {
+      data: { type: 'airi:live2d:command', command: 'stop_sound 0' },
+    } as MessageEvent
+    expect(await handleWidgetMcpMessage(cmdEvent)).toBe(true)
+    await vi.waitFor(() => expect(received).toContainEqual({ type: 'dsl-widget-command', command: 'stop_sound 0' }))
+
+    const evilEvent = {
+      data: { type: 'airi:live2d:eval', target: 'phone' },
+    } as MessageEvent
+    expect(await handleWidgetMcpMessage(evilEvent)).toBe(false)
+    const emptyEvent = {
+      data: { type: 'airi:live2d:dispatch' },
+    } as MessageEvent
+    expect(await handleWidgetMcpMessage(emptyEvent)).toBe(false)
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(received).toHaveLength(1)
+    receiver.close()
+  })
 })

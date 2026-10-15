@@ -55,6 +55,14 @@ type DslBridgeEvent
     /** Normalized 0–100 projection for HUD display. */
     display: number
   }
+  | {
+    type: 'dsl-widget-dispatch'
+    target: string
+  }
+  | {
+    type: 'dsl-widget-command'
+    command: string
+  }
 
 /**
  * Rendering-host effects that depend on the Vue shell, not on the PIXI model. The VM never
@@ -110,6 +118,7 @@ export class Live2DRuntimeAdapter {
   /** Set after VM construction so a bridged choice selection can resume the VM. */
   private selectChoiceHandler: ((choiceIndex: number) => void) | null = null
   private currentChoiceRequestId: string | null = null
+  private remoteDispatchHandler: ((kind: 'dispatch' | 'command', payload: string) => void) | null = null
 
   private readonly bridge = useBroadcastChannel<DslBridgeEvent, DslBridgeEvent>({ name: DSL_BRIDGE_CHANNEL })
   private readonly stopBridgeWatch: () => void
@@ -135,12 +144,23 @@ export class Live2DRuntimeAdapter {
         this.currentChoiceRequestId = null
         this.selectChoiceHandler?.(event.choiceIndex)
       }
+      else if (event?.type === 'dsl-widget-dispatch' && typeof event.target === 'string' && event.target) {
+        this.remoteDispatchHandler?.('dispatch', event.target)
+      }
+      else if (event?.type === 'dsl-widget-command' && typeof event.command === 'string' && event.command) {
+        this.remoteDispatchHandler?.('command', event.command)
+      }
     })
   }
 
   /** Called by Model.vue after constructing the VM so a bridged selection resumes it. */
   setSelectChoiceHandler(handler: (choiceIndex: number) => void): void {
     this.selectChoiceHandler = handler
+  }
+
+  /** Called by Model.vue so widget taps forwarded over the bridge reach the VM. */
+  setRemoteDispatchHandler(handler: ((kind: 'dispatch' | 'command', payload: string) => void) | null): void {
+    this.remoteDispatchHandler = handler
   }
 
   private get internalModel() {
@@ -370,6 +390,7 @@ export class Live2DRuntimeAdapter {
     this.stopBridgeWatch()
     this.bridge.close()
     this.selectChoiceHandler = null
+    this.remoteDispatchHandler = null
     this.currentChoiceRequestId = null
   }
 }

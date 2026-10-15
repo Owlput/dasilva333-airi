@@ -334,3 +334,26 @@ describe('dSLVirtualMachine — features + NextMtn chain', () => {
     expect(host.external!.openUrl).toHaveBeenCalledWith('https://space.bilibili.com/40607053')
   })
 })
+
+describe('dSLVirtualMachine.dispatchCommand — raw widget chains', () => {
+  it('runs stop_sound and hit_areas chains without a group', () => {
+    const { host } = makeHost()
+    const vm = new DSLVirtualMachine({ host })
+
+    vm.dispatchCommand('stop_sound 0')
+    expect(host.sound!.stopSound).toHaveBeenCalledWith(0)
+
+    vm.dispatchCommand('hit_areas disable a,b;hit_areas enable phone')
+    expect(vm.isHitAreaEnabled('a')).toBe(false)
+    expect(vm.isHitAreaEnabled('b')).toBe(false)
+    expect(vm.isHitAreaEnabled('phone')).toBe(true)
+    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('a', false)
+  })
+
+  it('ignores empty chains', () => {
+    const { host } = makeHost()
+    const vm = new DSLVirtualMachine({ host })
+    vm.dispatchCommand('')
+    expect(host.sound!.stopSound).not.toHaveBeenCalled()
+  })
+})

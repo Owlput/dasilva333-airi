@@ -132,6 +132,11 @@ export class DSLVirtualMachine {
     return this.runGroup(group, item, 0)
   }
 
+  /** Run a raw `;`-delimited command chain (e.g. widget Stop buttons). */
+  dispatchCommand(chain: string): void {
+    this.runCommands(parseCommandChain(chain), 0)
+  }
+
   /** Resume a pending choice menu: pick by index and follow its NextMtn. */
   selectChoice(index: number): DslEntry | undefined {
     const pending = this.pendingChoices

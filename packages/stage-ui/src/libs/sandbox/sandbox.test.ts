@@ -1,5 +1,5 @@
 import { DSLVirtualMachine } from '@proj-airi/live2d-runtime'
-import { useLive2d } from '@proj-airi/stage-ui-live2d/stores'
+import { useDslSnapshotStore, useLive2d } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -352,6 +352,89 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       await sandbox.syncProjections()
       const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
       expect(projection.modelId).toBe('kurisu-model-1')
+    })
+
+    it('falls back to the cross-window snapshot when no live VM exists', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const snapshotStore = useDslSnapshotStore()
+      snapshotStore.publish({
+        modelId: 'kurisu-model-1',
+        activeMotion: { group: 'phone', index: 0 },
+        lastText: null,
+        enabledHitAreas: ['phone'],
+        hitAreas: [
+          { name: 'phone', id: 'ArtMesh113', motion: 'phone' },
+          { name: '音乐（进入）', id: 'ArtMesh121', motion: '主界面（音乐进入）' },
+        ],
+        reactions: [
+          { group: '音乐（amadeus）', sound: 'Motions_音乐（amadeus）_0_Sound_0.mp3' },
+        ],
+        varFloats: { music_playing: 1 },
+        updatedAt: Date.now(),
+      })
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      await sandbox.syncProjections()
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.live).toBe(false)
+      expect(projection.hasModel).toBe(true)
+      expect(projection.hasDsl).toBe(true)
+      expect(projection.enabledHitAreas).toEqual(['phone'])
+      expect(projection.hitAreas).toHaveLength(2)
+      expect(projection.hitAreas[1]).toMatchObject({ name: '音乐（进入）', motion: '主界面（音乐进入）' })
+      expect(projection.reactions).toHaveLength(1)
+      expect(projection.varFloats).toEqual({ music_playing: 1 })
+      expect(projection.activeMotion).toEqual({ group: 'phone', index: 0 })
+    })
+
+    it('prefers the live VM over a stale snapshot', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      const live2d = useLive2d()
+      live2d.rawSettings = {
+        HitAreas: [{ Name: 'phone', Id: 'ArtMesh113', Motion: 'phone' }],
+      }
+      const vm = new DSLVirtualMachine()
+      vm.loadGroups([{ name: 'phone', entries: [{ Sound: 'x.wav' }] }])
+      live2d.dslVM = vm as any
+      live2d.model = {} as any
+      live2d.dslGroups = [{ name: 'phone', entries: [{ Sound: 'x.wav' }] }]
+
+      const snapshotStore = useDslSnapshotStore()
+      snapshotStore.publish({
+        modelId: 'kurisu-model-1',
+        activeMotion: null,
+        lastText: null,
+        enabledHitAreas: [],
+        hitAreas: [{ name: 'stale-zone' }],
+        reactions: [],
+        varFloats: {},
+        updatedAt: 1,
+      })
+
+      await sandbox.syncProjections()
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.live).toBe(true)
+      expect(projection.hitAreas).toHaveLength(1)
+      expect(projection.hitAreas[0].name).toBe('phone')
+      expect(projection.reactions).toHaveLength(1)
     })
 
     it('refreshes gates on every sync without stale caching', async () => {

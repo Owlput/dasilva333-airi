@@ -113,13 +113,28 @@ export interface SandboxVfsMessageItem {
   content: string
 }
 
+export interface SandboxVfsLive2dHitArea {
+  name: string
+  id?: string
+  motion?: string
+}
+
+export interface SandboxVfsLive2dReaction {
+  group: string
+  text?: string
+  sound?: string
+}
+
 export interface SandboxVfsLive2dProjection {
   modelId: string
   hasModel: boolean
+  live: boolean
   activeMotion: { group: string, index?: number } | null
   lastText: string | null
   enabledHitAreas: string[]
+  hitAreas: SandboxVfsLive2dHitArea[]
   hitAreasCount: number
+  reactions: SandboxVfsLive2dReaction[]
   reactionsCount: number
   hasDsl: boolean
   varFloats: Record<string, number>

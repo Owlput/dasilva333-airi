@@ -41,7 +41,33 @@ export async function listUniversalMcpTools(): Promise<McpToolDescriptor[]> {
  * Universal iframe message handler for 'mcp-call' events.
  * Returns true if the message was handled, false otherwise.
  */
+export function forwardLive2dWidgetMessage(data: { type: string, target?: unknown, command?: unknown }): boolean {
+  if (data?.type !== 'airi:live2d:dispatch' && data?.type !== 'airi:live2d:command')
+    return false
+  try {
+    const channel = new BroadcastChannel('live2d-dsl-bridge')
+    if (data.type === 'airi:live2d:dispatch' && typeof data.target === 'string' && data.target) {
+      channel.postMessage({ type: 'dsl-widget-dispatch', target: data.target })
+    }
+    else if (data.type === 'airi:live2d:command' && typeof data.command === 'string' && data.command) {
+      channel.postMessage({ type: 'dsl-widget-command', command: data.command })
+    }
+    else {
+      channel.close()
+      return false
+    }
+    channel.close()
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
 export async function handleWidgetMcpMessage(e: MessageEvent): Promise<boolean> {
+  if (typeof e.data?.type === 'string' && e.data.type.startsWith('airi:live2d:'))
+    return forwardLive2dWidgetMessage(e.data)
+
   if (e.data?.type !== 'mcp-call')
     return false
 
