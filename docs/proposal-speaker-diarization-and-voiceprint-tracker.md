@@ -10,7 +10,7 @@
 > **Key Upstream References**:
 > - Upstream PR [#2971](https://github.com/moeru-ai/airi/pull/2971): `chore(deps): bump sherpaw to 0.3.0`
 > - Upstream PR [#2975](https://github.com/moeru-ai/airi/pull/2975): `feat(stage-ui): add speaker tracker runtime` *(Merged into upstream/main at commit `d7c9737118`)*
-> - Upstream PR [#2980](https://github.com/moeru-ai/airi/pull/2980): `feat(stage-ui,stage-pages): add voiceprint enrollment` *(Open by `@sumimakito`)*
+> - Upstream PR [#2980](https://github.com/moeru-ai/airi/pull/2980): `feat(stage-ui,stage-pages): add voiceprint enrollment` *(Merged into upstream/main at commit `7189b7eade`)*
 > **Related Fork Skills & Specs**:
 > - [`airi-audio-pipeline`](../.agents/skills/airi-audio-pipeline/SKILL.md) & [`airi-speech-runtime`](../.agents/skills/airi-speech-runtime/SKILL.md)
 > - [`airi-acting-cue-act-tokens`](../.agents/skills/airi-acting-cue-act-tokens/SKILL.md) *(Distinct output manifestation boundary)*
