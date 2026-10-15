@@ -12,6 +12,8 @@
 import type {
   DslEntry,
   IEventEmitter,
+  IExternalSink,
+  IHitAreaSink,
   IMotionSink,
   ISoundSink,
   ITrackingSink,
@@ -119,6 +121,8 @@ export class Live2DRuntimeAdapter {
    */
   private readonly motionGroupEnabled = new Map<string, boolean>()
   private onMotionGroupEnabledChange: ((ref: MotionRef, enabled: boolean) => void) | null = null
+  private readonly hitAreaEnabled = new Map<string, boolean>()
+  private onHitAreaEnabledChange: ((name: string, enabled: boolean) => void) | null = null
 
   constructor(config: Live2DRuntimeAdapterConfig) {
     this.cfg = config
@@ -185,6 +189,33 @@ export class Live2DRuntimeAdapter {
   /** Model.vue registers to react to pool toggles (e.g. to skip a disabled idle on restart). */
   setOnMotionGroupEnabledChange(handler: ((ref: MotionRef, enabled: boolean) => void) | null): void {
     this.onMotionGroupEnabledChange = handler
+  }
+
+  readonly hitAreas: IHitAreaSink = {
+    setHitAreaEnabled: (name: string, enabled: boolean) => {
+      this.hitAreaEnabled.set(name, enabled)
+      this.onHitAreaEnabledChange?.(name, enabled)
+    },
+  }
+
+  isHitAreaEnabled(name: string): boolean {
+    return this.hitAreaEnabled.get(name) ?? true
+  }
+
+  setOnHitAreaEnabledChange(handler: ((name: string, enabled: boolean) => void) | null): void {
+    this.onHitAreaEnabledChange = handler
+  }
+
+  readonly external: IExternalSink = {
+    openUrl: (url: string) => {
+      if (!/^https?:\/\//i.test(url))
+        return
+      try {
+        window.open(url, '_blank', 'noopener')
+      }
+      catch {
+      }
+    },
   }
 
   private startMotion(ref: MotionRef): void {
@@ -353,5 +384,7 @@ export function buildAdapterPorts(adapter: Live2DRuntimeAdapter) {
     sound: adapter.sound,
     tracking: adapter.tracking,
     events: adapter.events,
+    hitAreas: adapter.hitAreas,
+    external: adapter.external,
   }
 }

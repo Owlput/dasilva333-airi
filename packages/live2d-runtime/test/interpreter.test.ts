@@ -24,6 +24,8 @@ function makeHost(initIntimacy = 0) {
     intimacy: intimacyStore,
     tracking: { setMouseTracking: vi.fn(), setEyeBlink: vi.fn() },
     texture: { replaceTexture: vi.fn() },
+    hitAreas: { setHitAreaEnabled: vi.fn() },
+    external: { openUrl: vi.fn() },
     events: {
       showChoices: vi.fn(),
       showText: vi.fn(),
@@ -308,5 +310,27 @@ describe('dSLVirtualMachine — features + NextMtn chain', () => {
     const resultCaps = vm.dispatch('CHOICE')
     expect(resultCaps).toBeDefined()
     expect(vm.hasPendingChoices()).toBe(true)
+  })
+
+  it('hit_areas enable/disable and open_url execute through runtime ports and track state', () => {
+    const { host } = makeHost()
+    const vm = new DSLVirtualMachine({ host })
+    vm.loadGroups([
+      {
+        name: 'Start',
+        entries: [{
+          Command: 'hit_areas disable menu,song;hit_areas enable phone;open_url https://space.bilibili.com/40607053',
+        }],
+      },
+    ])
+
+    vm.dispatch('Start')
+    expect(vm.isHitAreaEnabled('phone')).toBe(true)
+    expect(vm.isHitAreaEnabled('menu')).toBe(false)
+    expect(vm.isHitAreaEnabled('song')).toBe(false)
+    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('menu', false)
+    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('song', false)
+    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('phone', true)
+    expect(host.external!.openUrl).toHaveBeenCalledWith('https://space.bilibili.com/40607053')
   })
 })

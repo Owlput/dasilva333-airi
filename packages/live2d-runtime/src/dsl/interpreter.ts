@@ -42,6 +42,7 @@ export class DSLVirtualMachine {
   private readonly clock?: IClockLike
   private language?: string
   private readonly motionGroupEnabled = new Map<string, boolean>()
+  private readonly hitAreaEnabled = new Map<string, boolean>()
   private pendingChoices: { text?: string, textDuration?: number, choices: ResolvedChoice[], rawEntry: DslEntry } | null = null
 
   constructor(options: VMOptions = {}) {
@@ -87,6 +88,16 @@ export class DSLVirtualMachine {
   /** Whether a named motion pool is enabled (motions enable/disable). */
   isMotionGroupEnabled(name: string): boolean {
     return this.motionGroupEnabled.get(name) ?? true
+  }
+
+  /** Whether a named hit area is enabled (hit_areas enable/disable, default true). */
+  isHitAreaEnabled(name: string): boolean {
+    return this.hitAreaEnabled.get(name) ?? true
+  }
+
+  setHitAreaEnabled(name: string, enabled: boolean): void {
+    this.hitAreaEnabled.set(name, enabled)
+    this.host.hitAreas?.setHitAreaEnabled(name, enabled)
   }
 
   /** Whether a Choices menu is awaiting a selection. */
@@ -293,6 +304,16 @@ export class DSLVirtualMachine {
           break
         case 'replace_tex':
           this.host.texture?.replaceTexture(cmd.textureIndex, cmd.file)
+          break
+        case 'hit_areas':
+          for (const name of cmd.targets) {
+            this.hitAreaEnabled.set(name, cmd.enabled)
+            this.host.hitAreas?.setHitAreaEnabled(name, cmd.enabled)
+          }
+          break
+        case 'open_url':
+          if (cmd.url)
+            this.host.external?.openUrl(cmd.url)
           break
         case 'noop':
           break

@@ -136,4 +136,28 @@ describe('parseCommandChain — verbs', () => {
       modelFile: 'model with spaces.json',
     })
   })
+
+  it('hit_areas enable/disable parses targets with multiple delimiter types', () => {
+    const enableCmds = parseCommandChain('hit_areas enable phone, 音乐（进入）')
+    expect(enableCmds[0]).toMatchObject({
+      kind: 'hit_areas',
+      enabled: true,
+      targets: ['phone', '音乐（进入）'],
+    })
+
+    const disableCmds = parseCommandChain('hit_areas disable 音乐（进入）,音乐（退出）、作者（空间）')
+    expect(disableCmds[0]).toMatchObject({
+      kind: 'hit_areas',
+      enabled: false,
+      targets: ['音乐（进入）', '音乐（退出）', '作者（空间）'],
+    })
+  })
+
+  it('open_url parses destination url', () => {
+    const cmds = parseCommandChain('open_url https://space.bilibili.com/40607053')
+    expect(cmds[0]).toMatchObject({
+      kind: 'open_url',
+      url: 'https://space.bilibili.com/40607053',
+    })
+  })
 })

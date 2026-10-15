@@ -92,6 +92,18 @@ function parseOne(statement: string): DslCommand {
       const file = rest.slice(1).join(' ')
       return { kind: 'replace_tex', textureIndex: Number.isNaN(textureIndex) ? 0 : textureIndex, file, raw }
     }
+    case 'hit_areas':
+    case 'hitareas':
+    case 'hitarea': {
+      const enabled = onOff(rest[0])
+      const targets = rest.slice(1).join(' ').split(/[,\s、，]+/).map(t => t.trim()).filter(t => t.length > 0)
+      return { kind: 'hit_areas', enabled, targets, raw }
+    }
+    case 'open_url':
+    case 'openurl': {
+      const url = rest.join(' ').trim()
+      return { kind: 'open_url', url, raw }
+    }
     default:
       // Unrecognized verbs are preserved as noops rather than dropped, so the
       // sequencer ordering stays intact and a host can introspect them.

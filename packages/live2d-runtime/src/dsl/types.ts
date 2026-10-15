@@ -99,6 +99,8 @@ export type DslCommandKind
     | 'eye_blink'
     | 'stop_sound'
     | 'replace_tex'
+    | 'hit_areas'
+    | 'open_url'
     | 'noop'
 
 /** A target reference like `Sound#1:011501_051_01_01` or `Leave60_70_80`. */
@@ -123,4 +125,6 @@ export type DslCommand
     | { kind: 'eye_blink', enabled: boolean, raw: string }
     | { kind: 'stop_sound', channel: number, raw: string }
     | { kind: 'replace_tex', textureIndex: number, file: string, raw: string }
+    | { kind: 'hit_areas', enabled: boolean, targets: string[], raw: string }
+    | { kind: 'open_url', url: string, raw: string }
     | { kind: 'noop', raw: string }

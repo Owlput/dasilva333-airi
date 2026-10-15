@@ -67,6 +67,16 @@ export interface ITextureSink {
   replaceTexture: (textureIndex: number, file: string) => void
 }
 
+/** Gate tactile hit areas on/off (`hit_areas enable/disable <names>`). */
+export interface IHitAreaSink {
+  setHitAreaEnabled: (name: string, enabled: boolean) => void
+}
+
+/** External side-effects that leave the canvas (`open_url <url>`). */
+export interface IExternalSink {
+  openUrl: (url: string) => void
+}
+
 /** Event bus toward the UI bridge (choice overlay, subtitles, lifecycle). */
 export interface IEventEmitter {
   /** Present a glassmorphic choice menu composed over the stage. */
@@ -97,6 +107,8 @@ export interface Live2DRuntimePorts {
   intimacy?: IIntimacyStore
   tracking?: ITrackingSink
   texture?: ITextureSink
+  hitAreas?: IHitAreaSink
+  external?: IExternalSink
   events?: IEventEmitter
   clock?: IClock
 }

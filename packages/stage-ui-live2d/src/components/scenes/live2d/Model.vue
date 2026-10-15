@@ -1386,6 +1386,10 @@ async function loadModel() {
         },
       })
       dslVM.loadGroups(rawGroups)
+      for (const h of (live2dStore.rawSettings as any)?.hitAreas ?? []) {
+        if ((h.Enabled ?? h.enabled) === false && (h.Name ?? h.name))
+          dslVM.setHitAreaEnabled(h.Name ?? h.name, false)
+      }
       live2dStore.dslVM = dslVM
       // Bridge resolution: when the dating-sim overlay replies with a chosen option,
       // resume the VM. Registered here so the adapter never needs a VM reference.
@@ -1866,13 +1870,17 @@ function onCanvasClick(event: MouseEvent) {
   const hitAreas = model.value.hitTest(globalX, globalY)
   if (hitAreas && hitAreas.length > 0) {
     const hitArea = hitAreas[0]
+    const declared = ((model.value.internalModel as any)?.settings as any)?.hitAreas as any[] | undefined
+    const declaration = declared?.find((h: any) => (h.Name ?? h.name) === hitArea)
+    const target = (declaration?.Motion ?? declaration?.motion ?? hitArea) as string
+    if (dslVM?.isHitAreaEnabled(hitArea) === false || (target !== hitArea && dslVM?.isHitAreaEnabled(target) === false))
+      return
     console.info(`[Live2D Tactile] Clicked hit area: ${hitArea} at global(${globalX.toFixed(1)}, ${globalY.toFixed(1)})`)
 
-    // DSL runtime: dispatch the hit area's interaction group (e.g. Tapbody). The VM
-    // guards/selects by group-name similarity, so unknown areas harmlessly return
-    // undefined. Physical motion/expression fallthrough below is untouched.
     try {
-      dslVM?.dispatch(hitArea)
+      const resolved = dslVM?.dispatch(target)
+      if (resolved === undefined && target !== hitArea)
+        dslVM?.dispatch(hitArea)
     }
     catch (e) {
       console.warn('[Live2D DSL] dispatch failed (non-fatal):', e)
@@ -1920,18 +1928,22 @@ function onCanvasClick(event: MouseEvent) {
 
     // Play corresponding motion if no expression triggered or in addition
     const groups = Object.keys(motionManager.definitions || {})
-    let matchedGroup = groups.find(g => g.toLowerCase() === hitArea.toLowerCase())
+    const targetLower = target.toLowerCase()
+    let matchedGroup = groups.find(g => g.toLowerCase() === targetLower)
     if (!matchedGroup) {
-      matchedGroup = groups.find(g => g.toLowerCase().startsWith(hitArea.toLowerCase()))
+      matchedGroup = groups.find(g => g.toLowerCase() === hitArea.toLowerCase())
     }
     if (!matchedGroup) {
-      matchedGroup = groups.find(g => hitArea.toLowerCase().startsWith(g.toLowerCase()))
+      matchedGroup = groups.find(g => g.toLowerCase().startsWith(targetLower))
     }
     if (!matchedGroup) {
-      matchedGroup = groups.find(g => g.toLowerCase().includes(hitArea.toLowerCase()))
+      matchedGroup = groups.find(g => targetLower.startsWith(g.toLowerCase()))
     }
     if (!matchedGroup) {
-      matchedGroup = groups.find(g => hitArea.toLowerCase().includes(g.toLowerCase()))
+      matchedGroup = groups.find(g => g.toLowerCase().includes(targetLower))
+    }
+    if (!matchedGroup) {
+      matchedGroup = groups.find(g => targetLower.includes(g.toLowerCase()))
     }
 
     if (matchedGroup) {

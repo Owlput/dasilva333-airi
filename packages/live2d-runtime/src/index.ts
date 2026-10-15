@@ -43,6 +43,8 @@ export type {
   ICostumeSwapper,
   IEventEmitter,
   IExpressionSink,
+  IExternalSink,
+  IHitAreaSink,
   IIntimacyStore,
   IMotionSink,
   ISoundSink,
