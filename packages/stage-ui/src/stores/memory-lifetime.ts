@@ -2,6 +2,7 @@ import type { ChatProvider } from '@xsai-ext/providers/utils'
 
 import type { ProvisioningSession } from '../database/repos/provisioning-session.repo'
 import type { LifetimeMemoryArtifact } from '../types/lifetime-memory'
+import type { LifetimePackSection } from './modules/system-one'
 
 import { useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
@@ -18,6 +19,7 @@ import { useLLM } from './llm'
 import { useAiriCardStore } from './modules/airi-card'
 import { useConsciousnessStore } from './modules/consciousness'
 import { useLiveSessionStore } from './modules/live-session'
+import { useSystemOneStore } from './modules/system-one'
 import { useProvidersStore } from './providers'
 
 interface ProvisioningProgress {
@@ -241,6 +243,48 @@ export function arePacksContentEqual(a: DistilledPack, b: DistilledPack): boolea
   )
 }
 
+/**
+ * Programmatically freezes any section that System 1 (Jev) did not unlock.
+ * Even if System 2 hallucinates an edit or drops a bullet in a locked section,
+ * TypeScript preserves the exact existing array from `currentPack`.
+ */
+export function applySurgicalSectionLock(
+  currentPack: DistilledPack,
+  candidatePack: DistilledPack,
+  unlockedSections?: readonly LifetimePackSection[],
+): DistilledPack {
+  if (!unlockedSections) {
+    return {
+      ...candidatePack,
+      compression_notes: currentPack.compression_notes,
+    }
+  }
+  const unlocked = new Set<LifetimePackSection>(unlockedSections)
+  return {
+    relationship_core: unlocked.has('relationship_core') ? candidatePack.relationship_core : currentPack.relationship_core,
+    user_patterns: unlocked.has('user_patterns') ? candidatePack.user_patterns : currentPack.user_patterns,
+    shared_rituals: unlocked.has('shared_rituals') ? candidatePack.shared_rituals : currentPack.shared_rituals,
+    stable_topics: unlocked.has('stable_topics') ? candidatePack.stable_topics : currentPack.stable_topics,
+    meaningful_old_moments: unlocked.has('meaningful_old_moments') ? candidatePack.meaningful_old_moments : currentPack.meaningful_old_moments,
+    inside_jokes_or_motifs: unlocked.has('inside_jokes_or_motifs') ? candidatePack.inside_jokes_or_motifs : currentPack.inside_jokes_or_motifs,
+    compression_notes: currentPack.compression_notes,
+  }
+}
+
+/**
+ * Counts bullets across only the specified unlocked sections (or all 6 if unspecified)
+ * so the contraction guard still protects unlocked sections without false-triggering
+ * when a single small section is updated.
+ */
+export function countUnlockedPackBullets(
+  pack: DistilledPack,
+  unlockedSections?: readonly LifetimePackSection[],
+): number {
+  if (!unlockedSections || unlockedSections.length === 0)
+    return countPackBullets(pack)
+  return unlockedSections.reduce((sum, key) => sum + pack[key].length, 0)
+}
+
 function normalizeLifetimeArchive(value: unknown): LifetimeArchive {
   const archive = (value && typeof value === 'object') ? value as Record<string, unknown> : {}
   return {
@@ -432,14 +476,66 @@ export function buildDayTranscriptWithBudget(docs: SourceDoc[], maxChars = MAX_S
   return [budgetedRaw, ltmmBlock].filter(Boolean).join('\n')
 }
 
-function buildIncrementalMergePrompt(
+export async function buildDayTranscriptWithWinnow(
+  docs: SourceDoc[],
+  maxChars = MAX_SOURCE_CHARS_PER_DAY,
+  winnowRunner?: (windows: Array<{ id: string, text: string }>) => Promise<Set<string>>,
+): Promise<string> {
+  const ltmmDocs = docs.filter(d => d.layer === 'ltmm')
+  const rawDocs = docs.filter(d => d.layer !== 'ltmm')
+  const ltmmBlock = ltmmDocs.map(formatDayWindowDoc).join('\n')
+  const rawCharTotal = rawDocs.reduce((sum, d) => sum + d.text.length + 20, 0)
+  const remainingBudget = Math.max(4000, maxChars - ltmmBlock.length)
+
+  // Only invoke System-1 Winnow compaction when raw turns actually exceed the daily budget
+  if (winnowRunner && rawCharTotal > remainingBudget && rawDocs.length >= 4) {
+    try {
+      const WINDOW_SIZE = 4
+      const windows: Array<{ id: string, text: string, docs: SourceDoc[] }> = []
+      for (let i = 0; i < rawDocs.length; i += WINDOW_SIZE) {
+        const group = rawDocs.slice(i, i + WINDOW_SIZE)
+        windows.push({
+          id: `w${Math.floor(i / WINDOW_SIZE)}`,
+          text: group.map(formatDayWindowDoc).join('\n'),
+          docs: group,
+        })
+      }
+      const keptIds = await winnowRunner(windows.map(w => ({ id: w.id, text: w.text })))
+      const compactedRawDocs = windows
+        .filter(w => keptIds.has(w.id))
+        .flatMap(w => w.docs)
+
+      // Safety fallback: if every window was classified as filler, keep head+tail baseline
+      if (compactedRawDocs.length > 0) {
+        return buildDayTranscriptWithBudget([...compactedRawDocs, ...ltmmDocs], maxChars)
+      }
+    }
+    catch (err) {
+      console.warn('[memory-lifetime] System-1 Winnow turn compaction failed, falling back to head/tail budget:', err)
+    }
+  }
+
+  return buildDayTranscriptWithBudget(docs, maxChars)
+}
+
+export function buildIncrementalMergePrompt(
   characterName: string,
   day: string,
   docs: SourceDoc[],
   currentPack: DistilledPack,
   targetTokens: number,
+  unlockedSections?: readonly LifetimePackSection[],
+  precomputedTranscript?: string,
 ) {
-  const transcript = buildDayTranscriptWithBudget(docs, MAX_SOURCE_CHARS_PER_DAY)
+  const transcript = precomputedTranscript ?? buildDayTranscriptWithBudget(docs, MAX_SOURCE_CHARS_PER_DAY)
+  const lockDirective = unlockedSections && unlockedSections.length > 0
+    ? [
+        '',
+        'System-1 Audit Lock:',
+        `- ONLY modify these unlocked section(s): ${unlockedSections.join(', ')}`,
+        '- All other sections MUST be re-emitted unmodified.',
+      ]
+    : []
 
   return [
     `You are maintaining the lifetime relationship artifact for "${characterName}".`,
@@ -462,6 +558,7 @@ function buildIncrementalMergePrompt(
     '- if the day was ordinary, repetitive, or holds no durable change, set changed=false and re-emit the current pack exactly',
     '- keep bullet density: 4-14 words per bullet, no essay prose, no markdown',
     `- keep the total artifact around ${targetTokens} tokens or less`,
+    ...lockDirective,
     '',
     'Output contract:',
     '- change_notes: short bullets describing what you changed, or why the day warranted no change',
@@ -516,6 +613,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
   const providersStore = useProvidersStore()
   const llmStore = useLLM()
+  const systemOneStore = useSystemOneStore()
 
   // Active-universe artifact map keyed by characterId (for backwards compatibility with UI/session-store)
   const artifacts = ref<Map<string, LifetimeMemoryArtifact>>(new Map())
@@ -1428,8 +1526,98 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         for (let i = 0; i < perDayQueue.length; i++) {
           const [day, dayDocs] = perDayQueue[i]!
 
-          const mergePrompt = buildIncrementalMergePrompt(card.name, day, dayDocs, currentPack, targetTokens)
-          const oldBulletCount = countPackBullets(currentPack)
+          // 1. Prepare transcript (uses System-1 Winnow compaction on >24k char days when configured)
+          const dayTranscript = await buildDayTranscriptWithWinnow(
+            dayDocs,
+            MAX_SOURCE_CHARS_PER_DAY,
+            systemOneStore.configured
+              ? windows => systemOneStore.runWinnowTurnCompaction(windows)
+              : undefined,
+          )
+
+          // 2. System-1 Fast Gate (6 parallel contrastive choice heads with distractor basins)
+          let unlockedSections: LifetimePackSection[] | undefined
+          let systemOneAuditNote: string | undefined
+
+          if (systemOneStore.configured) {
+            try {
+              const gateResult = await systemOneStore.runLifetimeDayGate({
+                characterName: card.name,
+                day,
+                currentPack: {
+                  relationship_core: currentPack.relationship_core,
+                  user_patterns: currentPack.user_patterns,
+                  shared_rituals: currentPack.shared_rituals,
+                  stable_topics: currentPack.stable_topics,
+                  meaningful_old_moments: currentPack.meaningful_old_moments,
+                  inside_jokes_or_motifs: currentPack.inside_jokes_or_motifs,
+                },
+                transcript: dayTranscript,
+              })
+
+              systemOneAuditNote = gateResult.auditNote
+
+              if (!gateResult.shouldInvokeSystem2) {
+                // Fast-Exit (~120ms): zero System-2 calls, zero risk of accidental rewrite
+                updateHistory.push({
+                  day,
+                  changed: false,
+                  updatedAt: Date.now(),
+                  notes: [gateResult.auditNote],
+                })
+
+                artifact = {
+                  ...artifact,
+                  universeId,
+                  updatedAt: Date.now(),
+                  metadata: {
+                    ...artifact.metadata,
+                    lastConsumedDay: day,
+                    lastUpdateType: 'incremental',
+                    updateHistory: updateHistory.slice(-MAX_UPDATE_HISTORY_ENTRIES),
+                  },
+                }
+
+                await lifetimeMemoryRepo.save(characterId, universeId, artifact)
+                setCachedArtifact(characterId, universeId, artifact)
+                broadcastLifetimeSync({ characterId, universeId })
+                continue
+              }
+
+              unlockedSections = gateResult.triggeredSections
+            }
+            catch (gateErr) {
+              console.warn(`[memory-lifetime] System-1 day gate failed on ${day}, falling back to full System-2 merge:`, gateErr)
+              unlockedSections = undefined
+              systemOneAuditNote = undefined
+            }
+          }
+
+          // 3. System-2 Merge (with Surgical Section Lock if System 1 unlocked specific sections)
+          const mergePrompt = buildIncrementalMergePrompt(
+            card.name,
+            day,
+            dayDocs,
+            currentPack,
+            targetTokens,
+            unlockedSections,
+            dayTranscript,
+          )
+          const oldTotalBullets = countPackBullets(currentPack)
+
+          const systemExtras = [
+            'You are integrating one new completed day of interactions into an existing lifetime relationship artifact.',
+            `You are reviewing day ${day} for the character "${card.name}".`,
+            '- no markdown',
+            '- do not rewrite based on system prompt fantasy',
+            '- do not over-index on this one day',
+            '- changed=false means the day was routine; re-emit the pack unmodified',
+          ]
+          if (unlockedSections && unlockedSections.length > 0) {
+            systemExtras.push(
+              `SYSTEM-1 AUDIT LOCK: Only modify [${unlockedSections.join(', ')}]. Keep all other sections identical.`,
+            )
+          }
 
           const result = await withRetry(
             async () => {
@@ -1438,20 +1626,17 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
                 IncrementalMergeSchema,
                 provider,
                 modelId,
-                [
-                  'You are integrating one new completed day of interactions into an existing lifetime relationship artifact.',
-                  `You are reviewing day ${day} for the character "${card.name}".`,
-                  '- no markdown',
-                  '- do not rewrite based on system prompt fantasy',
-                  '- do not over-index on this one day',
-                  '- changed=false means the day was routine; re-emit the pack unmodified',
-                ],
+                systemExtras,
               )
-              if (res.changed === true && oldBulletCount >= 10) {
-                const candidatePack = normalizeDistilledPack(res)
-                const newBulletCount = countPackBullets(candidatePack)
-                if (newBulletCount < Math.floor(oldBulletCount * 0.7)) {
-                  throw new Error(`Incremental merge contraction guard triggered (${oldBulletCount} -> ${newBulletCount} bullets). Retrying.`)
+              if (res.changed === true && oldTotalBullets >= 10) {
+                const lockedCandidate = applySurgicalSectionLock(
+                  currentPack,
+                  normalizeDistilledPack(res),
+                  unlockedSections,
+                )
+                const newTotalBullets = countPackBullets(lockedCandidate)
+                if (newTotalBullets < Math.floor(oldTotalBullets * 0.7)) {
+                  throw new Error(`Incremental merge contraction guard triggered (${oldTotalBullets} -> ${newTotalBullets} bullets). Retrying.`)
                 }
               }
               return res
@@ -1461,19 +1646,25 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
             msg => console.warn(`[memory-lifetime] ${msg}`),
           )
 
-          const candidatePack: DistilledPack = {
-            ...normalizeDistilledPack(result),
-            compression_notes: currentPack.compression_notes,
-          }
+          // Programmatically freeze any section not unlocked by System 1
+          const candidatePack = applySurgicalSectionLock(
+            currentPack,
+            normalizeDistilledPack(result),
+            unlockedSections,
+          )
 
           // Programmatic true-diff verification: only bump version if pack content actually changed
           const changed = result.changed === true && !arePacksContentEqual(currentPack, candidatePack)
+          const rawNotes = asStringArray(result.change_notes)
+          const mergedNotes = systemOneAuditNote
+            ? [systemOneAuditNote, ...rawNotes].slice(0, 8)
+            : rawNotes.slice(0, 8)
 
           updateHistory.push({
             day,
             changed,
             updatedAt: Date.now(),
-            notes: asStringArray(result.change_notes).slice(0, 8),
+            notes: mergedNotes,
           })
 
           if (changed) {

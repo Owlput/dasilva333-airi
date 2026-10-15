@@ -113,6 +113,127 @@ export const JEV_COT_SALIENCE_SCHEMA = {
   },
 }
 
+export const LIFETIME_PACK_SECTIONS = [
+  'relationship_core',
+  'user_patterns',
+  'shared_rituals',
+  'stable_topics',
+  'meaningful_old_moments',
+  'inside_jokes_or_motifs',
+] as const
+
+export type LifetimePackSection = (typeof LIFETIME_PACK_SECTIONS)[number]
+
+export const JEV_LIFETIME_SECTION_CRITERIA = {
+  durable_new_addition: 'The day contains a brand-new, lasting relationship fact, milestone, recurring preference, or sticky inside joke that belongs in this section and is NOT yet in the current pack.',
+  updates_existing_bullet: 'The day explicitly changes, reverses, or materially evolves an existing bullet already listed in this section.',
+  already_captured_in_pack: 'The day reinforces habits, topics, or dynamics already represented in the current pack (no edit needed).',
+  transient_routine_banter: 'Ordinary daily conversation, temporary mood, one-off situational chat, or fleeting small talk that does not redefine the long-term relationship.',
+  no_relevant_evidence: 'Nothing in the day transcript relates to this section.',
+} as const
+
+export type JevLifetimeSectionVerdict = keyof typeof JEV_LIFETIME_SECTION_CRITERIA
+
+export const JEV_LIFETIME_DAY_GATE_SCHEMA = {
+  relationship_core: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day requires modifying relationship_core (fundamental bond, power dynamic, role framing).',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+  user_patterns: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day requires modifying user_patterns (recurring user behaviors, communication habits, mannerisms).',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+  shared_rituals: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day requires modifying shared_rituals (repeated routines, shared comfort habits, recurring activities).',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+  stable_topics: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day requires modifying stable_topics (long-term recurring subjects or ongoing projects).',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+  meaningful_old_moments: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day contains a major emotional milestone or unforgettable shared event worth preserving for months.',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+  inside_jokes_or_motifs: {
+    type: 'choice',
+    instructions: 'Evaluate whether the new day coined or cemented a sticky recurring inside joke, nickname, or motif.',
+    criteria: JEV_LIFETIME_SECTION_CRITERIA,
+  },
+} as const
+
+export const JEV_WINNOW_TURN_CRITERIA = {
+  durable_personal_fact: 'Contains a lasting biographical fact, preference, habit, or life update about the user or companion.',
+  relational_milestone: 'Marks a meaningful emotional beat, boundary shift, vulnerability, or relationship milestone.',
+  sticky_joke_or_ritual: 'Introduces or reinforces a recurring inside joke, nickname, motif, or shared ritual.',
+  routine_chitchat_or_filler: 'Ordinary greetings, operational filler, transient small talk, or repetitive banter with no long-horizon memory value.',
+} as const
+
+export interface LifetimeDayGateResult {
+  shouldInvokeSystem2: boolean
+  triggeredSections: LifetimePackSection[]
+  verdicts: Record<LifetimePackSection, JevLifetimeSectionVerdict>
+  auditNote: string
+}
+
+/**
+ * Pure evaluator for JEV_LIFETIME_DAY_GATE_SCHEMA answers.
+ * A section unlocks if:
+ *   1. Its top choice is `durable_new_addition` or `updates_existing_bullet` with confidence >= threshold (default 0.60), OR
+ *   2. The summed probability P(durable_new_addition) + P(updates_existing_bullet) >= threshold.
+ */
+export function evaluateLifetimeDayGateAnswers(
+  answers: Record<string, any> | undefined,
+  confidenceThreshold = 0.60,
+): LifetimeDayGateResult {
+  const triggeredSections: LifetimePackSection[] = []
+  const verdicts = {} as Record<LifetimePackSection, JevLifetimeSectionVerdict>
+
+  for (const section of LIFETIME_PACK_SECTIONS) {
+    const ans = answers?.[section]
+    const rawChoice = ans?.choice as JevLifetimeSectionVerdict | undefined
+    const verdict: JevLifetimeSectionVerdict = rawChoice && rawChoice in JEV_LIFETIME_SECTION_CRITERIA
+      ? rawChoice
+      : 'no_relevant_evidence'
+    verdicts[section] = verdict
+
+    const probs = ans?.probabilities as Record<string, number> | undefined
+    const positiveProbSum = probs
+      ? (Number(probs.durable_new_addition ?? 0) + Number(probs.updates_existing_bullet ?? 0))
+      : undefined
+    const confidence = typeof ans?.confidence === 'number'
+      ? ans.confidence
+      : (positiveProbSum ?? 1.0)
+
+    const isPositiveChoice = verdict === 'durable_new_addition' || verdict === 'updates_existing_bullet'
+    const passesThreshold = positiveProbSum !== undefined
+      ? positiveProbSum >= confidenceThreshold || (isPositiveChoice && confidence >= confidenceThreshold)
+      : (isPositiveChoice && confidence >= confidenceThreshold)
+
+    if (passesThreshold) {
+      triggeredSections.push(section)
+    }
+  }
+
+  const shouldInvokeSystem2 = triggeredSections.length > 0
+  const lockedCount = LIFETIME_PACK_SECTIONS.length - triggeredSections.length
+  const auditNote = shouldInvokeSystem2
+    ? `System-1: unlocked [${triggeredSections.join(', ')}], ${lockedCount} section${lockedCount === 1 ? '' : 's'} frozen`
+    : 'System-1 gate: routine day (no durable section changes)'
+
+  return {
+    shouldInvokeSystem2,
+    triggeredSections,
+    verdicts,
+    auditNote,
+  }
+}
+
 export interface CandidateItem {
   id: string
   text: string
@@ -471,6 +592,70 @@ export const useSystemOneStore = defineStore('system-one', () => {
     return results
   }
 
+  async function runLifetimeDayGate(payload: {
+    characterName: string
+    day: string
+    currentPack: Record<string, string[]>
+    transcript: string
+  }, confidenceThreshold = 0.60): Promise<LifetimeDayGateResult> {
+    const res = await execute(
+      {
+        character: payload.characterName,
+        day: payload.day,
+        current_lifetime_pack: payload.currentPack,
+        new_day_transcript: payload.transcript,
+      },
+      JEV_LIFETIME_DAY_GATE_SCHEMA as any,
+    )
+    return evaluateLifetimeDayGateAnswers(res?.answers, confidenceThreshold)
+  }
+
+  async function runWinnowTurnCompaction(
+    windows: Array<{ id: string, text: string }>,
+    retentionThreshold = 0.40,
+  ): Promise<Set<string>> {
+    const keptIds = new Set<string>()
+    if (windows.length === 0)
+      return keptIds
+
+    // Batch in groups of 8 windows (16 heads per forward pass) so local Laya and
+    // OpenRouter payloads stay well inside fast single-pass limits.
+    const BATCH_SIZE = 8
+    for (let offset = 0; offset < windows.length; offset += BATCH_SIZE) {
+      const slice = windows.slice(offset, offset + BATCH_SIZE)
+      const questions: Record<string, any> = {}
+      const stateWindows: Record<string, string> = {}
+
+      for (const win of slice) {
+        stateWindows[win.id] = win.text
+        questions[`cat_${win.id}`] = {
+          type: 'choice',
+          instructions: `Classify the long-term relationship memory value of exchange window "${win.id}".`,
+          criteria: JEV_WINNOW_TURN_CRITERIA,
+        }
+        questions[`score_${win.id}`] = {
+          type: 'score',
+          instructions: `Score the long-term memory retention priority of exchange window "${win.id}" (0.0 = disposable filler, 1.0 = permanent relationship fact).`,
+          min: 0.0,
+          max: 1.0,
+        }
+      }
+
+      const res = await execute({ exchange_windows: stateWindows }, questions)
+      for (const win of slice) {
+        const cat = res?.answers?.[`cat_${win.id}`]?.choice as string | undefined
+        const score = res?.answers?.[`score_${win.id}`]?.score as number | undefined
+        const isFiller = cat === 'routine_chitchat_or_filler'
+        const scoreBelowCutoff = typeof score === 'number' && score < retentionThreshold
+        if (!isFiller || (typeof score === 'number' && !scoreBelowCutoff)) {
+          keptIds.add(win.id)
+        }
+      }
+    }
+
+    return keptIds
+  }
+
   function resetUsageStats() {
     systemOneCloudTokens.value = 0
     systemOneLocalTokens.value = 0
@@ -501,6 +686,8 @@ export const useSystemOneStore = defineStore('system-one', () => {
     execute,
     runTriage,
     runRerank,
+    runLifetimeDayGate,
+    runWinnowTurnCompaction,
     runAffect,
     classifyEntities,
     evaluateReasoningSalience,

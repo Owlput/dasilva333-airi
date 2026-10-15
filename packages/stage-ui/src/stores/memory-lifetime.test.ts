@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  applySurgicalSectionLock,
   arePacksContentEqual,
   buildBaseArchivePrompt,
   buildDayTranscriptWithBudget,
@@ -12,6 +13,7 @@ import {
   renderDistilledArtifactMd,
   renderPackForReview,
 } from './memory-lifetime'
+import { evaluateLifetimeDayGateAnswers } from './modules/system-one'
 
 // ROOT CAUSE (F-04):
 // `new Date("YYYY-MM-DD")` parses as UTC midnight, so STMM day keys shifted
@@ -128,5 +130,71 @@ describe('memory-lifetime pure helpers: pack guards (F-06/F-08)', () => {
     expect(prompt).toContain('met at the cafe')
     expect(prompt).toContain('loves late-night ramen')
     expect(prompt).toContain('Manifest context: 13 documents (10 raw / 2 stmm / 1 ltmm).')
+  })
+})
+
+describe('system-1 (Jev) pure helpers: gate evaluation & surgical section lock', () => {
+  const basePack = {
+    relationship_core: ['bonded companions'],
+    user_patterns: ['says good morning daily'],
+    shared_rituals: ['midnight ramen'],
+    stable_topics: ['rust programming'],
+    meaningful_old_moments: ['first stargazing night'],
+    inside_jokes_or_motifs: ['rubber duck debugging'],
+    compression_notes: ['note'],
+  }
+
+  it('fast-exits when all 6 sections land in distractor basins', () => {
+    const res = evaluateLifetimeDayGateAnswers({
+      relationship_core: { choice: 'already_captured_in_pack', confidence: 0.92 },
+      user_patterns: { choice: 'transient_routine_banter', confidence: 0.88 },
+      shared_rituals: { choice: 'no_relevant_evidence', confidence: 0.95 },
+      stable_topics: { choice: 'already_captured_in_pack', confidence: 0.91 },
+      meaningful_old_moments: { choice: 'no_relevant_evidence', confidence: 0.99 },
+      inside_jokes_or_motifs: { choice: 'transient_routine_banter', confidence: 0.84 },
+    })
+
+    expect(res.shouldInvokeSystem2).toBe(false)
+    expect(res.triggeredSections).toEqual([])
+    expect(res.auditNote).toBe('System-1 gate: routine day (no durable section changes)')
+  })
+
+  it('ignores low-confidence positive choices below the 0.60 threshold', () => {
+    const res = evaluateLifetimeDayGateAnswers({
+      inside_jokes_or_motifs: { choice: 'durable_new_addition', confidence: 0.42 },
+    })
+    expect(res.shouldInvokeSystem2).toBe(false)
+    expect(res.triggeredSections).toEqual([])
+  })
+
+  it('unlocks only sections with calibrated conviction >= 0.60', () => {
+    const res = evaluateLifetimeDayGateAnswers({
+      relationship_core: { choice: 'already_captured_in_pack', confidence: 0.90 },
+      inside_jokes_or_motifs: { choice: 'durable_new_addition', confidence: 0.86 },
+    })
+    expect(res.shouldInvokeSystem2).toBe(true)
+    expect(res.triggeredSections).toEqual(['inside_jokes_or_motifs'])
+    expect(res.auditNote).toBe('System-1: unlocked [inside_jokes_or_motifs], 5 sections frozen')
+  })
+
+  it('freezes un-triggered sections even when System 2 mutates or drops them', () => {
+    const hallucinatedSystem2Pack = {
+      relationship_core: ['REWRITTEN BY SYSTEM 2'],
+      user_patterns: [], // System 2 accidentally wiped this section!
+      shared_rituals: ['midnight ramen'],
+      stable_topics: ['rust programming'],
+      meaningful_old_moments: ['WIPED OLD MOMENT'],
+      inside_jokes_or_motifs: ['rubber duck debugging', 'captain capybara'],
+      compression_notes: [],
+    }
+
+    const locked = applySurgicalSectionLock(basePack, hallucinatedSystem2Pack, ['inside_jokes_or_motifs'])
+
+    // Locked sections stay 100% byte-identical to basePack
+    expect(locked.relationship_core).toEqual(['bonded companions'])
+    expect(locked.user_patterns).toEqual(['says good morning daily'])
+    expect(locked.meaningful_old_moments).toEqual(['first stargazing night'])
+    // Only the unlocked section accepts System 2's update
+    expect(locked.inside_jokes_or_motifs).toEqual(['rubber duck debugging', 'captain capybara'])
   })
 })

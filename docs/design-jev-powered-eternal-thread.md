@@ -171,7 +171,7 @@ Following **Domain G (`fast-jev-compaction` / `Winnow`)** of [`docs/proposal-jev
 
 ## 7. Smart Entropy & Stability Rebase Referee (Domain K)
 
-Rather than relying strictly on a fixed counter (`MAX_MERGES_BEFORE_REBASE = 30`), Jev operates as an **Entropy & Redundancy Referee** over the `DistilledPack`:
+Rather than relying strictly on a fixed counter (`MAX_MERGES_BEFORE_REBASE = 15`), Jev operates as an **Entropy & Redundancy Referee** over the `DistilledPack`:
 
 * When `countPackBullets(currentPack)` exceeds the target density for `targetTokens`, Jev evaluates bullet pairs within bloated sections for **Semantic Redundancy & Recency Salience (`score` 0.0–1.0)**.
 * Only candidate pairs with high redundancy scores are dispatched to a micro-consolidation pass, pruning overlap while keeping foundational memories intact.
@@ -187,7 +187,7 @@ The integration preserves complete backward compatibility. If `systemOneStore.co
 | **1. Transcript Preparation** | `buildDayTranscriptWithBudget` (40% head / 60% tail slice + full LTMM) | **Jev Winnow Compaction**: Filters `routine_chitchat_or_filler`; preserves 100% of high-salience turns across the full timeline |
 | **2. Zero-Change Evaluation** | System-2 `callJsonMode` re-emitting all 6 sections + True-Diff check | **Jev 6-Head Contrastive Gate (~120ms)**: Fast-exits on routine days; isolates specific triggered sections |
 | **3. Pack Modification** | System 2 re-emits entire pack; guarded by `< 70%` Contraction Guard | **Jev Bullet Audit + Surgical Section Lock**: Unchanged sections are frozen in TypeScript; System 2 writes only unlocked sections |
-| **4. Rollup / Rebase** | Fixed counter trigger (`mergesSinceRebase >= 30`) runs `reprovisionFromChunks` | **Jev Entropy Referee**: Continuously prunes duplicate or superseded bullets when density limits are reached |
+| **4. Rollup / Rebase** | Fixed counter trigger (`mergesSinceRebase >= 15`) runs `reprovisionFromChunks` | **Jev Entropy Referee**: Continuously prunes duplicate or superseded bullets when density limits are reached |
 | **5. Token Economics** | 1,000–3,000 output tokens per active day evaluation | \$0 output tokens on routine days; ~100 output tokens on changed days |
 
 ---

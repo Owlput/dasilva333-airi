@@ -23,6 +23,9 @@ const shared = vi.hoisted(() => ({
   getProviderInstance: vi.fn(async () => ({})),
   recordInferenceUsage: vi.fn(),
   failChunk3: false,
+  systemOneConfigured: false,
+  runLifetimeDayGate: vi.fn(),
+  runWinnowTurnCompaction: vi.fn(async (windows: Array<{ id: string }>) => new Set(windows.map(w => w.id))),
 }))
 
 vi.mock('./auth', () => ({
@@ -50,6 +53,14 @@ vi.mock('./llm', () => ({
 
 vi.mock('./modules/live-session', () => ({
   useLiveSessionStore: () => ({ recordInferenceUsage: shared.recordInferenceUsage }),
+}))
+
+vi.mock('./modules/system-one', () => ({
+  useSystemOneStore: () => ({
+    get configured() { return shared.systemOneConfigured },
+    runLifetimeDayGate: shared.runLifetimeDayGate,
+    runWinnowTurnCompaction: shared.runWinnowTurnCompaction,
+  }),
 }))
 
 vi.mock('../database/repos/chat-sessions.repo', () => ({
@@ -191,6 +202,11 @@ beforeEach(() => {
   shared.savedLifetime = []
   shared.savedProvisioning = []
   shared.failChunk3 = false
+  // NOTICE: System-1 stays unconfigured by default so every existing suite
+  // keeps exercising the hardened System-2 baseline untouched.
+  shared.systemOneConfigured = false
+  shared.runLifetimeDayGate.mockReset()
+  shared.runWinnowTurnCompaction.mockReset()
   shared.generate.mockReset()
   shared.generate.mockResolvedValue({ text: UNION_TEXT, usage: {} })
   vi.useFakeTimers()
@@ -528,5 +544,91 @@ describe('provisioning checkpoints', () => {
     await store.applyIncrementalUpdate('char-1', 'global')
     expect(shared.generate).not.toHaveBeenCalled()
     expect(shared.savedLifetime).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite 3: System-1 (Jev / Laya) fast-exit gate, surgical section lock & fallback
+// ---------------------------------------------------------------------------
+describe('system-1 (Jev) enhanced incremental maintenance', () => {
+  function seedOneMissedDay() {
+    shared.lifetime.set('char-1:global', seedArtifact({ version: 2 }))
+    shared.sessions.set('s1', sessionRecord('s1', [userMsg('m1', 'oct 13 talk', at(9, 13))]))
+    shared.chatIndex = indexFor({ s1: sessionMeta('s1', 1) })
+  }
+
+  it('fast-exits on routine days without calling System-2 LLM', async () => {
+    seedOneMissedDay()
+    shared.systemOneConfigured = true
+    shared.runLifetimeDayGate.mockResolvedValue({
+      shouldInvokeSystem2: false,
+      triggeredSections: [],
+      verdicts: {},
+      auditNote: 'System-1 gate: routine day (no durable section changes)',
+    })
+
+    const store = freshStore()
+    await store.applyIncrementalUpdate('char-1', 'global')
+
+    expect(shared.runLifetimeDayGate).toHaveBeenCalledTimes(1)
+    // Zero System-2 LLM calls!
+    expect(shared.generate).not.toHaveBeenCalled()
+
+    const saved = shared.savedLifetime.at(-1)
+    expect(saved.version).toBe(2)
+    expect(saved.metadata.lastConsumedDay).toBe('2026-10-13')
+    expect(saved.metadata.updateHistory.at(-1)).toMatchObject({
+      day: '2026-10-13',
+      changed: false,
+      notes: ['System-1 gate: routine day (no durable section changes)'],
+    })
+  })
+
+  it('surgically locks un-triggered sections when System 1 unlocks only inside_jokes_or_motifs', async () => {
+    seedOneMissedDay()
+    shared.systemOneConfigured = true
+    shared.runLifetimeDayGate.mockResolvedValue({
+      shouldInvokeSystem2: true,
+      triggeredSections: ['inside_jokes_or_motifs'],
+      verdicts: {},
+      auditNote: 'System-1: unlocked [inside_jokes_or_motifs], 5 sections frozen',
+    })
+
+    // System 2 tries to mutate relationship_core AND add an inside joke
+    const overzealousSystem2Pack = {
+      ...FULL_PACK,
+      relationship_core: ['HALLUCINATED REWRITE'],
+      inside_jokes_or_motifs: [...FULL_PACK.inside_jokes_or_motifs, 'noble gas argon'],
+    }
+    shared.generate.mockResolvedValue(mergeResponse(true, overzealousSystem2Pack))
+
+    const store = freshStore()
+    await store.applyIncrementalUpdate('char-1', 'global')
+
+    expect(shared.generate).toHaveBeenCalledTimes(1)
+    const saved = shared.savedLifetime.at(-1)
+    expect(saved.version).toBe(3)
+    // Un-triggered relationship_core remained frozen to FULL_PACK
+    expect(saved.finalPack.relationship_core).toEqual(FULL_PACK.relationship_core)
+    // Unlocked inside_jokes_or_motifs accepted the new bullet
+    expect(saved.finalPack.inside_jokes_or_motifs).toEqual(['rubber duck debugging', 'noble gas argon'])
+    expect(saved.metadata.updateHistory.at(-1).notes[0]).toBe('System-1: unlocked [inside_jokes_or_motifs], 5 sections frozen')
+  })
+
+  it('falls back cleanly to full System-2 merge if System-1 gate throws', async () => {
+    seedOneMissedDay()
+    shared.systemOneConfigured = true
+    shared.runLifetimeDayGate.mockRejectedValue(new Error('Jev network timeout'))
+
+    const evolved = { ...FULL_PACK, shared_rituals: ['midnight ramen', 'morning espresso'] }
+    shared.generate.mockResolvedValue(mergeResponse(true, evolved))
+
+    const store = freshStore()
+    await store.applyIncrementalUpdate('char-1', 'global')
+
+    expect(shared.generate).toHaveBeenCalledTimes(1)
+    const saved = shared.savedLifetime.at(-1)
+    expect(saved.version).toBe(3)
+    expect(saved.finalPack.shared_rituals).toEqual(['midnight ramen', 'morning espresso'])
   })
 })
