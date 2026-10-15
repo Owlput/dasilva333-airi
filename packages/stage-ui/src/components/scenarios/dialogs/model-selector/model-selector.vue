@@ -20,7 +20,7 @@ import Live2DReportModal from './Live2DReportModal.vue'
 import ModelSelectorCarousel from './ModelSelectorCarousel.vue'
 
 import { storage } from '../../../../database/storage'
-import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
+import { buildDisplayModelSearchKey, DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
 import { useProvidersStore } from '../../../../stores/providers'
 import { useSyncEngineStore } from '../../../../stores/sync-engine'
 
@@ -364,6 +364,15 @@ onMounted(() => {
   }
 })
 
+function getModelSearchString(m: any): string {
+  if (m._searchKey) {
+    return m._searchKey
+  }
+  const key = buildDisplayModelSearchKey(m)
+  m._searchKey = key
+  return key
+}
+
 // Filtering Logic
 const filteredModels = computed(() => {
   if (currentTab.value === 'cloud' && selectedSourceProvider.value === 'external-catalog') {
@@ -374,16 +383,13 @@ const filteredModels = computed(() => {
     ? remoteModelsCatalog.value.filter((rm: any) => !downloadedModelIdsSet.value.has(rm.id))
     : [...displayModels.value]
 
-  // Search (matches pre-indexed search key or fallback name/tags)
+  // Search (matches name, groups/franchise, tags, id, author, description, format)
   if (debouncedSearchQuery.value.trim()) {
     const q = debouncedSearchQuery.value.trim().toLowerCase()
+    const terms = q.split(/\s+/).filter(Boolean)
     result = result.filter((m: any) => {
-      if (m._searchKey) {
-        return m._searchKey.includes(q)
-      }
-      const nameMatches = m.name?.toLowerCase().includes(q)
-      const tagMatches = m.tags && Array.isArray(m.tags) && m.tags.some((t: string) => t.toLowerCase().includes(q))
-      return nameMatches || tagMatches
+      const searchStr = getModelSearchString(m)
+      return terms.every(term => searchStr.includes(term))
     })
   }
 
@@ -448,7 +454,7 @@ const filteredModels = computed(() => {
   return result
 })
 
-watch([searchQuery, formatFilter, nsfwFilter, selectedGroups, selectedTags, sortBy, currentTab], () => {
+watch([debouncedSearchQuery, searchQuery, formatFilter, nsfwFilter, selectedGroups, selectedTags, sortBy, currentTab], () => {
   visibleCount.value = PAGE_SIZE
 })
 

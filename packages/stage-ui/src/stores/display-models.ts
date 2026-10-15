@@ -112,12 +112,95 @@ export interface DisplayModelURL {
   _searchKey?: string
 }
 
-const displayModelsPresets: DisplayModel[] = [
+const formatSearchAliases: Record<string, string> = {
+  [DisplayModelFormat.Live2dZip]: 'live2d',
+  [DisplayModelFormat.Live2dDirectory]: 'live2d',
+  [DisplayModelFormat.VRM]: 'vrm 3d',
+  [DisplayModelFormat.SpineZip]: 'spine 2d',
+  [DisplayModelFormat.PMXZip]: 'mmd pmx',
+  [DisplayModelFormat.PMXDirectory]: 'mmd pmx',
+  [DisplayModelFormat.PMD]: 'mmd pmd',
+}
+
+export function buildDisplayModelSearchKey(m: any): string {
+  if (!m)
+    return ''
+
+  const parts: string[] = []
+
+  if (m.name)
+    parts.push(String(m.name))
+
+  if (m.id)
+    parts.push(String(m.id))
+
+  // Groups / Franchises / Series (e.g. "Mahou Shoujo Madoka Magica", "Azur Lane")
+  if (m.groups) {
+    if (Array.isArray(m.groups)) {
+      for (const g of m.groups) {
+        if (g)
+          parts.push(String(g))
+      }
+    }
+    else {
+      parts.push(String(m.groups))
+    }
+  }
+
+  // Tags (both raw and space-normalized for underscore-separated tags like "mahou_shoujo_madoka_magica")
+  if (m.tags) {
+    if (Array.isArray(m.tags)) {
+      for (const t of m.tags) {
+        if (t) {
+          const str = String(t)
+          parts.push(str)
+          if (str.includes('_')) {
+            parts.push(str.replace(/_/g, ' '))
+          }
+        }
+      }
+    }
+    else if (typeof m.tags === 'string') {
+      parts.push(m.tags)
+      if (m.tags.includes('_')) {
+        parts.push(m.tags.replace(/_/g, ' '))
+      }
+    }
+  }
+
+  if (m.description)
+    parts.push(String(m.description))
+
+  if (m.author)
+    parts.push(String(m.author))
+
+  if (m.authorName)
+    parts.push(String(m.authorName))
+
+  if (m.externalCatalogId)
+    parts.push(String(m.externalCatalogId))
+
+  if (m.format) {
+    parts.push(String(m.format))
+    const alias = formatSearchAliases[m.format]
+    if (alias)
+      parts.push(alias)
+  }
+
+  return parts.join(' ').toLowerCase()
+}
+
+const rawPresets: DisplayModelURL[] = [
   { id: 'preset-live2d-1', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dProUrl, name: 'Hiyori (Pro)', authorIcon: presetLive2dPreview, previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-live2d-2', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dFreeUrl, name: 'Hiyori (Free)', authorIcon: presetLive2dPreview, previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-1', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarAUrl, name: 'AvatarSample_A', previewImage: presetVrmAvatarAPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-2', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarBUrl, name: 'AvatarSample_B', previewImage: presetVrmAvatarBPreview, importedAt: 1733113886840 },
 ]
+
+const displayModelsPresets: DisplayModel[] = rawPresets.map(p => ({
+  ...p,
+  _searchKey: buildDisplayModelSearchKey(p),
+}))
 
 // NOTICE: IndexedDB structured clones of File/Blob can lose prototype methods in some
 // environments. Re-wrap degraded clones so callers always receive a usable File.
@@ -182,7 +265,10 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     try {
       const cached = await storage.getItemRaw<any>('local:sync-metadata/remote-catalog-cache')
       if (cached) {
-        remoteModelsCatalog.value = cached
+        remoteModelsCatalog.value = cached.map((m: any) => ({
+          ...m,
+          _searchKey: m._searchKey || buildDisplayModelSearchKey(m),
+        }))
         debug(`[DisplayModels] Initializing: Cache loaded successfully. Found ${cached.length} remote models.`)
       }
       else {
@@ -421,7 +507,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
         cachedMetadata.forEach((m: any) => {
           models.push({
             ...m,
-            _searchKey: `${m.name || ''} ${Array.isArray(m.tags) ? m.tags.join(' ') : ''} ${Array.isArray(m.groups) ? m.groups.join(' ') : ''}`.toLowerCase(),
+            _searchKey: buildDisplayModelSearchKey(m),
           })
         })
       }
@@ -440,7 +526,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
             updatedCache.push(existing)
             models.push({
               ...existing,
-              _searchKey: `${existing.name || ''} ${Array.isArray(existing.tags) ? existing.tags.join(' ') : ''} ${Array.isArray(existing.groups) ? existing.groups.join(' ') : ''}`.toLowerCase(),
+              _searchKey: buildDisplayModelSearchKey(existing),
             })
           }
           else {
@@ -470,7 +556,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
               updatedCache.push(itemMeta)
               models.push({
                 ...itemMeta,
-                _searchKey: `${modelName} ${Array.isArray(val.tags) ? val.tags.join(' ') : ''} ${Array.isArray(val.groups) ? val.groups.join(' ') : ''}`.toLowerCase(),
+                _searchKey: buildDisplayModelSearchKey(itemMeta),
               })
             }
           }
@@ -1257,6 +1343,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       }
     }
 
+    newDisplayModel._searchKey = buildDisplayModelSearchKey(newDisplayModel)
     displayModels.value = [newDisplayModel, ...displayModels.value]
 
     const cleanModel = toPlainModel({
@@ -1281,6 +1368,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       console.error('[DisplayModels] Failed to generate MMD preview:', e)
     }
 
+    newDisplayModel._searchKey = buildDisplayModelSearchKey(newDisplayModel)
     displayModels.value = [newDisplayModel, ...displayModels.value]
 
     // Persist model file un-proxied so IndexedDB structured clone preserves native File prototype
@@ -1333,7 +1421,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     if (index !== -1) {
       const target = displayModels.value[index]
       target.name = name
-      target._searchKey = `${name} ${Array.isArray(target.tags) ? target.tags.join(' ') : ''} ${Array.isArray(target.groups) ? target.groups.join(' ') : ''}`.toLowerCase()
+      target._searchKey = buildDisplayModelSearchKey(target)
       triggerRef(displayModels)
     }
 
@@ -1402,7 +1490,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       if ('previewImage' in updates && updates.previewImage) {
         target.previewImage = updates.previewImage
       }
-      target._searchKey = `${target.name || ''} ${Array.isArray(target.tags) ? target.tags.join(' ') : ''} ${Array.isArray(target.groups) ? target.groups.join(' ') : ''}`.toLowerCase()
+      target._searchKey = buildDisplayModelSearchKey(target)
       triggerRef(displayModels)
     }
 
@@ -1438,7 +1526,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     if (index !== -1) {
       const target = displayModels.value[index]
       target.tags = cleanTags
-      target._searchKey = `${target.name || ''} ${cleanTags.join(' ')} ${Array.isArray(target.groups) ? target.groups.join(' ') : ''}`.toLowerCase()
+      target._searchKey = buildDisplayModelSearchKey(target)
       triggerRef(displayModels)
     }
 
@@ -1518,7 +1606,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
         motionCapabilities: displayModel.motionCapabilities ? JSON.parse(JSON.stringify(displayModel.motionCapabilities)) : undefined,
         vfxMappings: displayModel.vfxMappings ? JSON.parse(JSON.stringify(displayModel.vfxMappings)) : undefined,
         outfits: displayModel.outfits ? JSON.parse(JSON.stringify(displayModel.outfits)) : undefined,
-        _searchKey: `${displayModel.name || ''} ${Array.isArray(displayModel.tags) ? displayModel.tags.join(' ') : ''} ${Array.isArray(displayModel.groups) ? displayModel.groups.join(' ') : ''}`.toLowerCase(),
+        _searchKey: buildDisplayModelSearchKey(displayModel),
       }
       displayModels.value.push(itemMeta)
       triggerRef(displayModels)
@@ -1696,6 +1784,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
         remoteModelsCatalog.value = (res.models || []).map((m: any) => ({
           ...m,
           type: 'cloud',
+          _searchKey: buildDisplayModelSearchKey(m),
         }))
         debug(`[DisplayModels] fetchRemoteDisplayModelsCatalog: Successfully fetched ${remoteModelsCatalog.value.length} remote models.`)
         if (!providerOverride || providerOverride === syncStore.activeProvider) {
