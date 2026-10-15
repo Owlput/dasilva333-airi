@@ -863,7 +863,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   let syncCardStateSequence = 0
-  async function syncCardState(card: AiriCard | undefined, force = false) {
+  async function syncCardState(card: AiriCard | undefined, force = false, options?: { actorInitiated?: boolean }) {
     const seq = ++syncCardStateSequence
     if (!card)
       return
@@ -919,9 +919,14 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // displayModelId actually differs (written explicitly by activateConcept at playback,
     // or by the Director for Base-sourced outfit swaps). Card activation never needs
     // force here because it clears isModelSyncPrevented first, so a genuinely different
-    // model applies via `modelChanged`. See docs/design-fix-actor-stage-desync.md (v4, Leg 2a).
+    // model applies via `modelChanged`. The actor pipeline passes
+    // `actorInitiated:true` so its sequenced handoff still lands mid-speech.
+    // See docs/design-fix-actor-stage-desync.md (v4, Leg 2a).
     const rendererUninitialized = !stageModelStore.stageModelRenderer || !stageModelStore.stageModelSelectedDisplayModel
-    if (!isModelSyncPrevented.value || rendererUninitialized) {
+    const pendingModelId = extension.active_state?.displayModelId ?? extension.modules?.displayModelId
+    const pendingModelChanged = pendingModelId && pendingModelId !== stageModelStore.stageModelSelected
+    const actorHandoff = options?.actorInitiated === true && !!pendingModelChanged
+    if (!isModelSyncPrevented.value || rendererUninitialized || actorHandoff) {
       const newModelId = extension.active_state?.displayModelId ?? extension.modules?.displayModelId
       const modelChanged = newModelId && newModelId !== stageModelStore.stageModelSelected
 

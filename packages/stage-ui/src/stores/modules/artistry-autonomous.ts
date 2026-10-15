@@ -1072,9 +1072,10 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
     // code the updateCard triggered airi-carts' activeCard watcher while the flag was
     // momentarily false, letting un-gated syncCardState re-fire mid-speech, and restoring
     // the flag afterwards closed the gate on any legitimate pending sync. Instead we
-    // keep the gate true, do the update, then run one explicit un-gated syncCardState on
+    // keep the gate true, do the update, then run one explicit actor-tagged syncCardState on
     // the next microtask — after Vue's flush has batched all watchers from updateCard —
-    // which applies the model via its (now change-only) path. See
+    // which applies the model via its speaker-owned actorHandoff path. The generic
+    // concept-stack watcher stays gated. See
     // docs/design-fix-actor-stage-desync.md (v4, Leg 2b).
     await cardStore.updateCard(activeCardId, {
       extensions: {
@@ -1089,7 +1090,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
 
     await nextTick()
     if (cardStore.isModelSyncPrevented) {
-      await cardStore.syncCardState(cardStore.activeCard, true)
+      await cardStore.syncCardState(cardStore.activeCard, true, { actorInitiated: true })
     }
 
     artistLog('ActivateConcept: Success.', { conceptId, nextConceptStack })
