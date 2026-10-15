@@ -238,7 +238,7 @@ function handleToggleArtistryIntrusion() {
         />
         <div class="flex flex-col">
           <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Recent Memory</span>
-          <span class="text-[9px] text-neutral-400">Include daily summaries from the rolling 3-day window</span>
+          <span class="text-[9px] text-neutral-400">Include daily summaries from the rolling window</span>
         </div>
       </div>
       <div
@@ -262,9 +262,7 @@ function handleToggleArtistryIntrusion() {
           class="size-4.5"
           :class="isLifetimeMemoryEnabled
             ? 'text-amber-500 i-solar:infinity-bold-duotone'
-            : hasLifetimeArtifact
-              ? 'text-neutral-500 i-solar:infinity-linear'
-              : 'text-amber-500/70 i-solar:infinity-linear'"
+            : 'text-amber-500/70 dark:text-amber-400/70 i-solar:infinity-linear'"
         />
         <div class="flex flex-col">
           <div class="flex items-center gap-1.5">
@@ -279,11 +277,8 @@ function handleToggleArtistryIntrusion() {
               <div class="i-solar:settings-minimalistic-linear text-[11px]" />
             </button>
           </div>
-          <span
-            class="text-[9px]"
-            :class="hasLifetimeArtifact ? 'text-neutral-400' : 'text-amber-600 dark:text-amber-400 font-medium'"
-          >
-            {{ hasLifetimeArtifact ? 'Inject permanent relational identity & bond blueprint' : 'Permanent identity offline (Requires distillation)' }}
+          <span class="text-[9px] text-neutral-400">
+            Inject lifetime summary to improve coherence
           </span>
         </div>
       </div>
