@@ -6,6 +6,7 @@ defineProps<{
   iconColorClass?: string
   badge?: string | number
   collapsed?: boolean
+  bodyClass?: string
 }>()
 
 const emit = defineEmits<{
@@ -22,7 +23,7 @@ const emit = defineEmits<{
   >
     <!-- Card Header Row -->
     <div
-      class="flex cursor-pointer select-none items-center justify-between pl-3 pt-1"
+      class="flex cursor-pointer select-none items-center justify-between py-1.5 pl-3 pr-2"
       @click="emit('toggle')"
     >
       <!-- Title & Icon -->
@@ -45,6 +46,7 @@ const emit = defineEmits<{
         >
           {{ badge }}
         </span>
+        <slot name="title-extra" />
       </div>
 
       <!-- Actions & Chevron -->
@@ -70,7 +72,7 @@ const emit = defineEmits<{
     </div>
 
     <!-- Collapsible Body (v-show preserves iframe & terminal lifecycles) -->
-    <div v-show="!collapsed" class="mt-1.5 flex flex-col p-1">
+    <div v-show="!collapsed" :class="bodyClass || 'mt-1.5 flex flex-col p-1'">
       <slot />
     </div>
   </div>

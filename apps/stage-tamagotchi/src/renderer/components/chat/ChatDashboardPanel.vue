@@ -3,8 +3,10 @@ import type { DashboardModuleId } from '@proj-airi/stage-ui/composables'
 
 import { ChatDashboardCard } from '@proj-airi/stage-ui/components'
 import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
-import { ALL_DASHBOARD_MODULES, useChatDashboard } from '@proj-airi/stage-ui/composables'
+import { ALL_DASHBOARD_MODULES, useChatDashboard, useControlStripAction } from '@proj-airi/stage-ui/composables'
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
+import { useSettingsControlStrip, useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger, SwitchRoot, SwitchThumb } from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import ChatNan0CognitionPanel from './ChatNan0CognitionPanel.vue'
@@ -62,6 +64,57 @@ function handleDrop(index: number) {
 function handleDragEnd() {
   draggedIndex.value = null
   dropTargetIndex.value = null
+}
+
+const controlStripStore = useSettingsControlStrip()
+const stageModelStore = useSettingsStageModel()
+const controlStripAction = useControlStripAction()
+const isStageWindowsOpen = ref(false)
+
+const isVrmModel = computed(() => stageModelStore.stageModelRenderer === 'vrm')
+
+const interactionModeConfig = computed(() => {
+  const mode = controlStripStore.interactionMode
+  switch (mode) {
+    case 'drag':
+      return {
+        label: 'Drag',
+        icon: 'i-lucide:move',
+      }
+    case 'positioning':
+      return {
+        label: 'Positioning',
+        icon: 'i-solar:tuning-outline',
+      }
+    case 'orbit':
+      return {
+        label: 'Orbit',
+        icon: 'i-solar:eye-linear',
+      }
+    case 'tactile':
+    default:
+      return {
+        label: 'Tactile',
+        icon: 'i-solar:magic-stick-linear',
+      }
+  }
+})
+
+function handleCycleInteractionMode() {
+  controlStripAction.dispatchAction('viewport-cycle-modes')
+}
+
+function handleResetStagePosition() {
+  handleStageOffsetChange({ x: 0, y: 0 })
+  handleStageScaleChange(1)
+}
+
+function handleToggleStageWindow() {
+  controlStripAction.dispatchAction('stage')
+}
+
+function handleToggleStageMateWindow() {
+  controlStripAction.dispatchAction('stage-mate')
 }
 
 function handleToggleStage() {
@@ -246,9 +299,124 @@ function handleRestoreDefaults() {
             title="Stage"
             icon="i-solar:smile-circle-bold-duotone"
             icon-color-class="text-pink-500 dark:text-pink-400"
+            body-class="mt-0.5 flex flex-col p-1"
             :collapsed="dashboard.isCollapsed('stage')"
             @toggle="handleToggleStage"
           >
+            <template #title-extra>
+              <button
+                type="button"
+                :class="[
+                  'rounded-full px-2 py-0.5 flex items-center gap-1 text-[11px] font-semibold cursor-pointer select-none transition-all',
+                  'bg-teal-500/10 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400 hover:bg-teal-500/20 dark:hover:bg-teal-500/30 active:scale-95',
+                ]"
+                :title="`Interaction mode: ${interactionModeConfig.label}. Click to cycle.`"
+                @click.stop="handleCycleInteractionMode"
+              >
+                <div :class="[interactionModeConfig.icon, 'text-xs shrink-0']" />
+                <span>{{ interactionModeConfig.label }}</span>
+              </button>
+            </template>
+
+            <template #actions>
+              <!-- Reset Position Button -->
+              <button
+                type="button"
+                :class="[
+                  'size-6 flex cursor-pointer items-center justify-center rounded-lg text-neutral-400 transition-colors',
+                  'hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800/50 dark:hover:text-neutral-200',
+                ]"
+                title="Reset model position"
+                @click.stop="handleResetStagePosition"
+              >
+                <div class="i-solar:history-linear text-xs" />
+              </button>
+
+              <!-- Stage Windows Popover -->
+              <PopoverRoot v-model:open="isStageWindowsOpen">
+                <PopoverTrigger as-child>
+                  <button
+                    type="button"
+                    :class="[
+                      'size-6 flex cursor-pointer items-center justify-center rounded-lg text-neutral-400 transition-colors',
+                      'hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800/50 dark:hover:text-neutral-200',
+                      'data-[state=open]:bg-neutral-200/80 dark:data-[state=open]:bg-neutral-800 data-[state=open]:text-neutral-800 dark:data-[state=open]:text-neutral-100',
+                    ]"
+                    title="Stage windows"
+                    @click.stop
+                  >
+                    <div class="i-solar:export-linear text-xs" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverPortal>
+                  <PopoverContent
+                    side="bottom"
+                    align="end"
+                    :side-offset="6"
+                    :collision-padding="8"
+                    :class="[
+                      'z-50 w-56 rounded-xl p-2.5 shadow-xl backdrop-blur-md outline-none text-xs',
+                      'border border-neutral-200/90 bg-white/95 dark:border-neutral-800/90 dark:bg-neutral-900/95',
+                    ]"
+                    @click.stop
+                  >
+                    <div class="flex flex-col gap-2">
+                      <!-- Actor Stage Row -->
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="flex flex-col">
+                          <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-100">
+                            Actor Stage
+                          </span>
+                          <span class="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            Standalone window
+                          </span>
+                        </div>
+                        <SwitchRoot
+                          :model-value="controlStripStore.stageEnabled"
+                          :disabled="controlStripStore.stageDisabled"
+                          :class="[
+                            'relative h-5 w-9 inline-flex cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none',
+                            'data-[state=checked]:bg-teal-500 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-neutral-700',
+                            controlStripStore.stageDisabled ? 'cursor-not-allowed opacity-50' : '',
+                          ]"
+                          @update:model-value="handleToggleStageWindow"
+                        >
+                          <SwitchThumb
+                            class="pointer-events-none block size-3.5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 data-[state=checked]:translate-x-4.5 data-[state=unchecked]:translate-x-0.5"
+                          />
+                        </SwitchRoot>
+                      </div>
+
+                      <template v-if="isVrmModel">
+                        <div class="h-px bg-neutral-200/60 dark:bg-neutral-800/80" />
+
+                        <!-- Mate Engine Row -->
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="flex flex-col">
+                            <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-100">
+                              Mate Engine
+                            </span>
+                            <span class="text-[10px] text-neutral-500 dark:text-neutral-400">
+                              3D companion window
+                            </span>
+                          </div>
+                          <SwitchRoot
+                            :model-value="controlStripStore.stageMateEnabled"
+                            class="relative h-5 w-9 inline-flex cursor-pointer items-center rounded-full transition-colors duration-200 data-[state=checked]:bg-teal-500 data-[state=unchecked]:bg-neutral-300 focus:outline-none dark:data-[state=unchecked]:bg-neutral-700"
+                            @update:model-value="handleToggleStageMateWindow"
+                          >
+                            <SwitchThumb
+                              class="pointer-events-none block size-3.5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 data-[state=checked]:translate-x-4.5 data-[state=unchecked]:translate-x-0.5"
+                            />
+                          </SwitchRoot>
+                        </div>
+                      </template>
+                    </div>
+                  </PopoverContent>
+                </PopoverPortal>
+              </PopoverRoot>
+            </template>
+
             <div class="relative aspect-[3/4] w-full overflow-hidden border border-neutral-200/40 rounded-xl bg-transparent dark:border-neutral-800/40">
               <RendererStage
                 :paused="dashboard.isCollapsed('stage')"
