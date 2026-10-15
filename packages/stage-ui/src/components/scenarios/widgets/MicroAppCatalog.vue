@@ -22,6 +22,7 @@ import {
   FOCUS_TIMER_STARTER,
   HAVEN_WEATHER_STARTER,
   HONEY_NOTES_STARTER,
+  LIVE2D_MENU_DRIVER_STARTER,
   STRAWBERRY_PET_STARTER,
 } from '../../../libs/sandbox/starters'
 
@@ -73,6 +74,13 @@ interface StarterSlot {
 }
 
 const STARTER_SLOTS: StarterSlot[] = [
+  {
+    id: 'starter-live2d-menu-driver',
+    title: 'Live2D Controller',
+    subtitle: 'Model gimmick deck',
+    accentBg: 'bg-cyan-100/70 dark:bg-cyan-950/40 border border-cyan-200/50 dark:border-cyan-900/30',
+    manifest: LIVE2D_MENU_DRIVER_STARTER,
+  },
   {
     id: 'starter-strawberry-pet',
     title: 'Strawberry Pet',

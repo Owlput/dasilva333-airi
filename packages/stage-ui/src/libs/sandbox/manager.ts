@@ -1713,6 +1713,18 @@ interface _AiriWidgetSidecar {
     volumeLevel?: number
     localTime?: string
   }
+  live2d?: {
+    modelId: string
+    hasModel: boolean
+    activeMotion: { group: string, index?: number } | null
+    lastText: string | null
+    enabledHitAreas: string[]
+    hitAreasCount: number
+    reactionsCount: number
+    hasDsl: boolean
+    varFloats: Record<string, number>
+    updatedAt: number
+  }
 }
 
 interface _AiriWidgetContext<T = Record<string, any>> extends HTMLElement {

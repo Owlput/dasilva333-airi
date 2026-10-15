@@ -15,6 +15,7 @@ export async function buildWidgetIframeSrcdoc(
   let sessionData: any = {}
   let telemetryData: any = {}
   let cognitionData: any = {}
+  let live2dData: any = null
 
   if (readFileFn) {
     try {
@@ -32,6 +33,12 @@ export async function buildWidgetIframeSrcdoc(
     try {
       const rawCognition = await readFileFn('/workspace/.airi/cognition.json')
       cognitionData = JSON.parse(rawCognition)
+    }
+    catch {}
+
+    try {
+      const rawLive2d = await readFileFn('/workspace/.airi/live2d.json')
+      live2dData = JSON.parse(rawLive2d)
     }
     catch {}
   }
@@ -85,6 +92,7 @@ export async function buildWidgetIframeSrcdoc(
     session: normalizedSession,
     telemetry: normalizedTelemetry,
     cognition: normalizedCognition,
+    live2d: live2dData,
   }
 
   // Preload lazy sidecar state if exists

@@ -195,6 +195,27 @@ For Generative UI widgets hosted inside sandboxed iframes ([`AiriWidgetContext`]
 - The host surfaces ([`ChatWorkspaceWidgetsPanel.vue`](file:///Users/richardpinedo/Projects.nosync/airi/packages/stage-ui/src/components/scenarios/chat/ChatWorkspaceWidgetsPanel.vue), [`FloatingWidgetCard.vue`](file:///Users/richardpinedo/Projects.nosync/airi/packages/stage-ui/src/components/scenarios/widgets/FloatingWidgetCard.vue), [`Generative.vue`](file:///Users/richardpinedo/Projects.nosync/airi/apps/stage-tamagotchi/src/renderer/widgets/generative/components/Generative.vue)) forward allowlisted `airi:live2d:*` actions directly to the active Live2D store / `Model.vue` instance.
 - *Pros*: Zero latency, frame-accurate synchronization with audio playback.
 - *Host-side trust requirements (blocking for Phase 3)*: the widget posts with targetOrigin `'*'`, so each host handler MUST validate `event.source` against the mounted widget iframe and drop any message whose `type` does not carry the `airi:live2d:` prefix. Cover with a unit test asserting a non-allowlisted message is ignored.
+- *Raw-command variant (required for Stop)*: `dispatch()` resolves group names, not command strings, so a bare `stop_sound 0` has no group to dispatch. The port MUST also accept `{ type: 'airi:live2d:command', command: 'stop_sound 0' }`, parsed host-side via `parseCommandChain`. The Jukebox Stop button depends on this.
+- *Sequencing*: the Universal Driver (Phase 4) cannot be finished or tested until this port lands — build Phase 4 against Flavor A (state-file loop, works today) and graduate to this port, or hold Phase 4 until Phase 3 completes.
+
+### 3.5 Widget Read Path (sidecar `live2d` section)
+
+The iframe receives `sidecar` + widget state only — it cannot reach the Live2D store or read `/workspace/.airi/live2d.json` from VFS. There is deliberately no new read channel: the host populates a `live2d` section on the sidecar payload from `buildLive2dProjection()` before broadcast, and the driver consumes it via the existing `onUpdate` subscription:
+
+```ts
+sidecar.live2d = {
+  modelId: 'steins_gate__makise_kurisu_',
+  activeMotion: { group: '互动（闲聊1）', index: 0 },
+  enabledHitAreas: ['phone'],
+  hitAreasCount: 37,
+  reactionsCount: 30,
+  hasDsl: true,
+  varFloats: {},
+  updatedAt: 1729015800000,
+}
+```
+
+Full `hitAreas[]` / `reactions[]` detail rides the same section (bounded: names + motion targets + sounds, no audio bytes). This is a host-side-only change in the sidecar sync path — no iframe API change, no new tool calls.
 
 ---
 
@@ -213,9 +234,10 @@ For Generative UI widgets hosted inside sandboxed iframes ([`AiriWidgetContext`]
 
 ```
 airi/ (Public Repository)
-└── packages/stage-ui/src/components/scenarios/widgets/presets/
-    └── Live2dMenuDriver.ts           <-- Universal, model-agnostic controller
-        (Renders any model's hitAreas, reactions, and audio tracks dynamically)
+└── packages/stage-ui/src/libs/sandbox/starters/
+    └── live2d-menu-driver.ts         <-- Universal, model-agnostic controller
+        (Registered in BUNDLED_STARTER_WIDGETS; renders any model's
+         hitAreas, reactions, and audio tracks dynamically)
 
 personal_airi/the-clockwork-roast-haven-cafe_card/ (User Space)
 ├── card.json
@@ -224,13 +246,14 @@ personal_airi/the-clockwork-roast-haven-cafe_card/ (User Space)
     └── amadeus_theme.ts              <-- Specialized Amadeus CRT skin & Kurisu overrides
 ```
 
-### 4.3 Universal Live2D Menu Engine (`Live2dMenuDriver.ts`)
+### 4.3 Universal Live2D Menu Engine (`live2d-menu-driver.ts`)
 
-The universal driver reads `capabilities` directly from the Live2D store or `/workspace/.airi/live2d.json`:
-1. It automatically groups `reactions` into dialogue categories.
-2. It detects sound tracks (`.mp3` / `.wav` in reactions) and renders a generic Jukebox.
-3. It displays tactile hit-area gates and allows toggling them.
-4. It accepts an optional **Skin Configuration Object**:
+The universal driver reads model data exclusively from the sidecar `live2d` section (§3.5) via its existing `onUpdate` subscription — never the store or VFS directly:
+1. It groups `reactions` into dialogue topics by client-side common-prefix grouping over `reaction.group` (variant count = entries per group; `Weight` is random-selection weighting, not a variant count, and is not consumed).
+2. It detects sound tracks (`.mp3` / `.wav` in reactions) and renders a generic Jukebox with Play plus a Stop control wired to the raw-command port (`airi:live2d:command`, `stop_sound 0`).
+3. It displays tactile hit-area gates (green/gray dots from the manifest `enabled` seed refined by live gate state) and triggers `area.motion || area.name` on tap.
+4. Pose Lock is explicitly one of: (a) sandbox loop re-dispatching the anchor motion with an explicit Stop (recommended — survives widget unmount, reuses Flavor A machinery); (b) iframe timer re-dispatch (dies on unmount, fights the idle loop — not recommended); (c) defer to card `idleAnimations` pinning (interim — the current Kurisu workaround, documented, not built). Pick (a); (c) remains the fallback until the driver ships.
+5. It accepts an optional **Skin Configuration Object**, delivered as the widget's initial `state.skin` at mount time (no `window` global, no host srcdoc change):
    ```ts
    export interface Live2dWidgetSkin {
      title: string
@@ -289,8 +312,8 @@ export const amadeusSkin: Live2dWidgetSkin = {
 │   [x] Add Tactile Zones UI & Translate-All queue in Live2dGimmickDeck.vue              │
 │   [x] Unit tests in stage-ui/src/features/motions/live2d/introspector.test.ts          │
 │                                                                                        │
-│   PHASE 3: SANDBOX WORKSTATION BRIDGE & PROJECTIONS                                    │
-│   [ ] Add /workspace/.airi/live2d.json ambient state projection in projections.ts      │
+  │   PHASE 3: SANDBOX WORKSTATION BRIDGE & PROJECTIONS                                    │
+  │   [x] Add /workspace/.airi/live2d.json ambient state projection in projections.ts      │
 │   [ ] Implement virtual require('live2d') shim in stage-ui/src/libs/sandbox/           │
 │   [ ] Add virtual live2d CLI command to SandboxManager                                 │
 │   [ ] Wire direct allowlisted postMessage ('airi:live2d:dispatch') in widget hosts     │
@@ -312,5 +335,6 @@ export const amadeusSkin: Live2dWidgetSkin = {
 | Ambient Projection | `/workspace/.airi/live2d.json` | Start Live2D model, run `cat /workspace/.airi/live2d.json` in virtual bash; verify `enabledHitAreas` matches model state. |
 | Node Require Shim | `require('live2d')` in sandbox | Run `node -e "const l = require('live2d'); console.log(l.isHitAreaEnabled('phone'))"` in sandbox; verify boolean output. |
 | Virtual CLI | `live2d dispatch` | Run `live2d dispatch "phone"` in sandbox terminal; verify stage avatar transitions without errors. |
-| Widget Dispatch | `context.live2d.dispatch()` | Mount widget, click Jukebox track; verify audio plays and active stance holds. Unit test: non-allowlisted postMessage is dropped. |
+| Widget Dispatch | `context.live2d.dispatch()` | Mount widget, click Jukebox track; verify audio plays and active stance holds. Unit test: non-allowlisted postMessage is dropped. Stop button sends raw `stop_sound 0` via `airi:live2d:command`. |
+| Widget Read Path | sidecar `live2d` section | Mount driver with no card skin; verify zones/topics/jukebox render from `onUpdate` sidecar data alone, with zero store or VFS access from the iframe. |
 | Workspace Safety | Typechecks & Tests | `pnpm -F @proj-airi/stage-ui typecheck`, `pnpm -F @proj-airi/stage-ui-live2d typecheck`, `pnpm -F @proj-airi/stage-ui test run`. |
