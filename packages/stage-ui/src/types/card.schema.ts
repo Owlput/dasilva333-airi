@@ -177,6 +177,11 @@ const AiriShortTermMemorySchema = object({
   tokenBudgetPerDay: number(),
 })
 
+const AiriLifetimeMemorySchema = object({
+  enabled: optional(boolean()),
+  tokenBudget: optional(number()),
+})
+
 const AiriScreenWatchingSchema = object({
   enabled: boolean(),
   deliveryMode: optional(union([literal('both'), literal('bubble_only'), literal('tts_only'), literal('off')])),
@@ -286,6 +291,7 @@ const AiriExtensionSchema = looseObject({
   heartbeats: optional(AiriHeartbeatSchema),
   dreamState: optional(AiriDreamStateSchema),
   shortTermMemory: optional(AiriShortTermMemorySchema),
+  lifetimeMemory: optional(AiriLifetimeMemorySchema),
   screenWatching: optional(AiriScreenWatchingSchema),
   textJournal: optional(AiriTextJournalSchema),
   sandbox: optional(AiriSandboxSchema),

@@ -91,6 +91,11 @@ export interface ShortTermMemoryConfig {
   tokenBudgetPerDay: number
 }
 
+export interface LifetimeMemoryConfig {
+  enabled?: boolean
+  tokenBudget?: number
+}
+
 export interface AiriSandboxConfig {
   enabled?: boolean
   widgetInstruction?: string
@@ -289,6 +294,7 @@ export interface AiriExtension {
   heartbeats?: HeartbeatConfig
   dreamState?: DreamStateConfig
   shortTermMemory?: ShortTermMemoryConfig
+  lifetimeMemory?: LifetimeMemoryConfig
   screenWatching?: ScreenWatchingConfig
   eventLedger?: EventLedgerConfig
   groundingEnabled?: boolean
@@ -718,6 +724,31 @@ export const useAiriCardStore = defineStore('airi-card', () => {
             windowSize: card.extensions?.airi?.shortTermMemory?.windowSize ?? 3,
             tokenBudgetPerDay: card.extensions?.airi?.shortTermMemory?.tokenBudgetPerDay ?? 1000,
             enabled: !current,
+          },
+        },
+      },
+    } as any)
+  }
+
+  const toggleLifetimeMemory = async (id: string, forceState?: boolean) => {
+    await until(cardsLoading).toBe(false)
+    const card = cards.value.get(id)
+    if (!card) {
+      debug('[AiriCard] toggleLifetimeMemory: card not found for id', id)
+      return
+    }
+
+    const current = card.extensions?.airi?.lifetimeMemory?.enabled ?? false
+    const next = forceState !== undefined ? forceState : !current
+    debug('[AiriCard] toggleLifetimeMemory:', { id, current, next })
+    await updateCard(id, {
+      extensions: {
+        ...card.extensions,
+        airi: {
+          ...card.extensions?.airi,
+          lifetimeMemory: {
+            ...card.extensions?.airi?.lifetimeMemory,
+            enabled: next,
           },
         },
       },
@@ -1479,6 +1510,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     toggleGrounding,
     toggleGroundingMemory,
     toggleShortTermMemory,
+    toggleLifetimeMemory,
     toggleGroundingTopics,
     toggleGroundingDirectorScratchpad,
     toggleSalienceGate,

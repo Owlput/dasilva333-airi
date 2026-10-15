@@ -1,10 +1,48 @@
 <script setup lang="ts">
+import { LifetimeProvisioningModal } from '@proj-airi/stage-ui/components'
+import { useMemoryLifetimeStore } from '@proj-airi/stage-ui/stores/memory-lifetime'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const airiCardStore = useAiriCardStore()
+const memoryLifetimeStore = useMemoryLifetimeStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+
+const showLifetimeModal = ref(false)
+
+const hasLifetimeArtifact = computed(() => {
+  if (!activeCardId.value)
+    return false
+  return Boolean(memoryLifetimeStore.artifacts.get(activeCardId.value)?.distilledContent?.trim())
+})
+
+const isLifetimeMemoryEnabled = computed(() => {
+  if (!activeCard.value || !hasLifetimeArtifact.value)
+    return false
+  return activeCard.value.extensions?.airi?.lifetimeMemory?.enabled ?? true
+})
+
+function handleToggleLifetimeMemory() {
+  if (!activeCardId.value)
+    return
+  if (!hasLifetimeArtifact.value) {
+    showLifetimeModal.value = true
+    return
+  }
+  airiCardStore.toggleLifetimeMemory(activeCardId.value)
+}
+
+function handleOpenLifetimeSettings(e: MouseEvent) {
+  e.stopPropagation()
+  showLifetimeModal.value = true
+}
+
+watch(activeCardId, (id) => {
+  if (id) {
+    void memoryLifetimeStore.loadForCharacter(id, 'global')
+  }
+}, { immediate: true })
 
 // --- CONTEXT INJECTIONS ---
 const isGroundingEnabled = computed(() => {
@@ -214,6 +252,52 @@ function handleToggleArtistryIntrusion() {
       </div>
     </div>
 
+    <!-- 2.5. Eternal Thread (Lifetime Artifact) -->
+    <div
+      class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+      @click="handleToggleLifetimeMemory"
+    >
+      <div class="flex items-center gap-2.5">
+        <div
+          class="size-4.5"
+          :class="isLifetimeMemoryEnabled
+            ? 'text-amber-500 i-solar:infinity-bold-duotone'
+            : hasLifetimeArtifact
+              ? 'text-neutral-500 i-solar:infinity-linear'
+              : 'text-amber-500/70 i-solar:infinity-linear'"
+        />
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Eternal Thread</span>
+            <button
+              v-if="hasLifetimeArtifact"
+              type="button"
+              class="p-0.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              title="Manage Eternal Thread"
+              @click="handleOpenLifetimeSettings"
+            >
+              <div class="i-solar:settings-minimalistic-linear text-[11px]" />
+            </button>
+          </div>
+          <span
+            class="text-[9px]"
+            :class="hasLifetimeArtifact ? 'text-neutral-400' : 'text-amber-600 dark:text-amber-400 font-medium'"
+          >
+            {{ hasLifetimeArtifact ? 'Inject permanent relational identity & bond blueprint' : 'Permanent identity offline (Requires distillation)' }}
+          </span>
+        </div>
+      </div>
+      <div
+        :class="isLifetimeMemoryEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+        class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+      >
+        <span
+          :class="isLifetimeMemoryEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+          class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+        />
+      </div>
+    </div>
+
     <!-- 3. Universe Memory (RAG) -->
     <div
       class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
@@ -380,5 +464,13 @@ function handleToggleArtistryIntrusion() {
         />
       </div>
     </div>
+
+    <!-- Lifetime Provisioning Modal -->
+    <LifetimeProvisioningModal
+      v-if="activeCardId"
+      v-model:open="showLifetimeModal"
+      :character-id="activeCardId"
+      universe-id="global"
+    />
   </div>
 </template>

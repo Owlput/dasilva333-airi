@@ -245,6 +245,10 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   function buildLifetimeMemoryContext(characterId = getCurrentCharacterId()) {
     if (!characterId)
       return ''
+    const cardStore = useAiriCardStore()
+    const card = cardStore.getCard(characterId)
+    if (card?.extensions?.airi?.lifetimeMemory?.enabled === false)
+      return ''
     const artifact = lifetimeMemory.artifacts.get(characterId)
     const distilledContent = artifact?.distilledContent?.trim()
     if (!distilledContent)
