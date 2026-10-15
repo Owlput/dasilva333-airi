@@ -1,3 +1,5 @@
+import { DSLVirtualMachine } from '@proj-airi/live2d-runtime'
+import { useLive2d } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -185,11 +187,13 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       const telemetryExists = await (sandbox as any).bash.fs.exists('/workspace/.airi/telemetry.json')
       const cognitionExists = await (sandbox as any).bash.fs.exists('/workspace/.airi/cognition.json')
       const messagesExists = await (sandbox as any).bash.fs.exists('/workspace/.airi/messages.json')
+      const live2dExists = await (sandbox as any).bash.fs.exists('/workspace/.airi/live2d.json')
 
       expect(sessionExists).toBe(true)
       expect(telemetryExists).toBe(true)
       expect(cognitionExists).toBe(true)
       expect(messagesExists).toBe(true)
+      expect(live2dExists).toBe(true)
     })
 
     it('allows querying state projections via jq in bash pipeline', async () => {
@@ -231,6 +235,150 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(msgs).toHaveLength(1)
       expect(msgs[0].content).toContain('<|ACTOR:makise_kurisu|>')
       expect(msgs[0].content).toContain('<|ACT:emotion="happy"|>')
+    })
+
+    it('projects Live2D hit gates, sounds, and varFloats into live2d.json', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const live2d = useLive2d()
+      live2d.rawSettings = {
+        HitAreas: [
+          { Name: 'phone', Id: 'ArtMesh113', Motion: 'phone' },
+          { Name: '音乐（进入）', Id: 'ArtMesh121', Motion: '主界面（音乐进入）', Enabled: false },
+        ],
+      }
+      live2d.dslGroups = [
+        { name: 'phone', entries: [{ Sound: 'Motions_phone_0_Sound_0.wav' }] },
+        { name: '音乐（amadeus）', entries: [{ Sound: 'Motions_音乐（amadeus）_0_Sound_0.mp3', Interruptable: true }] },
+      ]
+      live2d.dslVM = {
+        isHitAreaEnabled: (name: string) => name === 'phone',
+        vars: { snapshot: () => ({ music_playing: 0 }) },
+      }
+
+      await sandbox.syncProjections()
+
+      const raw = await sandbox.readFile('/workspace/.airi/live2d.json')
+      const projection = JSON.parse(raw)
+      expect(projection.hasDsl).toBe(true)
+      expect(projection.hitAreasCount).toBe(2)
+      expect(projection.enabledHitAreas).toEqual(['phone'])
+      expect(projection.reactionsCount).toBe(2)
+      expect(projection.varFloats).toEqual({ music_playing: 0 })
+
+      const resHits = await sandbox.exec('cat /workspace/.airi/live2d.json | jq -r .enabledHitAreas[0]')
+      expect(resHits.exitCode).toBe(0)
+      expect(resHits.stdout.trim()).toBe('phone')
+    })
+
+    it('reflects real DSL gate flips across dispatches', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const live2d = useLive2d()
+      live2d.rawSettings = {
+        HitAreas: [
+          { Name: 'phone', Id: 'ArtMesh113', Motion: 'phone' },
+          { Name: '音乐（进入）', Id: 'ArtMesh121', Motion: '主界面（音乐进入）', Enabled: false },
+          { Name: '互动（进入）', Id: 'ArtMesh119', Motion: '互动（进入）', Enabled: false },
+        ],
+      }
+      const vm = new DSLVirtualMachine()
+      vm.loadGroups([
+        { name: 'Start', entries: [{ Command: 'hit_areas disable 音乐（进入）,互动（进入）;hit_areas enable phone' }] },
+        { name: 'phone', entries: [{ Sound: 'Motions_phone_0_Sound_0.wav', Command: 'hit_areas enable 音乐（进入）,互动（进入）' }] },
+      ])
+      live2d.dslVM = vm as any
+
+      await sandbox.syncProjections()
+      let projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect([...projection.enabledHitAreas].sort()).toEqual(['phone', '互动（进入）', '音乐（进入）'])
+
+      vm.dispatch('Start')
+      await sandbox.syncProjections()
+      projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.enabledHitAreas).toEqual(['phone'])
+
+      vm.dispatch('phone')
+      await sandbox.syncProjections()
+      projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect([...projection.enabledHitAreas].sort()).toEqual(['phone', '互动（进入）', '音乐（进入）'])
+    })
+
+    it('projects empty Live2D state when no model is loaded', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.hasModel).toBe(false)
+      expect(projection.hasDsl).toBe(false)
+      expect(projection.enabledHitAreas).toEqual([])
+      expect(projection.hitAreasCount).toBe(0)
+      expect(projection.modelId).toBe('')
+    })
+
+    it('parses lowercase hitAreas manifest shape with default-open gates', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const live2d = useLive2d()
+      live2d.rawSettings = {
+        hitAreas: [
+          { name: 'phone', id: 'ArtMesh113', motion: 'phone', enabled: true },
+          { name: '音乐（进入）', id: 'ArtMesh121', motion: '主界面（音乐进入）', enabled: false },
+        ],
+      }
+
+      await sandbox.syncProjections()
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.hasDsl).toBe(true)
+      expect(projection.hitAreasCount).toBe(2)
+      expect([...projection.enabledHitAreas].sort()).toEqual(['phone', '音乐（进入）'])
+    })
+
+    it('resolves modelId from the active card display model', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const cardStore = useAiriCardStore()
+      cardStore.cards.set('kurisu-card', {
+        id: 'kurisu-card',
+        name: 'Kurisu',
+        extensions: { airi: { modules: { displayModelId: 'kurisu-model-1' } } },
+      } as any)
+      cardStore.activeCardId = 'kurisu-card'
+
+      await sandbox.syncProjections()
+      const projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.modelId).toBe('kurisu-model-1')
+    })
+
+    it('refreshes gates on every sync without stale caching', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const live2d = useLive2d()
+      live2d.rawSettings = {
+        HitAreas: [
+          { Name: 'phone', Id: 'ArtMesh113', Motion: 'phone' },
+          { Name: '音乐（进入）', Id: 'ArtMesh121', Motion: '主界面（音乐进入）', Enabled: false },
+        ],
+      }
+      const gates = new Map<string, boolean>([['phone', true], ['音乐（进入）', false]])
+      live2d.dslVM = {
+        isHitAreaEnabled: (name: string) => gates.get(name) ?? true,
+        vars: { snapshot: () => ({}) },
+      }
+
+      await sandbox.syncProjections()
+      let projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect(projection.enabledHitAreas).toEqual(['phone'])
+
+      gates.set('音乐（进入）', true)
+      await sandbox.syncProjections()
+      projection = JSON.parse(await sandbox.readFile('/workspace/.airi/live2d.json'))
+      expect([...projection.enabledHitAreas].sort()).toEqual(['phone', '音乐（进入）'])
     })
 
     it('projects rich nan0 cognition state into cognition.json when nan0 is enabled', async () => {

@@ -1,11 +1,13 @@
 import type {
   SandboxVfsCognitionProjection,
+  SandboxVfsLive2dProjection,
   SandboxVfsMessageItem,
   SandboxVfsSessionProjection,
   SandboxVfsTelemetryProjection,
 } from './types'
 
 import { deriveMood } from '@proj-airi/nan0-runtime'
+import { useLive2d } from '@proj-airi/stage-ui-live2d/stores'
 
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
@@ -162,6 +164,55 @@ export function buildTelemetryProjection(): SandboxVfsTelemetryProjection {
         journalHourly: 0,
         turnCount: 0,
       },
+    }
+  }
+}
+
+export function buildLive2dProjection(): SandboxVfsLive2dProjection {
+  try {
+    const live2d = useLive2d()
+    const cardStore = useAiriCardStore()
+    const dslVM = live2d.dslVM as any
+    const raw = live2d.rawSettings as any
+    const manifestHitAreas = raw?.HitAreas ?? raw?.hitAreas
+    const names: string[] = Array.isArray(manifestHitAreas)
+      ? manifestHitAreas.map((h: any) => h?.Name ?? h?.name).filter((n: any) => typeof n === 'string' && n)
+      : []
+    const groups = (live2d.dslGroups ?? []) as any[]
+    let reactionsCount = 0
+    for (const group of groups) {
+      for (const entry of group?.entries ?? []) {
+        if (entry?.Sound)
+          reactionsCount += 1
+      }
+    }
+
+    return {
+      modelId: (cardStore.activeCard as any)?.extensions?.airi?.modules?.displayModelId ?? '',
+      hasModel: !!live2d.model,
+      activeMotion: live2d.currentMotion ? { ...live2d.currentMotion } : null,
+      lastText: live2d.activeMotionText?.text ?? null,
+      enabledHitAreas: names.filter(name => dslVM?.isHitAreaEnabled?.(name) ?? true),
+      hitAreasCount: names.length,
+      reactionsCount,
+      hasDsl: groups.length > 0 || names.length > 0,
+      varFloats: dslVM?.vars?.snapshot?.() ?? {},
+      updatedAt: Date.now(),
+    }
+  }
+  catch (err) {
+    console.warn('[Sandbox] Error building Live2D projection:', err)
+    return {
+      modelId: '',
+      hasModel: false,
+      activeMotion: null,
+      lastText: null,
+      enabledHitAreas: [],
+      hitAreasCount: 0,
+      reactionsCount: 0,
+      hasDsl: false,
+      varFloats: {},
+      updatedAt: Date.now(),
     }
   }
 }

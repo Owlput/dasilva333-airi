@@ -17,6 +17,7 @@ import {
 } from './jev'
 import {
   buildCognitionProjection,
+  buildLive2dProjection,
   buildMessagesProjection,
   buildSessionProjection,
   buildTelemetryProjection,
@@ -1628,11 +1629,13 @@ Examples:
       const cognition = buildCognitionProjection()
       const telemetry = buildTelemetryProjection()
       const messages = buildMessagesProjection()
+      const live2d = buildLive2dProjection()
 
       await this.bash.fs.writeFile('/workspace/.airi/session.json', JSON.stringify(session, null, 2))
       await this.bash.fs.writeFile('/workspace/.airi/cognition.json', JSON.stringify(cognition, null, 2))
       await this.bash.fs.writeFile('/workspace/.airi/telemetry.json', JSON.stringify(telemetry, null, 2))
       await this.bash.fs.writeFile('/workspace/.airi/messages.json', JSON.stringify(messages, null, 2))
+      await this.bash.fs.writeFile('/workspace/.airi/live2d.json', JSON.stringify(live2d, null, 2))
     }
     catch (err) {
       console.warn('[Sandbox] Failed to sync VFS projections:', err)

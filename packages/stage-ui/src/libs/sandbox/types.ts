@@ -113,6 +113,19 @@ export interface SandboxVfsMessageItem {
   content: string
 }
 
+export interface SandboxVfsLive2dProjection {
+  modelId: string
+  hasModel: boolean
+  activeMotion: { group: string, index?: number } | null
+  lastText: string | null
+  enabledHitAreas: string[]
+  hitAreasCount: number
+  reactionsCount: number
+  hasDsl: boolean
+  varFloats: Record<string, number>
+  updatedAt: number
+}
+
 export type SandboxChannelMessage
   = | { type: 'sync-request', requestId: string }
     | { type: 'sync-response', requestId: string, commandLogs: CommandLogEntry[], mountedWidgets?: MountedWidget[] }
