@@ -79,6 +79,7 @@ const {
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
+const currentOutputGain = ref<GainNode>()
 const isPlaybackSuppressed = ref(false)
 
 const {
@@ -193,7 +194,15 @@ watch([mouthOpenSize, nowSpeaking], ([mouth, speaking]) => {
 const cardStore = useAiriCardStore()
 const { activeCard } = storeToRefs(cardStore)
 const speechStore = useSpeechStore()
-const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice, activeSpeechVoiceId, pitch } = storeToRefs(speechStore)
+const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice, activeSpeechVoiceId, pitch, outputVolume, speechEnabled } = storeToRefs(speechStore)
+
+// Master speaker volume: live-follows the Voice & Audio panel slider so
+// mid-utterance drags take effect on the currently playing item.
+watch(outputVolume, (volume) => {
+  const gain = currentOutputGain.value
+  if (gain)
+    gain.gain.setTargetAtTime(Math.max(0, Math.min(1, volume ?? 1)), audioContext.currentTime, 0.02)
+})
 const { activeProvider: activeChatProvider } = storeToRefs(consciousnessStore)
 const activeCardId = computed(() => activeCard.value?.name ?? 'default')
 const speechRuntimeStore = useSpeechRuntimeStore()
@@ -821,13 +830,20 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     source.playbackRate.value = speedFactor * pitchFactor
   }
 
+  // Master speaker volume (Voice & Audio panel). Taps below stay pre-gain
+  // so analysers and lip-sync keep running at 0% per the panel copy.
+  const outputGain = audioContext.createGain()
+  outputGain.gain.value = Math.max(0, Math.min(1, outputVolume.value ?? 1))
+  currentOutputGain.value = outputGain
+  lastNode.connect(outputGain)
+
   // Ensure final audio is connected to output destination and analyser
   if (isPlaybackSuppressed.value) {
     debug('[Stage:Playback] Local speaker playback is suppressed (active Discord voice call).')
     void streamAudioToDiscordVoice(item.audio)
   }
   else {
-    lastNode.connect(audioContext.destination)
+    outputGain.connect(audioContext.destination)
   }
   if (audioAnalyser.value)
     lastNode.connect(audioAnalyser.value)
@@ -861,11 +877,17 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
         source.disconnect()
       }
       catch {}
+      try {
+        outputGain.disconnect()
+      }
+      catch {}
       if (effectsCleanup) {
         effectsCleanup()
       }
       if (currentAudioSource.value === source)
         currentAudioSource.value = undefined
+      if (currentOutputGain.value === outputGain)
+        currentOutputGain.value = undefined
       resolveOnce()
     }
 
@@ -994,6 +1016,8 @@ const playbackManager = createPlaybackManager<AudioBuffer>({
 })
 
 async function synthesizePacingAudio(text: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  if (!speechEnabled.value)
+    throw new Error('TTS disabled')
   let targetProviderId = activeSpeechProvider.value
   let targetModel = activeSpeechModel.value
   let targetVoice = activeSpeechVoice.value
@@ -1140,6 +1164,10 @@ async function generateSpeechBuffered(request: TtsRequest, signal: AbortSignal):
     return null
 
   if (!activeSpeechProvider.value)
+    return null
+
+  // Voice & Audio panel toggle: skip synthesis entirely, text chat continues.
+  if (!speechEnabled.value)
     return null
 
   let targetProviderId = activeSpeechProvider.value

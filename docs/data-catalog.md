@@ -891,6 +891,8 @@ interface StoredCustomVrmAnimation {
 | `settings/speech/voice` | `string` | `''` | `stores/modules/speech.ts` |
 | `settings/speech/pitch` | `number` | `0` | `stores/modules/speech.ts` |
 | `settings/speech/rate` | `number` | `1` | `stores/modules/speech.ts` |
+| `settings/speech/output-volume` | `number` | `1.0` | `stores/modules/speech.ts` |
+| `settings/speech/enabled` | `boolean` | `true` | `stores/modules/speech.ts` |
 | `settings/speech/ssml-enabled` | `boolean` | `false` | `stores/modules/speech.ts` |
 | `settings/speech/language` | `string` | `'en-US'` | `stores/modules/speech.ts` |
 | `settings/speech/voice-profiles` | `VoiceProfile[]` | `[]` | `stores/modules/speech.ts` |

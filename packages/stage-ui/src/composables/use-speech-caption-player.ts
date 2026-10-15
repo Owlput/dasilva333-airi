@@ -111,6 +111,7 @@ export function useSpeechCaptionPlayer() {
           break
 
         showCaption(item.text)
+        item.audio.volume = Math.max(0, Math.min(1, speechStore.outputVolume ?? 1))
         item.audio.play()
 
         await new Promise<void>((resolve) => {

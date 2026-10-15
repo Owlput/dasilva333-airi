@@ -35,6 +35,8 @@ export const useSpeechStore = defineStore('speech', () => {
 
   const pitch = useLocalStorageManualReset<number>('settings/speech/pitch', 0)
   const rate = useLocalStorageManualReset<number>('settings/speech/rate', 1)
+  const outputVolume = useLocalStorageManualReset<number>('settings/speech/output-volume', 1.0)
+  const speechEnabled = useLocalStorageManualReset<boolean>('settings/speech/enabled', true)
   const ssmlEnabled = useLocalStorageManualReset<boolean>('settings/speech/ssml-enabled', false)
   const isLoadingSpeechProviderVoices = refManualReset<boolean>(false)
   const speechProviderError = refManualReset<string | null>(null)
@@ -568,6 +570,8 @@ export const useSpeechStore = defineStore('speech', () => {
     activeSpeechVoiceId,
     pitch,
     rate,
+    outputVolume,
+    speechEnabled,
     ssmlEnabled,
     selectedLanguage,
     isLoadingSpeechProviderVoices,

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { CharacterAvatar } from '@proj-airi/stage-ui/components'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
@@ -20,11 +19,9 @@ const {
   activeSpeechVoiceId,
   activeSpeechVoice,
   availableVoices,
+  outputVolume,
+  speechEnabled: isSpeechEnabled,
 } = storeToRefs(speechStore)
-
-// --- PLAYBACK CONTROLS ---
-const outputVolume = useLocalStorageManualReset<number>('settings/speech/output-volume', 1.0)
-const isSpeechEnabled = useLocalStorageManualReset<boolean>('settings/speech/enabled', true)
 
 // --- AUDIO PREVIEW STATE ---
 const currentlyPlayingId = ref<string | null>(null)
