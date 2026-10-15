@@ -9,6 +9,7 @@ import ChatSticker from './components/sticker.vue'
 import JournalMomentModal from './JournalMomentModal.vue'
 import ChatResponsePart from './response-part.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
+import ChatToolCallGroup from './tool-call-group.vue'
 
 import { useChatOrchestratorStore } from '../../../stores/chat'
 import { useChatSessionStore } from '../../../stores/chat/session-store'
@@ -559,6 +560,36 @@ const resolvedSlices = computed(() => {
   return rs
 })
 
+type RenderItem = { kind: 'slice', slice: ChatSlices } | { kind: 'tool-group', calls: ChatSlices[] }
+
+// Consecutive tool calls (e.g. a long MCP browser session) collapse into one block.
+const renderItems = computed(() => {
+  const items: RenderItem[] = []
+  let calls: ChatSlices[] = []
+
+  const flushCalls = () => {
+    if (calls.length === 1)
+      items.push({ kind: 'slice', slice: calls[0] })
+    else if (calls.length > 1)
+      items.push({ kind: 'tool-group', calls })
+    calls = []
+  }
+
+  for (const slice of resolvedSlices.value) {
+    if (slice.type === 'tool-call') {
+      calls.push(slice)
+      continue
+    }
+    if (slice.type === 'text' && !slice.text.trim())
+      continue
+    flushCalls()
+    items.push({ kind: 'slice', slice })
+  }
+  flushCalls()
+
+  return items
+})
+
 const dynamicStyles = computed(() => {
   const actorIds = new Set<string>()
   for (const slice of actorAwareSlices.value) {
@@ -701,28 +732,33 @@ const hasActorSlices = computed(() => actorAwareSlices.value.some(s => s.type ==
               :class="mood ? 'text-neutral-800 dark:text-neutral-200' : (cardDefaultColor && !hasActorSlices ? '' : 'text-primary-700 dark:primary-100')"
               :style="!hasActorSlices && cardDefaultColor ? { color: cardDefaultColor } : undefined"
             >
-              <template v-for="(slice, sliceIndex) in resolvedSlices" :key="sliceIndex">
+              <template v-for="(item, itemIndex) in renderItems" :key="itemIndex">
+                <ChatToolCallGroup
+                  v-if="item.kind === 'tool-group'"
+                  :calls="item.calls"
+                  class="mb-2"
+                />
                 <ChatToolCallBlock
-                  v-if="slice.type === 'tool-call'"
-                  :tool-name="(slice.toolCall as any).function?.name || (slice.toolCall as any).toolName"
-                  :args="(slice.toolCall as any).function?.arguments || (slice.toolCall as any).args"
-                  :state="slice.state"
-                  :result="slice.result"
+                  v-else-if="item.slice.type === 'tool-call'"
+                  :tool-name="(item.slice.toolCall as any).function?.name || (item.slice.toolCall as any).toolName"
+                  :args="(item.slice.toolCall as any).function?.arguments || (item.slice.toolCall as any).args"
+                  :state="item.slice.state"
+                  :result="item.slice.result"
                   class="mb-2"
                 />
-                <template v-else-if="slice.type === 'tool-call-result'" />
+                <template v-else-if="item.slice.type === 'tool-call-result'" />
                 <ChatSticker
-                  v-else-if="slice.type === 'sticker'"
-                  :sticker-id="slice.stickerId"
+                  v-else-if="item.slice.type === 'sticker'"
+                  :sticker-id="item.slice.stickerId"
                   class="mb-2"
                 />
-                <template v-else-if="slice.type === 'text'">
+                <template v-else-if="item.slice.type === 'text'">
                   <MarkdownRenderer
-                    :content="slice.text"
+                    :content="item.slice.text"
                     :active-text="isLatestAssistantMessage ? activeSpokenText : undefined"
                     :active-color="isLatestAssistantMessage ? activeSpokenColor : undefined"
-                    :actor-id="slice.actorId"
-                    :starts-actor="slice.startsActor"
+                    :actor-id="item.slice.actorId"
+                    :starts-actor="item.slice.startsActor"
                   />
                 </template>
               </template>

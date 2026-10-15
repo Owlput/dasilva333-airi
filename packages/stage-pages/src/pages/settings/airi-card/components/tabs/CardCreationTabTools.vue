@@ -337,6 +337,56 @@ const textJournalConflictWarning = computed(() => {
       </p>
     </div>
 
+    <!-- Tool Execution Controls: apply to every tool, so they stay visible regardless of the Virtual Terminal -->
+    <section class="grid grid-cols-1 gap-4 border border-neutral-200 rounded-2xl bg-white p-6 md:grid-cols-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+      <div class="flex flex-col gap-1.5">
+        <label class="flex items-center gap-1.5 text-xs text-neutral-700 font-bold dark:text-neutral-300">
+          <div class="i-solar:refresh-circle-bold-duotone text-sm text-violet-500" />
+          Max Tool Turns (Per Message)
+        </label>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
+          Maximum sequential tool execution round-trips allowed in a single turn. Default is 20.
+        </p>
+        <FieldInput
+          :model-value="selectedMaxToolSteps ? String(selectedMaxToolSteps) : ''"
+          placeholder="20 (Default)"
+          type="number"
+          class="mt-1 w-full"
+          @update:model-value="(val) => { selectedMaxToolSteps = val ? Number(val) : undefined }"
+        />
+      </div>
+
+      <div class="flex flex-col justify-between gap-1.5">
+        <div>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-1.5 text-xs text-neutral-700 font-bold dark:text-neutral-300">
+              <div class="i-solar:history-bold-duotone text-sm text-violet-500" />
+              Preserve Tool History in Chat
+            </label>
+            <button
+              type="button"
+              :class="[
+                'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                selectedPreserveToolHistory ? 'bg-primary-600' : 'bg-neutral-200 dark:bg-neutral-700',
+              ]"
+              @click="selectedPreserveToolHistory = !selectedPreserveToolHistory"
+            >
+              <span
+                aria-hidden="true"
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  selectedPreserveToolHistory ? 'translate-x-4' : 'translate-x-0',
+                ]"
+              />
+            </button>
+          </div>
+          <p class="mt-1 text-[11px] text-neutral-500 leading-relaxed dark:text-neutral-400">
+            Includes intermediate tool calls and terminal execution outputs in conversation history. Recommended for coding and debugging so "continue" retains full terminal context.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- Files & Workspace Section -->
     <div class="space-y-4">
       <div class="flex items-center gap-2">
@@ -417,56 +467,6 @@ const textJournalConflictWarning = computed(() => {
             <div class="p-3.5 pt-0 space-y-4">
               <div class="rounded-lg bg-white/70 p-3 text-xs text-neutral-600 leading-relaxed dark:bg-neutral-900/60 dark:text-neutral-400">
                 💡 <strong>POSIX Workstation:</strong> Commands execute inside an ephemeral RAM disk at <code class="rounded bg-neutral-100 px-1 py-0.5 font-mono dark:bg-neutral-800">/workspace</code> with no access to host directories. State projections and mounted widgets reside under <code class="rounded bg-neutral-100 px-1 py-0.5 font-mono dark:bg-neutral-800">/workspace/.airi/</code>.
-              </div>
-
-              <!-- Tool Execution Controls: Max Turns & History Retention -->
-              <div class="grid grid-cols-1 gap-4 border border-neutral-200/80 rounded-xl bg-white/60 p-4 md:grid-cols-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
-                <div class="flex flex-col gap-1.5">
-                  <label class="flex items-center gap-1.5 text-xs text-neutral-700 font-bold dark:text-neutral-300">
-                    <div class="i-solar:refresh-circle-bold-duotone text-sm text-violet-500" />
-                    Max Tool Turns (Per Message)
-                  </label>
-                  <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Maximum sequential tool execution round-trips allowed in a single turn. Default is 20.
-                  </p>
-                  <FieldInput
-                    :model-value="selectedMaxToolSteps ? String(selectedMaxToolSteps) : ''"
-                    placeholder="20 (Default)"
-                    type="number"
-                    class="mt-1 w-full"
-                    @update:model-value="(val) => { selectedMaxToolSteps = val ? Number(val) : undefined }"
-                  />
-                </div>
-
-                <div class="flex flex-col justify-between gap-1.5">
-                  <div>
-                    <div class="flex items-center justify-between">
-                      <label class="flex items-center gap-1.5 text-xs text-neutral-700 font-bold dark:text-neutral-300">
-                        <div class="i-solar:history-bold-duotone text-sm text-violet-500" />
-                        Preserve Tool History in Chat
-                      </label>
-                      <button
-                        type="button"
-                        :class="[
-                          'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                          selectedPreserveToolHistory ? 'bg-primary-600' : 'bg-neutral-200 dark:bg-neutral-700',
-                        ]"
-                        @click="selectedPreserveToolHistory = !selectedPreserveToolHistory"
-                      >
-                        <span
-                          aria-hidden="true"
-                          :class="[
-                            'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                            selectedPreserveToolHistory ? 'translate-x-4' : 'translate-x-0',
-                          ]"
-                        />
-                      </button>
-                    </div>
-                    <p class="mt-1 text-[11px] text-neutral-500 leading-relaxed dark:text-neutral-400">
-                      Includes intermediate tool calls and terminal execution outputs in conversation history. Recommended for coding and debugging so "continue" retains full terminal context.
-                    </p>
-                  </div>
-                </div>
               </div>
 
               <!-- Companion instructions -->
