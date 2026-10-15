@@ -242,14 +242,17 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     ].join('\n\n')
   }
 
-  function buildLifetimeMemoryContext(characterId = getCurrentCharacterId()) {
+  function buildLifetimeMemoryContext(characterId = getCurrentCharacterId(), universeId?: string) {
     if (!characterId)
       return ''
     const cardStore = useAiriCardStore()
     const card = cardStore.getCard(characterId)
     if (card?.extensions?.airi?.lifetimeMemory?.enabled === false)
       return ''
-    const artifact = lifetimeMemory.artifacts.get(characterId)
+    const resolvedUniverseId = universeId
+      ?? sessionMetas.value[activeSessionId.value]?.universeId
+      ?? 'global'
+    const artifact = lifetimeMemory.getArtifact(characterId, resolvedUniverseId)
     const distilledContent = artifact?.distilledContent?.trim()
     if (!distilledContent)
       return ''
@@ -1199,12 +1202,19 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     refreshActiveSystemMessage({ force: true })
   }, { debounce: 300 })
 
+  // NOTICE: Watch artifact version + id (rather than updatedAt) so routine days
+  // where changed=false only advance the watermark without dirtying the system prompt.
   watch(
-    () => lifetimeMemory.artifacts.get(activeCardId.value || 'relu')?.updatedAt ?? 0,
+    () => {
+      const charId = activeCardId.value || 'relu'
+      const currentUniverseId = sessionMetas.value[activeSessionId.value]?.universeId || 'global'
+      const artifact = lifetimeMemory.getArtifact(charId, currentUniverseId)
+      return artifact ? `${artifact.id}:${artifact.version}` : ''
+    },
     () => {
       if (!ready.value || !isMainWindow)
         return
-      refreshActiveSystemMessage()
+      void refreshActiveSystemMessage()
     },
   )
 

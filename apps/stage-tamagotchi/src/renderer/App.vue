@@ -107,11 +107,23 @@ async function seedTextJournalEntryFromWindow() {
 }
 
 async function ensureYesterdayShortTermBlockForActiveCharacter() {
-  if (!cardStore.activeCardId)
+  const targetCardId = cardStore.activeCardId
+  if (!targetCardId)
+    return
+
+  // Wait for any in-flight card-switch session resolution so activeSessionId and universeId are current
+  try {
+    await chatSessionStore.ensureActiveSessionForCharacter()
+  }
+  catch (error) {
+    console.warn('[ChatSession] Failed to ensure active session before memory maintenance.', error)
+  }
+
+  if (cardStore.activeCardId !== targetCardId)
     return
 
   try {
-    await shortTermMemoryStore.ensureYesterdayBlock(cardStore.activeCardId)
+    await shortTermMemoryStore.ensureYesterdayBlock(targetCardId)
   }
   catch (error) {
     console.warn('[ShortTermMemory] Failed to auto-generate yesterday block.', error)
@@ -120,10 +132,10 @@ async function ensureYesterdayShortTermBlockForActiveCharacter() {
   // NOTICE: lifetime maintenance rides the STMM cadence but runs as fire-and-forget background
   // work — a multi-day catch-up merge must never block app boot or card switches.
   try {
-    const activeSessionId = chatSessionStore.getCharacterIndex(cardStore.activeCardId)?.activeSessionId || chatSessionStore.activeSessionId
+    const activeSessionId = chatSessionStore.getCharacterIndex(targetCardId)?.activeSessionId || chatSessionStore.activeSessionId
     const activeSessionMeta = chatSessionStore.getSessionMeta(activeSessionId)
     const universeId = activeSessionMeta?.universeId || 'global'
-    void lifetimeMemoryStore.applyIncrementalUpdate(cardStore.activeCardId, universeId)
+    void lifetimeMemoryStore.applyIncrementalUpdate(targetCardId, universeId)
       .catch(error => console.warn('[LifetimeMemory] Background incremental update failed.', error))
   }
   catch (error) {

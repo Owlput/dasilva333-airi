@@ -134,7 +134,10 @@ async function loadCounts() {
   }
 }
 
+const initiatedInModal = ref(false)
+
 async function startProvisioning() {
+  initiatedInModal.value = true
   await store.provision(
     props.characterId,
     props.universeId,
@@ -146,6 +149,7 @@ async function startProvisioning() {
 }
 
 async function resumeProvisioning() {
+  initiatedInModal.value = true
   await store.provision(
     props.characterId,
     props.universeId,
@@ -157,6 +161,7 @@ async function resumeProvisioning() {
 }
 
 async function restartProvisioning() {
+  initiatedInModal.value = true
   await store.restart(
     props.characterId,
     props.universeId,
@@ -169,22 +174,33 @@ function handleDone() {
   if (useInFutureChats.value && props.characterId) {
     void airiCardStore.toggleLifetimeMemory(props.characterId, true)
   }
+  initiatedInModal.value = false
+  progress.value.phase = 'idle'
   emit('completed')
   emit('update:open', false)
 }
 
 function close() {
+  if (!isProvisioning.value) {
+    initiatedInModal.value = false
+    progress.value.phase = 'idle'
+  }
   emit('update:open', false)
 }
 
 watch(() => props.open, (isOpen) => {
-  if (isOpen)
+  if (isOpen) {
+    if (!isProvisioning.value) {
+      initiatedInModal.value = false
+      progress.value.phase = 'idle'
+    }
     loadCounts()
+  }
 }, { immediate: true })
 
-// Automatically enable when progress reaches success
+// Automatically enable only when an interactive modal provisioning run reaches success
 watch(() => progress.value.phase, (phase) => {
-  if (phase === 'success' && useInFutureChats.value && props.characterId) {
+  if (phase === 'success' && initiatedInModal.value && useInFutureChats.value && props.characterId) {
     void airiCardStore.toggleLifetimeMemory(props.characterId, true)
   }
 })

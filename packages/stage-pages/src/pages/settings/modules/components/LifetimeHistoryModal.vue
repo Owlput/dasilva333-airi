@@ -17,9 +17,9 @@ const emit = defineEmits<{
 }>()
 
 const lifetimeStore = useMemoryLifetimeStore()
-const { artifacts, isProvisioning, progress } = storeToRefs(lifetimeStore)
+const { isProvisioning, progress } = storeToRefs(lifetimeStore)
 
-const artifact = computed(() => artifacts.value.get(props.characterId))
+const artifact = computed(() => lifetimeStore.getArtifact(props.characterId, props.universeId))
 const chunks = computed(() => artifact.value?.chunkSummaries || [])
 
 const selectedChunkIndex = ref(0)

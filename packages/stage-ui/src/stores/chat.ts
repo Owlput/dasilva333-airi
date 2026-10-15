@@ -749,42 +749,49 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
       let inferenceMessages: any[] = []
 
-      // --- Grounding Injection ---
+      // --- Grounding Injection (Ordered: Most Stable -> Most Volatile for KV Prefix Reuse & Budget Priority) ---
       // If grounding/sensors or memory is enabled, we sync and inject context payloads as system messages.
       const groundingMessages: any[] = []
       let retrievedSemanticMemories: any[] = []
+      const sessionUniverseId = chatSession.getSessionMeta(sessionId)?.universeId || 'global'
 
-      // 0. VLM Image Analysis (Forward Mode)
-      // Injected unconditionally when a VLM forward hop produced a result — no toggle required.
-      // This keeps the analysis out of the user's chat bubble (sendingMessage is untouched)
-      // while still giving the primary LLM full visual context for its response.
-      if (vlmImageAnalysis) {
-        groundingMessages.push(formatVlmBlock(vlmImageAnalysis))
-        chatLog('[Vision] VLM image analysis injected into grounding context.')
+      // 1.1. Lifetime Memory Artifact (Most stable: mutates only on changed=true days)
+      const lifetimeContext = chatSession.buildLifetimeMemoryContext(activeCardId.value, sessionUniverseId)
+      if (lifetimeContext) {
+        groundingMessages.push(formatLifetimeMemoryBlock(lifetimeContext))
       }
 
-      // 1. System Sensors Telemetry
-      if (activeCard.value?.extensions?.airi?.groundingEnabled) {
-        chatLog('Grounding active. Syncing sensors...')
-        await proactivityStore.updateSensors()
-
-        const sensorPayload = proactivityStore.sensorPayload
-        groundingMessages.push(formatEnvironmentalBlock(sensorPayload))
-      }
-
-      // 1.5. Short-Term Memory (STMM Daily Continuity)
+      // 1.2. Short-Term Memory (STMM Daily Continuity: mutates once per day)
       const shortTermContext = chatSession.buildShortTermMemoryContext(activeCardId.value)
       if (shortTermContext) {
         groundingMessages.push(formatShortTermMemoryBlock(shortTermContext))
       }
 
-      // 1.6. Lifetime Memory Artifact
-      const lifetimeContext = chatSession.buildLifetimeMemoryContext(activeCardId.value)
-      if (lifetimeContext) {
-        groundingMessages.push(formatLifetimeMemoryBlock(lifetimeContext))
+      // 2. Grounding Recent Topics Injection
+      if (activeCard.value?.extensions?.airi?.groundingTopicsEnabled && activeCard.value?.extensions?.airi?.recentTopics?.length) {
+        groundingMessages.push(formatRecentTopicsBlock(activeCard.value.extensions.airi.recentTopics))
       }
 
-      // 2. RAG Universe Memory Injection
+      // 3. Grounding Visual Scene State (Director's Scratchpad) Injection
+      if (activeCard.value?.extensions?.airi?.groundingDirectorScratchpadEnabled) {
+        try {
+          const { directorNotesRepo } = await import('../database/repos/director-notes.repo')
+          const notes = await directorNotesRepo.getNotes(sessionId)
+          if (notes && notes.length > 0) {
+            const sortedNotes = [...notes].sort((a, b) => b.createdAt - a.createdAt)
+            const lastNoteWithScratchpad = sortedNotes.find(n => !!n.scratchpad)
+            if (lastNoteWithScratchpad && lastNoteWithScratchpad.scratchpad) {
+              groundingMessages.push(formatDirectorScratchpadBlock(lastNoteWithScratchpad.scratchpad))
+              chatLog('Grounding Director Scratchpad injected into inference step.')
+            }
+          }
+        }
+        catch (err) {
+          console.error('[ChatStore] Failed to query director notes during scratchpad grounding:', err)
+        }
+      }
+
+      // 4. RAG Universe Memory Injection (Per-turn query-dependent)
       const cognitionSearch = activeCard.value?.extensions?.airi?.cognition?.searchEngine
       const isUniverseRagEnabled = activeCard.value?.extensions?.airi?.groundingMemoryEnabled
         || activeCard.value?.extensions?.airi?.universeRag?.enabled
@@ -836,35 +843,31 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         }
       }
 
-      // 3. Grounding Recent Topics Injection
-      if (activeCard.value?.extensions?.airi?.groundingTopicsEnabled && activeCard.value?.extensions?.airi?.recentTopics?.length) {
-        groundingMessages.push(formatRecentTopicsBlock(activeCard.value.extensions.airi.recentTopics))
+      // 5. System Sensors Telemetry (Per-turn volatile: kept at the tail so stable
+      // blocks ahead of it keep their KV prefix cache across turns. This is the
+      // single live copy — the duplicate messages[1] injection below was removed.)
+      if (activeCard.value?.extensions?.airi?.groundingEnabled) {
+        chatLog('Grounding active. Syncing sensors...')
+        await proactivityStore.updateSensors()
+
+        const sensorPayload = proactivityStore.sensorPayload
+        groundingMessages.push(formatEnvironmentalBlock(sensorPayload))
       }
 
-      // 4. Grounding Visual Scene State (Director's Scratchpad) Injection
-      if (activeCard.value?.extensions?.airi?.groundingDirectorScratchpadEnabled) {
-        try {
-          const { directorNotesRepo } = await import('../database/repos/director-notes.repo')
-          const notes = await directorNotesRepo.getNotes(sessionId)
-          if (notes && notes.length > 0) {
-            const sortedNotes = [...notes].sort((a, b) => b.createdAt - a.createdAt)
-            const lastNoteWithScratchpad = sortedNotes.find(n => !!n.scratchpad)
-            if (lastNoteWithScratchpad && lastNoteWithScratchpad.scratchpad) {
-              groundingMessages.push(formatDirectorScratchpadBlock(lastNoteWithScratchpad.scratchpad))
-              chatLog('Grounding Director Scratchpad injected into inference step.')
-            }
-          }
-        }
-        catch (err) {
-          console.error('[ChatStore] Failed to query director notes during scratchpad grounding:', err)
-        }
+      // 6. VLM Image Analysis (Forward Mode, turn-specific attachment)
+      // Injected unconditionally when a VLM forward hop produced a result — no toggle required.
+      // This keeps the analysis out of the user's chat bubble (sendingMessage is untouched)
+      // while still giving the primary LLM full visual context for its response.
+      if (vlmImageAnalysis) {
+        groundingMessages.push(formatVlmBlock(vlmImageAnalysis))
+        chatLog('[Vision] VLM image analysis injected into grounding context.')
       }
 
-      // 5. Salience Gate injection: force-disabled for release stability to prevent WebGPU/WASM thrashing
+      // 7. Salience Gate injection: force-disabled for release stability to prevent WebGPU/WASM thrashing
       // const salienceText = ... (disabled)
 
       // Splice them into the message list!
-      const budgetedGroundingMessages = budgetGroundingMessages(groundingMessages, 7000, 2500)
+      const budgetedGroundingMessages = budgetGroundingMessages(groundingMessages, 14000, 2500)
       if (budgetedGroundingMessages.length > 0) {
         if (options.triggerOnly) {
           const nextInferenceMessages = [...sessionMessagesForSend]
@@ -1378,8 +1381,6 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         }
 
         const contextsSnapshot = chatContext.getContextsSnapshot()
-        const groundingEnabled = activeCard.value?.extensions?.airi?.groundingEnabled
-        const sensorPayload = groundingEnabled ? proactivityStore.sensorPayload : ''
 
         // Check for Dating Sim Climax triggers (Victory/Defeat) to inject instructions dynamically
         let climaxPrompt = ''
@@ -1475,17 +1476,12 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             + `${validModuleEntries.map(([key, texts]) => `Module ${key}:\n${texts.map(t => `- ${t}`).join('\n')}`).join('\n')}\n`
         }
 
-        if (sensorPayload) {
-          contextContent += `${contextContent ? '\n---\n' : ''
-          }[ENVIRONMENTAL AWARENESS]\n`
-          + `The following telemetry describes your current environmental context. `
-          + `Use it to stay grounded in the user's reality and inform your response. `
-          + `You may reference specific values (like time or active applications) if relevant `
-          + `to the conversation, but avoid a dry, technical recitation of the data.\n`
-          + `---\n`
-          + `${sensorPayload}\n`
-        }
-
+        // NOTICE: [ENVIRONMENTAL AWARENESS] is intentionally NOT injected here.
+        // The live sensor payload already rides the per-turn grounding tail
+        // (groundingMessages, most-volatile position) where it cannot bust the
+        // KV prefix cache. A second copy at messages[1] would duplicate tokens
+        // and invalidate the cache for the entire conversation history on every
+        // turn, since messages[1] sits ahead of all history.
         if (climaxPrompt) {
           contextContent += `${contextContent ? '\n---\n' : ''}${climaxPrompt}\n`
         }

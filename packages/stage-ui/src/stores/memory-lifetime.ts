@@ -98,9 +98,12 @@ const DistillPass1Schema = {
   ],
 } as const
 
+// NOTICE: change_notes and changed are ordered first so autoregressive decoding
+// evaluates whether durable change occurred before emitting the six pack sections.
 const IncrementalMergeSchema = {
   type: 'object',
   properties: {
+    change_notes: { type: 'array', items: { type: 'string' } },
     changed: { type: 'boolean' },
     relationship_core: { type: 'array', items: { type: 'string' } },
     user_patterns: { type: 'array', items: { type: 'string' } },
@@ -108,9 +111,9 @@ const IncrementalMergeSchema = {
     stable_topics: { type: 'array', items: { type: 'string' } },
     meaningful_old_moments: { type: 'array', items: { type: 'string' } },
     inside_jokes_or_motifs: { type: 'array', items: { type: 'string' } },
-    change_notes: { type: 'array', items: { type: 'string' } },
   },
   required: [
+    'change_notes',
     'changed',
     'relationship_core',
     'user_patterns',
@@ -118,7 +121,6 @@ const IncrementalMergeSchema = {
     'stable_topics',
     'meaningful_old_moments',
     'inside_jokes_or_motifs',
-    'change_notes',
   ],
 } as const
 
@@ -127,6 +129,7 @@ interface SourceDoc {
   layer: 'raw' | 'stmm' | 'ltmm'
   timestamp: string
   text: string
+  branchLabel?: string
 }
 
 interface LifetimeArchive {
@@ -150,6 +153,8 @@ interface DistilledPack {
   compression_notes: string[]
 }
 
+const LOCAL_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
@@ -158,7 +163,7 @@ function asStringArray(value: unknown): string[] {
 
 // NOTICE: must match memory-short-term's formatLocalDayKey so increment watermarks
 // line up with STMM day keys.
-function formatLocalDayKey(timestamp: number) {
+export function formatLocalDayKey(timestamp: number) {
   const date = new Date(timestamp)
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -166,10 +171,32 @@ function formatLocalDayKey(timestamp: number) {
   return `${year}-${month}-${day}`
 }
 
-function getYesterdayLocalDayKey() {
+export function parseDocLocalDayKey(timestamp: string): string {
+  if (LOCAL_DAY_RE.test(timestamp))
+    return timestamp
+  const ms = new Date(timestamp).getTime()
+  return Number.isNaN(ms) ? getYesterdayLocalDayKey() : formatLocalDayKey(ms)
+}
+
+export function parseLocalDayEnd(dayKey: string): number {
+  const match = LOCAL_DAY_RE.exec(dayKey)
+  if (!match)
+    return 0
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  return new Date(year, month - 1, day, 23, 59, 59, 999).getTime()
+}
+
+export function getYesterdayLocalDayKey() {
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   return formatLocalDayKey(yesterday.getTime())
+}
+
+export function clampToYesterday(dayKey: string): string {
+  const yesterday = getYesterdayLocalDayKey()
+  return dayKey > yesterday ? yesterday : dayKey
 }
 
 // NOTICE: mirrors memory-short-term's MAX_SOURCE_CHARS_PER_DAY so an unusually dense
@@ -177,6 +204,7 @@ function getYesterdayLocalDayKey() {
 const MAX_SOURCE_CHARS_PER_DAY = 24000
 const MAX_CATCHUP_DAYS_PER_RUN = 14
 const MAX_UPDATE_HISTORY_ENTRIES = 30
+const MAX_MERGES_BEFORE_REBASE = 15
 
 function normalizeDistilledPack(value: unknown): DistilledPack {
   const pack = (value && typeof value === 'object') ? value as Record<string, unknown> : {}
@@ -189,6 +217,28 @@ function normalizeDistilledPack(value: unknown): DistilledPack {
     inside_jokes_or_motifs: asStringArray(pack.inside_jokes_or_motifs),
     compression_notes: asStringArray(pack.compression_notes),
   }
+}
+
+export function countPackBullets(pack: DistilledPack): number {
+  return (
+    pack.relationship_core.length
+    + pack.user_patterns.length
+    + pack.shared_rituals.length
+    + pack.stable_topics.length
+    + pack.meaningful_old_moments.length
+    + pack.inside_jokes_or_motifs.length
+  )
+}
+
+export function arePacksContentEqual(a: DistilledPack, b: DistilledPack): boolean {
+  return (
+    JSON.stringify(a.relationship_core) === JSON.stringify(b.relationship_core)
+    && JSON.stringify(a.user_patterns) === JSON.stringify(b.user_patterns)
+    && JSON.stringify(a.shared_rituals) === JSON.stringify(b.shared_rituals)
+    && JSON.stringify(a.stable_topics) === JSON.stringify(b.stable_topics)
+    && JSON.stringify(a.meaningful_old_moments) === JSON.stringify(b.meaningful_old_moments)
+    && JSON.stringify(a.inside_jokes_or_motifs) === JSON.stringify(b.inside_jokes_or_motifs)
+  )
 }
 
 function normalizeLifetimeArchive(value: unknown): LifetimeArchive {
@@ -205,19 +255,47 @@ function normalizeLifetimeArchive(value: unknown): LifetimeArchive {
   }
 }
 
-function buildBaseArchivePrompt(characterName: string, docs: SourceDoc[], chunkSummaries: any[]) {
+export function buildBaseArchivePrompt(
+  characterName: string,
+  manifestCounts: { rawTurnCount: number, stmmBlockCount: number, ltmmEntryCount: number },
+  chunkSummaries: any[],
+  priorIncrementalPack?: DistilledPack,
+) {
   const flattened = {
-    durableFacts: [...new Set(chunkSummaries.flatMap((c: any) => c.durable_facts || []))],
-    recurringPreferences: [...new Set(chunkSummaries.flatMap((c: any) => c.recurring_preferences || []))],
-    recurringTopics: [...new Set(chunkSummaries.flatMap((c: any) => c.recurring_topics || []))],
-    relationshipDynamics: [...new Set(chunkSummaries.flatMap((c: any) => c.relationship_dynamics || []))],
-    userMannerisms: [...new Set(chunkSummaries.flatMap((c: any) => c.user_mannerisms || []))],
-    meaningfulMoments: [...new Set(chunkSummaries.flatMap((c: any) => c.meaningful_moments || []))],
-    insideJokes: [...new Set(chunkSummaries.flatMap((c: any) => c.inside_jokes_or_motifs || []))],
+    durableFacts: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.durable_facts || []),
+      ...(priorIncrementalPack?.relationship_core || []),
+    ])],
+    recurringPreferences: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.recurring_preferences || []),
+      ...(priorIncrementalPack?.shared_rituals || []),
+    ])],
+    recurringTopics: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.recurring_topics || []),
+      ...(priorIncrementalPack?.stable_topics || []),
+    ])],
+    relationshipDynamics: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.relationship_dynamics || []),
+      ...(priorIncrementalPack?.relationship_core || []),
+    ])],
+    userMannerisms: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.user_mannerisms || []),
+      ...(priorIncrementalPack?.user_patterns || []),
+    ])],
+    meaningfulMoments: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.meaningful_moments || []),
+      ...(priorIncrementalPack?.meaningful_old_moments || []),
+    ])],
+    insideJokes: [...new Set([
+      ...chunkSummaries.flatMap((c: any) => c.inside_jokes_or_motifs || []),
+      ...(priorIncrementalPack?.inside_jokes_or_motifs || []),
+    ])],
   }
 
+  const totalDocs = manifestCounts.rawTurnCount + manifestCounts.stmmBlockCount + manifestCounts.ltmmEntryCount
+
   return [
-    `You are building the first canonical lifetime relationship archive for "${characterName}".`,
+    `You are building the canonical lifetime relationship archive for "${characterName}".`,
     '',
     'Write the archive from the perspective of actual interactions, not from the character system prompt.',
     'The relationship summary must be one dense paragraph of about five sentences.',
@@ -230,7 +308,7 @@ function buildBaseArchivePrompt(characterName: string, docs: SourceDoc[], chunkS
     'Do not let one recent day overwrite the whole relationship.',
     'Preserve older meaningful moments if they are durable.',
     '',
-    `Manifest context: ${docs.length} documents (${docs.filter(d => d.layer === 'raw').length} raw / ${docs.filter(d => d.layer === 'stmm').length} stmm / ${docs.filter(d => d.layer === 'ltmm').length} ltmm).`,
+    `Manifest context: ${totalDocs} documents (${manifestCounts.rawTurnCount} raw / ${manifestCounts.stmmBlockCount} stmm / ${manifestCounts.ltmmEntryCount} ltmm).`,
     '',
     'Durable facts:',
     ...flattened.durableFacts.map(line => `- ${line}`),
@@ -292,7 +370,7 @@ function renderLifetimeArchiveMd(characterName: string, rawArchive: LifetimeArch
   ].join('\n')
 }
 
-function renderPackForReview(rawPack: DistilledPack | Record<string, unknown> | undefined) {
+export function renderPackForReview(rawPack: DistilledPack | Record<string, unknown> | undefined) {
   const pack = normalizeDistilledPack(rawPack)
   const lines = [
     'relationship_core:',
@@ -323,10 +401,35 @@ function renderPackForReview(rawPack: DistilledPack | Record<string, unknown> | 
   return lines.join('\n')
 }
 
-function formatDayWindowDoc(doc: SourceDoc) {
-  const time = new Date(doc.timestamp).toISOString().slice(11, 16)
+export function formatDayWindowDoc(doc: SourceDoc) {
+  const d = new Date(doc.timestamp)
+  const hh = Number.isNaN(d.getTime()) ? '00' : String(d.getHours()).padStart(2, '0')
+  const mm = Number.isNaN(d.getTime()) ? '00' : String(d.getMinutes()).padStart(2, '0')
   const layer = doc.layer === 'raw' ? 'RAW' : doc.layer.toUpperCase()
-  return `[${time}] [${layer}] ${doc.text}`
+  return `[${hh}:${mm}] [${layer}] ${doc.text}`
+}
+
+export function buildDayTranscriptWithBudget(docs: SourceDoc[], maxChars = MAX_SOURCE_CHARS_PER_DAY): string {
+  // Sacral LTMM journal entries are never truncated; budget applies to raw turns.
+  const ltmmDocs = docs.filter(d => d.layer === 'ltmm')
+  const otherDocs = docs.filter(d => d.layer !== 'ltmm')
+
+  const ltmmBlock = ltmmDocs.map(formatDayWindowDoc).join('\n')
+  const rawBlock = otherDocs.map(formatDayWindowDoc).join('\n')
+
+  const remainingBudget = Math.max(4000, maxChars - ltmmBlock.length)
+  let budgetedRaw = rawBlock
+  if (rawBlock.length > remainingBudget) {
+    const headChars = Math.floor(remainingBudget * 0.4)
+    const tailChars = remainingBudget - headChars
+    budgetedRaw = [
+      rawBlock.slice(0, headChars),
+      '... [middle of day omitted for token budget] ...',
+      rawBlock.slice(rawBlock.length - tailChars),
+    ].join('\n')
+  }
+
+  return [budgetedRaw, ltmmBlock].filter(Boolean).join('\n')
 }
 
 function buildIncrementalMergePrompt(
@@ -336,12 +439,12 @@ function buildIncrementalMergePrompt(
   currentPack: DistilledPack,
   targetTokens: number,
 ) {
-  const transcript = docs.map(formatDayWindowDoc).join('\n').slice(0, MAX_SOURCE_CHARS_PER_DAY)
+  const transcript = buildDayTranscriptWithBudget(docs, MAX_SOURCE_CHARS_PER_DAY)
 
   return [
     `You are maintaining the lifetime relationship artifact for "${characterName}".`,
     '',
-    `A new day of interactions is ready for review: ${day}.`,
+    `A new completed day of interactions is ready for review: ${day}.`,
     '',
     'Decide whether this day contains any DURABLE relationship information worth integrating:',
     '- a new recurring preference',
@@ -356,14 +459,14 @@ function buildIncrementalMergePrompt(
     '- preserve every durable truth already in the current pack',
     '- do not let one recent day overwrite the whole relationship',
     '- do not drop older meaningful moments',
-    '- if the day was ordinary, repetitive, or holds no durable change, set changed=false and re-emit the current pack',
+    '- if the day was ordinary, repetitive, or holds no durable change, set changed=false and re-emit the current pack exactly',
     '- keep bullet density: 4-14 words per bullet, no essay prose, no markdown',
     `- keep the total artifact around ${targetTokens} tokens or less`,
     '',
     'Output contract:',
-    '- changed: true only if you actually modified, added, or dropped at least one bullet',
-    '- emit the complete merged pack (all six sections), not only the changed sections',
     '- change_notes: short bullets describing what you changed, or why the day warranted no change',
+    '- changed: true only if you actually modified, added, or consolidated at least one bullet',
+    '- emit the complete merged pack (all six sections), not only the changed sections',
     '',
     'Current lifetime pack:',
     renderPackForReview(currentPack),
@@ -373,7 +476,9 @@ function buildIncrementalMergePrompt(
   ].join('\n')
 }
 
-function renderDistilledArtifactMd(characterName: string, rawPack: DistilledPack | Record<string, unknown> | undefined) {
+// NOTICE: Compression Notes are intentionally excluded from distilledContent so internal
+// pass-2 compiler metadata does not consume live prompt tokens on every conversation turn.
+export function renderDistilledArtifactMd(characterName: string, rawPack: DistilledPack | Record<string, unknown> | undefined) {
   const pack = normalizeDistilledPack(rawPack)
   return [
     `# Distilled Lifetime Context Pack: ${characterName}`,
@@ -383,22 +488,24 @@ function renderDistilledArtifactMd(characterName: string, rawPack: DistilledPack
     ...pack.relationship_core.map(line => `- ${line}`),
     '',
     '## User Patterns',
+    '',
     ...pack.user_patterns.map(line => `- ${line}`),
     '',
     '## Shared Rituals',
+    '',
     ...pack.shared_rituals.map(line => `- ${line}`),
     '',
     '## Stable Topics',
+    '',
     ...pack.stable_topics.map(line => `- ${line}`),
     '',
     '## Meaningful Old Moments',
+    '',
     ...pack.meaningful_old_moments.map(line => `- ${line}`),
     '',
     '## Inside Jokes Or Motifs',
-    ...pack.inside_jokes_or_motifs.map(line => `- ${line}`),
     '',
-    '## Compression Notes',
-    ...pack.compression_notes.map(line => `- ${line}`),
+    ...pack.inside_jokes_or_motifs.map(line => `- ${line}`),
     '',
   ].join('\n')
 }
@@ -410,7 +517,10 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   const providersStore = useProvidersStore()
   const llmStore = useLLM()
 
+  // Active-universe artifact map keyed by characterId (for backwards compatibility with UI/session-store)
   const artifacts = ref<Map<string, LifetimeMemoryArtifact>>(new Map())
+  // Strictly isolated universe cache keyed by `${characterId}:${universeId}`
+  const artifactsByUniverse = ref<Map<string, LifetimeMemoryArtifact>>(new Map())
 
   const { data: lifetimeSyncSignal, post: broadcastLifetimeSync } = useBroadcastChannel<{ characterId: string, universeId?: string }, { characterId: string, universeId?: string }>({ name: 'airi:lifetime-memory-sync' })
 
@@ -424,6 +534,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   const activeSession = ref<ProvisioningSession | null>(null)
   const loading = ref(false)
   const isProvisioning = ref(false)
+  const isUpdatingIncremental = ref(false)
   const progress = ref<ProvisioningProgress>({
     phase: 'idle',
     currentChunk: 0,
@@ -433,9 +544,40 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     message: '',
   })
   const error = ref<string | null>(null)
+  // NOTICE: background incremental merges must never touch `error`/`progress`
+  // (owned by the interactive provisioning modal — see F-06). Manual "Sync
+  // Thread Now" surfaces failures through this dedicated ref instead.
+  const incrementalError = ref<string | null>(null)
 
   function getCurrentUserId() {
     return userId.value || 'local'
+  }
+
+  function setCachedArtifact(characterId: string, universeId: string, artifact: LifetimeMemoryArtifact | null) {
+    const compositeKey = `${characterId}:${universeId}`
+    if (artifact) {
+      const tagged: LifetimeMemoryArtifact = { ...artifact, universeId }
+      artifactsByUniverse.value.set(compositeKey, tagged)
+      artifacts.value.set(characterId, tagged)
+    }
+    else {
+      artifactsByUniverse.value.delete(compositeKey)
+      const current = artifacts.value.get(characterId)
+      if (!current || (current.universeId || 'global') === universeId) {
+        artifacts.value.delete(characterId)
+      }
+    }
+  }
+
+  function getArtifact(characterId: string, universeId = 'global'): LifetimeMemoryArtifact | undefined {
+    const compositeKey = `${characterId}:${universeId}`
+    const exact = artifactsByUniverse.value.get(compositeKey)
+    if (exact)
+      return exact
+    const fallback = artifacts.value.get(characterId)
+    if (fallback && (fallback.universeId || 'global') === universeId)
+      return fallback
+    return undefined
   }
 
   async function loadForCharacter(characterId: string, universeId = 'global') {
@@ -443,14 +585,9 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     try {
       const [artifact, session] = await Promise.all([
         lifetimeMemoryRepo.getByCharacter(characterId, universeId),
-        provisioningSessionRepo.get(characterId),
+        provisioningSessionRepo.get(characterId, universeId),
       ])
-      if (artifact) {
-        artifacts.value.set(characterId, artifact)
-      }
-      else {
-        artifacts.value.delete(characterId)
-      }
+      setCachedArtifact(characterId, universeId, artifact ?? null)
       activeSession.value = session || null
     }
     finally {
@@ -481,7 +618,8 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       // Sort by messageCount descending so the longest session is treated as the Canonical Timeline
       activeSessions.sort((a, b) => b.messageCount - a.messageCount)
 
-      const uniqueContents = new Set<string>()
+      const seenMessageIds = new Set<string>()
+      const seenTrunkTurns = new Set<string>()
 
       for (let i = 0; i < activeSessions.length; i++) {
         const sessionInfo = activeSessions[i]
@@ -490,15 +628,15 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           continue
 
         const isCanonical = i === 0
-        const headerText = isCanonical
-          ? `# Canonical Timeline: ${sessionInfo.title}\n`
-          : `# Timeline Branch: ${sessionInfo.title} (Alternative Path)\n`
-
-        let branchHasNewMessages = false
-        const branchDocs: SourceDoc[] = []
+        const branchLabel = isCanonical
+          ? `Canonical Timeline: ${sessionInfo.title}`
+          : `Timeline Branch: ${sessionInfo.title} (Alternative Path)`
 
         record.messages.forEach((msg, idx) => {
           if (msg.role === 'system' || !msg.content)
+            return
+
+          if (msg.id && seenMessageIds.has(msg.id))
             return
 
           let text = ''
@@ -517,61 +655,71 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           if (!trimmed)
             return
 
-          const dedupKey = `${msg.role}:${trimmed}`
-
-          // Deduplicate across all timeline sessions
-          if (uniqueContents.has(dedupKey))
+          const msgTimestampMs = msg.createdAt || record.meta.createdAt || 0
+          const dayKey = formatLocalDayKey(msgTimestampMs)
+          // Deduplicate cloned fork trunk messages across sessions (same day + role + text)
+          const trunkKey = `${dayKey}:${msg.role}:${trimmed}`
+          if (seenTrunkTurns.has(trunkKey))
             return
 
-          uniqueContents.add(dedupKey)
-          branchHasNewMessages = true
+          if (msg.id)
+            seenMessageIds.add(msg.id)
+          seenTrunkTurns.add(trunkKey)
 
-          branchDocs.push({
+          docs.push({
             id: `raw:${sessionInfo.sessionId}:${idx}`,
             layer: 'raw',
-            timestamp: new Date(msg.createdAt || record.meta.createdAt).toISOString(),
-            text: `${msg.role}: ${text}`,
+            timestamp: new Date(msgTimestampMs).toISOString(),
+            text: `${msg.role}: ${trimmed}`,
+            branchLabel,
           })
         })
-
-        // If the branch contains new unique turns, append them preceded by the timeline header
-        if (branchHasNewMessages) {
-          // Prepend the section header to the first unique message of this group
-          if (branchDocs.length > 0) {
-            branchDocs[0].text = `${headerText}${branchDocs[0].text}`
-          }
-          docs.push(...branchDocs)
-        }
       }
     }
 
-    // 2. STMM Blocks
+    // 2. STMM Blocks (use local end-of-day timestamp so YYYY-MM-DD never shifts to previous day in Western timezones)
     const stmmBlocks = await shortTermMemoryRepo.getAll(currentUserId)
     if (stmmBlocks) {
-      stmmBlocks.filter(b => b.characterId === characterId && (b.universeId || 'global') === universeId).forEach((block) => {
-        docs.push({
-          id: `stmm:${block.id}`,
-          layer: 'stmm',
-          timestamp: block.date,
-          text: block.summary,
+      stmmBlocks
+        .filter(b => b.characterId === characterId && (b.universeId || 'global') === universeId)
+        .forEach((block) => {
+          const localEndMs = parseLocalDayEnd(block.date)
+          docs.push({
+            id: `stmm:${block.id}`,
+            layer: 'stmm',
+            timestamp: localEndMs > 0 ? new Date(localEndMs).toISOString() : block.date,
+            text: block.summary,
+          })
         })
-      })
     }
 
     // 3. LTMM Entries
     const ltmmEntries = await textJournalRepo.getAll(currentUserId)
     if (ltmmEntries) {
-      ltmmEntries.filter(e => e.characterId === characterId && (e.universeId || 'global') === universeId).forEach((entry) => {
-        docs.push({
-          id: `ltmm:${entry.id}`,
-          layer: 'ltmm',
-          timestamp: new Date(entry.createdAt).toISOString(),
-          text: `[Journal: ${entry.title}] ${entry.content}`,
+      ltmmEntries
+        .filter(e => e.characterId === characterId && (e.universeId || 'global') === universeId)
+        .forEach((entry) => {
+          docs.push({
+            id: `ltmm:${entry.id}`,
+            layer: 'ltmm',
+            timestamp: new Date(entry.createdAt).toISOString(),
+            text: `[Journal: ${entry.title}] ${entry.content}`,
+          })
         })
-      })
     }
 
-    return docs.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    docs.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+    // Annotate timeline transitions after chronological sort so branch headers are never orphaned
+    let activeBranchLabel = ''
+    for (const doc of docs) {
+      if (doc.layer === 'raw' && doc.branchLabel && doc.branchLabel !== activeBranchLabel) {
+        activeBranchLabel = doc.branchLabel
+        doc.text = `# ${activeBranchLabel}\n${doc.text}`
+      }
+    }
+
+    return docs
   }
 
   function validateJsonSchema(data: any, schema: any) {
@@ -670,7 +818,12 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     }
   }
 
-  async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, backoffBase = 2000): Promise<T> {
+  async function withRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    backoffBase = 2000,
+    onRetryMessage?: (msg: string) => void,
+  ): Promise<T> {
     let lastError: any
     for (let i = 0; i <= maxRetries; i++) {
       try {
@@ -680,7 +833,11 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         lastError = err
         if (i < maxRetries) {
           const delay = backoffBase * 2 ** i
-          progress.value.message = `API Error, retrying in ${delay / 1000}s... (Attempt ${i + 1}/${maxRetries})`
+          const retryMsg = `API Error, retrying in ${delay / 1000}s... (Attempt ${i + 1}/${maxRetries})`
+          if (onRetryMessage)
+            onRetryMessage(retryMsg)
+          else
+            progress.value.message = retryMsg
           await new Promise(resolve => setTimeout(resolve, delay))
         }
       }
@@ -688,7 +845,15 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     throw lastError
   }
 
-  async function provision(characterId: string, universeId = 'global', resume = false, intervalSeconds = 0, contextLimitTokens = 64, targetTokens = 1000) {
+  async function provision(
+    characterId: string,
+    universeId = 'global',
+    resume = false,
+    intervalSeconds = 0,
+    contextLimitTokens = 64,
+    targetTokens = 1000,
+    priorIncrementalPack?: DistilledPack,
+  ) {
     const card = cards.value.get(characterId)
     if (!card)
       throw new Error('Character not found')
@@ -705,7 +870,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     const modelId = card.extensions?.airi?.modules?.consciousness?.model || activeModel.value
     const provider = await providersStore.getProviderInstance<ChatProvider>(providerId!)
     if (!provider || !modelId)
-      throw new Error('Counsciousness not configured')
+      throw new Error('Consciousness not configured')
 
     isProvisioning.value = true
     error.value = null
@@ -718,13 +883,19 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
 
       if (resume && activeSession.value) {
         session = activeSession.value
+        if (session.universeId) {
+          universeId = session.universeId
+        }
         if (session.targetTokens) {
           targetTokens = session.targetTokens
         }
         if (session.contextLimitTokens) {
           contextLimitTokens = session.contextLimitTokens
         }
-        docs = await collectSourceDocs(characterId, universeId)
+        // Only re-fetch raw source docs if we still need to run chunking
+        if (session.phase === 'chunking' || session.phase === 'aggregating' || session.phase === 'idle') {
+          docs = await collectSourceDocs(characterId, universeId)
+        }
       }
       else {
         progress.value = {
@@ -740,28 +911,48 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
 
       const contextLimitChars = contextLimitTokens * 1024 * 4 // ~4 chars per token
 
-      // Budgeted Chunking (Loosey-Goosey)
-      let currentChunk: SourceDoc[] = []
-      let currentChars = 0
-      for (const doc of docs) {
-        const docChars = doc.text.length
-        if (currentChars + docChars > contextLimitChars && currentChunk.length > 0) {
-          chunks.push(currentChunk)
-          currentChunk = []
-          currentChars = 0
+      if (docs.length > 0) {
+        // Budgeted Chunking
+        let currentChunk: SourceDoc[] = []
+        let currentChars = 0
+        for (const doc of docs) {
+          const docChars = doc.text.length
+          if (currentChars + docChars > contextLimitChars && currentChunk.length > 0) {
+            chunks.push(currentChunk)
+            currentChunk = []
+            currentChars = 0
+          }
+          currentChunk.push(doc)
+          currentChars += docChars
         }
-        currentChunk.push(doc)
-        currentChars += docChars
+        if (currentChunk.length > 0)
+          chunks.push(currentChunk)
       }
-      if (currentChunk.length > 0)
-        chunks.push(currentChunk)
+
+      const computedManifest = docs.length > 0
+        ? {
+            rawTurnCount: docs.filter(d => d.layer === 'raw').length,
+            stmmBlockCount: docs.filter(d => d.layer === 'stmm').length,
+            ltmmEntryCount: docs.filter(d => d.layer === 'ltmm').length,
+          }
+        : (session?.sourceManifest ?? { rawTurnCount: 0, stmmBlockCount: 0, ltmmEntryCount: 0 })
+
+      const lastDoc = docs[docs.length - 1]
+      // NOTICE: Clamp initial watermark to yesterday so any conversations continuing later
+      // today are still reviewed once today closes.
+      const computedLastConsumedDay = lastDoc
+        ? clampToYesterday(parseDocLocalDayKey(lastDoc.timestamp))
+        : getYesterdayLocalDayKey()
 
       if (!resume || !activeSession.value) {
         session = {
           characterId,
+          universeId,
           phase: 'chunking',
           chunkSummaries: [],
           sourceDocCount: docs.length,
+          sourceManifest: computedManifest,
+          lastConsumedDay: computedLastConsumedDay,
           totalChunks: chunks.length,
           completedChunks: 0,
           updatedAt: Date.now(),
@@ -773,15 +964,16 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       }
 
       // EXPOSE FOR DEBUGGING
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && chunks.length > 0) {
         (window as any).__LIFETIME_DEBUG_CHUNKS = chunks
         console.log('[memory-lifetime] Chunks prepared for inspection:', chunks)
       }
 
+      const effectiveTotalChunks = chunks.length > 0 ? chunks.length : (session.totalChunks || session.chunkSummaries.length)
       // N chunks + 1 base synthesis + 2 distillation passes = N + 3
-      const totalCalls = chunks.length + 3
+      const totalCalls = effectiveTotalChunks + 3
       progress.value.totalCalls = totalCalls
-      progress.value.totalChunks = chunks.length
+      progress.value.totalChunks = effectiveTotalChunks
 
       // Phase 2: Chunking (Durable Fact Extraction)
       if (session.phase === 'chunking') {
@@ -833,16 +1025,19 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         await provisioningSessionRepo.save(session)
       }
 
+      const resolvedManifest = session.sourceManifest ?? computedManifest
+      const resolvedDocCount = session.sourceDocCount || (resolvedManifest.rawTurnCount + resolvedManifest.stmmBlockCount + resolvedManifest.ltmmEntryCount)
+
       // Phase 3: Base synthesis using the lab's structured archive contract
       if (session.phase === 'synthesizing') {
         progress.value.phase = 'synthesizing'
-        progress.value.completedCalls = chunks.length
+        progress.value.completedCalls = effectiveTotalChunks
         progress.value.message = 'Synthesizing base lifetime archive...'
 
-        const synthesisPrompt = buildBaseArchivePrompt(card.name, docs, session.chunkSummaries)
+        const synthesisPrompt = buildBaseArchivePrompt(card.name, resolvedManifest, session.chunkSummaries, priorIncrementalPack)
         const synthesisResult = await withRetry(() => callJsonMode<LifetimeArchive>(synthesisPrompt, LifetimeArchiveJsonSchema, provider, modelId))
         session.baseArchive = synthesisResult
-        session.baseContent = renderLifetimeArchiveMd(card.name, synthesisResult, docs.length, chunks.length)
+        session.baseContent = renderLifetimeArchiveMd(card.name, synthesisResult, resolvedDocCount, effectiveTotalChunks)
         session.phase = 'distill_pass_1'
         session.updatedAt = Date.now()
         await provisioningSessionRepo.save(session)
@@ -852,7 +1047,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       // Phase 4A: Distill pass 1 (dedupe + normalize)
       if (session.phase === 'distill_pass_1') {
         progress.value.phase = 'distill_pass_1'
-        progress.value.completedCalls = chunks.length + 1
+        progress.value.completedCalls = effectiveTotalChunks + 1
         progress.value.message = 'Distilling relational essence (Pass 1/2)...'
 
         const ratio = targetTokens / 1000
@@ -924,7 +1119,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       // Phase 4B: Distill pass 2 (dense refinement)
       if (session.phase === 'distill_pass_2') {
         progress.value.phase = 'distill_pass_2'
-        progress.value.completedCalls = chunks.length + 2
+        progress.value.completedCalls = effectiveTotalChunks + 2
         progress.value.message = 'Performing Caveman Refinement (Pass 2/2)...'
 
         const pass1Pack = normalizeDistilledPack(session.distillPass1Pack)
@@ -978,41 +1173,41 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           ],
         )))
 
-        // Final Persistence
-        const lastDoc = docs[docs.length - 1]
-        const lastConsumedDay = lastDoc ? formatLocalDayKey(new Date(lastDoc.timestamp).getTime()) : formatLocalDayKey(Date.now())
+        const existingArtifact = getArtifact(characterId, universeId)
+        const resolvedWatermark = session.lastConsumedDay || computedLastConsumedDay
+        const initialWatermark = existingArtifact?.metadata?.initialConsumedDay || resolvedWatermark
 
         const artifact: LifetimeMemoryArtifact = {
-          id: nanoid(),
+          id: existingArtifact?.id ?? nanoid(),
           characterId,
-          version: 1,
+          universeId,
+          version: (existingArtifact?.version ?? 0) + 1,
           chunkSummaries: session.chunkSummaries,
           baseArchive: session.baseArchive,
           baseContent: session.baseContent!,
           distillPass1Pack: pass1Pack,
           distilledContent: renderDistilledArtifactMd(card.name, finalDistilledPack),
           finalPack: finalDistilledPack,
-          sourceManifest: {
-            rawTurnCount: docs.filter(d => d.layer === 'raw').length,
-            stmmBlockCount: docs.filter(d => d.layer === 'stmm').length,
-            ltmmEntryCount: docs.filter(d => d.layer === 'ltmm').length,
-          },
-          createdAt: Date.now(),
+          sourceManifest: resolvedManifest,
+          createdAt: existingArtifact?.createdAt ?? Date.now(),
           updatedAt: Date.now(),
           metadata: {
             model: modelId,
             totalElapsedMs: Date.now() - runStart,
-            chunkCount: chunks.length,
+            chunkCount: effectiveTotalChunks,
             targetTokens,
-            // Incremental watermark: everything up to (and including) this day has been consumed.
-            lastConsumedDay,
-            lastUpdateType: 'init',
+            initialConsumedDay: initialWatermark,
+            // Incremental watermark: everything up to (and including) this completed day has been consumed.
+            lastConsumedDay: resolvedWatermark,
+            lastUpdateType: priorIncrementalPack ? 'reprovision' : 'init',
+            mergesSinceRebase: 0,
+            updateHistory: existingArtifact?.metadata?.updateHistory ?? [],
           },
         }
 
         await lifetimeMemoryRepo.save(characterId, universeId, artifact)
-        await provisioningSessionRepo.delete(characterId)
-        artifacts.value.set(characterId, artifact)
+        await provisioningSessionRepo.delete(characterId, universeId)
+        setCachedArtifact(characterId, universeId, artifact)
         activeSession.value = null
         progress.value.phase = 'success'
         progress.value.completedCalls = totalCalls
@@ -1032,16 +1227,25 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   }
 
   // NOTICE: windowed collection mirrors the STMM day-bucketing shape so the lifetime merge
-  // consumes exactly the same 24h raw log window that produced each daily STMM block, plus
-  // any LTMM entries written after the watermark.
-  async function collectWindowedDocs(characterId: string, universeId = 'global', sinceDay = ''): Promise<SourceDoc[]> {
+  // consumes only completed 24h local day windows (sinceDay < day <= untilDay), plus
+  // any LTMM entries written in that window.
+  async function collectWindowedDocs(
+    characterId: string,
+    universeId = 'global',
+    sinceDay = '',
+    untilDay = getYesterdayLocalDayKey(),
+  ): Promise<SourceDoc[]> {
+    if (sinceDay && untilDay && sinceDay >= untilDay)
+      return []
+
     const currentUserId = getCurrentUserId()
     const docs: SourceDoc[] = []
 
     const index = await chatSessionsRepo.getIndex(currentUserId)
     const characterIndex = index?.characters?.[characterId]
     if (characterIndex) {
-      const uniqueContents = new Set<string>()
+      const seenMessageIds = new Set<string>()
+      const seenDayTurns = new Set<string>()
 
       for (const [sessionId, meta] of Object.entries(characterIndex.sessions)) {
         if ((meta.universeId || 'global') !== universeId)
@@ -1054,7 +1258,12 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         record.messages.forEach((msg, idx) => {
           if (msg.role === 'system' || !msg.content || !msg.createdAt)
             return
-          if (formatLocalDayKey(msg.createdAt) <= sinceDay)
+
+          const msgDay = formatLocalDayKey(msg.createdAt)
+          if (msgDay <= sinceDay || (untilDay && msgDay > untilDay))
+            return
+
+          if (msg.id && seenMessageIds.has(msg.id))
             return
 
           let text = ''
@@ -1072,10 +1281,15 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           if (!trimmed)
             return
 
-          const dedupKey = `${msg.role}:${trimmed}`
-          if (uniqueContents.has(dedupKey))
+          // Scope text deduplication to the same day so shared fork trunks are deduped
+          // without dropping recurring daily greetings on subsequent days.
+          const dedupKey = `${msgDay}:${msg.role}:${trimmed}`
+          if (seenDayTurns.has(dedupKey))
             return
-          uniqueContents.add(dedupKey)
+
+          if (msg.id)
+            seenMessageIds.add(msg.id)
+          seenDayTurns.add(dedupKey)
 
           docs.push({
             id: `raw:${sessionId}:${idx}`,
@@ -1089,9 +1303,15 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
 
     const ltmmEntries = await textJournalRepo.getAll(currentUserId)
     if (ltmmEntries) {
-      const sinceCutoff = new Date(`${sinceDay}T23:59:59`).getTime()
+      const sinceCutoff = sinceDay ? parseLocalDayEnd(sinceDay) : 0
+      const untilCutoff = untilDay ? parseLocalDayEnd(untilDay) : Number.MAX_SAFE_INTEGER
       ltmmEntries
-        .filter(e => e.characterId === characterId && (e.universeId || 'global') === universeId && e.createdAt > sinceCutoff)
+        .filter(e =>
+          e.characterId === characterId
+          && (e.universeId || 'global') === universeId
+          && e.createdAt > sinceCutoff
+          && e.createdAt <= untilCutoff,
+        )
         .forEach((entry) => {
           docs.push({
             id: `ltmm:${entry.id}`,
@@ -1108,7 +1328,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   function groupByDay(docs: SourceDoc[]) {
     const groups = new Map<string, SourceDoc[]>()
     for (const doc of docs) {
-      const day = formatLocalDayKey(new Date(doc.timestamp).getTime())
+      const day = parseDocLocalDayKey(doc.timestamp)
       const group = groups.get(day) ?? []
       group.push(doc)
       groups.set(day, group)
@@ -1125,14 +1345,27 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       return
     }
 
+    // Do not collide with an active or paused interactive provisioning run
+    if (isProvisioning.value)
+      return
+
     const promise = (async () => {
+      const pendingSession = await provisioningSessionRepo.get(characterId, universeId)
+      if (pendingSession) {
+        console.info(`[memory-lifetime] Skipping incremental update for ${characterId}:${universeId} while a provisioning session is active.`)
+        return
+      }
+
       const card = cards.value.get(characterId)
       if (!card)
         return
 
-      let artifact = artifacts.value.get(characterId)
+      let artifact = getArtifact(characterId, universeId)
       if (!artifact) {
         artifact = (await lifetimeMemoryRepo.getByCharacter(characterId, universeId)) ?? undefined
+        if (artifact) {
+          setCachedArtifact(characterId, universeId, artifact)
+        }
       }
 
       // Silent no-op: a lifetime artifact is required in this universe before maintenance runs.
@@ -1141,6 +1374,8 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         return
       }
 
+      const yesterdayKey = getYesterdayLocalDayKey()
+
       // NOTICE: legacy artifacts (pre-watermark, bare-key migration) get bootstrapped forward:
       // the watermark is set to yesterday so increment never re-consumes history the
       // original full-build already covered.
@@ -1148,21 +1383,25 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       if (!watermark) {
         artifact.metadata = {
           ...artifact.metadata,
-          lastConsumedDay: getYesterdayLocalDayKey(),
+          initialConsumedDay: yesterdayKey,
+          lastConsumedDay: yesterdayKey,
         }
         artifact.updatedAt = Date.now()
         await lifetimeMemoryRepo.save(characterId, universeId, artifact)
-        artifacts.value.set(characterId, artifact)
+        setCachedArtifact(characterId, universeId, artifact)
         broadcastLifetimeSync({ characterId, universeId })
         return
       }
 
-      const docs = await collectWindowedDocs(characterId, universeId, watermark)
+      if (watermark >= yesterdayKey)
+        return
+
+      const docs = await collectWindowedDocs(characterId, universeId, watermark, yesterdayKey)
       const days = groupByDay(docs)
       if (days.length === 0)
         return
 
-      const missedDays = days.filter(([day]) => day > watermark)
+      const missedDays = days.filter(([day]) => day > watermark && day <= yesterdayKey)
       if (missedDays.length === 0)
         return
 
@@ -1170,7 +1409,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       const modelId = card.extensions?.airi?.modules?.consciousness?.model || activeModel.value
       const provider = await providersStore.getProviderInstance<ChatProvider>(providerId!)
       if (!provider || !modelId)
-        throw new Error('Counsciousness not configured')
+        throw new Error('Consciousness not configured')
 
       const targetTokens = artifact.metadata?.targetTokens ?? 1000
       // Legacy artifacts retain the structured pass-1 pack but no final pack — the pass-1 pack
@@ -1182,40 +1421,54 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
       const updateHistory = Array.isArray(artifact.metadata?.updateHistory) ? [...artifact.metadata.updateHistory!] : []
       const perDayQueue = missedDays.slice(0, MAX_CATCHUP_DAYS_PER_RUN)
 
-      error.value = null
-      isProvisioning.value = true
-      progress.value = {
-        phase: 'updating',
-        currentChunk: 0,
-        totalChunks: perDayQueue.length,
-        completedCalls: 0,
-        totalCalls: perDayQueue.length,
-        message: 'Merging new memory into the Eternal Thread...',
-      }
+      isUpdatingIncremental.value = true
+      incrementalError.value = null
 
       try {
         for (let i = 0; i < perDayQueue.length; i++) {
           const [day, dayDocs] = perDayQueue[i]!
-          progress.value.currentChunk = i + 1
-          progress.value.message = `Merging ${day} into the Eternal Thread... (${i + 1}/${perDayQueue.length})`
 
           const mergePrompt = buildIncrementalMergePrompt(card.name, day, dayDocs, currentPack, targetTokens)
-          const result = await withRetry(() => callJsonMode<DistilledPack & { changed?: unknown, change_notes?: unknown }>(
-            mergePrompt,
-            IncrementalMergeSchema,
-            provider,
-            modelId,
-            [
-              'You are integrating one new day of interactions into an existing lifetime relationship artifact.',
-              `You are reviewing day ${day} for the character "${card.name}".`,
-              '- no markdown',
-              '- do not rewrite based on system prompt fantasy',
-              '- do not over-index on this one day',
-              '- changed=false means the day was routine; re-emit the pack unmodified',
-            ],
-          ))
+          const oldBulletCount = countPackBullets(currentPack)
 
-          const changed = result.changed === true
+          const result = await withRetry(
+            async () => {
+              const res = await callJsonMode<DistilledPack & { changed?: unknown, change_notes?: unknown }>(
+                mergePrompt,
+                IncrementalMergeSchema,
+                provider,
+                modelId,
+                [
+                  'You are integrating one new completed day of interactions into an existing lifetime relationship artifact.',
+                  `You are reviewing day ${day} for the character "${card.name}".`,
+                  '- no markdown',
+                  '- do not rewrite based on system prompt fantasy',
+                  '- do not over-index on this one day',
+                  '- changed=false means the day was routine; re-emit the pack unmodified',
+                ],
+              )
+              if (res.changed === true && oldBulletCount >= 10) {
+                const candidatePack = normalizeDistilledPack(res)
+                const newBulletCount = countPackBullets(candidatePack)
+                if (newBulletCount < Math.floor(oldBulletCount * 0.7)) {
+                  throw new Error(`Incremental merge contraction guard triggered (${oldBulletCount} -> ${newBulletCount} bullets). Retrying.`)
+                }
+              }
+              return res
+            },
+            3,
+            2000,
+            msg => console.warn(`[memory-lifetime] ${msg}`),
+          )
+
+          const candidatePack: DistilledPack = {
+            ...normalizeDistilledPack(result),
+            compression_notes: currentPack.compression_notes,
+          }
+
+          // Programmatic true-diff verification: only bump version if pack content actually changed
+          const changed = result.changed === true && !arePacksContentEqual(currentPack, candidatePack)
+
           updateHistory.push({
             day,
             changed,
@@ -1224,9 +1477,10 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           })
 
           if (changed) {
-            Object.assign(currentPack, normalizeDistilledPack(result))
+            Object.assign(currentPack, candidatePack)
             artifact = {
               ...artifact,
+              universeId,
               version: (artifact.version ?? 1) + 1,
               finalPack: { ...currentPack },
               distillPass1Pack: { ...currentPack },
@@ -1237,6 +1491,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
                 ...artifact.metadata,
                 lastConsumedDay: day,
                 lastUpdateType: 'incremental',
+                mergesSinceRebase: (artifact.metadata?.mergesSinceRebase ?? 0) + 1,
                 updateHistory: updateHistory.slice(-MAX_UPDATE_HISTORY_ENTRIES),
               },
             }
@@ -1244,6 +1499,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           else {
             artifact = {
               ...artifact,
+              universeId,
               updatedAt: Date.now(),
               metadata: {
                 ...artifact.metadata,
@@ -1257,24 +1513,28 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
           // NOTICE: persist per day so a later failure never loses already-consumed progress;
           // the watermark is the recovery point.
           await lifetimeMemoryRepo.save(characterId, universeId, artifact)
-          artifacts.value.set(characterId, artifact)
+          setCachedArtifact(characterId, universeId, artifact)
           broadcastLifetimeSync({ characterId, universeId })
         }
 
-        progress.value.phase = 'success'
-        progress.value.completedCalls = perDayQueue.length
-        progress.value.message = missedDays.length > perDayQueue.length
-          ? `Catch-up continues on next run (${perDayQueue.length} of ${missedDays.length} days merged).`
-          : 'Eternal Thread is up to date.'
+        // v2 Auto-Rollup: when accumulated changed merges reach threshold and cached chunks
+        // exist, fold the evolved finalPack back into a fresh canonical baseArchive + 2-pass
+        // distillation so generational drift never compounds unbounded.
+        if (
+          (artifact.metadata?.mergesSinceRebase ?? 0) >= MAX_MERGES_BEFORE_REBASE
+          && artifact.chunkSummaries?.length
+          && !isProvisioning.value
+        ) {
+          console.info(`[memory-lifetime] Auto-rollup threshold reached (${artifact.metadata?.mergesSinceRebase} changed merges) for ${characterId}:${universeId}. Consolidating base archive...`)
+          await reprovisionFromChunks(characterId, universeId, 0, artifact.metadata?.targetTokens)
+        }
       }
       catch (err) {
         console.error('[memory-lifetime] Incremental update failed:', err)
-        error.value = err instanceof Error ? err.message : String(err)
-        progress.value.phase = 'error'
-        progress.value.message = 'Incremental lifetime merge failed.'
+        incrementalError.value = err instanceof Error ? err.message : String(err)
       }
       finally {
-        isProvisioning.value = false
+        isUpdatingIncremental.value = false
       }
     })()
 
@@ -1288,7 +1548,12 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   }
 
   async function reprovisionFromChunks(characterId: string, universeId = 'global', intervalSeconds = 0, targetTokens?: number) {
-    const artifact = artifacts.value.get(characterId)
+    let artifact = getArtifact(characterId, universeId)
+    if (!artifact) {
+      artifact = (await lifetimeMemoryRepo.getByCharacter(characterId, universeId)) ?? undefined
+      if (artifact)
+        setCachedArtifact(characterId, universeId, artifact)
+    }
     if (!artifact || !artifact.chunkSummaries?.length) {
       throw new Error('No cached chunks found for re-synthesis')
     }
@@ -1301,9 +1566,14 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     const modelId = card.extensions?.airi?.modules?.consciousness?.model || activeModel.value
     const provider = await providersStore.getProviderInstance<ChatProvider>(providerId!)
     if (!provider || !modelId)
-      throw new Error('Counsciousness not configured')
+      throw new Error('Consciousness not configured')
 
     const resolvedTarget = targetTokens ?? artifact.metadata?.targetTokens ?? 1000
+    // Fold any post-init incremental pack bullets into synthesis so re-distilling with a new
+    // token budget does not erase incremental evolution accumulated since initial provisioning.
+    const priorIncrementalPack = (artifact.version ?? 1) > 1 && artifact.finalPack
+      ? normalizeDistilledPack(artifact.finalPack)
+      : undefined
 
     isProvisioning.value = true
     error.value = null
@@ -1317,13 +1587,15 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     }
 
     try {
-      // Create a fake session for the internal pipeline
       const session: ProvisioningSession = {
         characterId,
+        universeId,
         phase: 'synthesizing',
         chunkSummaries: artifact.chunkSummaries,
         baseArchive: artifact.baseArchive,
         sourceDocCount: artifact.sourceManifest.rawTurnCount + artifact.sourceManifest.stmmBlockCount + artifact.sourceManifest.ltmmEntryCount,
+        sourceManifest: artifact.sourceManifest,
+        lastConsumedDay: artifact.metadata?.lastConsumedDay ?? artifact.metadata?.initialConsumedDay ?? getYesterdayLocalDayKey(),
         totalChunks: artifact.chunkSummaries.length,
         completedChunks: artifact.chunkSummaries.length,
         baseContent: artifact.baseContent,
@@ -1331,10 +1603,10 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         updatedAt: Date.now(),
         targetTokens: resolvedTarget,
       }
+      await provisioningSessionRepo.save(session)
       activeSession.value = session
 
-      // Use the existing provision logic but starting from synthesis
-      await provision(characterId, universeId, true, intervalSeconds, 64, resolvedTarget)
+      await provision(characterId, universeId, true, intervalSeconds, 64, resolvedTarget, priorIncrementalPack)
     }
     finally {
       isProvisioning.value = false
@@ -1342,18 +1614,22 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   }
 
   async function restart(characterId: string, universeId = 'global', contextLimitTokens = 64, targetTokens = 1000) {
-    await provisioningSessionRepo.delete(characterId)
+    await provisioningSessionRepo.delete(characterId, universeId)
     activeSession.value = null
     await provision(characterId, universeId, false, 0, contextLimitTokens, targetTokens)
   }
 
   return {
     artifacts,
+    artifactsByUniverse,
     activeSession,
     loading,
     isProvisioning,
+    isUpdatingIncremental,
     progress,
     error,
+    incrementalError,
+    getArtifact,
     loadForCharacter,
     provision,
     reprovisionFromChunks,

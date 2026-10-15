@@ -350,25 +350,34 @@ interface ShortTermMemoryBlock {
 
 | Attribute | Value |
 | :--- | :--- |
-| **Key** | `local:memory/lifetime/{characterId}` |
+| **Key** | `local:memory/lifetime/{characterId}:{universeId}` (one-way migration from bare `{characterId}`) |
 | **Repo** | `packages/stage-ui/src/database/repos/lifetime-memory.repo.ts` |
 | **Store** | `packages/stage-ui/src/stores/memory-lifetime.ts` — `useMemoryLifetimeStore` |
 | **Type** | `LifetimeMemoryArtifact` |
 | **Sync** | Full LWW |
-| **Size** | Small-Medium (~1-7 KB distilled, ~7 KB base archive) |
+| **Size** | Small-Medium (~1-12 KB distilled, ~7 KB base archive) |
 
 ```typescript
-// File: packages/stage-ui/src/database/repos/lifetime-memory.repo.ts
+// File: packages/stage-ui/src/types/lifetime-memory.ts
+
+interface LifetimeUpdateRecord {
+  day: string
+  changed: boolean
+  updatedAt: number
+  notes?: string[]
+}
 
 interface LifetimeMemoryArtifact {
   id: string
   characterId: string
+  universeId?: string
   version: number
   chunkSummaries: any[]
   baseArchive?: LifetimeArchive
   baseContent: string
   distillPass1Pack?: DistilledPack
   distilledContent: string
+  finalPack?: DistilledPack
   sourceManifest: {
     rawTurnCount: number
     stmmBlockCount: number
@@ -381,6 +390,11 @@ interface LifetimeMemoryArtifact {
     totalElapsedMs: number
     chunkCount: number
     targetTokens?: number
+    initialConsumedDay?: string
+    lastConsumedDay?: string
+    lastUpdateType?: 'init' | 'incremental' | 'reprovision'
+    mergesSinceRebase?: number
+    updateHistory?: LifetimeUpdateRecord[]
   }
 }
 
@@ -410,7 +424,7 @@ interface DistilledPack {
 
 | Attribute | Value |
 | :--- | :--- |
-| **Key** | `local:memory/provisioning-session/{characterId}` |
+| **Key** | `local:memory/provisioning-session/{characterId}:{universeId}` (migrates bare `{characterId}`) |
 | **Repo** | `packages/stage-ui/src/database/repos/provisioning-session.repo.ts` |
 | **Store** | `useMemoryLifetimeStore` (intermediate state) |
 | **Type** | `ProvisioningSession` |
@@ -420,12 +434,19 @@ interface DistilledPack {
 ```typescript
 interface ProvisioningSession {
   characterId: string
+  universeId?: string
   phase: 'idle' | 'aggregating' | 'chunking' | 'synthesizing' | 'distill_pass_1' | 'distill_pass_2' | 'success'
   chunkSummaries: any[]
-  baseArchive?: any
+  baseArchive?: Record<string, any>
   baseContent?: string
-  distillPass1Pack?: any
+  distillPass1Pack?: Record<string, any>
   sourceDocCount: number
+  sourceManifest?: {
+    rawTurnCount: number
+    stmmBlockCount: number
+    ltmmEntryCount: number
+  }
+  lastConsumedDay?: string
   totalChunks: number
   completedChunks: number
   updatedAt: number
@@ -1344,10 +1365,10 @@ characterId
 
 ```
 characterId
-  → local:memory/lifetime/{characterId}   (keyed by characterId)
+  → local:memory/lifetime/{characterId}:{universeId}   (keyed by character + universe)
 ```
 
-**Lookup:** Direct key access — the key itself is the characterId.
+**Lookup:** Direct key access — the key itself is `{characterId}:{universeId}` (default universe `'global'`).
 
 ### 8.5 Character → Display Model
 

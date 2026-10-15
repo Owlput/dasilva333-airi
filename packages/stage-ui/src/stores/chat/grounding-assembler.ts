@@ -234,13 +234,19 @@ export function buildGroundingMessages(blocks: readonly (GroundingBlock | null |
   return result
 }
 
+const LIFETIME_BLOCK_HEADER = '[LIFETIME RELATIONSHIP ARTIFACT]'
+const MAX_LIFETIME_BLOCK_CHARS = 13000
+
 /**
  * Bounds grounding messages to prevent memory compressor and swap death from unbounded managed strings.
  * Applies individual block truncation limits and enforces a global character budget.
+ * NOTICE: the lifetime artifact block is exempt from the standard per-block cap —
+ * a 1,000-token (Recommended) or 3,000-token (Detailed) distilled pack would otherwise
+ * lose its trailing sections (Meaningful Old Moments, Inside Jokes) on every turn.
  */
 export function budgetGroundingMessages(
   messages: readonly GroundingMessage[],
-  maxTotalChars = 7000,
+  maxTotalChars = 14000,
   maxPerBlockChars = 2500,
 ): GroundingMessage[] {
   let remainingBudget = maxTotalChars
@@ -251,8 +257,12 @@ export function budgetGroundingMessages(
       break
 
     let content = msg.content
-    if (content.length > maxPerBlockChars) {
-      content = `${content.slice(0, maxPerBlockChars)}\n[...truncated to fit budget]`
+    const blockCap = content.startsWith(LIFETIME_BLOCK_HEADER)
+      ? MAX_LIFETIME_BLOCK_CHARS
+      : maxPerBlockChars
+
+    if (content.length > blockCap) {
+      content = `${content.slice(0, blockCap)}\n[...truncated to fit budget]`
     }
 
     if (content.length > remainingBudget) {

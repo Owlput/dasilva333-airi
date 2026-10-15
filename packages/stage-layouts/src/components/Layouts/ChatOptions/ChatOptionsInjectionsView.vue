@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { LifetimeProvisioningModal } from '@proj-airi/stage-ui/components'
+import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useMemoryLifetimeStore } from '@proj-airi/stage-ui/stores/memory-lifetime'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
@@ -7,14 +8,25 @@ import { computed, ref, watch } from 'vue'
 
 const airiCardStore = useAiriCardStore()
 const memoryLifetimeStore = useMemoryLifetimeStore()
+const chatSessionStore = useChatSessionStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
 const showLifetimeModal = ref(false)
 
+// NOTICE: mirrors LifetimeMemoryView.vue so the chat drawer resolves the same
+// per-universe artifact as the settings UI instead of always reading 'global'.
+const activeUniverseId = computed(() => {
+  if (!activeCardId.value)
+    return 'global'
+  const activeSessionId = chatSessionStore.getCharacterIndex(activeCardId.value)?.activeSessionId || chatSessionStore.activeSessionId
+  const activeSessionMeta = chatSessionStore.getSessionMeta(activeSessionId)
+  return activeSessionMeta?.universeId || 'global'
+})
+
 const hasLifetimeArtifact = computed(() => {
   if (!activeCardId.value)
     return false
-  return Boolean(memoryLifetimeStore.artifacts.get(activeCardId.value)?.distilledContent?.trim())
+  return Boolean(memoryLifetimeStore.getArtifact(activeCardId.value, activeUniverseId.value)?.distilledContent?.trim())
 })
 
 const isLifetimeMemoryEnabled = computed(() => {
@@ -38,9 +50,9 @@ function handleOpenLifetimeSettings(e: MouseEvent) {
   showLifetimeModal.value = true
 }
 
-watch(activeCardId, (id) => {
+watch([activeCardId, activeUniverseId], ([id, universeId]) => {
   if (id) {
-    void memoryLifetimeStore.loadForCharacter(id, 'global')
+    void memoryLifetimeStore.loadForCharacter(id, universeId)
   }
 }, { immediate: true })
 
@@ -465,7 +477,7 @@ function handleToggleArtistryIntrusion() {
       v-if="activeCardId"
       v-model:open="showLifetimeModal"
       :character-id="activeCardId"
-      universe-id="global"
+      :universe-id="activeUniverseId"
     />
   </div>
 </template>

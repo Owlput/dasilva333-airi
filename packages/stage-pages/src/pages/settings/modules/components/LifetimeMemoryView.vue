@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
 const airiCardStore = useAiriCardStore()
 const { activeCardId, cards } = storeToRefs(airiCardStore)
 const lifetimeStore = useMemoryLifetimeStore()
-const { artifacts, isProvisioning } = storeToRefs(lifetimeStore)
+const { isProvisioning } = storeToRefs(lifetimeStore)
 const chatSessionStore = useChatSessionStore()
 
 // --- Local State ---
@@ -37,7 +37,7 @@ const lastSyncError = ref<string | null>(null)
 const activeCharacterArtifact = computed(() => {
   if (!activeCardId.value)
     return null
-  return artifacts.value.get(activeCardId.value) || null
+  return lifetimeStore.getArtifact(activeCardId.value, activeUniverseId.value) || null
 })
 
 const isProvisioned = computed(() => !!activeCharacterArtifact.value)
@@ -101,9 +101,9 @@ async function syncLifetimeThread() {
     await loadData()
     const afterWatermark = activeCharacterArtifact.value?.metadata?.lastConsumedDay
 
-    if (lifetimeStore.error) {
+    if (lifetimeStore.error || lifetimeStore.incrementalError) {
       lastSyncResult.value = 'error'
-      lastSyncError.value = lifetimeStore.error
+      lastSyncError.value = lifetimeStore.error || lifetimeStore.incrementalError
     }
     else if (afterWatermark === beforeWatermark) {
       lastSyncResult.value = 'up-to-date'
@@ -338,7 +338,7 @@ onMounted(() => loadData())
               class="flex items-center gap-1.5 rounded-full bg-red-500/10 px-3 py-1 text-xs text-red-700 font-bold dark:text-red-400"
             >
               <div class="i-solar:danger-triangle-bold-duotone" />
-              Sync failed: {{ lastSyncError || lifetimeStore.error || 'Unknown error' }}
+              Sync failed: {{ lastSyncError || lifetimeStore.error || lifetimeStore.incrementalError || 'Unknown error' }}
             </span>
           </div>
         </div>

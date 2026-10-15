@@ -3,6 +3,7 @@ import type { GroundingBlock } from './grounding-assembler'
 import { describe, expect, it } from 'vitest'
 
 import {
+  budgetGroundingMessages,
   buildGroundingMessages,
   formatDirectorScratchpadBlock,
   formatEnvironmentalBlock,
@@ -261,6 +262,47 @@ describe('grounding-assembler pure formatters', () => {
     it('returns empty array when given empty or all-null list', () => {
       expect(buildGroundingMessages([])).toEqual([])
       expect(buildGroundingMessages([null, undefined, null])).toEqual([])
+    })
+  })
+
+  // ROOT CAUSE:
+  // budgetGroundingMessages() capped every block at 2,500 chars (~625 tokens),
+  // so Recommended (1,000-token) and Detailed (3,000-token) lifetime artifacts
+  // lost their trailing sections (Meaningful Old Moments, Inside Jokes) on
+  // every turn. The lifetime block is now exempt up to 13,000 chars.
+  describe('budgetGroundingMessages lifetime exemption (F1A)', () => {
+    it('truncates a standard block at 2,500 chars', () => {
+      const content = `[GROUNDED LONG-TERM MEMORIES]\n${'x'.repeat(4000)}`
+      const [result] = budgetGroundingMessages([{ role: 'system', content }])
+      expect(result.content.length).toBeLessThan(content.length)
+      expect(result.content).toContain('[...truncated to fit budget]')
+      expect(result.content.length).toBeLessThanOrEqual(2500 + 50)
+    })
+
+    it('passes a 10,500-char lifetime artifact through completely intact', () => {
+      const tail = '## Meaningful Old Moments\n- stargazing\n\n## Inside Jokes Or Motifs\n- rubber duck'
+      const content = `[LIFETIME RELATIONSHIP ARTIFACT]\n${'y'.repeat(10500 - tail.length - 50)}\n${tail}`
+      expect(content.length).toBeGreaterThan(10000)
+      const [result] = budgetGroundingMessages([{ role: 'system', content }])
+      expect(result.content).toBe(content)
+      expect(result.content).toContain('## Meaningful Old Moments')
+      expect(result.content).toContain('## Inside Jokes Or Motifs')
+      expect(result.content).not.toContain('truncated')
+    })
+
+    it('bounds the combined array at maxTotalChars = 14000', () => {
+      const lifetime = `[LIFETIME RELATIONSHIP ARTIFACT]\n${'a'.repeat(12900)}`
+      const rag = `[GROUNDED LONG-TERM MEMORIES]\n${'b'.repeat(2400)}`
+      const env = `[ENVIRONMENTAL AWARENESS]\n${'c'.repeat(2400)}`
+      const results = budgetGroundingMessages([
+        { role: 'system', content: lifetime },
+        { role: 'system', content: rag },
+        { role: 'system', content: env },
+      ])
+      const total = results.reduce((sum, m) => sum + m.content.length, 0)
+      expect(total).toBeLessThanOrEqual(14000 + 100)
+      // Lifetime block is first and stable: it must survive intact.
+      expect(results[0].content).toBe(lifetime)
     })
   })
 })
