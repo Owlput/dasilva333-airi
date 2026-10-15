@@ -33,6 +33,7 @@ Paths are repository-relative. Read the relevant implementation before changing 
 | Speech Runtime Store | `packages/stage-ui/src/stores/modules/speech.ts` — `useSpeechStore`, `availableVoices`, `savedVoiceProfiles` |
 | Arcade Agent Co-Pilot | `packages/stage-ui/src/composables/arcade/use-arcade-agent.ts` & `packages/stage-ui/src/pages/chat_arcade.vue` |
 | Virtual Workstation CLI & Shims | `packages/stage-ui/src/libs/sandbox/jev.ts` — `jev` CLI, `require('jev')`, native MCP tools. See [airi-sandbox-virtual-workstation](../airi-sandbox-virtual-workstation/SKILL.md) |
+| Lifetime Artifact Curation (Pillar 5) | `packages/stage-ui/src/stores/memory-lifetime.ts` — `applyIncrementalUpdate()`, `applySurgicalSectionLock()`, `buildDayTranscriptWithWinnow()`; `packages/stage-ui/src/stores/modules/system-one.ts` — `JEV_LIFETIME_DAY_GATE_SCHEMA`, `runLifetimeDayGate()`, `runWinnowTurnCompaction()`; design in `docs/design-jev-powered-eternal-thread.md` |
 | Widget Iframe MCP Dispatcher | `packages/stage-ui/src/libs/sandbox/mcp-bridge.ts` — `executeUniversalMcpTool()`, `handleWidgetMcpMessage()`. See [airi-generative-widgets](../airi-generative-widgets/SKILL.md) |
 | Canonical Architecture RFC | `docs/proposal-jev-integration.md` — Complete multi-domain specification and shootout traces |
 
@@ -142,9 +143,24 @@ export async function autoMatchCharacterVoiceWithJev(character: CharacterItem) {
 }
 ```
 
+### 3. Lifetime Artifact Curation — Day-Gate, Surgical Lock & Winnow (Pillar 5)
+In `packages/stage-ui/src/stores/memory-lifetime.ts`, `applyIncrementalUpdate()` routes every completed day through System 1 before spending System-2 tokens. Why: System 2 is biased toward inventing tweaks on routine days and drifts phrasing when re-emitting ~45 bullets to add one — Jev decides *whether* and *where* change happened in ~120ms, System 2 only writes unlocked prose.
+```typescript
+import { useSystemOneStore } from './modules/system-one'
+
+const gate = await systemOneStore.runLifetimeDayGate({ characterName, day, currentPack, transcript })
+// gate.triggeredSections: LifetimePackSection[]; gate.shouldInvokeSystem2: boolean
+```
+- Schemas live in `packages/stage-ui/src/stores/modules/system-one.ts`: `JEV_LIFETIME_DAY_GATE_SCHEMA` (6 parallel `choice` heads, one per `DistilledPack` section, over distractor basins in `JEV_LIFETIME_SECTION_CRITERIA`) and `JEV_WINNOW_TURN_CRITERIA` (`choice` + `score` over 4-turn exchange windows). Verdict math is pure in `evaluateLifetimeDayGateAnswers()` (0.60 conviction floor: top-choice conviction or summed `durable_new_addition` + `updates_existing_bullet` probability) — unit-test it without a provider.
+- Fast-exit: `shouldInvokeSystem2 === false` → advance `lastConsumedDay`, record `changed: false`, zero LLM calls. If the gate throws (jitter/rate-limit/malformed), fall back to the full System-2 merge — never fail the day.
+- Surgical lock: pass `gate.triggeredSections` into the `callJsonMode` system extras (`SYSTEM-1 AUDIT LOCK`) AND through `applySurgicalSectionLock(currentPack, candidate, unlocked)` (`memory-lifetime.ts`), which freezes un-triggered sections byte-identical even when System 2 rewrites them; the `<70%` contraction guard and true-diff check then measure the *locked* candidate.
+- Winnow: `buildDayTranscriptWithWinnow()` compacts >24k-char days via `runWinnowTurnCompaction()` (prunes `routine_chitchat_or_filler` below 0.40 retention, 8-window batches for Laya buffer limits), falling back to the 40%/60% head/tail slice when every window is filler or on error; LTMM journal entries are always preserved in full.
+- Invariants: gate only when `systemOneStore.configured` (default-off keeps the hardened System-2 baseline — and its test suite — exercising the real path); keep System-2 provider resolution eager so a broken `consciousness` config fails fast via `incrementalError` instead of silently sealing watermarks on fast-exit days.
+- Verify: `pnpm -F @proj-airi/stage-ui typecheck`; vitest `memory-lifetime.test.ts` (gate/lock pure tests) + `memory-lifetime.incremental.test.ts` (fast-exit, surgical-lock, gate-throw fallback).
+
 ## Source versus proposal
 
-Read `docs/proposal-jev-integration.md` for architecture RFC, OpenRouter alpha endpoints, and full 43-case cleanroom shootouts. Read `docs/design-subconscious-system1-inference-providers.md` for LoCoMo memory benchmarking. The proposal documents experimental and planned subsystem avenues; `packages/stage-ui/src/stores/modules/system-one.ts` contains the working, production-tested Pinia implementation.
+Read `docs/proposal-jev-integration.md` for architecture RFC, OpenRouter alpha endpoints, and full 43-case cleanroom shootouts. Read `docs/design-subconscious-system1-inference-providers.md` for LoCoMo memory benchmarking. Read `docs/design-jev-powered-eternal-thread.md` for the Pillar 5 day-gate / surgical-lock / Winnow architecture. The proposal documents experimental and planned subsystem avenues; `packages/stage-ui/src/stores/modules/system-one.ts` contains the working, production-tested Pinia implementation.
 
 ## Verification
 
