@@ -55,6 +55,13 @@ export interface GimmickIntimacy {
   display: number
 }
 
+export interface GimmickHitArea {
+  name: string
+  id?: string
+  motion?: string
+  enabled: boolean
+}
+
 export interface Live2dCapabilities {
   hasDsl: boolean
   costumes: GimmickCostume[]
@@ -62,6 +69,7 @@ export interface Live2dCapabilities {
   parts: GimmickPartController[]
   choices: GimmickChoiceTree[]
   reactions: GimmickReaction[]
+  hitAreas: GimmickHitArea[]
   commands: string[]
   intimacy: GimmickIntimacy
 }
@@ -147,12 +155,12 @@ export function introspectCapabilities(
         }
       }
 
-      // Check Cutscenes / Voiced Reactions (Text + Sound or Motion Reaction)
-      if (entry.Text && (entry.Sound || entry.NextMtn || entry.Expression)) {
+      // Check Cutscenes / Voiced Reactions (Text + Sound/Motion, or sound-only voice lines)
+      if (entry.Sound || (entry.Text && (entry.NextMtn || entry.Expression))) {
         reactionsList.push({
           group: groupName,
           index: i,
-          text: String(entry.Text),
+          text: entry.Text ? String(entry.Text) : groupName,
           sound: entry.Sound,
           expression: entry.Expression,
           nextMtn: entry.NextMtn,
@@ -166,7 +174,26 @@ export function introspectCapabilities(
     }
   }
 
-  // 2. Scan manifest Controllers / ParamValue if provided
+  // 2. Scan manifest HitAreas (tactile zones + menu routing) if provided
+  const hitAreasList: GimmickHitArea[] = []
+  if (rawSettings) {
+    const rawHitAreas = rawSettings.HitAreas || rawSettings.hitAreas
+    if (Array.isArray(rawHitAreas)) {
+      for (const h of rawHitAreas) {
+        const name = h?.Name ?? h?.name
+        if (typeof name === 'string' && name) {
+          hitAreasList.push({
+            name,
+            id: h?.Id ?? h?.id,
+            motion: h?.Motion ?? h?.motion,
+            enabled: (h?.Enabled ?? h?.enabled) !== false,
+          })
+        }
+      }
+    }
+  }
+
+  // 3. Scan manifest Controllers / ParamValue if provided
   if (rawSettings) {
     const controllers = rawSettings.Controllers || rawSettings.controllers
     const paramValue = controllers?.ParamValue || controllers?.paramValue || rawSettings.ParamValue
@@ -202,6 +229,7 @@ export function introspectCapabilities(
     || partsMap.size > 0
     || choicesList.length > 0
     || reactionsList.length > 0
+    || hitAreasList.length > 0
     || commandsSet.size > 0
     || hasIntimacy
 
@@ -212,6 +240,7 @@ export function introspectCapabilities(
     parts: Array.from(partsMap.values()),
     choices: choicesList,
     reactions: reactionsList,
+    hitAreas: hitAreasList,
     commands: Array.from(commandsSet),
     intimacy: {
       hasIntimacy,

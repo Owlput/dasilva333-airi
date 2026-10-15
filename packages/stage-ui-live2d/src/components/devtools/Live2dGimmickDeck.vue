@@ -107,6 +107,13 @@ function handleReactionTrigger(reaction: any) {
   showToast('Reaction Triggered', `"${resolve(reaction.text).main}"`)
 }
 
+function handleHitAreaTrigger(area: { name: string, motion?: string }) {
+  if (props.model?.dispatchDsl) {
+    props.model.dispatchDsl(area.motion || area.name)
+  }
+  showToast('Hit Area Triggered', `"${resolve(area.motion || area.name).main}"`)
+}
+
 // Translate all strings currently discovered on this model
 async function handleTranslateAll() {
   const stringsToTranslate: string[] = []
@@ -129,6 +136,12 @@ async function handleTranslateAll() {
   for (const s of capabilities.value.switches) {
     if (s.name)
       stringsToTranslate.push(s.name)
+  }
+  for (const h of capabilities.value.hitAreas) {
+    if (h.name)
+      stringsToTranslate.push(h.name)
+    if (h.motion && h.motion !== h.name)
+      stringsToTranslate.push(h.motion)
   }
 
   const count = await translateMissing(stringsToTranslate)
@@ -340,6 +353,50 @@ async function handleTranslateAll() {
               </span>
             </button>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tactile Hit Areas -->
+    <section v-if="capabilities.hitAreas.length" class="border border-neutral-800 rounded-lg bg-neutral-900/50 p-3">
+      <div class="mb-2 flex items-center justify-between text-orange-400">
+        <h4 class="flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+          <span>👆</span>
+          <span>Tactile Zones ({{ capabilities.hitAreas.length }})</span>
+        </h4>
+        <span class="text-[9px] text-neutral-500 font-mono">HitAreas</span>
+      </div>
+      <div class="max-h-64 overflow-y-auto pr-1 divide-y divide-neutral-800/60">
+        <div
+          v-for="(area, aIdx) in capabilities.hitAreas"
+          :key="aIdx"
+          class="flex items-center justify-between gap-2 py-2"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 text-xs text-neutral-100 font-medium leading-snug">
+              <span
+                :class="[
+                  'inline-block w-1.5 h-1.5 rounded-full shrink-0',
+                  area.enabled ? 'bg-emerald-400' : 'bg-neutral-600',
+                ]"
+                :title="area.enabled ? 'Enabled by default' : 'Disabled by default'"
+              />
+              <span>{{ resolve(area.name).main }}</span>
+            </div>
+            <div v-if="resolve(area.name).sub" class="text-[10px] text-neutral-500 leading-snug">
+              ({{ resolve(area.name).sub }})
+            </div>
+            <div class="truncate text-[9px] text-neutral-500 font-mono">
+              {{ area.id }}{{ area.motion && area.motion !== area.name ? ` ➔ ${area.motion}` : '' }}{{ area.enabled ? '' : ' · off by default' }}
+            </div>
+          </div>
+          <button
+            class="flex items-center gap-1 border border-orange-500/40 rounded bg-orange-500/15 px-2.5 py-1 text-xs text-orange-200 font-semibold hover:bg-orange-500/30"
+            @click="handleHitAreaTrigger(area)"
+          >
+            <div class="i-solar:play-bold text-[10px]" />
+            <span>Trigger</span>
+          </button>
         </div>
       </div>
     </section>

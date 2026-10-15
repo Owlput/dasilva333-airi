@@ -108,6 +108,7 @@ const live2dCaps = computed<Live2dCapabilities>(() => {
       parts: [],
       choices: [],
       reactions: [],
+      hitAreas: [],
       commands: [],
       intimacy: {
         hasIntimacy: false,
@@ -123,7 +124,7 @@ const hasAdvancedGimmicks = computed(() => {
   if (modelType.value !== 'live2d')
     return false
   const c = live2dCaps.value
-  return c.switches.length > 0 || c.choices.length > 0 || c.reactions.length > 0 || c.parts.length > 0 || c.intimacy.hasIntimacy
+  return c.switches.length > 0 || c.choices.length > 0 || c.reactions.length > 0 || c.parts.length > 0 || c.hitAreas.length > 0 || c.intimacy.hasIntimacy
 })
 
 const activeSwitchStates = ref<Record<string, boolean>>({})
