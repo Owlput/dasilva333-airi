@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { ansiToHtml } from '@proj-airi/stage-ui/libs/sandbox'
+import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useElementSize } from '@vueuse/core'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
+
+import starterCustomTerminalIcon from '../../../assets/widgets/starter-custom-terminal.avif'
 
 const props = withDefaults(defineProps<{
   fillContainer?: boolean
@@ -19,6 +23,19 @@ const {
   readFile,
   reset,
 } = useSandbox()
+
+const sessionStore = useChatSessionStore()
+const activeSessionId = computed(() => sessionStore.activeSessionId)
+
+// Filter command history to the active chat session so fresh chats start clean
+const activeCommandHistory = computed(() => {
+  const currentId = activeSessionId.value
+  if (!currentId)
+    return commandHistory.value
+  return commandHistory.value.filter(
+    entry => entry.sessionId === currentId,
+  )
+})
 
 const panelRootRef = ref<HTMLElement | null>(null)
 const { width: panelWidth } = useElementSize(panelRootRef)
@@ -41,7 +58,7 @@ const terminalScrollRef = ref<HTMLDivElement | null>(null)
 
 // Auto-scroll terminal on new commands
 watch(
-  () => commandHistory.value.length,
+  () => activeCommandHistory.value.length,
   async () => {
     await nextTick()
     if (terminalScrollRef.value) {
@@ -167,6 +184,120 @@ async function loadState(key: 'telemetry' | 'session' | 'cognition' | 'messages'
   }
   finally {
     isLoadingState.value = false
+  }
+}
+
+// --- Clipboard Copy Helpers ---
+const copiedTerminal = ref(false)
+let copyTerminalTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopyTerminalLogs() {
+  const logsToCopy = activeCommandHistory.value
+  if (logsToCopy.length === 0) {
+    toast.info('No terminal logs to copy yet')
+    return
+  }
+
+  // Strip ANSI color escape codes for clean clipboard text
+  const stripAnsi = (str: string) => str.replace(/\u001B\[[0-9;]*[a-z]/gi, '')
+
+  const formattedLogs = logsToCopy
+    .map((entry) => {
+      const parts = [`$ ${entry.command}`]
+      if (entry.stdout)
+        parts.push(stripAnsi(entry.stdout))
+      if (entry.stderr)
+        parts.push(`[STDERR]\n${stripAnsi(entry.stderr)}`)
+      if (entry.exitCode !== 0)
+        parts.push(`[Exit code: ${entry.exitCode}]`)
+      return parts.join('\n')
+    })
+    .join('\n\n')
+
+  try {
+    await navigator.clipboard.writeText(formattedLogs)
+    copiedTerminal.value = true
+    toast.success('Terminal logs copied to clipboard!')
+    if (copyTerminalTimeout)
+      clearTimeout(copyTerminalTimeout)
+    copyTerminalTimeout = setTimeout(() => {
+      copiedTerminal.value = false
+    }, 2000)
+  }
+  catch (err: any) {
+    toast.error(`Failed to copy terminal logs: ${err.message}`)
+  }
+}
+
+const copiedEntryId = ref<string | null>(null)
+let copyEntryTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopySingleEntry(entry: any) {
+  const stripAnsi = (str: string) => str.replace(/\u001B\[[0-9;]*[a-z]/gi, '')
+  const parts = [`$ ${entry.command}`]
+  if (entry.stdout)
+    parts.push(stripAnsi(entry.stdout))
+  if (entry.stderr)
+    parts.push(`[STDERR]\n${stripAnsi(entry.stderr)}`)
+  if (entry.exitCode !== 0)
+    parts.push(`[Exit code: ${entry.exitCode}]`)
+
+  try {
+    await navigator.clipboard.writeText(parts.join('\n'))
+    copiedEntryId.value = entry.id
+    toast.success('Command output copied to clipboard!')
+    if (copyEntryTimeout)
+      clearTimeout(copyEntryTimeout)
+    copyEntryTimeout = setTimeout(() => {
+      copiedEntryId.value = null
+    }, 2000)
+  }
+  catch (err: any) {
+    toast.error(`Failed to copy command: ${err.message}`)
+  }
+}
+
+const copiedState = ref(false)
+let copyStateTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopyState() {
+  if (!stateData.value || isLoadingState.value)
+    return
+
+  try {
+    await navigator.clipboard.writeText(stateData.value)
+    copiedState.value = true
+    toast.success(`Copied ${selectedStateKey.value}.json to clipboard!`)
+    if (copyStateTimeout)
+      clearTimeout(copyStateTimeout)
+    copyStateTimeout = setTimeout(() => {
+      copiedState.value = false
+    }, 2000)
+  }
+  catch (err: any) {
+    toast.error(`Failed to copy state: ${err.message}`)
+  }
+}
+
+const copiedFile = ref(false)
+let copyFileTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopyFile() {
+  if (!selectedFileContent.value || isLoadingFile.value)
+    return
+
+  try {
+    await navigator.clipboard.writeText(selectedFileContent.value)
+    copiedFile.value = true
+    toast.success('File contents copied to clipboard!')
+    if (copyFileTimeout)
+      clearTimeout(copyFileTimeout)
+    copyFileTimeout = setTimeout(() => {
+      copiedFile.value = false
+    }, 2000)
+  }
+  catch (err: any) {
+    toast.error(`Failed to copy file contents: ${err.message}`)
   }
 }
 
@@ -328,11 +459,15 @@ onMounted(async () => {
             <!-- Left Squircle Icon Tile -->
             <div
               :class="[
-                'size-10 rounded-xl flex items-center justify-center shrink-0 font-mono font-bold text-sm',
+                'size-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-1',
                 'bg-primary-500/15 text-primary-500 dark:text-primary-400 border border-primary-500/20',
               ]"
             >
-              &gt;_
+              <img
+                :src="starterCustomTerminalIcon"
+                alt="Terminal Icon"
+                class="size-6 object-contain"
+              >
             </div>
 
             <!-- Center Info Column -->
@@ -351,28 +486,33 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- Right Status Badge -->
-          <div
+          <!-- Right Action: Copy Terminal Logs Button (Swapped out Ready tag) -->
+          <button
+            type="button"
+            :disabled="activeCommandHistory.length === 0"
+            :title="copiedTerminal ? 'Copied terminal logs!' : (activeCommandHistory.length === 0 ? 'No logs to copy yet' : 'Copy terminal input & output')"
             :class="[
-              'flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium shrink-0',
-              isExecuting
-                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+              'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium shrink-0 transition-all select-none cursor-pointer',
+              copiedTerminal
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs'
+                : activeCommandHistory.length === 0
+                  ? 'opacity-40 cursor-not-allowed bg-neutral-100 dark:bg-neutral-800 text-neutral-400 border border-neutral-200/50 dark:border-neutral-700/50'
+                  : 'bg-neutral-100/90 hover:bg-neutral-200/80 text-neutral-600 dark:bg-neutral-800/80 dark:hover:bg-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700/60 active:scale-95 shadow-2xs',
             ]"
+            @click="handleCopyTerminalLogs"
           >
             <span
-              :class="[
-                'size-1.5 rounded-full shrink-0',
-                isExecuting ? 'bg-amber-500 animate-ping' : 'bg-emerald-500',
-              ]"
+              :class="copiedTerminal
+                ? 'i-solar:clipboard-check-linear text-xs text-emerald-600 dark:text-emerald-400'
+                : 'i-solar:copy-linear text-xs'"
             />
-            <span>{{ isExecuting ? 'Running' : 'Ready' }}</span>
-          </div>
+            <span>{{ copiedTerminal ? 'Copied' : 'Copy' }}</span>
+          </button>
         </div>
 
         <!-- Empty State -->
         <div
-          v-if="commandHistory.length === 0"
+          v-if="activeCommandHistory.length === 0"
           class="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-neutral-400 dark:text-neutral-500"
         >
           <span class="i-solar:terminal-linear text-3xl text-primary-500 opacity-40" />
@@ -384,7 +524,7 @@ onMounted(async () => {
 
         <!-- Command Execution Entries (Frosted Bubble Cards) -->
         <div
-          v-for="entry in commandHistory"
+          v-for="entry in activeCommandHistory"
           :key="entry.id"
           :class="[
             'rounded-2xl p-3.5 border shadow-xs transition-all space-y-2',
@@ -416,6 +556,20 @@ onMounted(async () => {
               >
                 {{ isMinimal ? (entry.exitCode === 0 ? '✓' : `!${entry.exitCode}`) : `exit ${entry.exitCode}` }}
               </span>
+
+              <!-- Copy Single Command Button -->
+              <button
+                type="button"
+                :title="copiedEntryId === entry.id ? 'Copied command output!' : 'Copy command output'"
+                class="flex cursor-pointer items-center rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                @click="handleCopySingleEntry(entry)"
+              >
+                <span
+                  :class="copiedEntryId === entry.id
+                    ? 'i-solar:clipboard-check-linear text-xs text-emerald-600 dark:text-emerald-400'
+                    : 'i-solar:copy-linear text-xs'"
+                />
+              </button>
             </div>
           </div>
 
@@ -510,13 +664,30 @@ onMounted(async () => {
             <span class="i-solar:file-text-bold shrink-0 text-primary-500" />
             <span class="truncate">{{ selectedFile }}</span>
           </div>
-          <button
-            type="button"
-            class="shrink-0 cursor-pointer rounded-lg px-2 py-0.5 text-[10px] text-neutral-500 font-bold transition-colors hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-white"
-            @click="closeFileViewer"
-          >
-            ✕ Close
-          </button>
+          <div class="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              :disabled="!selectedFileContent || isLoadingFile"
+              :title="copiedFile ? 'Copied file contents!' : 'Copy file contents'"
+              :class="[
+                'flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold font-mono transition-all cursor-pointer select-none',
+                copiedFile
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800',
+              ]"
+              @click="handleCopyFile"
+            >
+              <span :class="copiedFile ? 'i-solar:clipboard-check-linear text-xs text-emerald-600 dark:text-emerald-400' : 'i-solar:copy-linear text-xs'" />
+              <span>{{ copiedFile ? 'Copied' : 'Copy' }}</span>
+            </button>
+            <button
+              type="button"
+              class="shrink-0 cursor-pointer rounded-lg px-2 py-0.5 text-[10px] text-neutral-500 font-bold transition-colors hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-white"
+              @click="closeFileViewer"
+            >
+              ✕ Close
+            </button>
+          </div>
         </div>
         <div class="flex-1 overflow-auto bg-white/40 p-3 text-[11px] text-neutral-700 leading-relaxed font-mono dark:bg-black/20 selection:bg-primary-500/20 dark:text-neutral-200">
           <pre class="whitespace-pre-wrap break-all">{{ selectedFileContent }}</pre>
@@ -560,22 +731,46 @@ onMounted(async () => {
         props.fillContainer ? 'flex-1 min-h-0 bg-transparent' : 'h-[400px] bg-neutral-50/50 dark:bg-neutral-950/60',
       ]"
     >
-      <!-- State Selector Badges -->
-      <div class="flex flex-wrap items-center gap-1.5 border-b border-neutral-100 bg-white/60 px-3 py-2 backdrop-blur-sm dark:border-white/5 dark:bg-neutral-900/60">
+      <!-- State Selector Badges & Copy Action -->
+      <div class="flex items-center justify-between gap-1.5 border-b border-neutral-100 bg-white/60 px-3 py-2 backdrop-blur-sm dark:border-white/5 dark:bg-neutral-900/60">
+        <div class="min-w-0 flex flex-wrap items-center gap-1.5">
+          <button
+            v-for="item in (['telemetry', 'session', 'cognition', 'messages'] as const)"
+            :key="item"
+            type="button"
+            :title="`/workspace/.airi/${item}.json`"
+            :class="[
+              'px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase font-mono transition-colors cursor-pointer select-none',
+              selectedStateKey === item
+                ? 'bg-primary-500/15 text-primary-600 dark:text-primary-400 border border-primary-500/30 shadow-2xs'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            ]"
+            @click="loadState(item)"
+          >
+            {{ item }}
+          </button>
+        </div>
+
         <button
-          v-for="item in (['telemetry', 'session', 'cognition', 'messages'] as const)"
-          :key="item"
           type="button"
-          :title="`/workspace/.airi/${item}.json`"
+          :disabled="!stateData || isLoadingState"
+          :title="copiedState ? 'Copied state JSON!' : `Copy /workspace/.airi/${selectedStateKey}.json`"
           :class="[
-            'px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase font-mono transition-colors cursor-pointer select-none',
-            selectedStateKey === item
-              ? 'bg-primary-500/15 text-primary-600 dark:text-primary-400 border border-primary-500/30 shadow-2xs'
-              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800/60',
+            'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-bold font-mono transition-all cursor-pointer select-none shrink-0',
+            copiedState
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs'
+              : (!stateData || isLoadingState)
+                ? 'opacity-40 cursor-not-allowed text-neutral-400'
+                : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100/80 hover:bg-neutral-200/70 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 border border-neutral-200/50 dark:border-neutral-700/50 active:scale-95 shadow-2xs',
           ]"
-          @click="loadState(item)"
+          @click="handleCopyState"
         >
-          {{ item }}
+          <span
+            :class="copiedState
+              ? 'i-solar:clipboard-check-linear text-xs text-emerald-600 dark:text-emerald-400'
+              : 'i-solar:copy-linear text-xs'"
+          />
+          <span>{{ copiedState ? 'Copied' : 'Copy' }}</span>
         </button>
       </div>
 

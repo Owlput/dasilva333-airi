@@ -12,6 +12,7 @@ export interface CommandLogEntry {
   exitCode: number
   durationMs: number
   timestamp: number
+  sessionId?: string
 }
 
 export interface VirtualFileEntry {

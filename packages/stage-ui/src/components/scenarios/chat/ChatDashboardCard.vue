@@ -2,6 +2,7 @@
 defineProps<{
   title: string
   icon?: string
+  image?: string
   iconColorClass?: string
   badge?: string | number
   collapsed?: boolean
@@ -26,8 +27,13 @@ const emit = defineEmits<{
     >
       <!-- Title & Icon -->
       <div class="flex items-center gap-2">
+        <img
+          v-if="image"
+          :src="image"
+          class="size-4 shrink-0 rounded object-contain"
+        >
         <div
-          v-if="icon"
+          v-else-if="icon"
           :class="[icon, iconColorClass || 'text-primary-500 dark:text-primary-400', 'text-base shrink-0']"
         />
         <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">

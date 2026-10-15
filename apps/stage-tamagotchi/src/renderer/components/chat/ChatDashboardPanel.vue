@@ -529,7 +529,8 @@ function handleRestoreDefaults() {
           <ChatDashboardCard
             v-else-if="moduleId === 'terminal' && effectiveSandboxActive"
             title="Virtual Terminal"
-            icon="i-solar:terminal-bold-duotone"
+            :image="getModuleDef('terminal')?.image"
+            icon="i-solar:code-square-bold-duotone"
             icon-color-class="text-emerald-600 dark:text-emerald-400"
             :collapsed="dashboard.isCollapsed('terminal')"
             @toggle="dashboard.toggleCollapse('terminal')"
@@ -598,7 +599,13 @@ function handleRestoreDefaults() {
                 <!-- Drag handle & Module Info -->
                 <div class="flex items-center gap-2.5">
                   <div class="i-solar:menu-dots-circle-bold-duotone shrink-0 text-sm text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-200" />
+                  <img
+                    v-if="getModuleDef(moduleId)?.image"
+                    :src="getModuleDef(moduleId)?.image"
+                    class="size-4 shrink-0 rounded object-contain"
+                  >
                   <div
+                    v-else
                     :class="[getModuleDef(moduleId)?.icon, getModuleDef(moduleId)?.iconColorClass || 'text-primary-500', 'text-base shrink-0']"
                   />
                   <div class="flex flex-col text-left">
@@ -665,7 +672,15 @@ function handleRestoreDefaults() {
             >
               <div class="flex items-center gap-2.5">
                 <div class="size-8 flex shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
-                  <div :class="[mod.icon, mod.iconColorClass || 'text-primary-500', 'text-base']" />
+                  <img
+                    v-if="mod.image"
+                    :src="mod.image"
+                    class="size-5 rounded object-contain"
+                  >
+                  <div
+                    v-else
+                    :class="[mod.icon, mod.iconColorClass || 'text-primary-500', 'text-base']"
+                  />
                 </div>
                 <div class="flex flex-col text-left">
                   <span class="text-xs text-neutral-800 font-bold leading-tight dark:text-neutral-100">

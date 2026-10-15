@@ -1770,6 +1770,15 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
 
     await this.checkWidgetStateFiles()
 
+    let currentSessionId: string | undefined
+    try {
+      const sessionProj = buildSessionProjection()
+      if (sessionProj.activeSessionId) {
+        currentSessionId = sessionProj.activeSessionId
+      }
+    }
+    catch {}
+
     const logEntry: CommandLogEntry = {
       id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       command,
@@ -1778,6 +1787,7 @@ In-Memory POSIX RAM disk. Zero host filesystem access.
       exitCode: result.exitCode,
       durationMs,
       timestamp: Date.now(),
+      sessionId: currentSessionId,
     }
 
     this.commandLogs.push(logEntry)

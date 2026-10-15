@@ -1,6 +1,8 @@
 import { useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
+import starterCustomTerminalIcon from '../assets/widgets/starter-custom-terminal.avif'
+
 export type DashboardModuleId
   = | 'stage'
     | 'nan0'
@@ -16,6 +18,7 @@ export interface DashboardModuleDef {
   subtitle: string
   icon: string
   iconColorClass?: string
+  image?: string
 }
 
 export const ALL_DASHBOARD_MODULES: DashboardModuleDef[] = [
@@ -30,8 +33,9 @@ export const ALL_DASHBOARD_MODULES: DashboardModuleDef[] = [
     id: 'terminal',
     title: 'Virtual Terminal',
     subtitle: 'Workspace commands and output',
-    icon: 'i-solar:terminal-bold-duotone',
+    icon: 'i-solar:code-square-bold-duotone',
     iconColorClass: 'text-emerald-600 dark:text-emerald-400',
+    image: starterCustomTerminalIcon,
   },
   {
     id: 'memories',

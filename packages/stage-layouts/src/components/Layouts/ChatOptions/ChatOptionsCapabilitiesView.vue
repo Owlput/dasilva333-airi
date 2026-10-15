@@ -140,21 +140,44 @@ function handleToggleAutoCues() {
 }
 
 const isCognitivePipelineEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.cognition?.enabled ?? false
+  const airiExt = activeCard.value?.extensions?.airi as any
+  const cognition = airiExt?.modules?.cognition ?? airiExt?.cognition
+  return cognition?.enabled ?? false
 })
 
 function handleToggleCognitivePipeline() {
   if (!activeCardId.value || !activeCard.value)
     return
   const current = isCognitivePipelineEnabled.value
+  const willEnable = !current
+  const extAiri = activeCard.value.extensions?.airi as any
+  const existingProcessor = extAiri?.modules?.cognition?.processor
+    ?? extAiri?.cognition?.processor
+    ?? extAiri?.firstHopProcessor
+
+  // 2-for-1 combo: when enabling, ensure processor is 'local_nan0' (if none or unset)
+  const targetProcessor = willEnable
+    ? (existingProcessor && existingProcessor !== 'none' ? existingProcessor : 'local_nan0')
+    : (existingProcessor ?? 'local_nan0')
+
   airiCardStore.updateCard(activeCardId.value, {
     extensions: {
       ...activeCard.value.extensions,
       airi: {
-        ...activeCard.value.extensions?.airi,
+        ...extAiri,
+        firstHopProcessor: targetProcessor,
         cognition: {
-          ...activeCard.value.extensions?.airi?.cognition,
-          enabled: !current,
+          ...extAiri?.cognition,
+          enabled: willEnable,
+          processor: targetProcessor,
+        },
+        modules: {
+          ...extAiri?.modules,
+          cognition: {
+            ...extAiri?.modules?.cognition,
+            enabled: willEnable,
+            processor: targetProcessor,
+          },
         },
       },
     },
@@ -332,7 +355,7 @@ function handleToggleCognitivePipeline() {
       </div>
     </div>
 
-    <!-- Toggle: Cognitive Pipeline (Two-Hop Routing) -->
+    <!-- Toggle: Nan0 Affective Mind (Two-Hop Monologue & Emotion Engine) -->
     <div
       class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
       @click="handleToggleCognitivePipeline"
@@ -341,12 +364,12 @@ function handleToggleCognitivePipeline() {
         <div
           class="size-4.5"
           :class="isCognitivePipelineEnabled
-            ? 'text-violet-500 i-solar:compass-bold-duotone'
-            : 'text-neutral-400 dark:text-neutral-500 i-solar:compass-linear'"
+            ? 'text-violet-500 i-solar:brain-bold-duotone'
+            : 'text-neutral-400 dark:text-neutral-500 i-solar:brain-linear'"
         />
         <div class="flex flex-col">
-          <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Cognitive Pipeline</span>
-          <span class="text-[9px] text-neutral-400">Two-hop inner monologue routing</span>
+          <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Nan0 Affective Mind</span>
+          <span class="text-[9px] text-neutral-400">Deliberates inner monologue with reactive emotional states</span>
         </div>
       </div>
       <div
