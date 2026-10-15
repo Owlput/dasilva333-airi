@@ -1,102 +1,168 @@
 ---
 name: airi-memory-lifetime
 description: >-
-  Build/debug Lifetime Artifacts/Eternal Thread: source aggregation, chunk summaries, distillation, retries, incremental maintenance, changelog and consumption watermarks. Saved build checkpoints and reload recovery use airi-memory-provisioning.
+  Build/debug Lifetime Artifacts/Eternal Thread: source aggregation, chunk summaries, distillation, retries, incremental maintenance, auto-rollup rebase, prompt grounding budgets, and consumption watermarks.
 ---
 
-# Memory Pillar 5 — Lifetime Artifacts
+# Memory Pillar 5 — Lifetime Artifacts (Eternal Thread)
 
 The synthesized, distilled long-horizon identity/relationship blueprint per character+universe — what keeps relationship identity coherent across fresh sessions. Universe-scoped: a lifetime artifact is the product of ALL memories in that universe, encompassing every timeline/session sharing the same `universeId`.
 
-## Store & Repo
+## 1. Store, Repos & Type Definitions
 
 | Attribute | Value |
 | :--- | :--- |
-| Store | `packages/stage-ui/src/stores/memory-lifetime.ts` (~1360 ln) — `useMemoryLifetimeStore` :405 |
-| Repo | `packages/stage-ui/src/database/repos/lifetime-memory.repo.ts` → `local:memory/lifetime/{characterId}:{universeId}` (one-way migration from bare `{characterId}` :10) |
-| Artifact | `LifetimeMemoryArtifact` (`types/lifetime-memory.ts`, incl. `LifetimeUpdateRecord` audit + `finalPack`) + store-local `LifetimeArchive` + `DistilledPack` (`normalizeLifetimeArchive` :193, `normalizeDistilledPack` :180) |
-| Data catalog | `docs/data-catalog.md` §1.8 |
+| **Store** | `packages/stage-ui/src/stores/memory-lifetime.ts` (`useMemoryLifetimeStore`, `artifactsByUniverse` Map, `getArtifact(characterId, universeId)`) |
+| **Artifact Repo** | `packages/stage-ui/src/database/repos/lifetime-memory.repo.ts` → `local:memory/lifetime/{characterId}:{universeId}` (one-way migration from bare `{characterId}`) |
+| **Session Repo** | `packages/stage-ui/src/database/repos/provisioning-session.repo.ts` → `local:memory/provisioning-session/{characterId}:{universeId}` (migrates bare key, strips proxies) |
+| **Artifact Model** | `LifetimeMemoryArtifact` (`types/lifetime-memory.ts`), containing `finalPack`, `distillPass1Pack`, `baseArchive`, `chunkSummaries`, and `updateHistory` |
+| **Pack Interfaces** | `DistilledPack` (6 sections: `relationship_core`, `user_patterns`, `shared_rituals`, `stable_topics`, `meaningful_old_moments`, `inside_jokes_or_motifs`, plus `compression_notes`) |
+| **Data Catalog** | `docs/data-catalog.md` §1.8 (Artifacts) & §1.9 (Provisioning Sessions) |
 
-## Lifecycle & Status
+## 2. Complete File & Subsystem Map
 
-| Phase | Description | Status |
+The lifetime memory architecture touches storage, background cadences, UI, and prompt assembly:
+
+```
+packages/stage-ui/src/
+├── stores/
+│   ├── memory-lifetime.ts                   # Core store: provision, incremental merges, auto-rollup rebase
+│   └── chat/
+│       ├── session-store.ts                 # buildLifetimeMemoryContext(), ${id}:${version} prompt watcher
+│       ├── grounding-assembler.ts           # [LIFETIME RELATIONSHIP ARTIFACT], 13k char exemption
+│       ├── grounding-assembler.test.ts      # Unit tests for lifetime truncation exemption
+│       ├── prompt-contracts.test.ts         # Contract verification for memory context builders
+│       └── prompt-hierarchy-invariants.test.ts # Ordering invariants (Lifetime ahead of volatile sensors)
+├── database/repos/
+│   ├── lifetime-memory.repo.ts              # IndexedDB persistence for completed artifacts
+│   └── provisioning-session.repo.ts         # Checkpoint store for interrupted/resumable builds
+├── types/
+│   └── lifetime-memory.ts                   # Valibot schemas & TypeScript interfaces
+└── components/scenarios/dialogs/
+    └── lifetime-memory/
+        └── LifetimeProvisioningModal.vue    # Interactive wizard: stages, progress, live distillation view
+
+apps/stage-tamagotchi/src/renderer/
+└── App.vue                                  # ensureYesterdayShortTermBlockForActiveCharacter() cadence
+
+packages/stage-layouts/src/components/Layouts/
+└── ChatOptions/
+    └── ChatOptionsInjectionsView.vue        # Chat options drawer: per-universe artifact toggle & status
+
+packages/stage-pages/src/pages/settings/
+├── memory/index.vue                         # Memory home overview: lifetime depth token counting
+└── modules/components/
+    ├── LifetimeMemoryView.vue               # Main settings view: sync triggers, manual refresh, error banner
+    └── LifetimeHistoryModal.vue             # Inspection modal: chunk summaries & audit diffs
+
+docs/
+├── data-catalog.md                          # Canonical storage key & schema registry (§1.8, §1.9)
+└── memory_lab/
+    ├── lifetime-artifact-generation-plan.md # Architectural foundation: chunking, distillation, thresholds
+    ├── state-of-system.md                   # Lab validation: base artifact + accumulated diffs
+    └── memory-engine-integration-plan.md    # Original 3-phase lifecycle milestones
+```
+
+## 3. Subsystem Lifecycle & Operational Status
+
+| Phase | Mechanism & Function | Status |
 | :--- | :--- | :--- |
-| 1. Full initialization | One-time full-history build (`provision()`) | **Implemented** |
-| 2. Incremental daily update | STMM-cadence merge of new evidence into the existing artifact | **Implemented** (`applyIncrementalUpdate()`) |
-| 3. Diff-chain rebase/rollup | Consolidate accumulated diffs into a new canonical base | **Implemented (v1 simplified)** — merged artifact stored whole, audit chain capped at 30, `reprovisionFromChunks`/`restart` = manual reset |
-| 4. Manual rebuild | `reprovisionFromChunks()` / `restart()` | **Implemented** (full-rebuild variants only) |
+| **1. Full Initialization** | 5-stage synthesis from full history (`provision()`) | **Implemented** |
+| **2. Incremental Daily Update** | STMM-cadence merge of 24h window into `finalPack` (`applyIncrementalUpdate()`) | **Implemented** |
+| **3. Auto-Rollup / Rebase** | Generational consolidation when diffs accumulate (`MAX_MERGES_BEFORE_REBASE`) | **Implemented (v2)** |
+| **4. Manual Rebuild** | Re-distill from cached chunks (`reprovisionFromChunks()`) or clean reset (`restart()`) | **Implemented** |
 
-Current reality: artifacts produced before incremental maintenance lack `lastConsumedDay`/`finalPack`; the first `applyIncrementalUpdate` run bootstraps the watermark to yesterday and returns (silently forward-sealing legacy artifacts).
+Current reality: artifacts created before incremental maintenance lack `lastConsumedDay`/`finalPack`; the first `applyIncrementalUpdate` run forward-seals `lastConsumedDay` to yesterday and returns without destructive overwrites.
 
-## Initialization (Implemented)
+---
 
-`provision(characterId, universeId='global', resume=false, intervalSeconds=0, contextLimitTokens=64, targetTokens=1000)` (:687) runs 5 stages:
+## 4. Initialization Pipeline (5 Stages)
 
-1. `collectSourceDocs()` (:460) gathers universe-scoped evidence (sessions — universe-filtered, longest session = Canonical Timeline, branches deduped as Alternative Paths —, STMM blocks, LTMM journal entries).
-2. Chunked durable-fact extraction under the context-limit token cap.
-3. Base archive synthesis via `callJsonMode()` (:592) with schema validation (:576) and `withRetry()` (:669, 3 retries, exponential backoff base 2000 ms).
-4. `distill_pass_1` then `distill_pass_2` produce the final distilled artifact (markdown render helpers :257/:375 for review).
-5. Persist artifact, delete provisioning session, broadcast `airi:lifetime-memory-sync`.
+`provision(characterId, universeId='global', resume=false, intervalSeconds=0, contextLimitTokens=64, targetTokens=1000)`:
 
-- Resume: interval cooldown (`maybeDelay`) makes very long builds survivable; phase + chunk summaries persist in the provisioning-session repo (`airi-memory-provisioning`).
-- `reprovisionFromChunks()` (:1286) re-distills without re-aggregating sources; `restart()` (:1340) resets a build cleanly.
-- Init now writes the forward watermark `metadata.lastConsumedDay` (latest source doc day) and stores `finalPack` — the merge target for incremental updates.
-- **Prompt injection**: `session-store.ts` `buildLifetimeMemoryContext()` (:226) injects the single distilled artifact as `[Lifetime Artifact]`.
+1. **`collectSourceDocs()`**: Gathers universe-scoped evidence:
+   - Chat sessions filtered by `universeId`. Longest session is designated the *Canonical Timeline*; others are branched and deduped as *Alternative Paths*.
+   - STMM daily blocks (`shortTermMemoryRepo`).
+   - LTMM journal entries (`textJournalRepo`).
+2. **Chunked Extraction**: Groups source documents into chunks under `contextLimitTokens` (~64k tokens default), running `callJsonMode()` with `ChunkArchiveJsonSchema` to extract durable facts.
+3. **Base Archive Synthesis**: Synthesizes all chunk archives into a unified `LifetimeArchive` via `buildBaseArchivePrompt()` and `LifetimeArchiveJsonSchema`, guarded by `withRetry(3, 2000ms)`.
+4. **Two-Pass Distillation**:
+   - `distill_pass_1`: Formats base content into 6 structured sections with bullet count scaling (`ratio = targetTokens / 1000`).
+   - `distill_pass_2`: Caveman refinement removing pleasantries, duplicates, and conversational filler to land on `targetTokens`.
+5. **Persistence & Broadcast**:
+   - Sets forward watermarks: `metadata.initialConsumedDay` and `metadata.lastConsumedDay`.
+   - Stores `finalPack` (the incremental merge target) and `distillPass1Pack`.
+   - Clears the provisioning session from `provisioningSessionRepo`.
+   - Broadcasts `airi:lifetime-memory-sync` across windows.
 
-## Incremental Maintenance Design (Validated in Lab, Implemented)
+---
 
-Lab-validated mechanism (`docs/memory_lab/state-of-system.md`, "base artifact plus accumulated diffs"): staged runs proved chunk 8 builds the base, chunk 9 updates it yielding diff 1, chunk 10 updates base + diff 1 yielding diff 2 — diffs shrink on stable days, grow only on real long-horizon change. Production cadence was theorized in `docs/memory_lab/lifetime-artifact-generation-plan.md` ("Incremental Update Inputs") but never built. This design merges both.
+## 5. Incremental Maintenance (STMM Cadence)
 
-- **Trigger**: STMM (pillar 3) daily block generation success — the "yesterday" cadence. NOT Dream State / AFK: AFK would mutate the artifact multiple times per day, which is too volatile and noisy. One refresh opportunity per day; actual change conditional on durable new evidence.
-  - Implementation: `apps/stage-tamagotchi/src/renderer/App.vue` `ensureYesterdayShortTermBlockForActiveCharacter()` fires `applyIncrementalUpdate()` after `ensureYesterdayBlock()` (boot + active-card switch), cron-free, interruptible, never blocks boot.
-- **Input** (all universe-scoped via `{characterId}:{universeId}`):
-  - Current lifetime artifact
-  - Yesterday's 24h raw log window (same window STMM consumed, across all timelines in the universe)
-  - New LTMM (pillar 2) journal entries since a per-universe watermark
-- **Output**: the **full merged artifact** + a change record (the "diff"). Prose diffs are audit/bookkeeping, NOT mechanically-applicable patches — the model re-emits the whole merged pack.
-- **Zero-change path**: routine days → model declares no durable change → artifact untouched, zero/near-zero diff recorded. Core principle: "tweak if needed", never rewrite the relationship around yesterday, never drop older meaningful moments.
-- **Change threshold**: only material change for a new recurring preference, changed relationship pattern, sticky new inside joke, major emotional event, new stable mannerism, or new long-horizon shared memory.
+Daily incremental maintenance runs as fire-and-forget background work:
+- **Trigger**: `apps/stage-tamagotchi/src/renderer/App.vue` -> `ensureYesterdayShortTermBlockForActiveCharacter()` invokes `applyIncrementalUpdate(targetCardId, universeId)` after STMM generation completes on app boot and active card switch.
+- **Card-Switch Resolution**: Awaits `chatSessionStore.ensureActiveSessionForCharacter()` prior to dispatch so `targetCardId` and active session `universeId` are locked before triggering.
+- **Inputs (`collectWindowedDocs`)**:
+  - Existing artifact `finalPack` (or normalized `distillPass1Pack`).
+  - Yesterday's raw conversation turns since `metadata.lastConsumedDay` across all timelines sharing the universe.
+  - New LTMM journal entries added since the watermark.
+- **Autoregressive Schema Ordering (`IncrementalMergeSchema`)**:
+  - `change_notes` and `changed` properties are defined **first** in the JSON schema. This ensures the autoregressive model determines whether durable relationship change occurred *before* emitting the six pack sections.
+- **Inference Contraction Guard**:
+  - If the candidate pack drastically contracts in total bullets compared to `currentPack` (e.g. dropping more than 35% of established history without cause), the merge pass throws a contraction guard error and retries up to 3 times with exponential backoff.
+- **Programmatic True-Diff Verification**:
+  - `arePacksContentEqual(currentPack, candidatePack)` compares normalized pack bullets. `artifact.version` is bumped and `mergesSinceRebase` is incremented **only if** the content actually changed; routine days advance `lastConsumedDay` without incrementing `version`.
+- **Catchup Limit**: `MAX_CATCHUP_DAYS_PER_RUN = 14`. Unprocessed older days roll to subsequent boot runs.
 
-### Implementation Map (`memory-lifetime.ts` keys)
+---
 
-| Concern | Key |
-| :--- | :--- |
-| Initialization | `provision()` :687 |
-| Incremental update | `applyIncrementalUpdate()` :1117 — entry point, fired on boot/card-switch from `App.vue` |
-| Windowed collector | `collectWindowedDocs()` :1033 — universe-scoped raw turns + new LTMM after the watermark |
-| Merge prompt | `buildIncrementalMergePrompt()` :331 + `IncrementalMergeSchema` :100 (structured JSON with `changed` flag) |
-| Bootstrap watermark | `getYesterdayLocalDayKey()` :168 — forward-seal fallback for legacy artifacts |
-| Catchup cap | `MAX_CATCHUP_DAYS_PER_RUN = 14` — leftover days roll to the next trigger |
-| Version | `artifact.version` — bumped only on changed merges |
-| Watermark | `metadata.lastConsumedDay` — the last fully-consumed day |
+## 6. Auto-Rollup & Rebase (v2 Architecture)
 
-### Gaps Checklist (Status)
+To prevent compounding generational distortion across hundreds of daily incremental merges:
+1. **Merge Counter**: Every `changed=true` merge increments `metadata.mergesSinceRebase`.
+2. **Auto-Rollup Threshold**: When `mergesSinceRebase >= MAX_MERGES_BEFORE_REBASE` (default 30) and cached `chunkSummaries` exist, `applyIncrementalUpdate` automatically triggers `reprovisionFromChunks(characterId, universeId, 0, targetTokens)`.
+3. **Preserving Evolution**: `reprovisionFromChunks` incorporates `priorIncrementalPack = artifact.finalPack` into the distillation prompt so newly accumulated rituals, jokes, and preferences are not discarded when re-running canonical synthesis.
+4. **Reset**: Re-synthesis resets `mergesSinceRebase = 0` and sets `lastUpdateType = 'reprovision'`.
 
-- [x] Watermark on artifact metadata (per `{characterId}:{universeId}` — the last consumed STMM day key / LTMM cutoff) — done, bootstrap path seals legacy artifacts at yesterday
-- [x] Trigger hook: after STMM `ensureYesterdayBlock()` — done, wired in `App.vue` boot + card-switch watcher
-- [x] Update collector: universe-scoped 24h raw window since the watermark + new LTMM — `collectWindowedDocs()`
-- [x] Merge pass: prompt + JSON schema enforcing merge rules — done, model re-emits full pack each run
-- [x] Zero-change detection contract — done, `changed: false` from model leaves artifact untouched
-- [x] Version / diff-record storage — `version` bumped only on changes; `updateHistory` capped at 30 audit entries
-- [x] Rebase rules (v1 simplified) — merged artifact stored whole; manual reset = `reprovisionFromChunks()`/`restart()`. Real auto-rollup (consolidation pass when the diff chain degrades) is deferred to v2
+---
 
-## Pitfalls
+## 7. Prompt Grounding & Prefix Caching
 
-- Repo key is `{characterId}:{universeId}` now — code still reads the old bare key only via the migration helper (:10); don't write bare keys.
-- Universe scoping is mandatory end to end: source collection, watermark, and trigger hook must all agree on `universeId` (default `'global'`) or universes cross-contaminate.
-- Provider/model for provisioning comes from the card's `consciousness` module fallback to active provider; a misconfigured card consciousness silently switches the synthesis brain.
-- The artifact is derived (regenerable) but must not overwrite sacral journal entries during source collection — reads only.
-- Incremental update must not re-run the full chunking pipeline; inputs are the existing artifact + 24h window, not full history.
+Lifetime artifacts are injected into active LLM turns with strict prefix caching and budget protections:
 
-## Verification
+- **Context Injection**: `session-store.ts` -> `buildLifetimeMemoryContext(characterId, universeId)` injects the distilled artifact under `[LIFETIME RELATIONSHIP ARTIFACT]`.
+- **Prefix Cache Friendly Watcher**: `session-store.ts` watches `${artifact.id}:${artifact.version}` instead of `updatedAt`. Routine zero-change days (`changed: false`) that merely advance the day watermark do **not** dirty system prompt tokens or invalidate LLM KV prefix caches!
+- **Grounding Budget Exemption**: In `grounding-assembler.ts`, `budgetGroundingMessages()` enforces a standard `maxPerBlockChars = 2500` cap to prevent runaway memory usage, but **explicitly exempts** blocks starting with `[LIFETIME RELATIONSHIP ARTIFACT]`, allowing up to `MAX_LIFETIME_BLOCK_CHARS = 13000` (within a total 14,000 char budget). This ensures detailed 1,000–3,000 token distilled packs never lose their trailing sections (*Meaningful Old Moments*, *Inside Jokes*).
+- **Positioning**: In `chat.ts`, stable memory blocks (STMM, Lifetime Artifact) sit ahead of volatile per-turn system telemetry (`[ENVIRONMENTAL AWARENESS]` sensors), ensuring maximal KV prefix cache reuse.
 
-`pnpm -F @proj-airi/stage-ui typecheck`; runtime: run provisioning from the Eternal Thread / Memory settings UI and watch `local:memory/provisioning-session/{characterId}` advance `aggregating → chunking → synthesizing → distill_pass_1 → distill_pass_2 → success` (see `airi-memory-provisioning`). Once maintenance lands: trigger an STMM daily generation and confirm the watermark advances and the artifact version increments (or zero-change is recorded).
+---
 
-## Sources
+## 8. UI Surfaces & Modals
 
-`docs/memory_lab/lifetime-artifact-generation-plan.md` (update cadence, change threshold, rebase rules, failure modes); `docs/memory_lab/state-of-system.md` (base + diffs validation); `docs/memory_lab/memory-engine-integration-plan.md` (original Dream State hook sketch, superseded by STMM trigger); `docs/data-catalog.md` §1.8/§1.9; peer: `airi-memory-systems` (hub), `airi-memory-provisioning`, `airi-memory-short-term` (trigger/cadence), `airi-memory-text-journal` (LTMM input), `airi-memory-ui-pages` (Eternal Thread), `airi-memory-chat-sessions`.
+- **`LifetimeProvisioningModal.vue`**:
+  - Gated by `initiatedInModal` flag so automatic enabling (`airiCardStore.toggleLifetimeMemory`) only triggers for explicit user-driven modal runs, not background headless updates.
+  - Automatically resets `progress.value.phase = 'idle'` when closed or completed.
+- **`LifetimeMemoryView.vue`**:
+  - Resolves `activeUniverseId` via active session metadata.
+  - Queries `lifetimeStore.getArtifact(charId, universeId)` directly.
+  - Displays error banners for both provisioning `lifetimeStore.error` and background `lifetimeStore.incrementalError`.
+- **`ChatOptionsInjectionsView.vue`**:
+  - Chat options drawer view. Watches `[activeCardId, activeUniverseId]` to synchronize the injection toggle and status badge with the current universe.
 
-## Related Skills & References
+---
 
-- **Peer Skills**: [[airi-memory-chat-sessions]], [[airi-memory-provisioning]], [[airi-memory-short-term]], [[airi-memory-systems]], [[airi-memory-text-journal]], [[airi-memory-ui-pages]]
-- **Key Documents**: [[data-catalog]], [[state-of-system]], [[lifetime-artifact-generation-plan]], [[memory-engine-integration-plan]]
+## 9. Verification & Invariants
+
+- **Unit & Contract Tests**:
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/stores/memory-lifetime.test.ts` (verifies 5-stage provisioning synthesis).
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/stores/memory-lifetime.incremental.test.ts` (verifies incremental merges, true-diff checks, contraction guards, and auto-rollup).
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/database/repos/provisioning-session.repo.test.ts` (verifies universe scoping & migration).
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/stores/chat/grounding-assembler.test.ts` (verifies 13k char exemption).
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/stores/chat/prompt-contracts.test.ts` (verifies context formatting).
+  - `pnpm -F @proj-airi/stage-ui test packages/stage-ui/src/stores/chat/prompt-hierarchy-invariants.test.ts` (verifies cache-friendly ordering).
+- **Typecheck**:
+  - `pnpm -F @proj-airi/stage-tamagotchi typecheck`
+  - `pnpm -F @proj-airi/stage-ui typecheck`
+- **Pitfalls**:
+  - Always read and write using `{characterId}:{universeId}`; never write bare `{characterId}` keys.
+  - Never allow `applyIncrementalUpdate` to throw or block desktop boot in `App.vue`.

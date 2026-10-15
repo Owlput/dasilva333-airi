@@ -13,24 +13,25 @@ The resumable build-state record for lifetime-artifact generation. Pillar 5 does
 | Attribute | Value |
 | :--- | :--- |
 | Repo | `packages/stage-ui/src/database/repos/provisioning-session.repo.ts` |
-| Key | `local:memory/provisioning-session/{characterId}` |
-| Record | `ProvisioningSession` — `phase` state machine + persisted chunk summaries + `distillPass1Pack` |
+| Key | `local:memory/provisioning-session/{characterId}:{universeId}` (one-way migration from bare `{characterId}`) |
+| Record | `ProvisioningSession` — `phase` state machine + persisted chunk summaries + `distillPass1Pack` + `sourceManifest` |
 | Phases | `'idle' | 'aggregating' | 'chunking' | 'synthesizing' | 'distill_pass_1' | 'distill_pass_2' | 'success'` (:5) |
 | Data catalog | `docs/data-catalog.md` §1.9 |
 
 ## Key Mechanisms
 
-- The lifetime store (`provision()` at memory-lifetime.ts:586) drives phase transitions; this repo persists the checkpoint after each phase.
+- The lifetime store (`provision()` at memory-lifetime.ts) drives phase transitions; this repo persists the checkpoint after each phase.
+- **Deep Clone Safety**: Saves deep-clone records to strip Vue/Pinia proxies, preventing IndexedDB `DataCloneError`.
 - **Resume**: `provision(characterId, universeId, resume=true)` re-hydrates from the saved session — completed chunks are not re-summarized.
-- `reprovisionFromChunks()` (:922) skips aggregation/chunking entirely, re-running distillation from saved chunks; `restart()` (:976) clears state for a clean build.
+- `reprovisionFromChunks()` skips aggregation/chunking entirely, re-running distillation from saved chunks; `restart()` clears state for a clean build.
 - Interval cooldown (`intervalSeconds`) between LLM steps is designed around provider rate limits — the state record is what makes interrupted builds survivable.
 
 ## Pitfalls
 
 - Never clear provisioning state without writing an updated record — an orphaned phase makes `resume` loop or skip work silently.
 - Chunk summaries are large enough that schema drift in `ProvisioningSession` breaks resume; extend the type additively.
-- This repo is per-character, not per-universe — concurrent provisions across universes of one character collide. Run sequentially.
-- Distill packs (`distillPass1Pack`) are persisted — `normalizeDistilledPack` (memory-lifetime.ts:134) is the repair point for legacy shapes.
+- Repo key is `{characterId}:{universeId}` with fallback migration from bare `{characterId}`. Always pass `universeId` (default `'global'`).
+- Distill packs (`distillPass1Pack`) are persisted — `normalizeDistilledPack` is the repair point for legacy shapes.
 
 ## Verification
 

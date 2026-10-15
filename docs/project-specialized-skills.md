@@ -273,8 +273,8 @@ The catalog contains 73 discoverable skills. Desktop chatbox and interaction pip
 
 #### 3.17 `airi-memory-lifetime`
 - **Target Domain**: Memory Pillar 5 — Lifetime Artifacts / Eternal Thread.
-- **Key Paths**: `packages/stage-ui/src/stores/memory-lifetime.ts`, `packages/stage-ui/src/database/repos/lifetime-memory.repo.ts`, `docs/memory_lab/lifetime-artifact-generation-plan.md`.
-- **Content**: The 5-stage resumable provisioning synthesis (`collect → chunk → base → distill_pass_1 → distill_pass_2 → success`), universe-keyed storage, `[Lifetime Artifact]` injection.
+- **Key Paths**: `packages/stage-ui/src/stores/memory-lifetime.ts`, `packages/stage-ui/src/database/repos/lifetime-memory.repo.ts`, `packages/stage-ui/src/stores/chat/grounding-assembler.ts`, `docs/memory_lab/lifetime-artifact-generation-plan.md`.
+- **Content**: The 5-stage resumable provisioning synthesis (`collect → chunk → base → distill_pass_1 → distill_pass_2 → success`), universe-keyed storage, daily incremental maintenance, v2 auto-rollup rebase, and `[LIFETIME RELATIONSHIP ARTIFACT]` grounding injection.
 
 #### 3.18 `airi-memory-image-journal`
 - **Target Domain**: Memory Pillar 6 — Image Journal & Autonomous Artistry.
