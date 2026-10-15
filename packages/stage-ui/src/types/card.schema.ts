@@ -274,6 +274,15 @@ export const CharacterCueAllowlistSchema = object({
 
 export type CharacterCueAllowlist = InferOutput<typeof CharacterCueAllowlistSchema>
 
+export const CompactionStrategySchema = union([
+  literal('none'),
+  literal('prune'),
+  literal('winnow'),
+  literal('distill'),
+])
+
+export type CompactionStrategy = InferOutput<typeof CompactionStrategySchema>
+
 export const CardCustomStickerSchema = looseObject({
   id: string(),
   label: string(),
@@ -324,6 +333,10 @@ const AiriExtensionSchema = looseObject({
       preserveToolHistory: optional(boolean()),
     })),
     advanced: optional(record(string(), unknown())),
+    compaction: optional(looseObject({
+      strategy: optional(CompactionStrategySchema),
+      minKeepTurns: optional(number()),
+    })),
     importedPresetMeta: optional(looseObject({
       source: optional(string()),
       originalKeys: optional(array(string())),

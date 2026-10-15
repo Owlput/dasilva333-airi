@@ -276,6 +276,7 @@ watch([generationContextWidth, generationProvider, generationModel], () => {
           :options="[
             { value: 'none', label: 'None (Disabled)' },
             { value: 'prune', label: 'Prune History Only' },
+            { value: 'winnow', label: 'Winnow Smart Filter (System 1)' },
             { value: 'distill', label: 'Distill & Summarize (Premium)' },
           ]"
           class="w-full"

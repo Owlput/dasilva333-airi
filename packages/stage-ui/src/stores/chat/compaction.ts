@@ -5,6 +5,7 @@ import { toast } from 'vue-sonner'
 import { useShortTermMemoryStore } from '../memory-short-term'
 import { useAiriCardStore } from '../modules/airi-card'
 import { useConsciousnessStore } from '../modules/consciousness'
+import { useSystemOneStore } from '../modules/system-one'
 import { useProvidersStore } from '../providers'
 import { useChatSessionStore } from './session-store'
 
@@ -16,33 +17,119 @@ import { useChatSessionStore } from './session-store'
 // docs/project-hmr-resilience-architecture.md Strategies C & E.
 let compactionEpoch = 0
 
+/** Post-compaction target ceiling as a fraction of contextWidth so winnowed sessions have headroom. */
+export const WINNOW_TARGET_BUDGET_RATIO = 0.75
+
+export function extractCompactionMessageText(msg: any): string {
+  if (!msg)
+    return ''
+  if (typeof msg.content === 'string')
+    return msg.content
+  if (Array.isArray(msg.content)) {
+    return msg.content
+      .filter((part: any) => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
+      .map((part: any) => part.text)
+      .join('\n')
+  }
+  return ''
+}
+
+export function estimateMessageListTokens(messages: any[]): number {
+  return messages.reduce((sum, msg) => {
+    const text = extractCompactionMessageText(msg)
+    return sum + estimateTokens(text || '')
+  }, 0)
+}
+
+export interface WinnowTurnWindow {
+  id: string
+  text: string
+  messages: any[]
+}
+
+/**
+ * Groups `toCompact` messages into small conversational windows (default 2 messages:
+ * e.g. User + Assistant exchange) for System-1 Winnow salience scoring.
+ */
+export function buildWinnowCompactionWindows(
+  toCompact: any[],
+  characterName = 'Assistant',
+  windowSize = 2,
+): WinnowTurnWindow[] {
+  const windows: WinnowTurnWindow[] = []
+  let currentMsgs: any[] = []
+  let currentLines: string[] = []
+
+  const flushWindow = () => {
+    if (currentMsgs.length === 0)
+      return
+    windows.push({
+      id: `w${windows.length}`,
+      text: currentLines.join('\n'),
+      messages: currentMsgs,
+    })
+    currentMsgs = []
+    currentLines = []
+  }
+
+  for (const msg of toCompact) {
+    const text = extractCompactionMessageText(msg).trim()
+    if (!text)
+      continue
+    const roleLabel = msg.role === 'user' ? 'User' : characterName
+    currentMsgs.push(msg)
+    currentLines.push(`${roleLabel}: ${text}`)
+    if (currentMsgs.length >= windowSize) {
+      flushWindow()
+    }
+  }
+  flushWindow()
+
+  return windows
+}
+
+/**
+ * Ensures that even if System-1 Winnow classifies most of `toCompact` as high-salience,
+ * the surviving messages plus `systemMessages` and `toPreserve` never exceed
+ * `Math.floor(threshold * WINNOW_TARGET_BUDGET_RATIO)`, preventing re-compaction loops on the next turn.
+ * Selects newest surviving turns first while preserving chronological order.
+ */
+export function capWinnowSurvivorsToBudget(
+  candidates: any[],
+  baseTokens: number,
+  threshold?: number,
+  targetRatio = WINNOW_TARGET_BUDGET_RATIO,
+): any[] {
+  if (!threshold || threshold <= 0 || candidates.length === 0)
+    return candidates
+
+  const maxAllowedTokens = Math.floor(threshold * targetRatio)
+  let remainingBudget = maxAllowedTokens - baseTokens
+  if (remainingBudget <= 0)
+    return []
+
+  const selectedReverse: any[] = []
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const msg = candidates[i]
+    const msgTokens = estimateTokens(extractCompactionMessageText(msg) || '')
+    if (msgTokens <= remainingBudget) {
+      selectedReverse.push(msg)
+      remainingBudget -= msgTokens
+    }
+  }
+
+  return selectedReverse.reverse()
+}
+
 export const useCompactionStore = defineStore('chat-compaction', () => {
   const chatSession = useChatSessionStore()
   const shortTermMemory = useShortTermMemoryStore()
   const airiCardStore = useAiriCardStore()
   const consciousnessStore = useConsciousnessStore()
+  const systemOneStore = useSystemOneStore()
   const providersStore = useProvidersStore()
 
   const { activeCard, activeCardId } = storeToRefs(airiCardStore)
-
-  /**
-   * Estimates total token count for a list of messages.
-   */
-  function estimateMessageListTokens(messages: any[]): number {
-    return messages.reduce((sum, msg) => {
-      let text = ''
-      if (typeof msg.content === 'string') {
-        text = msg.content
-      }
-      else if (Array.isArray(msg.content)) {
-        text = msg.content
-          .filter((part: any) => part && typeof part === 'object' && part.type === 'text')
-          .map((part: any) => part.text)
-          .join('\n')
-      }
-      return sum + estimateTokens(text || '')
-    }, 0)
-  }
 
   /**
    * Evaluates if compaction is needed based on active card settings.
@@ -99,6 +186,7 @@ export const useCompactionStore = defineStore('chat-compaction', () => {
     if (strategy === 'none')
       return
 
+    const threshold = card.extensions?.airi?.generation?.known?.contextWidth
     const keepTurns = card.extensions?.airi?.generation?.compaction?.minKeepTurns ?? 15
     const originalMessages = chatSession.getSessionMessages(sessionId)
 
@@ -110,12 +198,15 @@ export const useCompactionStore = defineStore('chat-compaction', () => {
     const toastId = toast.loading('Compacting chat history to stay within context budget...')
 
     try {
-      // 1. Create a background archive session containing all current messages
+      // 1. Create a background archive session in the same universe containing all current messages
+      // so STMM daily summaries and Eternal Thread merges retain 100% of raw turns.
+      const sessionUniverseId = chatSession.getSessionMeta(sessionId)?.universeId || 'global'
       const archiveTitle = `Archive: ${card.name} - ${new Date().toLocaleDateString()}`
       await chatSession.createSession(activeCardId.value || 'relu', {
         setActive: false,
         messages: JSON.parse(JSON.stringify(originalMessages)),
         title: archiveTitle,
+        universeId: sessionUniverseId,
       })
 
       if (isStale()) {
@@ -132,9 +223,43 @@ export const useCompactionStore = defineStore('chat-compaction', () => {
       const toPreserve = chatMessagesOnly.slice(-keepTurns)
       const toCompact = chatMessagesOnly.slice(0, chatMessagesOnly.length - keepTurns)
 
-      const finalMessages = [...systemMessages, ...toPreserve]
+      let retainedFromCompact: any[] = []
 
-      // 3. Apply distillation if requested
+      // 3A. Apply System-1 Winnow in-place garbage collection if requested
+      if (strategy === 'winnow') {
+        if (systemOneStore.configured && toCompact.length > 0) {
+          try {
+            const windows = buildWinnowCompactionWindows(toCompact, card.name || 'Assistant', 2)
+            if (windows.length > 0) {
+              const keptIds = await systemOneStore.runWinnowTurnCompaction(
+                windows.map(w => ({ id: w.id, text: w.text })),
+              )
+              if (isStale()) {
+                debug('[Compaction] Aborting orphaned compaction after HMR reload (post-winnow).')
+                toast.dismiss(toastId)
+                return
+              }
+              const rawSurvivors = windows
+                .filter(w => keptIds.has(w.id))
+                .flatMap(w => w.messages)
+
+              const baseTokens = estimateMessageListTokens([...systemMessages, ...toPreserve])
+              retainedFromCompact = capWinnowSurvivorsToBudget(rawSurvivors, baseTokens, threshold)
+            }
+          }
+          catch (winnowErr) {
+            console.warn('[Compaction] System-1 Winnow scoring failed, falling back to prune:', winnowErr)
+            retainedFromCompact = []
+          }
+        }
+        else {
+          debug('[Compaction] Winnow selected but System 1 is not configured; falling back to prune.')
+        }
+      }
+
+      const finalMessages = [...systemMessages, ...retainedFromCompact, ...toPreserve]
+
+      // 3B. Apply distillation if requested
       if (strategy === 'distill') {
         const windowSize = card.extensions?.airi?.shortTermMemory?.windowSize ?? 3
         const tokenBudget = card.extensions?.airi?.shortTermMemory?.tokenBudgetPerDay ?? 1000
@@ -159,8 +284,8 @@ export const useCompactionStore = defineStore('chat-compaction', () => {
             if (!msg.createdAt || (msg.role !== 'user' && msg.role !== 'assistant'))
               continue
 
-            const text = typeof msg.content === 'string' ? msg.content : ''
-            if (!text.trim())
+            const text = extractCompactionMessageText(msg).trim()
+            if (!text)
               continue
 
             const roleLabel = msg.role === 'user' ? 'User' : card.name

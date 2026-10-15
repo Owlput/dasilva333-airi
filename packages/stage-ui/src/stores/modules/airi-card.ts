@@ -146,7 +146,7 @@ export interface CharacterGenerationConfig {
   }
   advanced?: Record<string, any>
   compaction?: {
-    strategy?: string
+    strategy?: 'none' | 'prune' | 'winnow' | 'distill' | string
     minKeepTurns?: number
   }
   importedPresetMeta?: {
