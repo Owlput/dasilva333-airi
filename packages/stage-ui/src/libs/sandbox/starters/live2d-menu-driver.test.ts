@@ -103,7 +103,7 @@ describe('lIVE2D_MENU_DRIVER_STARTER widget', () => {
   it('conforms to WidgetExportManifest specification', () => {
     expect(LIVE2D_MENU_DRIVER_STARTER.version).toBe('1.0')
     expect(LIVE2D_MENU_DRIVER_STARTER.id).toBe('starter-live2d-menu-driver')
-    expect(LIVE2D_MENU_DRIVER_STARTER.title).toContain('Live2D Menu Driver')
+    expect(LIVE2D_MENU_DRIVER_STARTER.title).toContain('Live2D Controller')
     expect(LIVE2D_MENU_DRIVER_STARTER.scope).toBe('global')
     expect(LIVE2D_MENU_DRIVER_STARTER.surface).toBe('panel')
     expect(typeof LIVE2D_MENU_DRIVER_STARTER.sourceCode).toBe('string')

@@ -416,6 +416,8 @@ const {
   activeExpressions,
 } = storeToRefs(live2dStore)
 
+const isRemoteDispatching = ref(false)
+
 function findExpressionData(fileName: string) {
   const targetBase = fileName.split(/[\\/]/).pop()?.toLowerCase()
   return expressionData.value.find((e: any) => {
@@ -1096,6 +1098,17 @@ async function loadModel() {
         return
       }
 
+      // In a model running an interactive DSL state machine (e.g. Amadeus / dating sims),
+      // motions represent dialogue responses or state transitions, not looping background animations.
+      // Settle into neutral standing baseline instead of auto-restarting Start or looping voice tracks.
+      if (dslVM) {
+        console.info('[Live2D DSL] Motion finished under active DSL state machine; holding settled stance')
+        if (settledIdleParameterBaseline.value.length === 0) {
+          captureSettledIdleParameterBaseline(coreModel)
+        }
+        return
+      }
+
       const selectedMotion = getSelectedRuntimeMotion()
 
       if (selectedMotion && !dslMotionGroupBlocked(selectedMotion.group, selectedMotion.index)) {
@@ -1398,9 +1411,19 @@ async function loadModel() {
       dslAdapter.setSelectChoiceHandler((idx) => {
         const pending = dslVM?.getPendingChoices?.()
         const nextMtn = pending?.choices?.[idx]?.nextMtn
-        dslVM?.selectChoice(idx)
-        lastDslDispatch = { kind: 'choice', target: nextMtn ?? `#${idx}`, at: Date.now() }
-        publishDslSnapshot()
+        isRemoteDispatching.value = true
+        try {
+          dslVM?.selectChoice(idx)
+          if (nextMtn) {
+            playPhysicalMotion(nextMtn)
+            currentMotion.value = { group: nextMtn, index: 0 }
+          }
+          lastDslDispatch = { kind: 'choice', target: nextMtn ?? `#${idx}`, at: Date.now() }
+          publishDslSnapshot()
+        }
+        finally {
+          isRemoteDispatching.value = false
+        }
       })
       dslAdapter.setRemoteDispatchHandler((kind, payload) => {
         if (!dslVM)
@@ -1413,8 +1436,15 @@ async function loadModel() {
           else {
             if (isRemoteTargetGated(payload))
               return
-            dslVM.dispatch(payload)
-            playPhysicalMotion(payload)
+            isRemoteDispatching.value = true
+            try {
+              dslVM.dispatch(payload)
+              playPhysicalMotion(payload)
+              currentMotion.value = { group: payload, index: 0 }
+            }
+            finally {
+              isRemoteDispatching.value = false
+            }
           }
           publishDslSnapshot()
         }
@@ -1694,7 +1724,12 @@ watch(mouthOpenSize, (value) => {
     coreModel.setParameterValueById('ParamMouthOpenY', value)
   }
 })
-watch(currentMotion, value => setMotion(value.group, value.index))
+watch(currentMotion, (value) => {
+  if (isRemoteDispatching.value)
+    return
+  if (value)
+    setMotion(value.group, value.index)
+})
 watch(paused, value => value ? pixiApp.value?.stop() : pixiApp.value?.start())
 watch(() => props.idleAnimations, (idleAnimations) => {
   if (!model.value || !live2dIdleAnimationEnabled.value)

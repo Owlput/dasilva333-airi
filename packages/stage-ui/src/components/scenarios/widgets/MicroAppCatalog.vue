@@ -68,6 +68,7 @@ interface StarterSlot {
   title: string
   subtitle: string
   iconUrl?: string
+  iconClass?: string
   accentBg: string
   manifest?: WidgetExportManifest
   isCustomSlot?: boolean
@@ -76,8 +77,9 @@ interface StarterSlot {
 const STARTER_SLOTS: StarterSlot[] = [
   {
     id: 'starter-live2d-menu-driver',
-    title: 'Live2D Controller',
+    title: 'Live2D Controller (Generic)',
     subtitle: 'Model gimmick deck',
+    iconClass: 'i-carbon:game-wireless text-cyan-500',
     accentBg: 'bg-cyan-100/70 dark:bg-cyan-950/40 border border-cyan-200/50 dark:border-cyan-900/30',
     manifest: LIVE2D_MENU_DRIVER_STARTER,
   },
@@ -457,7 +459,7 @@ function formatDate(timestamp?: number): string {
             Starter widgets
           </span>
           <span class="text-xs text-neutral-400 font-normal dark:text-neutral-500">
-            5 ready to try
+            {{ STARTER_SLOTS.filter(s => !s.isCustomSlot).length }} ready to try
           </span>
         </div>
 
@@ -493,6 +495,9 @@ function formatDate(timestamp?: number): string {
                     class="pointer-events-none size-full select-none object-contain"
                     loading="lazy"
                   >
+                </template>
+                <template v-else-if="item.iconClass">
+                  <div :class="[item.iconClass, 'text-xl sm:text-2xl']" />
                 </template>
               </div>
             </div>

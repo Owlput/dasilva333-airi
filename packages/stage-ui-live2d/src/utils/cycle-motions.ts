@@ -28,9 +28,9 @@ export function parseCycleMotions(
     return []
 
   return idleAnimations
-    .filter(k => typeof k === 'string' && k.startsWith('live2d:'))
+    .filter((k): k is string => typeof k === 'string' && k.length > 0)
     .map((k) => {
-      const payload = k.slice('live2d:'.length)
+      const payload = k.startsWith('live2d:') ? k.slice('live2d:'.length) : k
       const parts = payload.split(':')
       // Format 1: live2d:<group>:<index>
       if (parts.length === 2 && !Number.isNaN(Number.parseInt(parts[1]))) {

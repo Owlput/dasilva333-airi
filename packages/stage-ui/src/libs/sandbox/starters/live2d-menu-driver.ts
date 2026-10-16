@@ -3,7 +3,7 @@ import type { WidgetExportManifest } from '../export'
 export const LIVE2D_MENU_DRIVER_STARTER: WidgetExportManifest = {
   version: '1.0',
   id: 'starter-live2d-menu-driver',
-  title: 'Live2D Menu Driver 🎮',
+  title: 'Live2D Controller (Generic) 🎮',
   scope: 'global',
   surface: 'panel',
   target: 'sidepanel',
