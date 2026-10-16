@@ -37,6 +37,7 @@ export function useAutoSuggestions(options?: UseAutoSuggestionsOptions) {
 
   const wasActive = ref(false)
   let wasStopped = false
+  let lastSuggestedMessageId: string | null = null
   let settleTimeout: ReturnType<typeof setTimeout> | null = null
 
   // If user explicitly pressed Stop, suppress automated suggestion generation for this turn
@@ -86,6 +87,15 @@ export function useAutoSuggestions(options?: UseAutoSuggestionsOptions) {
               return
             }
 
+            // Deduplicate by message identity: prevent duplicate trigger for the same assistant response
+            const messageId = (lastMessage as any).id || (lastMessage as any).createdAt?.toString()
+            if (messageId && messageId === lastSuggestedMessageId) {
+              return
+            }
+            if (messageId) {
+              lastSuggestedMessageId = messageId
+            }
+
             const guidance = options.getGuidance ? options.getGuidance().trim() : ''
             try {
               await options.onTurnComplete?.(guidance)
@@ -94,7 +104,7 @@ export function useAutoSuggestions(options?: UseAutoSuggestionsOptions) {
               console.error('[useAutoSuggestions] Error during onTurnComplete:', err)
             }
           }
-        }, 200)
+        }, 300)
       }
     })
   }

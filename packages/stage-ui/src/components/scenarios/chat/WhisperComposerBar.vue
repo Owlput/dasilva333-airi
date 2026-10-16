@@ -123,6 +123,7 @@ const {
 } = useChatComposer({
   tools: props.tools,
   onSendStart: () => {
+    producerSuggestion.value = null
     emit('send', messageInput.value)
   },
   onSendError: (err) => {

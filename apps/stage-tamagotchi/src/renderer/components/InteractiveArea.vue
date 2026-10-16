@@ -622,6 +622,7 @@ async function handleSend() {
   messageInput.value = ''
   attachments.value = []
   groundedMemories.value = []
+  producerSuggestion.value = null
   isOptimisticClearing = false
 
   try {

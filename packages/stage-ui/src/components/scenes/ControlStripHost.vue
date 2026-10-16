@@ -180,15 +180,18 @@ const lipSyncLoopId = ref<number>()
 const live2dLipSync = ref<Live2DLipSync>()
 const live2dLipSyncOptions: Live2DLipSyncOptions = { mouthUpdateIntervalMs: 50, mouthLerpWindowMs: 50 }
 
-// Broadcast speaking state (mouthOpenSize, nowSpeaking) to other windows (e.g., actor.vue)
+const isSpeechIntentActive = ref(false)
+
+// Broadcast speaking state (mouthOpenSize, nowSpeaking, intentActive) to other windows (e.g., actor.vue)
 interface SpeakingState {
   mouthOpenSize: number
   nowSpeaking: boolean
+  intentActive?: boolean
 }
 const { post: postSpeakingState } = useBroadcastChannel<SpeakingState, SpeakingState>({ name: 'airi-speaking-state' })
 
-watch([mouthOpenSize, nowSpeaking], ([mouth, speaking]) => {
-  postSpeakingState({ mouthOpenSize: mouth, nowSpeaking: speaking })
+watch([mouthOpenSize, nowSpeaking, isSpeechIntentActive], ([mouth, speaking, intent]) => {
+  postSpeakingState({ mouthOpenSize: mouth, nowSpeaking: speaking, intentActive: intent })
 })
 
 const cardStore = useAiriCardStore()
@@ -1560,6 +1563,7 @@ speechPipeline.on('onTtsResult', (result) => {
 })
 
 speechPipeline.on('onIntentEnd', () => {
+  isSpeechIntentActive.value = false
   cardStore.isModelSyncPrevented = false
   void discordStore.flushAudioTurn()
   rawAudioBuffers.clear()
@@ -1567,6 +1571,7 @@ speechPipeline.on('onIntentEnd', () => {
 })
 
 speechPipeline.on('onIntentCancel', () => {
+  isSpeechIntentActive.value = false
   cardStore.isModelSyncPrevented = false
   discordStore.clearAudioTurn()
   rawAudioBuffers.clear()
@@ -1750,6 +1755,7 @@ function ensureSpeechIntent(behavior: 'interrupt' | 'queue' = 'interrupt') {
     priority: 'normal',
     behavior,
   })
+  isSpeechIntentActive.value = true
   debug('[Stage] Speech intent opened', { intentId: currentChatIntent.intentId, streamId: currentChatIntent.streamId })
 
   return currentChatIntent
@@ -1788,9 +1794,10 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   speechPipeline.stopAll('new-message')
   playbackManager.stopAll('new-message')
   nowSpeaking.value = false
+  isSpeechIntentActive.value = false
   mouthOpenSize.value = 0
   try {
-    postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false })
+    postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false, intentActive: false })
   }
   catch {}
   discordStore.clearAudioTurn()
@@ -1925,9 +1932,10 @@ chatHookCleanups.push(onGenerationStopped(async () => {
   speechPipeline.stopAll('generation-stopped')
   playbackManager.stopAll('generation-stopped')
   nowSpeaking.value = false
+  isSpeechIntentActive.value = false
   mouthOpenSize.value = 0
   try {
-    postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false })
+    postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false, intentActive: false })
   }
   catch (error) {
     debug('[Stage] Failed to post speaking state on stop', { error })
@@ -1955,9 +1963,10 @@ watch(activeSessionId, (newSessionId, oldSessionId) => {
     playbackManager.stopAll('session-switch')
     resetHeldAutonomousCues()
     nowSpeaking.value = false
+    isSpeechIntentActive.value = false
     mouthOpenSize.value = 0
     try {
-      postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false })
+      postSpeakingState({ mouthOpenSize: 0, nowSpeaking: false, intentActive: false })
     }
     catch (error) {
       debug('[Stage] Failed to post speaking state on session switch', { error })

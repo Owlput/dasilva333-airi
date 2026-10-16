@@ -233,6 +233,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
   interface SpeakingBroadcastState {
     mouthOpenSize: number
     nowSpeaking: boolean
+    intentActive?: boolean
   }
 
   const { data: speakingState } = useBroadcastChannel<SpeakingBroadcastState, SpeakingBroadcastState>({
@@ -242,8 +243,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
   const isSpeaking = ref(false)
 
   watch(speakingState, (state) => {
-    if (state && typeof state.nowSpeaking === 'boolean') {
-      isSpeaking.value = state.nowSpeaking
+    if (state) {
+      if (typeof state.intentActive === 'boolean') {
+        isSpeaking.value = state.intentActive || Boolean(state.nowSpeaking)
+      }
+      else if (typeof state.nowSpeaking === 'boolean') {
+        isSpeaking.value = state.nowSpeaking
+      }
     }
   })
 
