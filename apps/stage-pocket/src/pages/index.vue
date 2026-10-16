@@ -259,7 +259,7 @@ onUnmounted(() => {
   >
     <div class="relative z-2 h-100dvh w-100vw flex flex-col overflow-hidden py-safe">
       <!-- header -->
-      <div class="relative z-50 w-full flex gap-2 px-0 py-1 md:px-3 md:py-3">
+      <div class="relative z-50 w-full">
         <MobileHeader class="w-full" />
       </div>
 

@@ -53,7 +53,15 @@ const tokenBarColorClass = computed(() => {
 </script>
 
 <template>
-  <header class="w-full flex flex-col gap-1.5 px-3">
+  <header
+    :class="[
+      'w-full flex flex-col gap-1.5 px-3 pt-2',
+      'bg-white/15 dark:bg-neutral-900/15',
+      'backdrop-blur-[16px]',
+      'border-b border-neutral-200/40 dark:border-neutral-800/40',
+      'transition-colors duration-200',
+    ]"
+  >
     <!-- Top Action Strip -->
     <div class="w-full flex items-center justify-between gap-2">
       <!-- Left: Clean Logo Anchor -->

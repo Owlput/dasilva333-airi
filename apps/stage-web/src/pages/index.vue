@@ -235,7 +235,7 @@ onUnmounted(() => {
   >
     <div flex="~ col" relative z-2 w-100vw of-hidden h-dvh>
       <!-- header -->
-      <div class="px-0 py-1 md:px-3 md:py-3" w-full gap-2>
+      <div w-full>
         <MobileHeader class="w-full" />
       </div>
       <!-- page -->
