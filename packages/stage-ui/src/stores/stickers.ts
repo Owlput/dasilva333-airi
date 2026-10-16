@@ -234,6 +234,91 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
   }
 
   /**
+   * Update or rename an existing sticker
+   */
+  async function updateSticker(oldId: string, updates: {
+    id?: string
+    label?: string
+    file?: File | Blob
+    characterId?: string
+  }): Promise<string> {
+    const targetId = updates.id ? updates.id.trim() : oldId
+
+    try {
+      // 1. If ID changed, move binary data in IndexedDB
+      if (targetId !== oldId) {
+        let blob = updates.file
+        if (!blob) {
+          blob = (await localforage.getItem<Blob>(`sticker-data-${oldId}`)) ?? undefined
+        }
+        if (blob) {
+          await localforage.setItem(`sticker-data-${targetId}`, blob)
+          await localforage.removeItem(`sticker-data-${oldId}`)
+        }
+
+        // Clean up object URL cache
+        if (objectUrlCache.has(oldId)) {
+          URL.revokeObjectURL(objectUrlCache.get(oldId)!)
+          objectUrlCache.delete(oldId)
+        }
+        if (objectUrlCache.has(targetId)) {
+          URL.revokeObjectURL(objectUrlCache.get(targetId)!)
+          objectUrlCache.delete(targetId)
+        }
+
+        // Update libraryMetadata
+        const oldEntry = libraryMetadata.value.find(m => m.id === oldId)
+        if (oldEntry) {
+          libraryMetadata.value = libraryMetadata.value.filter(m => m.id !== oldId && m.id !== targetId)
+          libraryMetadata.value.push({
+            ...oldEntry,
+            id: targetId,
+            label: updates.label !== undefined ? updates.label : oldEntry.label,
+            originalName: updates.file ? ((updates.file as File).name || `${targetId}.png`) : oldEntry.originalName,
+            mimeType: updates.file ? (updates.file.type || 'image/png') : oldEntry.mimeType,
+            characterId: updates.characterId || oldEntry.characterId,
+          })
+        }
+
+        // Update any active placements
+        for (const p of activePlacements.value) {
+          if (p.stickerId === oldId) {
+            p.stickerId = targetId
+          }
+        }
+      }
+      else {
+        // ID remains same
+        if (updates.file) {
+          await localforage.setItem(`sticker-data-${targetId}`, updates.file)
+          if (objectUrlCache.has(targetId)) {
+            URL.revokeObjectURL(objectUrlCache.get(targetId)!)
+            objectUrlCache.delete(targetId)
+          }
+        }
+
+        const idx = libraryMetadata.value.findIndex(m => m.id === targetId)
+        if (idx >= 0) {
+          const prev = libraryMetadata.value[idx]
+          libraryMetadata.value[idx] = {
+            ...prev,
+            label: updates.label !== undefined ? updates.label : prev.label,
+            originalName: updates.file ? ((updates.file as File).name || `${targetId}.png`) : prev.originalName,
+            mimeType: updates.file ? (updates.file.type || 'image/png') : prev.mimeType,
+            characterId: updates.characterId || prev.characterId,
+          }
+        }
+      }
+
+      return targetId
+    }
+    catch (err) {
+      console.error(`[StickersStore] Failed to update sticker ${oldId}:`, err)
+      throw err
+    }
+  }
+
+  /**
    * Remote a sticker from the library
    */
   async function deleteSticker(id: string) {
@@ -389,6 +474,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     resolveStickerId,
     getStickerUrl,
     addSticker,
+    updateSticker,
     deleteSticker,
     spawnSticker,
     slapSticker,

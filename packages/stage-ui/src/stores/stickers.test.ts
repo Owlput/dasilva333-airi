@@ -83,3 +83,62 @@ describe('useStickersStore - resolveStickerId', () => {
     expect(store.resolveStickerId('completely_unrelated_xyz_123')).toBeUndefined()
   })
 })
+
+describe('useStickersStore - updateSticker', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    const store = useStickersStore()
+    store.libraryMetadata = []
+    store.activePlacements = []
+  })
+
+  it('updates label without changing ID', async () => {
+    const store = useStickersStore()
+    store.libraryMetadata.push({
+      id: 'custom-smile',
+      label: 'Old Label',
+      addedAt: Date.now(),
+      originalName: 'custom-smile.png',
+      mimeType: 'image/png',
+    })
+
+    const result = await store.updateSticker('custom-smile', {
+      label: 'New Grin Label',
+    })
+
+    expect(result).toBe('custom-smile')
+    const item = store.libraryMetadata.find(m => m.id === 'custom-smile')
+    expect(item?.label).toBe('New Grin Label')
+  })
+
+  it('renames sticker ID and updates metadata and active placements', async () => {
+    const store = useStickersStore()
+    store.libraryMetadata.push({
+      id: 'smug',
+      label: 'Smug Face',
+      addedAt: Date.now(),
+      originalName: 'smug.png',
+      mimeType: 'image/png',
+    })
+    store.activePlacements.push({
+      instanceId: 'inst-1',
+      stickerId: 'smug',
+      x: 100,
+      y: 100,
+      rotation: 0,
+      scale: 1,
+      createdAt: Date.now(),
+    })
+
+    const result = await store.updateSticker('smug', {
+      id: 'character-smug',
+      label: 'Smug Smirk',
+    })
+
+    expect(result).toBe('character-smug')
+    expect(store.libraryMetadata.find(m => m.id === 'smug')).toBeUndefined()
+    const item = store.libraryMetadata.find(m => m.id === 'character-smug')
+    expect(item?.label).toBe('Smug Smirk')
+    expect(store.activePlacements[0].stickerId).toBe('character-smug')
+  })
+})

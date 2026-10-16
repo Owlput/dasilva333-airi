@@ -17,15 +17,18 @@ interface Props {
   modelValue: boolean
   cardId?: string
   existingIds?: string[]
+  stickerToEdit?: CardCustomSticker | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   existingIds: () => [],
+  stickerToEdit: null,
 })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'created', sticker: CardCustomSticker): void
+  (e: 'updated', payload: { oldId: string, sticker: CardCustomSticker }): void
 }>()
 
 const stickersStore = useStickersStore()
@@ -40,6 +43,8 @@ const emotionsInput = ref<string>('')
 const idManuallyEdited = ref(false)
 const isSaving = ref(false)
 const isDragging = ref(false)
+
+const isEdit = computed(() => !!props.stickerToEdit)
 
 const EMOTION_SUGGESTIONS = [
   'happy',
@@ -71,7 +76,7 @@ function handleFileSelected(file: File) {
     return
   }
 
-  if (previewUrl.value) {
+  if (selectedFile.value && previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
   }
 
@@ -128,12 +133,15 @@ function toggleEmotionChip(emotion: string) {
 const idCollision = computed(() => {
   if (!stickerId.value)
     return false
-  return props.existingIds.includes(stickerId.value)
+  if (isEdit.value && props.stickerToEdit && stickerId.value.trim().toLowerCase() === props.stickerToEdit.id.toLowerCase())
+    return false
+  return props.existingIds.map(id => id.toLowerCase()).includes(stickerId.value.trim().toLowerCase())
 })
 
 const isValid = computed(() => {
+  const hasImage = !!selectedFile.value || (isEdit.value && !!previewUrl.value)
   return (
-    !!selectedFile.value
+    hasImage
     && !!stickerId.value
     && !idCollision.value
     && !!label.value.trim()
@@ -142,7 +150,7 @@ const isValid = computed(() => {
 })
 
 function resetForm() {
-  if (previewUrl.value) {
+  if (selectedFile.value && previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
   }
   selectedFile.value = null
@@ -158,17 +166,54 @@ function resetForm() {
   }
 }
 
+function handleRemoveNewFile() {
+  if (selectedFile.value && previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+  selectedFile.value = null
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+  if (isEdit.value && props.stickerToEdit) {
+    stickersStore.getStickerUrl(props.stickerToEdit.id).then((url) => {
+      previewUrl.value = url || ''
+    })
+  }
+  else {
+    previewUrl.value = ''
+  }
+}
+
 watch(
-  () => props.modelValue,
-  (open) => {
+  [() => props.modelValue, () => props.stickerToEdit],
+  async ([open, toEdit]) => {
     if (!open) {
+      resetForm()
+      return
+    }
+
+    if (toEdit) {
+      stickerId.value = toEdit.id
+      label.value = toEdit.label
+      description.value = toEdit.description
+      emotionsInput.value = toEdit.emotions ? toEdit.emotions.join(', ') : ''
+      idManuallyEdited.value = true
+      selectedFile.value = null
+
+      const existingUrl = await stickersStore.getStickerUrl(toEdit.id)
+      if (existingUrl && !selectedFile.value) {
+        previewUrl.value = existingUrl
+      }
+    }
+    else {
       resetForm()
     }
   },
+  { immediate: true },
 )
 
 async function handleSave() {
-  if (!isValid.value || !selectedFile.value) {
+  if (!isValid.value) {
     return
   }
 
@@ -184,25 +229,50 @@ async function handleSave() {
       parsedEmotions.push(finalId)
     }
 
-    // Save binary into localforage directly
-    await stickersStore.addSticker(
-      selectedFile.value,
-      label.value.trim(),
-      props.cardId,
-      finalId,
-    )
+    if (isEdit.value && props.stickerToEdit) {
+      await stickersStore.updateSticker(
+        props.stickerToEdit.id,
+        {
+          id: finalId,
+          label: label.value.trim(),
+          file: selectedFile.value || undefined,
+          characterId: props.cardId,
+        },
+      )
 
-    const newSticker: CardCustomSticker = {
-      id: finalId,
-      label: label.value.trim(),
-      description: description.value.trim(),
-      emotions: parsedEmotions,
-      createdAt: Date.now(),
+      const updatedSticker: CardCustomSticker = {
+        id: finalId,
+        label: label.value.trim(),
+        description: description.value.trim(),
+        emotions: parsedEmotions,
+        createdAt: props.stickerToEdit.createdAt || Date.now(),
+      }
+
+      emit('updated', { oldId: props.stickerToEdit.id, sticker: updatedSticker })
+      emit('update:modelValue', false)
+      toast.success(`Sticker "${finalId}" updated!`)
     }
+    else if (selectedFile.value) {
+      // Save binary into localforage directly
+      await stickersStore.addSticker(
+        selectedFile.value,
+        label.value.trim(),
+        props.cardId,
+        finalId,
+      )
 
-    emit('created', newSticker)
-    emit('update:modelValue', false)
-    toast.success(`Sticker "<|STICKER ${finalId}|>" created!`)
+      const newSticker: CardCustomSticker = {
+        id: finalId,
+        label: label.value.trim(),
+        description: description.value.trim(),
+        emotions: parsedEmotions,
+        createdAt: Date.now(),
+      }
+
+      emit('created', newSticker)
+      emit('update:modelValue', false)
+      toast.success(`Sticker "<|STICKER ${finalId}|>" created!`)
+    }
   }
   catch (err: any) {
     console.error('[CardStickerAddModal] Failed to save sticker:', err)
@@ -229,10 +299,10 @@ async function handleSave() {
             </div>
             <div>
               <DialogTitle class="text-base text-neutral-800 font-semibold dark:text-neutral-100">
-                Add Custom Reaction Sticker
+                {{ isEdit ? 'Edit Reaction Sticker' : 'Add Custom Reaction Sticker' }}
               </DialogTitle>
               <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                Upload a transparent PNG/WebP and configure its LLM prompt directives.
+                {{ isEdit ? 'Update sticker ID, label, description, or replacement artwork.' : 'Upload a transparent PNG/WebP and configure its LLM prompt directives.' }}
               </p>
             </div>
           </div>
@@ -262,7 +332,7 @@ async function handleSave() {
             >
 
             <div
-              v-if="!selectedFile"
+              v-if="!selectedFile && !previewUrl"
               class="cursor-pointer border-2 rounded-xl border-dashed p-6 text-center transition-all"
               :class="[
                 isDragging
@@ -305,10 +375,10 @@ async function handleSave() {
 
               <div class="flex flex-1 flex-col gap-1 overflow-hidden">
                 <span class="truncate text-xs text-neutral-800 font-semibold dark:text-neutral-200">
-                  {{ selectedFile.name }}
+                  {{ selectedFile ? selectedFile.name : (label || stickerId) }}
                 </span>
                 <span class="text-[11px] text-neutral-400">
-                  {{ (selectedFile.size / 1024).toFixed(1) }} KB • {{ selectedFile.type || 'image/png' }}
+                  {{ selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB • ${selectedFile.type || 'image/png'}` : 'Current artwork (replace optional)' }}
                 </span>
                 <div class="mt-1 flex items-center gap-2">
                   <button
@@ -318,14 +388,16 @@ async function handleSave() {
                   >
                     Change Image
                   </button>
-                  <span class="text-neutral-300 dark:text-neutral-700">|</span>
-                  <button
-                    type="button"
-                    class="rounded px-2 py-0.5 text-xs text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
-                    @click="resetForm"
-                  >
-                    Remove
-                  </button>
+                  <template v-if="selectedFile">
+                    <span class="text-neutral-300 dark:text-neutral-700">|</span>
+                    <button
+                      type="button"
+                      class="rounded px-2 py-0.5 text-xs text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
+                      @click="handleRemoveNewFile"
+                    >
+                      Revert
+                    </button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -433,7 +505,7 @@ async function handleSave() {
             variant="primary"
             size="sm"
             :disabled="!isValid || isSaving"
-            :label="isSaving ? 'Saving...' : 'Add Sticker'"
+            :label="isSaving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Add Sticker')"
             @click="handleSave"
           />
         </div>

@@ -202,6 +202,63 @@ async function handleCustomStickerCreated(newSticker: CardCustomSticker) {
   isCatalogDirty.value = true
 }
 
+const editingSticker = ref<CardCustomSticker | null>(null)
+
+function openAddModal() {
+  editingSticker.value = null
+  showAddModal.value = true
+}
+
+function openEditModal(stickerId: string) {
+  const custom = cardCustomStickers.value[stickerId]
+  if (custom) {
+    editingSticker.value = custom
+    showAddModal.value = true
+  }
+}
+
+async function handleCustomStickerUpdated(payload: { oldId: string, sticker: CardCustomSticker }) {
+  const { oldId, sticker: updatedSticker } = payload
+  const targetCardId = props.cardId || cardStore.activeCardId
+  if (targetCardId && card.value) {
+    const existingStickers = { ...card.value.extensions?.airi?.stickers }
+    if (oldId !== updatedSticker.id) {
+      delete existingStickers[oldId]
+    }
+    existingStickers[updatedSticker.id] = updatedSticker
+
+    cardStore.updateCard(targetCardId, {
+      extensions: {
+        ...card.value.extensions,
+        airi: {
+          ...card.value.extensions?.airi,
+          stickers: existingStickers,
+        },
+      },
+    } as any)
+  }
+
+  if (oldId !== updatedSticker.id) {
+    delete customStickerUrls.value[oldId]
+    activeStickerIds.value = activeStickerIds.value.map(id => id === oldId ? updatedSticker.id : id)
+
+    // Also update any occurrences of <|STICKER oldId in the prompt
+    if (stickerDirectivesPrompt.value) {
+      const regex = new RegExp(`<\\|STICKER\\s+${oldId}\\b`, 'g')
+      stickerDirectivesPrompt.value = stickerDirectivesPrompt.value.replace(regex, `<|STICKER ${updatedSticker.id}`)
+      const bareRegex = new RegExp(`\\b${oldId}\\b:`, 'g')
+      stickerDirectivesPrompt.value = stickerDirectivesPrompt.value.replace(bareRegex, `${updatedSticker.id}:`)
+    }
+  }
+
+  const url = await stickersStore.getStickerUrl(updatedSticker.id)
+  if (url) {
+    customStickerUrls.value[updatedSticker.id] = url
+  }
+
+  isCatalogDirty.value = true
+}
+
 async function handleDeleteCustomSticker(id: string) {
   await stickersStore.deleteSticker(id)
 
@@ -458,7 +515,7 @@ function onStickerWidgetsToggled() {
             variant="secondary"
             size="sm"
             class="h-7 gap-1.5 text-xs"
-            @click="showAddModal = true"
+            @click="openAddModal"
           >
             <div class="i-solar:add-circle-bold text-sm text-primary-500" />
             <span>Add Custom Sticker</span>
@@ -503,8 +560,17 @@ function onStickerWidgetsToggled() {
             </span>
           </div>
 
-          <!-- Active Checkbox and Delete Button in top right -->
+          <!-- Active Checkbox, Edit and Delete Buttons in top right -->
           <div class="absolute right-2 top-2 z-10 flex items-center gap-1">
+            <button
+              v-if="sticker.isCustom"
+              type="button"
+              class="h-5 w-5 flex items-center justify-center rounded text-neutral-400 opacity-0 transition-opacity hover:bg-primary-500/10 hover:text-primary-500 group-hover:opacity-100"
+              title="Edit custom sticker"
+              @click.stop="openEditModal(sticker.id)"
+            >
+              <div class="i-solar:pen-bold text-xs" />
+            </button>
             <button
               v-if="sticker.isCustom"
               type="button"
@@ -568,12 +634,14 @@ function onStickerWidgetsToggled() {
       </div>
     </div>
 
-    <!-- Add Custom Sticker Modal -->
+    <!-- Add / Edit Custom Sticker Modal -->
     <CardStickerAddModal
       v-model="showAddModal"
       :card-id="props.cardId"
       :existing-ids="combinedCatalog.map(s => s.id)"
+      :sticker-to-edit="editingSticker"
       @created="handleCustomStickerCreated"
+      @updated="handleCustomStickerUpdated"
     />
   </div>
 </template>
