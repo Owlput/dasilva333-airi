@@ -16,6 +16,8 @@
   },
   "exports": {
     ".": "./src/components/index.ts",
+    "./assets/*": "./src/assets/*",
+    "./assets/stickers": "./src/assets/stickers/index.ts",
     "./components/scenarios/dialogs/model-selector": "./src/components/scenarios/dialogs/model-selector/index.ts",
     "./components/scenarios/settings/model-settings": "./src/components/scenarios/settings/model-settings/index.ts",
     "./components/scenarios/settings/model-settings/*": "./src/components/scenarios/settings/model-settings/*",

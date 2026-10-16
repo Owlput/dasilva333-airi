@@ -5,6 +5,7 @@ import type { WidgetsWindowManager } from '../../../windows/widgets'
 
 import { defineInvokeHandlers } from '@moeru/eventa'
 import { artistryComfyHealthCheck, artistryGenerateHeadless } from '@proj-airi/stage-shared'
+import { ipcMain } from 'electron'
 
 import { widgetsAdd, widgetsClear, widgetsFetch, widgetsHideWindow, widgetsOpenWindow, widgetsPrepareWindow, widgetsRemove, widgetsUpdate } from '../../../../shared/eventa'
 import { generateHeadless } from './artistry-bridge'
@@ -28,6 +29,24 @@ function isFromWindow(options: InvokeOptions | undefined, window: BrowserWindow)
 }
 
 export function createWidgetsService(params: { context: ReturnType<typeof createContext>['context'], widgetsManager: WidgetsWindowManager, window: BrowserWindow }) {
+  // Support direct ipcRenderer.invoke from DevTools console or user scripts
+  try {
+    ipcMain.removeHandler('eventa:invoke:electron:windows:widgets:add')
+  }
+  catch {}
+  ipcMain.handle('eventa:invoke:electron:windows:widgets:add', async (_event, args) => {
+    const payload = Array.isArray(args) ? args[0] : args
+    return payload ? params.widgetsManager!.pushWidget(payload) : undefined
+  })
+
+  try {
+    ipcMain.removeHandler('eventa:invoke:electron:windows:widgets:clear')
+  }
+  catch {}
+  ipcMain.handle('eventa:invoke:electron:windows:widgets:clear', async () => {
+    return params.widgetsManager!.clearWidgets()
+  })
+
   defineInvokeHandlers(params.context, {
     widgetsPrepareWindow,
     widgetsOpenWindow,

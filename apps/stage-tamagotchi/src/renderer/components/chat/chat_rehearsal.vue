@@ -989,6 +989,20 @@ const dynamicPresets = computed(() => {
     text: '<|ACT:vfx="verdant"|> Sacred flora and glowing spores drift into bloom.',
   })
 
+  // Reaction Stickers & Desktop Slappers Presets
+  presets.push({
+    label: '🎨 Sticker: Inline',
+    text: '<|STICKER airi-happy|> That sounds like a wonderful idea!',
+  })
+  presets.push({
+    label: '🖼️ Sticker: Slapper',
+    text: '<|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|> You did it! Incredible work!',
+  })
+  presets.push({
+    label: '✨ Sticker: Both',
+    text: '<|STICKER lupin-warm-smile surface="both" weight="0.5" pos="bottomLeft"|> I am right here with you, always.',
+  })
+
   return presets
 })
 

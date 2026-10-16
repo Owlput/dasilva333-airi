@@ -54,6 +54,91 @@ function computeDefaultBounds(): Rectangle {
   return { x, y, width, height }
 }
 
+function computeStickerBounds(weight?: number, pos?: string): Rectangle {
+  const primary = screen.getPrimaryDisplay().workArea
+  const clampedWeight = Math.max(0.1, Math.min(1.0, typeof weight === 'number' && !Number.isNaN(weight) ? weight : 0.5))
+  // Size range: 160px (at 0.1) to 300px (at 1.0)
+  const size = Math.round(160 + (clampedWeight - 0.1) * (140 / 0.9))
+
+  // Random jitter (+/- 20px) to prevent multiple stickers from stacking exactly
+  const jitterX = Math.round((Math.random() - 0.5) * 40)
+  const jitterY = Math.round((Math.random() - 0.5) * 40)
+  const margin = 36
+
+  const validPositions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']
+  const targetPos = (!pos || pos === 'random' || !validPositions.includes(pos))
+    ? validPositions[Math.floor(Math.random() * validPositions.length)]
+    : pos
+
+  let x: number
+  let y: number
+
+  switch (targetPos) {
+    case 'topLeft':
+      x = primary.x + margin + jitterX
+      y = primary.y + margin + jitterY
+      break
+    case 'topRight':
+      x = primary.x + primary.width - size - margin + jitterX
+      y = primary.y + margin + jitterY
+      break
+    case 'bottomLeft':
+      x = primary.x + margin + jitterX
+      y = primary.y + primary.height - size - margin + jitterY
+      break
+    case 'bottomRight':
+    default:
+      x = primary.x + primary.width - size - margin + jitterX
+      y = primary.y + primary.height - size - margin + jitterY
+      break
+  }
+
+  return {
+    x: Math.max(primary.x, Math.min(x, primary.x + primary.width - size)),
+    y: Math.max(primary.y, Math.min(y, primary.y + primary.height - size)),
+    width: size,
+    height: size,
+  }
+}
+
+function createStickerWindow(bounds: Rectangle): ElectronBrowserWindow {
+  const window = new ElectronBrowserWindow({
+    title: 'AIRI — Sticker',
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    type: 'panel',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(getElectronMainDirname(), '../preload/index.cjs'),
+      sandbox: true,
+    },
+    ...transparentWindowConfig(),
+  })
+
+  window.setAlwaysOnTop(true, 'screen-saver', 1)
+  window.setFullScreenable(false)
+  showWindowOnAllWorkspaces(window)
+  if (isMacOS)
+    window.setWindowButtonVisibility(false)
+
+  window.on('ready-to-show', () => {
+    if (!window.isDestroyed())
+      window.showInactive()
+  })
+
+  return window
+}
+
 function createWidgetsWindow(options?: Electron.BrowserWindowConstructorOptions & { spotlight?: boolean }) {
   const { spotlight = true, ...rest } = options ?? {}
   const window = new ElectronBrowserWindow({
@@ -352,23 +437,46 @@ export function setupWidgetsWindowManager(params: {
     const isSticker = payload.componentName === 'sticker'
 
     let window: BrowserWindow
-    if (isSticker && payload.bounds) {
-      window = await createWidgetsWindow({
-        ...payload.bounds,
-        spotlight: false,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-      })
-      standaloneWindows.set(id, window)
-      const { context: evCtx } = createContext(ipcMain, window)
-      // For standalone windows, we need to load the route directly
-      await loadWithRoute(window, `${defaultRoute}?id=${id}`)
+    if (isSticker) {
+      const bounds = payload.bounds
+        ? {
+            x: payload.bounds.x ?? 0,
+            y: payload.bounds.y ?? 0,
+            width: payload.bounds.width ?? 220,
+            height: payload.bounds.height ?? 220,
+          }
+        : computeStickerBounds(payload.componentProps?.weight, payload.componentProps?.pos)
 
-      // Since standalone windows have their own eventa context, we need to emit render through it
-      // but wait for ready-to-show
-      window.once('ready-to-show', () => {
-        evCtx.emit(widgetsRenderEvent, snapshot)
+      window = createStickerWindow(bounds)
+      standaloneWindows.set(id, window)
+
+      window.on('closed', () => {
+        standaloneWindows.delete(id)
+        removeWidgetInternal(id, true)
       })
+
+      const rendererDir = resolve(getElectronMainDirname(), '..', 'renderer')
+      const target = baseUrl(rendererDir, 'sticker.html')
+      const query: Record<string, string> = {
+        id,
+        stickerId: String(payload.componentProps?.stickerId || 'airi-happy'),
+        src: String(payload.componentProps?.src || ''),
+        weight: String(payload.componentProps?.weight ?? 0.5),
+        ttlMs: String(payload.ttlMs ?? 0),
+        pos: String(payload.componentProps?.pos || 'random'),
+      }
+
+      if (typeof target === 'object' && 'url' in target && target.url) {
+        const u = new URL(target.url)
+        for (const [k, v] of Object.entries(query)) {
+          if (v)
+            u.searchParams.set(k, v)
+        }
+        await window.loadURL(u.toString())
+      }
+      else if (typeof target === 'object' && 'file' in target && target.file) {
+        await window.loadFile(target.file, { query })
+      }
     }
     else {
       window = await showWindowWithRoute(`${defaultRoute}?id=${id}`, context)

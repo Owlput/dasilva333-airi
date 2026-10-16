@@ -9,6 +9,8 @@ import * as Pinia from 'pinia'
 import { chatStickers } from '../assets/stickers'
 import { useAiriCardStore } from './modules/airi-card'
 
+export { chatStickers }
+
 export interface StickerMetadata {
   id: string
   label: string

@@ -150,6 +150,7 @@ export default defineConfig({
           'main': resolve(join(import.meta.dirname, 'src', 'renderer', 'index.html')),
           'beat-sync': resolve(join(import.meta.dirname, 'src', 'renderer', 'beat-sync.html')),
           'splash': resolve(join(import.meta.dirname, 'src', 'renderer', 'splash.html')),
+          'sticker': resolve(join(import.meta.dirname, 'src', 'renderer', 'sticker.html')),
         },
       },
     },
