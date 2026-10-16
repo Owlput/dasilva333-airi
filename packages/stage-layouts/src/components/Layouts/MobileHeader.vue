@@ -7,7 +7,6 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import MobileHeaderLink from './MobileHeaderLink.vue'
-import MobileSessionSwitcherPopover from './MobileSessionSwitcherPopover.vue'
 import MobileUtilityPopover from './MobileUtilityPopover.vue'
 
 const chatSessionStore = useChatSessionStore()
@@ -57,10 +56,9 @@ const tokenBarColorClass = computed(() => {
   <header class="w-full flex flex-col gap-1.5 px-3">
     <!-- Top Action Strip -->
     <div class="w-full flex items-center justify-between gap-2">
-      <!-- Left: Clean Logo Anchor & Timeline/Story Capsule -->
+      <!-- Left: Clean Logo Anchor -->
       <div class="min-w-0 flex items-center gap-2">
         <MobileHeaderLink class="shrink-0" />
-        <MobileSessionSwitcherPopover />
       </div>
 
       <!-- Right: Action Cluster (Brain, Injections, Customizer, Settings) -->

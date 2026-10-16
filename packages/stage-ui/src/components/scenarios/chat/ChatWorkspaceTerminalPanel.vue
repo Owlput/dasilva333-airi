@@ -3,6 +3,7 @@ import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { ansiToHtml } from '@proj-airi/stage-ui/libs/sandbox'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useElementSize } from '@vueuse/core'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
@@ -476,12 +477,47 @@ onMounted(async () => {
                 <span class="text-xs text-neutral-800 font-bold tracking-tight dark:text-neutral-100">
                   AIRI Workspace
                 </span>
-                <span class="text-[11px] text-neutral-400 font-normal font-mono dark:text-neutral-500">
+                <span class="text-[11px] text-neutral-500 font-normal font-mono dark:text-neutral-400">
                   /workspace
                 </span>
-              </div>
-              <div class="mt-0.5 truncate text-[10px] text-neutral-400 font-mono dark:text-neutral-500">
-                {{ isCompact ? 'POSIX • TS 5.8 • Node 22' : 'POSIX shell • TypeScript 5.8 • Node 22.14' }}
+                <PopoverRoot>
+                  <PopoverTrigger as-child>
+                    <button
+                      type="button"
+                      title="Workspace runtime details"
+                      :class="[
+                        'flex shrink-0 cursor-pointer items-center justify-center rounded-full p-1 transition-colors',
+                        'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
+                      ]"
+                    >
+                      <span class="i-solar:info-circle-linear text-xs" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverPortal>
+                    <PopoverContent
+                      side="bottom"
+                      align="start"
+                      :side-offset="8"
+                      :class="[
+                        'z-100 w-60 flex flex-col gap-1 rounded-xl border p-3 shadow-2xl backdrop-blur-md',
+                        'border-neutral-200/60 bg-white/95 dark:border-neutral-700/60 dark:bg-neutral-900/95',
+                      ]"
+                    >
+                      <span class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
+                        Runtime
+                      </span>
+                      <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                        POSIX shell
+                      </span>
+                      <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                        TypeScript 5.8
+                      </span>
+                      <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                        Node 22.14
+                      </span>
+                    </PopoverContent>
+                  </PopoverPortal>
+                </PopoverRoot>
               </div>
             </div>
           </div>
@@ -513,11 +549,11 @@ onMounted(async () => {
         <!-- Empty State -->
         <div
           v-if="activeCommandHistory.length === 0"
-          class="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-neutral-400 dark:text-neutral-500"
+          class="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-neutral-500 dark:text-neutral-400"
         >
           <span class="i-solar:terminal-linear text-3xl text-primary-500 opacity-40" />
-          <span class="text-xs text-neutral-600 font-medium dark:text-neutral-400">No commands executed yet.</span>
-          <span class="px-2 text-center text-[10px] text-neutral-400 dark:text-neutral-500">
+          <span class="text-xs text-neutral-700 font-medium dark:text-neutral-300">No commands executed yet.</span>
+          <span class="px-2 text-center text-[10px] text-neutral-500 dark:text-neutral-400">
             Commands run by the companion or entered below will stream here in real time.
           </span>
         </div>
@@ -543,7 +579,7 @@ onMounted(async () => {
               </span>
             </div>
             <div class="flex shrink-0 items-center gap-2 text-[10px] font-mono">
-              <span v-if="!isMinimal" class="text-neutral-400 dark:text-neutral-500">
+              <span v-if="!isMinimal" class="text-neutral-500 dark:text-neutral-400">
                 {{ entry.durationMs }} ms
               </span>
               <span
@@ -627,7 +663,7 @@ onMounted(async () => {
           >
 
           <!-- Shortcut Helper -->
-          <span v-if="!isCompact" class="shrink-0 select-none text-[10px] text-neutral-400 font-normal dark:text-neutral-500">
+          <span v-if="!isCompact" class="shrink-0 select-none text-[10px] text-neutral-500 font-normal dark:text-neutral-400">
             Enter to run
           </span>
 

@@ -4,6 +4,7 @@ import { useSandbox } from '@proj-airi/stage-ui/composables/use-sandbox'
 import { ansiToHtml } from '@proj-airi/stage-ui/libs/sandbox'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores'
 import { useLocalStorage, useScreenSafeArea } from '@vueuse/core'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 const emit = defineEmits<{
@@ -297,10 +298,39 @@ onMounted(async () => {
                 <div class="flex items-center gap-1.5">
                   <span class="text-xs text-neutral-900 font-bold dark:text-neutral-100">AIRI Workspace</span>
                   <span class="text-[10px] text-neutral-500 font-mono dark:text-neutral-400">/workspace</span>
+                  <PopoverRoot>
+                    <PopoverTrigger as-child>
+                      <button
+                        type="button"
+                        title="Workspace runtime details"
+                        class="flex shrink-0 cursor-pointer items-center justify-center rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                      >
+                        <span class="i-solar:info-circle-linear text-xs" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverPortal>
+                      <PopoverContent
+                        side="bottom"
+                        align="start"
+                        :side-offset="8"
+                        class="z-100 w-60 flex flex-col gap-1 border border-neutral-200/60 rounded-xl bg-white/95 p-3 shadow-2xl backdrop-blur-md dark:border-neutral-700/60 dark:bg-neutral-900/95"
+                      >
+                        <span class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
+                          Runtime
+                        </span>
+                        <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                          POSIX shell
+                        </span>
+                        <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                          TypeScript 5.8
+                        </span>
+                        <span class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                          Node 22.14
+                        </span>
+                      </PopoverContent>
+                    </PopoverPortal>
+                  </PopoverRoot>
                 </div>
-                <span class="text-[11px] text-neutral-600 leading-tight dark:text-neutral-400">
-                  POSIX shell · TypeScript 5.8 · Node 22.14
-                </span>
               </div>
             </div>
 
@@ -343,7 +373,7 @@ onMounted(async () => {
             <div class="text-primary-600 font-bold dark:text-primary-400">
               airi@sandbox:~$ # Workspace ready.
             </div>
-            <div class="mt-1 text-[11px] text-neutral-600 dark:text-neutral-400">
+            <div class="mt-1 text-[11px] text-neutral-600 dark:text-neutral-300">
               Run commands to inspect files, query state, or test widgets.
             </div>
           </div>
