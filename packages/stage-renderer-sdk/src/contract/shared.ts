@@ -1,70 +1,27 @@
 /**
- * Shared vocabulary for the stage renderer contract.
+ * Shared vocabulary for the model driver contract.
  *
- * Owner: both sides. Every other file in this SDK reuses these names, so they
- * stay free of renderer-specific concepts (no `format`, no `live2d`, no `vrm`).
- *
- * Purpose: give the host and an externally installed renderer plugin one
- * language for identity, failure, readiness and geometry, so neither side has to
- * import the other's implementation in order to talk.
+ * Owner: both sides. Every other file in this SDK reuses these names, so they stay free of
+ * renderer-specific concepts (no `format`, no `live2d`, no `vrm`).
  */
 
-/**
- * Stable identity of a renderer plugin, e.g. `ai.moeru.airi.stage.live2d`.
- *
- * Purpose: the only handle AIRI keeps for a renderer. Discovery, enable/disable,
- * asset routing and cue routing are all keyed by it.
- */
-export type RendererId = string
-
-/**
- * Identity of one asset *inside* one renderer plugin.
- *
- * Purpose: lets a renderer name its own assets however it likes (UUID, zip path,
- * OPFS directory, remote URL) without AIRI interpreting the value. Only the
- * owning renderer may resolve it.
- */
-export type RendererAssetId = string
-
-/**
- * Identity AIRI mints for a model reference (today the card's `displayModelId`,
- * e.g. `display-model-<nanoid>`).
- *
- * Purpose: cards, cloud backups and cross-window state reference *this*, never a
- * renderer asset id — so reinstalling, replacing or disabling a renderer cannot
- * silently repoint a card at a different asset.
- */
-export type ModelReferenceId = string
-
-/**
- * Opaque asset class declared by a renderer, e.g. `avatar.2d.live2d-zip`.
- *
- * Purpose: replaces AIRI's closed `DisplayModelFormat` enum. AIRI may display,
- * store and route these strings but must never switch on them; only the renderer
- * that declared a kind may interpret it.
- */
-export type AssetKind = string
+/** Stable identity of a model driver, e.g. `ai.moeru.airi.stage.live2d`. Provided by the driver. */
+export type ModelDriverId = string
 
 /** Cancels a subscription previously registered with the host. */
 export type Unsubscribe = () => void
 
 export type MaybePromise<T> = T | Promise<T>
 
-export interface Disposable {
-  dispose: Unsubscribe
-}
-
 /**
  * Monotonic counter incremented on every mount/load attempt.
  *
- * Purpose: renderers must reject async completions whose nonce is stale. Today
- * each component invents its own guard (a `currentLoadId` counter in
- * `stage-ui-three/.../VRMModel.vue`, `isUnmounted` flags elsewhere), and a stale
- * completion is a common source of double-mounted scenes.
+ * A renderer MUST reject an async completion whose nonce is stale.
  */
 export type OperationNonce = number
 
-export interface RendererContractVersion {
+/** Compatibility indicator. */
+export interface ModelDriverContractVersion {
   major: number
   minor: number
 }
@@ -72,114 +29,183 @@ export interface RendererContractVersion {
 /**
  * Version of the contract defined by this package.
  *
- * Purpose: a renderer plugin and AIRI negotiate compatibility through the plugin
- * host before activation, instead of discovering breakage at the first cue.
+ * One of exactly two runtime values this package exports; everything else is a type. It
+ * exists so the compatibility check does not require AIRI to restate the number.
  */
-export const RENDERER_CONTRACT_VERSION: RendererContractVersion = { major: 0, minor: 1 }
+export const MODEL_DRIVER_CONTRACT_VERSION: ModelDriverContractVersion = { major: 0, minor: 1 }
 
 /**
- * Readiness of a stage renderer, reported today through the stage component's
- * `v-model:state`.
+ * Readiness of one renderer mount, reported through the mount's `state-change` emit.
  *
- * Purpose: all four surfaces declare `'pending' | 'loading' | 'mounted'`, but
- * `loading` is never actually assigned, only VRM and MMD emit an `error` (Live2D
- * and Spine report nothing at all), and MMD also resets the surface to
- * `'pending'` in the same catch — so the host cannot distinguish "still loading"
- * from "gave up". `idle` and `error` are added by this contract to make that
- * distinction expressible.
+ * The values are strings on purpose. Readiness crosses `BroadcastChannel` and IPC and is
+ * compared by the host, so the values are part of the contract: numeric ordinals would put
+ * member order into it and would force a plugin the host never imports to know the
+ * numbering. Written out, any renderer — in any language — can produce them.
  */
-export type StageReadinessState = 'idle' | 'pending' | 'loading' | 'mounted' | 'error'
+export enum RendererMountReadinessState {
+  /** Nothing is mounted. */
+  UNMOUNTED = 'unmounted',
+  /** The renderer is being mounted (initializing). */
+  MOUNTING = 'mounting',
+  /** There is no model mounted and the mount is ready to load one. */
+  READY_FOR_MODEL = 'ready-for-model',
+  /** A model is being loaded. */
+  LOADING_MODEL = 'loading-model',
+  /** A model is loaded successfully. */
+  MODEL_LOADED = 'model-loaded',
+  /** A model cannot be loaded because of the model itself. */
+  MODEL_ERROR = 'model-error',
+  /** An error occurred because of the mount itself. */
+  MOUNT_ERROR = 'mount-error',
+}
 
-export type RendererFailureCode
-  /** The renderer cannot host this input at all (wrong kind, unreadable input). */
+export type ContractFailureCode
+  /**
+   * The renderer cannot read this input at all: it has no path for the payload (unreadable,
+   * truncated, a container it cannot open).
+   *
+   * Declining unified import altogether is expressed by not implementing `probe`
+   * (`ModelDriverCapabilities.probe`); declining a single input is a successful probe whose
+   * `confidence` is low and whose `blockingFindings` say why.
+   */
   = | 'unsupported-input'
-    /** The package is structurally invalid; `details` should carry the findings. */
+  /** The package is structurally invalid; `details` should carry the findings. */
     | 'invalid-package'
-    /** The referenced asset is gone from the renderer's own storage. */
+  /** The referenced asset is gone from the renderer's own storage. */
     | 'asset-missing'
-    /** The asset exists but failed to load or parse (moc3, glTF, skel, pmx...). */
+  /** The asset exists but failed to load or parse (moc3, glTF, skel, pmx...). */
     | 'asset-corrupt'
-    /** The renderer plugin is disabled, uninstalled, or failed to activate. */
+  /**
+   * The model driver is disabled, uninstalled, or failed to activate.
+   *
+   * Reported by the host, which is the side that knows a driver is absent — an instance
+   * cannot report its own absence.
+   */
     | 'renderer-unavailable'
-    /** A host service the renderer requires was not provided at activation. */
+  /** A host service the renderer requires was not provided at activation. */
     | 'host-service-missing'
-    /** Superseded by a newer nonce, or explicitly cancelled. */
+  /**
+   * The work was abandoned, and nothing took its place: the mount was disposed or the
+   * renderer disabled while the operation was in flight, or the caller cancelled it.
+   *
+   * Deliberately not `CueRejection.superseded`, which is the normal case — a newer
+   * transaction for the same mount made this one moot, the send still succeeds, and only
+   * that slot goes unapplied. A renderer MUST NOT report one as the other.
+   */
     | 'aborted'
     | 'internal'
 
-export interface RendererFailure {
-  code: RendererFailureCode
+export interface ContractFailure {
+  code: ContractFailureCode
   message: string
   /** Renderer-specific evidence (validator findings, parser output). Opaque to AIRI. */
   details?: unknown
+  /** The error this failure came from, when there was one. Opaque to AIRI, carried for diagnostics. */
   cause?: unknown
+  /**
+   * A **hint, not a policy**: the renderer's guess at whether repeating the same operation
+   * could succeed where this attempt did not.
+   *
+   * AIRI owns everything about retrying that a caller sees, so nothing may depend on this
+   * value: a renderer MUST NOT withhold work it could do because it set `false`, and the host
+   * MUST NOT turn `true` into an automatic loop. Absent means the renderer has no opinion,
+   * never "do not retry".
+   */
   retryable?: boolean
 }
 
 /**
  * Result envelope for every contract call that can fail.
  *
- * Purpose: renderers currently signal failure by throwing, by returning `null`,
- * or by logging and continuing — the host's built-in model installer, for
- * example, stores whatever a failed `fetch` returned because it never checks
- * `response.ok`. One envelope makes success and failure equally explicit at the
- * boundary.
+ * The error branch means **attempted and failed** — never "refused", never "nothing to do".
+ * "There is nothing to remove", "I do not recognise this input" and "I may choose not to
+ * answer" are successes whose value says so, the same rule `CueRejection` follows.
  */
-export type RendererResult<T>
+export type ContractResult<T>
   = | { ok: true, value: T }
-    | { ok: false, error: RendererFailure }
+    | { ok: false, error: ContractFailure }
 
 /**
- * Where the stage is being rendered, which changes host expectations.
+ * Which host surface a mount lives on.
  *
- * Lives here rather than in `stage.ts` because cues target a surface too: the
- * host routes a cue only to the matching mount, so a settings preview never
- * animates the live stage.
+ * Cues target a surface too: the host routes a cue only to the matching mount, so a settings
+ * preview never animates the live stage.
  */
-export type StageSurfaceKind = 'stage' | 'preview' | 'actor' | 'rehearsal'
+export type RendererMountSurfaceKind = 'stage' | 'preview' | 'actor' | 'rehearsal'
 
-/** Screen-space point in CSS pixels. */
-export interface StagePoint {
+/**
+ * A point inside a mount's **drawing box**, in CSS pixels measured from that box's top-left
+ * corner: exactly `clientX - box.getBoundingClientRect().left`.
+ *
+ * The box is the element the host mounted the renderer into, the same box
+ * `RendererMountProps.viewport` describes.
+ *
+ * AIRI converts the raw DOM event exactly **once**, by subtracting the box rectangle, and
+ * applies no other mapping: no `devicePixelRatio` multiplication, no normalization into the
+ * box's width and height, no translation into the model's own space. Each of those depends on
+ * how the renderer drew, so the renderer does them. A value here may fall outside the box: a
+ * captured gesture keeps reporting after the pointer leaves, so negative and over-range
+ * coordinates are legitimate.
+ *
+ * Nothing in the contract is measured against the window, the page, or a canvas backing
+ * store. This one space covers `RendererPointerEvent.point`,
+ * `RendererMountExposed.occupiesPoint`, `RendererMountExposed.hitTest`, `GazeCue.point` and
+ * `HeadPose.position`.
+ */
+export interface RendererMountPoint {
   x: number
   y: number
 }
 
-/** Viewport the host gives the renderer to draw into. */
-export interface StageViewport {
+/**
+ * The rectangle the host gives the renderer to draw into, in CSS pixels.
+ *
+ * This is the mount's **drawing box**: the renderer's own drawing surface fills it, and it is
+ * the box every `RendererMountPoint` is measured against. Everything inside it — how the model
+ * is fitted, at what resolution it renders, where text goes — is the renderer's.
+ */
+export interface RendererMountViewport {
   width: number
   height: number
-  /** Host pixel-density hint (today: `window.devicePixelRatio`). */
+  /**
+   * Host pixel-density hint (today: `window.devicePixelRatio`), so a renderer can size its own
+   * backing store before it has measured anything. A hint, never a factor already applied to
+   * a `RendererMountPoint`.
+   */
   devicePixelRatio?: number
 }
 
 /**
- * User-adjustable stage transform.
+ * Head pose reported by a renderer so the host can tether overlays (captions, radial menu) to
+ * the avatar's head.
  *
- * Purpose: unify the four renderers' overlapping inputs. Today all four take
- * `scale`/`xOffset`/`yOffset`, but rotation is only readable from a renderer's
- * own store (MMD), and per-model transforms are kept by the host in a separate
- * positioning store, so ownership is ambiguous.
- */
-export interface StageTransform {
-  scale?: number
-  xOffset?: number | string
-  yOffset?: number | string
-  rotationY?: number
-}
-
-/**
- * Head pose reported by a renderer so the host can tether overlays (captions,
- * radial menu) to the avatar's head.
- *
- * Purpose: this shape is copy-pasted in three renderers today and missing in the
- * fourth (Live2D), so the radial menu silently degrades there. Here it is an
- * explicitly optional capability instead of an assumed one.
+ * An optional capability, never an assumed one: `ModelDriverCapabilities.headPose`.
  */
 export interface HeadPose {
-  screenX: number
-  screenY: number
-  yaw: number
-  pitch: number
-  roll: number
-  modelHeightPx: number
+  /**
+   * Where the crown of the head is, in `RendererMountPoint` space.
+   *
+   * Produced by the renderer, the only side that knows how it drew: it converts out of its own
+   * model space itself, and the host adds the canvas rectangle when it wants page coordinates.
+   */
+  position: RendererMountPoint
+  /**
+   * Head rotation in radians, as this renderer reads its own head bone.
+   *
+   * An axis this rig cannot express is `null`, never `0`: zero is a real rotation reading, so a
+   * renderer MUST NOT use it to mean "unknown". A renderer with no head bone at all answers
+   * `null` from `getHeadPose` instead of three null axes.
+   */
+  yaw: number | null
+  pitch: number | null
+  roll: number | null
+  /**
+   * Approximate visible model height in CSS pixels, in the same space as `position`, or `null`
+   * when this renderer cannot estimate it.
+   *
+   * Advisory: the host scales head-tethered overlays with it and has its own fallback for a
+   * missing or unreasonable value, so a renderer that cannot measure the model MUST say so
+   * rather than invent a fraction of the viewport.
+   */
+  modelHeightPx: number | null
 }

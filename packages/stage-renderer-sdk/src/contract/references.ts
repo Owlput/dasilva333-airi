@@ -1,112 +1,101 @@
 /**
- * AIRI-side model references and their failure states.
+ * The records AIRI keeps about the models and profiles it references.
  *
- * Owner: AIRI implements this; renderers never see these types, except that they
- * receive a `modelReferenceId` and must treat it as an opaque key.
+ * Owner: AIRI. Renderers never see these types, except that they receive a `modelId` and a
+ * `profileId` and treat both as opaque keys.
  *
- * Purpose: replace the implicit assumption that all renderers share one asset id
- * space. What a character card stores is a *reference*; what actually resolves it
- * is a `(rendererId, assetId)` pair owned by one renderer plugin. Because
- * renderers become installable and optional, an unresolved reference is a normal
- * state rather than an error:
- *   - the renderer is disabled by the user,
- *   - the renderer is not installed at all,
- *   - the renderer no longer supports the kind the reference was created for,
- *   - the asset is missing locally (pruned, or never restored on this device),
- *   - the reference was never bound (imported card, unknown model).
- * Today the host collapses all of these into "model not found" plus a fallback to
- * a default preset, which loses the user's intent and cannot offer a repair.
+ * Nothing here is renderer-derived: no renderer reads or writes these fields, and none of
+ * them mirrors a renderer's own storage layout. Everything AIRI stores about a model and its
+ * profiles lives here and nowhere else: one record per kind, sharing one annotation shape so
+ * the two cannot drift apart.
  */
-
-import type { StageAssetHandle } from './assets'
-import type {
-  AssetKind,
-  ModelReferenceId,
-  RendererAssetId,
-  RendererId,
-  Unsubscribe,
-} from './shared'
-
-export type ModelReferenceOrigin
-  /** Shipped preset declared as a URL by a renderer; never imported. */
-  = | 'preset'
-    /** The user imported it on this device. */
-    | 'user'
-    /** Restored from cloud backup. */
-    | 'cloud'
-    /** Brought in by a card or an export bundle. */
-    | 'imported'
+import type { ModelId, ModelProfileId } from './model'
+import type { ModelDriverId } from './shared'
 
 /**
- * The host's durable pointer to a model.
+ * A model's stored thumbnail.
  *
- * `rendererId`/`assetId` are optional: a reference can exist before it is bound
- * (card import) or after its renderer disappeared (uninstall).
+ * Owned by AIRI: a renderer *produces* one (`ModelProvider.preview`) and does not keep it,
+ * while the catalog has to render with nothing mounted and with the owning driver unavailable
+ * or uninstalled.
+ *
+ * Stored as a data URL rather than a `Blob`, because this value is persisted inside a reactive
+ * record.
  */
-export interface ModelReference {
-  referenceId: ModelReferenceId
+export interface ModelPreview {
+  /** The encoded image. Required: a preview AIRI holds is an image. */
+  dataUrl: string
+  /** Intrinsic pixel size, so a catalog can lay a row out before the image decodes. */
+  width?: number
+  height?: number
+}
+
+/**
+ * The user-facing annotation AIRI owns about anything it references.
+ *
+ * A named model and each of its profiles are both things AIRI names, lists, searches and lets
+ * the user annotate, so they share one field vocabulary instead of growing two that drift.
+ */
+export interface HostAnnotationFields {
   displayName: string
-  importedAt: number
-  origin: ModelReferenceOrigin
-  rendererId?: RendererId
-  assetId?: RendererAssetId
-  kind?: AssetKind
-  /** Pointer to a cached preview so the catalog can render without the renderer. */
-  previewRef?: string
   /**
-   * Which renderer the user (or a card) expects to serve this reference.
+   * The thumbnail AIRI stores and manages for this record.
    *
-   * Purpose: survives a renderer being disabled, so the host can say "this card
-   * needs the Live2D renderer" instead of silently showing a different avatar.
+   * `updatedAt` is stamped here rather than taken from the renderer: AIRI is the side that
+   * decides how fresh its own copy is.
    */
-  rendererHint?: RendererId
-}
-
-/** Cheap availability verdict for catalog rows, without resolving a handle. */
-export type ModelReferenceAvailability
-  = | 'available'
-    | 'renderer-disabled'
-    | 'renderer-missing'
-    | 'kind-unsupported'
-    | 'asset-missing'
-    | 'unbound'
-
-export interface ModelReferenceListRow {
-  referenceId: ModelReferenceId
-  displayName: string
-  importedAt: number
-  rendererId?: RendererId
-  kind?: AssetKind
-  previewUrl?: string
-  availability: ModelReferenceAvailability
+  preview?: ModelPreview & { updatedAt: number }
+  /**
+   * The user's own note.
+   *
+   * Free text AIRI stores and displays, and never interprets. It is not part of `searchKey`
+   * below, which stays limited to the short fields the catalog filter matches on.
+   */
+  note?: string
+  nsfw?: boolean
+  groups?: string[]
+  tags?: string[]
+  /** Lowercased name+tags+groups, used by the catalog filter. */
+  searchKey?: string
 }
 
 /**
- * The full resolution result, including everything the host needs to explain
- * itself to the user.
- */
-export type ModelReferenceResolution
-  = | { status: 'resolved', reference: ModelReference, handle: StageAssetHandle }
-    | { status: 'renderer-disabled', reference: ModelReference, rendererId: RendererId, enableHint?: string }
-    | { status: 'renderer-missing', reference: ModelReference, rendererId: RendererId, installHint?: string }
-    | { status: 'kind-unsupported', reference: ModelReference, rendererId: RendererId, kind: AssetKind, supportedKinds: AssetKind[] }
-    | { status: 'asset-missing', reference: ModelReference, rendererId: RendererId, assetId: RendererAssetId, restorableFrom?: Array<'cloud' | 'local-backup' | 'origin'> }
-    | { status: 'unbound', reference: ModelReference }
-
-/**
- * What AIRI must expose so the stage can turn a card's `displayModelId` into
- * something mountable.
+ * AIRI's record about one **named model**: a model a character can reference.
  *
- * Purpose: keeps `displayModelId` a single opaque string, so the card schema and
- * every existing consumer stay valid while the renderer behind it changes.
+ * The only per-model metadata AIRI owns, and deliberately free of any renderer-specific field.
+ * The renderer's own per-model state is declared separately and stored opaquely
+ * (`ModelScopedState`), and the renderer's asset metadata lives inside its own provider.
  */
-export interface ModelReferenceResolver {
-  resolve: (referenceId: ModelReferenceId) => Promise<ModelReferenceResolution>
-  list: () => Promise<ModelReferenceListRow[]>
-  /** Bind an existing reference to a renderer asset (after import or restore). */
-  bind: (referenceId: ModelReferenceId, binding: { rendererId: RendererId, assetId: RendererAssetId, kind?: AssetKind }) => Promise<void>
-  /** Drop the binding but keep the reference, e.g. after removing a local copy. */
-  unbind: (referenceId: ModelReferenceId) => Promise<void>
-  /** Subscribe to reference or renderer-registry changes that affect resolution. */
-  subscribe: (handler: () => void) => Unsubscribe
+export interface HostNamedModelRecord extends HostAnnotationFields {
+  modelId: ModelId
+  importedAt: number
+  /** The driver that currently serves the asset, when bound. */
+  modelDriverId?: ModelDriverId
+  /**
+   * Which driver the user (or a card) expects to serve this reference.
+   *
+   * Survives a driver being disabled, so the host can say "this card needs the Live2D driver"
+   * instead of silently showing a different avatar.
+   */
+  modelDriverHint?: ModelDriverId
+}
+
+/**
+ * AIRI's record about one model profile.
+ *
+ * The profile's *content* is the renderer's: written through `ModelProvider.saveProfile` and
+ * applied through `ProfileCue`. What AIRI keeps is the same kind of name-and-annotation record
+ * it keeps for a model, which is why both extend `HostAnnotationFields`.
+ *
+ * `profileId` is minted by AIRI, exactly like `modelId`, so `(modelId, profileId)` addresses a
+ * profile without either side inventing a name for the other's storage.
+ */
+export interface HostModelProfileRecord extends HostAnnotationFields {
+  profileId: ModelProfileId
+  /** The model this profile belongs to. */
+  modelId: ModelId
+  /** When AIRI first stored this profile. */
+  createdAt: number
+  /** The driver that currently serves it, when bound. */
+  modelDriverId?: ModelDriverId
 }

@@ -2,7 +2,7 @@
   "name": "@proj-airi/stage-renderer-sdk",
   "type": "module",
   "private": true,
-  "description": "Stage renderer plugin SDK: the host <-> renderer contract for AIRI stage renderers (types only for now)",
+  "description": "Stage renderer plugin SDK: the host <-> renderer contract for AIRI stage renderers (contract only, no implementation)",
   "author": {
     "name": "Moeru AI Project AIRI Team",
     "email": "airi@moeru.ai",
@@ -15,10 +15,12 @@
     "directory": "packages/stage-renderer-sdk"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./types": "./src/index.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "vue": "catalog:"
   }
 }

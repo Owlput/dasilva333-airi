@@ -1,198 +1,152 @@
 /**
- * Who owns which persisted data, and how the host can back it up blindly.
+ * The state channel between AIRI and a model driver — and nothing else.
  *
- * Owner: the rules here bind both sides; the *declaration* is the renderer's.
+ * Owner: the host implements this; the renderer is the only writer of its own state.
  *
- * Purpose: today ownership is accidental and inconsistent:
- *   - each renderer keeps 10-30 raw localStorage keys of its own
- *     (`settings/stage-ui-three/*`, `settings/live2d/*`, `settings/mmd/*`,
- *     `settings/spine/*`) that the host can neither enumerate nor migrate;
- *   - `settings/mmd/scale` has two writers with different defaults, and
- *     `settings/mmd/render-scale` is written by both the renderer's store and an
- *     otherwise unused host store;
- *   - `activeAnimations` (Spine, per model) is watched, applied and reset but
- *     never written with a value, and `favoriteExpression` (VRM) is only cleared
- *     by `resetModelStore` — nothing sets or reads it;
- *   - per-model transforms are split between the host's positioning store and
- *     renderer-global keys, so "reset this model's position" has no single owner.
- * A declared list makes those conflicts visible and lets AIRI back up opaque
- * renderer state without understanding it.
+ * **AIRI does not know a renderer's storage.** It is never told which keys exist, what shape their
+ * values have, which of them are worth backing up, or how an older value becomes a newer one. A
+ * renderer that reports those is reporting its internals, and the report goes stale the moment the
+ * renderer changes.
+ *
+ * What AIRI provides instead is primitives: `services.storage` for the renderer's own key/value state,
+ * and this port for the one per-model slice the host has to hold — because prompts and the catalog are
+ * built while nothing is mounted. A renderer's whole state moves as a single opaque bundle
+ * (`ModelDriverTransferBundle` in `renderer.ts`), and patching and migrating it are the renderer's own
+ * business.
  */
-import type { RendererVocabularySnapshot } from './capabilities'
-import type { MaybePromise, ModelReferenceId, RendererAssetId, RendererId } from './shared'
+import type { CapabilityVocabularySnapshot } from './capabilities'
+import type { ModelId, ModelProfileId } from './model'
+import type { ModelDriverId, RendererMountSurfaceKind } from './shared'
 
 /**
- * `host`   — AIRI writes it; renderers may read through a service.
- * `renderer` — the renderer writes it; AIRI only stores/backs it up verbatim.
+ * The state of one **state scope** and its model, kept by the host as an uninterpreted snapshot.
+ *
+ * Scope: a scope — not the model, and not the mount. A scope is AIRI's unit of sharing: every mount in
+ * a scope reads and writes the same state, a scope outlives any particular mount, and one scope is one
+ * record — the scope is the whole key, which is why `readSnapshot` names nothing else.
+ *
+ * It has to be the host that defines the sharing, because the renderer may not be told the policy:
+ * the renderer only ever learns the scope name it is handed, and that policy may change without
+ * touching this contract.
  */
-export type PersistenceOwner = 'host' | 'renderer'
-
-/**
- * `host-global`    — one value for the whole app (theme, feature toggles).
- * `renderer-global`— one value per renderer (camera, lighting, physics flags).
- * `model-scoped`   — one value per (renderer, model) pair (position/scale,
- *                    selected alt model or outfit, morph overrides, DSL
- *                    affinity). The renderer shards these itself, since only it
- *                    knows how its values are keyed — which means one key may
- *                    hold every model, and the host can then only prune, back up
- *                    and restore whole keys. Merging two devices is likewise the
- *                    renderer's job (`resolveConflict`).
- * `session`        — intentionally not persisted; declared so the host does not
- *                    mistake it for a missing key.
- */
-export type PersistenceScope = 'host-global' | 'renderer-global' | 'model-scoped' | 'session'
-
-export type PersistedValueKind = 'json' | 'string' | 'number' | 'boolean' | 'blob'
-
-export interface RendererPersistedValueDescriptor {
-  /** Renderer-local key; the host namespaces it per renderer. */
-  key: string
-  owner: PersistenceOwner
-  scope: PersistenceScope
-  kind: PersistedValueKind
-  /** Bumped when the shape changes; the host runs `migration` on mismatch. */
-  schemaVersion: number
-  /** Shown in the host's data-management UI. */
-  description: string
+export interface ModelScopedState {
   /**
-   * Whether AIRI includes this value in cloud backup.
+   * The state scope this snapshot belongs to — the whole key.
    *
-   * Purpose: device-specific values (last camera distance, GPU-dependent render
-   * scale) should be excluded while user intent (selected alt model or outfit,
-   * morph overrides) should not.
+   * Comes from `RendererMountProps.stateScope`: a mount echoes the name it was given, and never
+   * invents, stores or interprets one.
    */
-  backedUp: boolean
-  defaultValue?: unknown
-  /** Pure function; must never throw. Returns the value at `schemaVersion`. */
-  migration?: (value: unknown, fromVersion: number) => unknown
+  stateScope: string
   /**
-   * Resolve a sync conflict for this value.
+   * The surface whose mount wrote this snapshot most recently.
    *
-   * AIRI cannot merge: it does not know which fields are configurable, so it has
-   * nothing to merge on. The renderer may present the conflict to the user (the
-   * host exposes a dialog primitive as `RendererUiService.choose`), decide it
-   * itself, or defer it. Absent = the host falls back to last-write-wins.
+   * A **label, not a key**. One surface can hold several scopes (every preview mount has its own) and
+   * a scope outlives any particular mount, so this cannot identify a record. The host needs it after a
+   * restore, when it holds records but no running mounts: it is how the host tells the shared scopes —
+   * the ones AIRI may read for prompts — from the ones belonging to a single mount, which can be
+   * discarded.
    */
-  resolveConflict?: (current: unknown, incoming: unknown, context: RendererConflictContext) => MaybePromise<RendererConflictResolution>
-}
-
-/** What a renderer decided about one conflicting value. */
-export type RendererConflictResolution
-  /** Keep what this device already has. */
-  = | { action: 'keep-local' }
-  /** Take what sync brought in. */
-    | { action: 'take-incoming' }
-    | { action: 'merged', value: unknown }
-    /** Unresolved: keep the local value and ask again later. */
-    | { action: 'deferred' }
-
-export interface RendererConflictContext {
-  rendererId: RendererId
-  /** Present when the conflicting value is model-scoped. */
-  referenceId?: ModelReferenceId
-  key: string
-  /** Where the incoming value came from, when the host knows. */
-  source: 'cloud' | 'local-backup' | 'import' | 'unknown'
-}
-
-/**
- * Optional blob-shaped state a renderer keeps outside key/value storage
- * (custom animations, extracted texture sets, OPFS caches).
- *
- * The host treats the payload as opaque and only needs the prefix/namespace in
- * order to enumerate and delete it.
- */
-export interface RendererBlobStateDescriptor {
-  /** Namespace or key prefix owned by the renderer. */
-  prefix: string
-  description: string
-  backedUp: boolean
-}
-
-export interface RendererPersistedStateManifest {
-  rendererId: RendererId
-  values: RendererPersistedValueDescriptor[]
-  blobs?: RendererBlobStateDescriptor[]
-}
-
-/**
- * AIRI's own record about a model reference.
- *
- * Purpose: this is the *only* per-model metadata AIRI owns. It is deliberately
- * free of any renderer-specific field: the renderer's own per-model state is
- * declared separately and stored opaquely, and the renderer's asset metadata
- * lives inside the renderer's own provider.
- */
-export interface HostModelMetadataRecord {
-  referenceId: ModelReferenceId
-  displayName: string
-  importedAt: number
-  /** Renderer that currently owns the asset, when bound. */
-  rendererId?: RendererId
-  /** Asset inside that renderer, when bound. */
-  assetId?: RendererAssetId
-  /** Opaque asset class, for display and for guessing a renderer on import. */
-  kind?: string
-  preview?: { dataUrl?: string, updatedAt?: number }
-  nsfw?: boolean
-  groups?: string[]
-  tags?: string[]
-  /** Lowercased name+tags+groups, used by the catalog filter. */
-  searchKey?: string
-}
-
-/**
- * A renderer's per-model state, kept by the host as an uninterpreted snapshot.
- *
- * Purpose: gives "reset per-model state" and "move this model's settings with the
- * model" a single home while leaving the values entirely to the renderer. Today
- * this is split between the host's positioning store and renderer-global keys
- * that are keyed by a model id *inside* one shared value, so a single model's
- * slice can be neither pruned nor moved.
- *
- * Rules:
- *   - the **renderer is the only writer**. The host keeps the latest snapshot and
- *     never writes one back into renderer storage; restoring means handing the
- *     snapshot to the renderer, which resolves it through `resolveConflict`.
- *   - `values` stays opaque to AIRI, so the renderer may put its per-model
- *     transform, selection and morph overrides in there under its own keys.
- *   - `vocabulary` is the single part AIRI reads, for prompts built while nothing
- *     is mounted.
- */
-export interface ModelScopedRendererState {
-  referenceId: ModelReferenceId
-  rendererId: RendererId
-  /** Declared keys only; unknown keys are tolerated for forward compatibility. */
+  surface: RendererMountSurfaceKind
+  modelId: ModelId
+  modelDriverId: ModelDriverId
+  /**
+   * The renderer's own per-model values, in whatever shape it likes.
+   *
+   * Opaque to AIRI: stored, moved and handed back verbatim, and tolerated verbatim when a newer
+   * renderer reads what an older one wrote. There is no declared key list to validate against.
+   */
   values: Record<string, unknown>
-  /** Written by the renderer together with `values`; read-only for AIRI. */
-  vocabulary?: RendererVocabularySnapshot
+  /**
+   * The token vocabulary AIRI may put in a prompt, written by the renderer together with `values` and
+   * read-only for AIRI.
+   *
+   * Required rather than optional: two different facts — "this renderer has no vocabulary to offer"
+   * and "no vocabulary has been written yet" — would otherwise be the same `undefined`, and a prompt
+   * builder cannot act on an ambiguity. An empty `items` is how a renderer states the first of them.
+   * `capabilities.ts` describes the list's stability requirement.
+   */
+  vocabulary: CapabilityVocabularySnapshot
+  /**
+   * The profile this model is showing, written by the mounted renderer and read-only for AIRI.
+   *
+   * AIRI has to name a profile when it wants a specific one (`LoadCue.profileId`), and it has to
+   * highlight the current one in a quick switch — both without asking a renderer at runtime and without
+   * keeping a mirror of state it does not own. This snapshot *is* that mirror.
+   *
+   * Row-required, and never empty for a model that is mounted: AIRI mints a default `profileId` before
+   * the model is imported, so a mounted model always has at least one profile to report.
+   */
+  profileId: ModelProfileId
   /** Monotonic, bumped by the renderer on every write. AIRI never writes it. */
   revision: number
   updatedAt: number
 }
 
 /**
- * What the host must implement so a renderer's settings survive a device move,
- * plus the snapshot channel its per-model state travels through.
+ * The state channel's two verbs, handed to the plugin as `ModelDriverHostServices.state`.
+ *
+ * A snapshot has to be readable while nothing is mounted, which is why this is a service and not a
+ * member of the mount. It is deliberately the *only* state AIRI holds: a renderer's other keys are its
+ * own, reached through `HostStorageInterface`, and its whole state travels as one opaque bundle
+ * (`ModelDriverRuntime.export` / `import`).
+ *
+ * Rules:
+ *   - a scope name is **opaque** to the renderer and is never interpreted. AIRI mints it under a
+ *     reserved prefix and never lets it equal a `RendererMountSurfaceKind` value, so the scope
+ *     namespace and the surface namespace stay distinguishable and a renderer cannot learn the sharing
+ *     policy by reading names.
+ *   - a scope is **not a mount's identity**: several mounts can share one scope, so anything addressed
+ *     to *one* mount names its `mountId` instead (`RendererMountProps.mountId`). This record is keyed
+ *     by the scope, because it is the sharing unit and not the mount.
+ *   - a scope's name is **stable while its state lives**. Renaming orphans the records, so the host
+ *     either migrates them with the rename or discards them deliberately; it never leaves a renderer
+ *     reading an empty scope and concluding the model has no state.
+ *   - a scope that belongs to a **single mount** is unique to that mount and is discarded when it
+ *     unmounts: nothing else can read it, and keeping it would let a later preview inherit a draft.
+ *   - the **renderer is the only writer**. The host keeps the latest snapshot and never writes one back
+ *     into renderer storage; restoring hands the renderer the complete snapshot the host holds, and the
+ *     renderer decides what to keep.
+ *   - **every hand-over is the complete state**, never a patch or a delta, and never a per-value
+ *     negotiation: patching and migrating are the renderer's own business, because only it knows the
+ *     shape of what it stored.
+ *   - `values` stays opaque to AIRI, so the renderer may put its per-model transform, selection and
+ *     morph overrides in there under its own keys.
+ *   - `vocabulary` and `profileId` are the two parts AIRI reads. For those, AIRI reads a **shared**
+ *     scope — the live stage's first — and never a single-mount one: otherwise a draft the user is
+ *     still trying in a preview would become what a prompt believes the model looks like. This is a
+ *     host-side read, not a port method; prompts and the catalog are built while nothing is mounted.
  */
-export interface RendererStateTransferPort {
-  exportState: (rendererId: RendererId) => Promise<RendererPersistedStateManifest>
-  /** Apply a previously exported manifest, running migrations as needed. */
-  importState: (manifest: RendererPersistedStateManifest, values: Record<string, unknown>) => Promise<void>
+export interface HostStateTransferPort {
   /**
-   * Store a snapshot the renderer just produced.
+   * Store a snapshot the renderer just produced, into the scope its mount belongs to.
    *
-   * Only the **mounted** instance may call this — whichever mount is on screen
-   * (`stage`, `preview`, `actor` or `rehearsal`). A settings panel edits the
-   * renderer's own store and lets the mounted instance publish, so two windows
-   * never race on `revision`. If nothing is mounted, nothing writes: the panel's
-   * edits land in the snapshot when the renderer is next mounted.
+   * Any **mounted** instance may call this: what it publishes goes into its own `stateScope`, so mounts
+   * that share a scope publish into one state, and a preview's draft never lands in the stage's. A
+   * settings panel edits the renderer's own store and lets the mount of its scope publish. If nothing is
+   * mounted, nothing writes — a panel's edits land in that scope's snapshot the next time one of its
+   * mounts is up.
    *
-   * The host keeps the snapshot verbatim and never writes it back into renderer
-   * storage; it ignores a write that is not newer than the one it holds, and
-   * restoring means handing the snapshot to the renderer to merge.
+   * Publish what the model *is*, not what the user is currently trying. An unconfirmed change belongs to
+   * a `persistent: false` cue and MUST NOT reach here: this snapshot is also what AIRI reads to build
+   * prompts.
+   *
+   * The host keeps the snapshot verbatim and never writes it back into renderer storage; it ignores a
+   * write that is not newer than the one it already holds for that scope, and a write naming a scope it
+   * never minted for a live mount.
    */
-  writeSnapshot: (snapshot: ModelScopedRendererState) => Promise<void>
-  /** The last snapshot the renderer wrote for this model, if any. */
-  readSnapshot: (rendererId: RendererId, referenceId: ModelReferenceId) => Promise<ModelScopedRendererState | undefined>
+  writeSnapshot: (snapshot: ModelScopedState) => Promise<void>
+  /**
+   * The snapshot AIRI holds for one state scope.
+   *
+   * The scope is the whole key. The host mints one per snapshot it keeps, and anything else a caller
+   * could name — the renderer, the model — is either already fixed by which mount is asking or is data
+   * inside the snapshot it gets back. A mount passes the `stateScope` it was handed and does not read
+   * another scope's state: that is what keeps a preview a preview, instead of it inheriting the stage's
+   * working state.
+   *
+   * Reading it is how a renderer picks itself up after a device move or a remount. It receives the
+   * complete snapshot the host holds, not a diff, and decides for itself what to keep and how to migrate
+   * what it does not recognise.
+   */
+  readSnapshot: (stateScope: string) => Promise<ModelScopedState | undefined>
 }

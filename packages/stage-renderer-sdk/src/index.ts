@@ -1,25 +1,28 @@
 /**
- * `@proj-airi/stage-renderer-sdk` — the contract between AIRI and a stage
- * renderer plugin.
+ * `@proj-airi/stage-renderer-sdk` — the contract between AIRI and a model driver.
  *
- * Status: **types only, not integrated**. Nothing in this workspace imports this
- * package yet; it exists so the boundary can be reviewed before any code moves
- * behind it. See `README.md` for the ownership rules and the file map.
+ * Status: **contract only, not integrated**. Two values are exported
+ * (`MODEL_DRIVER_CONTRACT_VERSION` and the `RendererMountReadinessState` enum) and nothing else here
+ * executes. Nothing in this workspace imports this package yet; it exists so the boundary can be
+ * reviewed before any code moves behind it. See `README.md` for the ownership rules and the file map,
+ * and `docs/rfcs/0001-stage-renderer-plugin-contract.md` for why the contract has this shape.
  *
- * The one rule everything else follows: **AIRI owns references, the renderer owns
- * assets.** AIRI stores a name, a card binding, tags, mappings and a preview
- * snapshot; the renderer owns the bytes, its format's validation and repair, its
- * preview generation, and its capability enumeration. AIRI never assumes one
- * renderer's asset means the same thing to another renderer.
+ * AIRI owns the **named model** and its **profiles** as records: the id a character card points at, the
+ * user's annotations, and a stored preview. The model driver owns the **raw model** (the bytes, its
+ * format's validation and repair), the **model** it drives, the **renderer** that draws it, its storage
+ * layout, its migrations and its capability record. AIRI never assumes one driver's model means the
+ * same thing to another.
  */
 
-export * from './contract/assets'
 export * from './contract/capabilities'
 export * from './contract/cues'
 export * from './contract/host-services'
 export * from './contract/lifecycle'
 export * from './contract/manifest'
+export * from './contract/model'
 export * from './contract/persistence'
+export * from './contract/provider'
 export * from './contract/references'
+export * from './contract/renderer'
+export * from './contract/renderer-mount'
 export * from './contract/shared'
-export * from './contract/stage'

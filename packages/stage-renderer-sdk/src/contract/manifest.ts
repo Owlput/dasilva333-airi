@@ -1,80 +1,143 @@
 /**
- * What a renderer plugin declares about itself.
+ * What a model driver declares about itself.
  *
- * Owner: the renderer plugin implements this; AIRI consumes it at registration
- * and activation.
- *
- * Purpose: replace AIRI's closed `DisplayModelFormat` enum and the per-format
- * branches built on it (package repair, preview generation, capability parsing,
- * asset storage naming, renderer selection) with an open declaration that AIRI
- * stores and routes but never interprets.
+ * Owner: the model driver implements this; AIRI consumes it at registration and activation.
  */
-import type { RendererCueKind } from './cues'
-import type { AssetKind, RendererContractVersion, RendererId } from './shared'
+import type { CueKind } from './cues'
+import type { ModelDriverContractVersion, ModelDriverId } from './shared'
 
-export interface RendererManifest {
-  /** Stable identity; also the key for enable/disable and cue routing. */
-  id: RendererId
+/** What a model driver presents to the host to announce its presence. */
+export interface ModelDriverManifest {
+  id: ModelDriverId
   /** Human-facing name for settings and pickers. */
   name: string
-  version: string
-  /** Contract revision this plugin was built against. */
-  contract: RendererContractVersion
+  driverVersion: string
   /**
-   * Opaque asset classes this renderer can host, e.g. `avatar.2d.live2d-zip`.
-   * A renderer may declare more than one (Live2D accepts both a zip and a
-   * directory today); a kind may also be declared by more than one renderer,
-   * which is what makes renderer replacement possible.
+   * Contract revision this plugin was built against.
+   *
+   * Checked when the host **reads this manifest**, before activation: a plugin declaring a
+   * revision the host cannot speak is refused there, so no service container is ever built for
+   * it and `ModelDriverHostServices.contract` can only ever repeat this value.
    */
-  kinds: AssetKind[]
-  /** Which optional parts of this SDK the plugin implements. */
-  features: RendererFeatures
+  contractVersion: ModelDriverContractVersion
+  /**
+   * What this driver claims it can do — a **static hint**, never the truth.
+   *
+   * Required so a loader, a picker or a settings page can reason about a driver without
+   * executing its code, and so the host has something to go on before activation.
+   *
+   * A probe that fails does not displace it: an error from `ModelDriverRuntime.rendererCapabilities()`
+   * means "could not determine", so the host keeps reading this hint rather than treating the
+   * driver as incapable.
+   */
+  capabilities: ModelDriverCapabilities
   /** What must exist in the runtime before the plugin can activate. */
-  requirements: RendererRequirements
+  requirements: ModelDriverRequirements
   /** How the host reaches the plugin's code. */
-  entry: RendererEntryPoints
+  entry: ModelDriverEntryPoints
 }
 
-export interface RendererFeatures {
+/**
+ * The availability of every other member of the contract, in one required-and-complete shape,
+ * asked twice and answered with different authority.
+ *
+ * It is the shape of two things, and the difference between them is the point:
+ *   - `ModelDriverManifest.capabilities` — a **static claim**. Available without running the
+ *     driver, so a loader or a picker can use it, and so the host has something before
+ *     activation.
+ *   - `ModelDriverRuntime.rendererCapabilities()` — the **truth**, probed under the resource
+ *     limits actually in effect. A missing OPFS grant, a GPU that cannot hold the model, a
+ *     licence the user declined or memory pressure can each take a surface away, so the claim
+ *     is only a hint and the probe is what a running host acts on.
+ *
+ * Required and complete rather than `Partial`, deliberately: a missing field would have to be
+ * read as `false` at every use site, which turns "I did not say" into a silent denial. A
+ * renderer that cannot do something says `false`; one that forgot to say is a plugin the
+ * loader can reject, not a renderer with holes.
+ *
+ * Whoever holds the probe uses the probe: a surface it reports as available exists on the
+ * object that carries it, and one it reports as unavailable is not called. (The `?` on those
+ * members stays, because TypeScript cannot narrow one field from another.)
+ */
+export interface ModelDriverCapabilities {
+  /** Participates in unified import (`ModelProvider.probe`). */
+  probe: boolean
+  /** Can (re)generate a thumbnail for its models (`ModelProvider.preview`). */
+  previewModel: boolean
+  /** When capabilities can be enumerated (`ModelProvider.modelCapabilities`). */
+  capabilityDiscovery: CapabilityDiscoveryMode
   /**
-   * Participates in unified import: the host asks every enabled renderer
-   * whether it recognises a dropped file and arbitrates by confidence.
+   * Holds named profiles for its models.
    *
-   * Purpose: keeps "drop a package and AIRI figures out what it is" working once
-   * per-format detection stops living in the host.
+   * One field for all three members (`listProfiles`, `saveProfile`, `removeProfile`) because
+   * they are one ability: a renderer that can list a profile can store it. AIRI needs the
+   * answer to know whether its own profile records can have bodies behind them at all.
    */
-  probe?: boolean
-  /** Can (re)generate a thumbnail for one of its assets. */
-  preview?: boolean
+  profiles: boolean
+  /** Can export/import **one model** as an opaque bundle (`ModelProvider.export` / `import`). */
+  modelTransfer: boolean
+  /** Can export/import the **whole driver** as one opaque bundle (`ModelDriverRuntime.export` / `import`). */
+  driverTransfer: boolean
+  /** Contributes settings panels (`ModelDriverRuntime.panels`). */
+  panels: boolean
+  /** Has something to release when the host disables it (`ModelDriverRuntime.deactivate`). */
+  deactivate: boolean
   /**
-   * When capabilities can be enumerated.
+   * The optional cue kinds the renderer understands.
    *
-   * Purpose: this is a real difference between renderers, not a detail. Live2D
-   * and Spine can be enumerated from the package bytes; VRM only knows its
-   * expressions after the model is loaded and the expression manager exists.
-   * The host must be able to tell the two cases apart when rendering settings.
+   * `'load'` is deliberately not part of the answer: it is how a mount is told which model to
+   * show, so every renderer accepts it. What is declared here is the rest, which a renderer is
+   * allowed to refuse as `unsupported-cue`.
+   *
+   * One value settles ownership rather than only capability: declaring `'view'` means this
+   * renderer owns its own camera (`ViewCue`), so the host does not write camera props for it.
+   *
+   * `'caption'` is the same kind of answer for text: a renderer that can show text declares it,
+   * and one that cannot leaves it out and refuses those cues as `unsupported-cue`, so the host
+   * never has to know which renderers can draw.
    */
-  capabilityDiscovery?: CapabilityDiscoveryMode
-  /** Can export/import an asset as an opaque bundle for backup and restore. */
-  assetTransfer?: boolean
-  /** Cue families the renderer understands. */
-  cues?: RendererCueKind[]
-  /** Reports head pose for head-tethered overlays. */
-  headPose?: boolean
-  /** Can render into an offscreen target and read a region back (VRM hit-testing). */
-  renderTargetReadback?: boolean
-  /** Exposes an opaque native handle for renderer-specific overlays. */
-  nativeHandle?: boolean
+  cues: Exclude<CueKind, CueKind.LOAD>[]
+  /** Reports head pose for head-tethered overlays (`RendererMountExposed.getHeadPose`). */
+  headPose: boolean
+  /**
+   * Can answer whether its own viewport has anything drawn at a point
+   * (`RendererMountExposed.occupiesPoint`).
+   *
+   * How the answer is produced — pixel alpha, geometry, or a policy of the renderer's own — is
+   * deliberately not declared here, and neither is the renderer's sensitivity.
+   */
+  occupiesPoint: boolean
+  /**
+   * Can name the interaction region under a point (`RendererMountExposed.hitTest`).
+   *
+   * Declared separately from `occupiesPoint` because "is anything drawn here" is a question
+   * about the viewport, while "which region of the model is here" is a question about the
+   * model, and a renderer can answer either without the other.
+   */
+  hitTest: boolean
+  /** Can stop everything it is playing (`RendererMountExposed.stopAll`). */
+  stopAll: boolean
+  /**
+   * Can release a mount's resources on request (`RendererMountExposed.dispose`).
+   *
+   * The host unmounts the component either way; this says whether the renderer has more to do
+   * than that, such as keeping parsed resources alive for a `shallow` re-mount.
+   */
+  dispose: boolean
 }
 
 /**
  * `static`: enumerate from the package without loading it.
  * `runtime`: only after a model is mounted.
  * `none`: the renderer has no capability model at all.
+ *
+ * `'none'` and declaring the `'view'` cue contradict each other: points of interest exist only
+ * as capability descriptors, so a renderer with no capability model has no camera target to
+ * name.
  */
 export type CapabilityDiscoveryMode = 'static' | 'runtime' | 'none'
 
-export interface RendererRequirements {
+export interface ModelDriverRequirements {
   /** Needs a WebGL(2) context. */
   webgl?: 1 | 2 | false
   /** Needs a WebAssembly runtime. */
@@ -85,29 +148,35 @@ export interface RendererRequirements {
   worker?: boolean
   /** Needs a live `AudioContext` (lip sync, beat sync). */
   audioContext?: boolean
-  /** Needs a DOM canvas of its own. */
-  dom?: 'canvas' | 'none'
   /**
-   * Globals the host must install before activation.
+   * Needs a DOM canvas of its own.
    *
-   * Purpose: replaces "the app's index.html happens to include a script tag".
-   * Live2D's Cubism Core is loaded that way today and the plugin cannot install
-   * itself without it.
+   * That canvas belongs to the renderer and sits inside the box the host mounts it into
+   * (`RendererMountViewport`): the host never sizes it, draws into it, or holds a handle to it.
    */
+  dom?: 'canvas' | 'none'
+  /** Globals the host must install before activation, instead of "the app's index.html happens to include a script tag". */
   globalScripts?: string[]
-  /** Third-party license the user must accept before the renderer is usable. */
+  /** Third-party license the user must accept before the driver is usable. */
   license?: 'spine-editor' | 'live2d-cubism' | 'none'
   /** Rough persistent-storage appetite, for the host's quota UI. */
   storageHintBytes?: number
 }
 
-export interface RendererEntryPoints {
+/**
+ * Where the plugin loader finds the plugin's code.
+ *
+ * Loader-owned: this string is resolved by the plugin loader, not by the stage. There is
+ * deliberately no `stageComponent` specifier here: nothing interprets a raw `.vue` at runtime,
+ * so the host gets the component from `ModelDriverRuntime.resolveMountComponent()` instead.
+ */
+export interface ModelDriverEntryPoints {
   /**
-   * Module specifier of the stage component the host mounts. Loaded lazily by
-   * the host so an unused renderer is never bundled (today RendererStage.vue
-   * statically imports all four scenes).
+   * Module specifier of the runtime entry that exports `activate` and hands back the
+   * `ModelDriverRuntime`.
+   *
+   * Required, and the only entry point there is: without it, `ModelDriverCapabilities.panels`,
+   * `deactivate` and `driverTransfer` would name members of an object nothing can obtain.
    */
-  stageComponent?: string
-  /** Module specifier of the runtime entry that exports `activate`. */
-  runtime?: string
+  runtime: string
 }

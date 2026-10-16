@@ -1,139 +1,161 @@
 /**
- * Renderer activation and stage lifecycle.
+ * Model driver activation and the plugin runtime object.
  *
- * Owner: the renderer plugin implements `RendererPluginRuntime`; the host
- * implements the registry and drives the lifecycle.
- *
- * Purpose: today a renderer is "whatever the host statically imported". There is
- * no activation step, no way to be disabled, no place to report "I am running
- * degraded", and no agreed teardown semantics:
- *   - no renderer in this workspace handles `webglcontextlost`, so context loss
- *     can only be recovered by remounting the whole component;
- *   - Live2D and Spine force `window.location.reload()` on HMR dispose;
- *   - VRM needs a deep/shallow dispose distinction (keeping the parsed VRM alive
- *     across re-renders while releasing the WebGL resources) that the host
- *     currently cannot express;
- *   - pause and visibility are host decisions, but each renderer reads them
- *     differently (a prop for some, nothing for others).
- * Activating explicitly, reporting readiness and declaring a dispose strategy
- * turns all of that into contract instead of folklore.
+ * Owner: the model driver implements `ModelDriverRuntime`; the host implements the registry and
+ * drives the lifecycle.
  */
-import type { RendererAssetProvider } from './assets'
-import type { RendererCueSink } from './cues'
-import type { RendererHostServices } from './host-services'
-import type { RendererManifest } from './manifest'
+import type { ModelDriverHostServices } from './host-services'
+import type { ModelDriverCapabilities, ModelDriverManifest } from './manifest'
+import type { ModelProvider } from './provider'
 import type {
-  AssetKind,
-  RendererFailure,
-  RendererId,
-  RendererResult,
-  StageReadinessState,
+  ModelDriverImportReport,
+  ModelDriverPanelDeclaration,
+  ModelDriverTransferBundle,
+} from './renderer'
+import type { RendererMountComponentFactory } from './renderer-mount'
+import type {
+  ContractResult,
+  MaybePromise,
+  ModelDriverId,
   Unsubscribe,
 } from './shared'
-import type { RendererPanelDeclaration } from './stage'
 
 /**
- * The object a renderer plugin exposes to the host.
+ * The object a model driver exposes to the host.
  *
- * The host obtains it from the plugin's runtime entry (`manifest.entry.runtime`)
- * and never imports renderer internals directly.
+ * The host obtains it from the plugin's runtime entry (`manifest.entry.runtime`) and never imports
+ * driver internals directly.
+ *
+ * There is deliberately no cue sink here: a transaction is applied by the *mount*
+ * (`RendererMountExposed.cues` in `renderer-mount.ts`), because one renderer can be mounted on a
+ * live stage and in a settings preview at the same time and each mount must receive only what is
+ * addressed to it.
  */
-export interface RendererPluginRuntime {
-  readonly manifest: RendererManifest
+export interface ModelDriverRuntime {
+  readonly manifest: ModelDriverManifest
 
   /**
-   * Called once when the host enables this renderer.
+   * The one provider instance for this driver, implemented and held by the plugin.
    *
-   * Must not mount anything on stage; activation only wires services, checks
-   * requirements (globals, WASM, OPFS, license) and reports degradations.
+   * This is what makes the non-mount half of the contract reachable: every catalogue operation
+   * goes through it — `probe`, the enumeration AIRI's model list is built from, removal, previews,
+   * capability discovery, profile rows and per-model transfer. It is deliberately a member of the
+   * runtime rather than something the host injects as a service: "the models I hold" is the
+   * renderer's own implementation, not a capability the host grants it.
+   *
+   * Required: `list` and `remove` are the two things the host must be able to do to any driver
+   * that owns models, and a driver that owns none says so by enumerating nothing. Staying out of
+   * unified import is `probe` being absent, not the provider being absent.
+   *
+   * The instance exists as soon as the runtime does, but its operations rely on the services
+   * `activate` wires, so the host MUST NOT call it before activation has succeeded.
    */
-  activate: (services: RendererHostServices) => Promise<RendererResult<RendererActivationReport>>
+  readonly provider: ModelProvider
 
-  /** Called when disabled or unloaded; must release services and storage handles. */
+  /**
+   * Called once when the host enables this driver.
+   *
+   * MUST NOT mount anything on stage; activation only wires services, checks requirements
+   * (globals, WASM, OPFS, license) and reports degradations.
+   */
+  activate: (services: ModelDriverHostServices) => Promise<ContractResult<ModelDriverActivationReport>>
+
+  /** Called when disabled or unloaded; MUST release services and storage handles. */
   deactivate?: () => Promise<void>
 
-  /** Asset ownership. Required for every renderer that hosts models. */
-  readonly assets: RendererAssetProvider
-
-  /** Cue handling for a mounted stage. */
-  readonly cues: RendererCueSink
-
   /**
-   * Resolve the stage component lazily.
+   * What this renderer can actually do **under the resources available right now** — the
+   * availability of every other member here and of the optional parts of `RendererMountExposed`.
    *
-   * Purpose: this is what makes opt-out real. Today `RendererStage.vue` imports
-   * all four scenes statically, so declaring a renderer unwanted still ships its
-   * code.
+   * A call rather than a stored declaration, because that is the whole question: what a renderer
+   * supports in principle and what it can do on this device are different. `ModelDriverManifest.capabilities`
+   * makes the same claim statically and is explicitly only a hint; this answer supersedes it, and
+   * the two are expected to disagree.
+   *
+   * Required, and required to be complete: this is the one place a caller looks instead of
+   * inferring availability from which optional methods happen to exist.
+   *
+   * Callable once `activate` has succeeded, since probing needs the services activation wired —
+   * before that, `ModelDriverManifest.capabilities` is all the host has. A failed call means
+   * "could not determine", which is not the same as "nothing is available": the host keeps using
+   * the hint rather than concluding that the renderer is useless.
+   *
+   * `ModelProvider.modelCapabilities(modelId)` is the same question at model scope.
    */
-  resolveStageComponent: () => Promise<StageRendererComponentFactory>
+  rendererCapabilities: () => MaybePromise<ContractResult<ModelDriverCapabilities>>
+
+  /** Resolve the mount component lazily, so declaring a driver unwanted also stops shipping its code. */
+  resolveMountComponent: () => Promise<RendererMountComponentFactory>
 
   /**
    * Panels this renderer contributes, in the order the host should present them.
    *
-   * Declared here rather than as manifest entry strings for the same reason the
-   * stage component is: nothing can interpret a raw `.vue` at runtime, so a string
-   * path would only work for an already-built renderer. `manifest.entry.*` strings
-   * belong to the plugin loader, which is deliberately out of scope here.
+   * Declared here as factories rather than as manifest entry strings, for the same reason
+   * `resolveMountComponent` above is a function: nothing can interpret a raw `.vue` at runtime.
+   * `manifest.entry.runtime` belongs to the plugin loader, which is deliberately out of scope here.
    */
-  readonly panels?: RendererPanelDeclaration[]
+  readonly panels?: ModelDriverPanelDeclaration[]
 
-  /** Cheap, synchronous answer used before asking the provider anything. */
-  canHost: (kind: AssetKind) => boolean
+  /**
+   * Package this driver's entire state into one opaque bundle.
+   *
+   * Advertise it as `ModelDriverCapabilities.driverTransfer`, so the host can tell the user before
+   * a backup rather than after a restore.
+   *
+   * The counterpart at model scope is `ModelProvider.export`, which moves one model; this one moves
+   * the driver, including its models. What goes in the payload is the renderer's decision — the host
+   * never reads it.
+   */
+  export?: () => MaybePromise<ContractResult<ModelDriverTransferBundle>>
+
+  /**
+   * Apply one bundle produced by `export`.
+   *
+   * The input is the **complete** driver state, never a patch, a delta or a per-value negotiation:
+   * every sync hands over everything, and the renderer decides what to patch, what to keep and how
+   * to migrate what it does not recognise.
+   *
+   * The identities inside the bundle are AIRI's (`modelId`, `profileId`), so the records the host
+   * already holds keep addressing the same models after an import. The host re-reads the catalogue
+   * with `list()` when the import reports success.
+   */
+  import?: (bundle: ModelDriverTransferBundle) => MaybePromise<ContractResult<ModelDriverImportReport>>
 }
-
-/**
- * Framework-agnostic component factory.
- *
- * Typed as `unknown` on purpose: this package describes the contract, not Vue.
- * The host adapts whatever the renderer returns to its own rendering layer.
- */
-export type StageRendererComponentFactory = () => unknown
 
 /**
  * Result of activation.
  *
- * Purpose: lets a renderer say "I work, but without OPFS caching" or "I am
- * missing the Cubism Core global", so the host can hide the affected UI instead
- * of failing at the first model load.
+ * Lets a driver say what it could not set up — a global the manifest required is missing, a
+ * requirement could not be satisfied — so the host can explain the situation instead of hitting it
+ * at the first model load.
+ *
+ * What activation deliberately cannot report is a capability the renderer had to give up: that is
+ * `ModelDriverRuntime.rendererCapabilities()`, asked once the renderer is up, and a second list
+ * here would be two sources for one answer.
  */
-export interface RendererActivationReport {
+export interface ModelDriverActivationReport {
   missingRequirements?: string[]
-  /** Features the renderer had to disable; keys must exist in `manifest.features`. */
-  degradedFeatures?: string[]
   warnings?: string[]
 }
 
 /**
- * How thoroughly a renderer must be torn down when the mounted model changes.
+ * What the host implements so drivers can be discovered and toggled.
  *
- * `shallow` keeps parsed/GPU resources alive for a fast re-mount (VRM relies on
- * this to avoid re-downloading and re-parsing on every Vue re-render),
- * `deep` releases everything.
- */
-export type StageDisposeStrategy = 'shallow' | 'deep'
-
-export interface StageLifecycleEvents {
-  onReadiness: (state: StageReadinessState, failure?: RendererFailure) => void
-  /** First real frame presented; the host uses it to hide loading UI. */
-  onFirstFrame?: () => void
-  /** The renderer lost its GPU context and needs a remount. */
-  onContextLost?: () => void
-  onContextRestored?: () => void
-  onDisposed?: () => void
-}
-
-/**
- * What the host must implement so renderers can be discovered and toggled.
+ * The workspace already has plugin infrastructure with enable/load/unload IPC; this is the
+ * driver-shaped view of it, so the stage can ask "which drivers are enabled" without depending on
+ * the plugin SDK itself (which a driver package must not import).
  *
- * Purpose: the workspace already has plugin infrastructure with
- * enable/load/unload IPC; this is the renderer-shaped view of it, so the stage
- * can ask "which renderers are enabled" without depending on the plugin SDK
- * itself (which the renderer package must not import).
+ * This is also the *only* static fact AIRI has about whether a model reference can be served: that
+ * its driver exists and is enabled. Anything past that — whether the driver still holds the asset,
+ * whether it can still read or load it — is only knowable from a driver instance, so it is produced
+ * at runtime (`ModelProvider.list`, a `ContractResult` failure, the mount's own `error` emit) and
+ * there is no availability enum to keep in sync with those answers.
  */
-export interface RendererHostRegistry {
-  list: () => RendererId[]
-  isEnabled: (rendererId: RendererId) => boolean
-  get: (rendererId: RendererId) => RendererPluginRuntime | undefined
-  /** Fired when a renderer is enabled, disabled, installed or updated. */
+export interface ModelDriverHostRegistry {
+  list: () => ModelDriverId[]
+  isEnabled: (modelDriverId: ModelDriverId) => boolean
+  get: (modelDriverId: ModelDriverId) => ModelDriverRuntime | undefined
+  /** Fired when a driver is enabled, disabled, installed or updated. */
+  // TODO: pass in the change detail.
   onChange: (handler: () => void) => Unsubscribe
 }
