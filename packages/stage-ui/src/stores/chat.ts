@@ -22,7 +22,7 @@ import { parseSticker } from '../composables/queues'
 import { categorizeResponse, createStreamingCategorizer } from '../composables/response-categoriser'
 import { appendActorAwareTextSlice, captureActorToken, createActorSliceState } from '../utils/chat-actor-slices'
 import { useCompactionStore } from './chat/compaction'
-import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext, createStickersContext } from './chat/context-providers'
+import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { formatChatError } from './chat/error-formatter'
 import {
@@ -588,11 +588,6 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     const dtContext = createDatetimeContext()
     if (dtContext) {
       chatContext.ingestContextMessage(dtContext)
-    }
-
-    const stickersContext = createStickersContext()
-    if (stickersContext) {
-      chatContext.ingestContextMessage(stickersContext)
     }
 
     const scenesContext = createScenesContext()

@@ -4,20 +4,17 @@ import { debug } from '@proj-airi/stage-shared'
 import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
-import { useStickersStore } from '@proj-airi/stage-ui/stores/stickers'
 
 import { bashTools } from './bash'
 import { generateMotionTools } from './generate-motion'
 import { imageJournalTools } from './image-journal'
 import { mcpTools } from './mcp'
 import { screenshotTools } from './screenshot'
-import { stickersTools } from './stickers'
 import { textJournalTools } from './text-journal'
 
 export async function builtinTools(): Promise<Tool[]> {
   const artistry = useArtistryStore()
   const airiCard = useAiriCardStore()
-  const stickers = useStickersStore()
 
   const mcpBridge = tryGetMcpToolBridge()
   let hasMcpServers = false
@@ -46,12 +43,6 @@ export async function builtinTools(): Promise<Tool[]> {
   if (artistry.configured) {
     debug('[builtinTools] 🎨 Artistry configured, keeping image journal (widgets/stage_widgets deprecated).')
     toolPromises.push(imageJournalTools())
-  }
-
-  // Stickers library
-  if (stickers.currentLibrary.length > 0) {
-    debug(`[builtinTools] ✨ Stickers library found (${stickers.currentLibrary.length}), enabling stickers tool.`)
-    toolPromises.push(Promise.resolve(stickersTools()))
   }
 
   // On-demand screenshots. Opt-in via the card's allowedTools; checked here as well as in

@@ -625,6 +625,103 @@ describe('sandbox subsystem & in-memory posix execution', () => {
       expect(typeof cognition.valence).toBe('number')
       expect(typeof cognition.energy).toBe('number')
     })
+
+    it('projects enriched character identity, prompts, and acting directives into cognition.json while excluding backdoors', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const cardStore = useAiriCardStore()
+      const characterCard = {
+        id: 'the-clockwork-roast',
+        name: 'The Clockwork Roast & Haven Cafe',
+        nickname: 'Arona & Cafe Crew',
+        description: 'Cafe terminal assistant',
+        personality: 'Earnest, playful, calculating',
+        scenario: 'Late afternoon in the coffee shop',
+        systemPrompt: 'You are Arona running the front desk terminal.',
+        extensions: {
+          airi: {
+            acting: {
+              modelExpressionPrompt: 'Model expression cues: [smile], [smug]',
+              speechExpressionPrompt: 'Speech expression cues: [cheerful]',
+              speechMannerismPrompt: 'Refers to herself in third person as Arona.',
+              stickerDirectivesPrompt: '<|STICKER id="arona-smug" pos="topRight"|>',
+              activeStickerIds: ['arona-smug', 'arona-neko'],
+            },
+            stickers: {
+              'arona-smug': { id: 'arona-smug', label: 'Arona Smug' },
+            },
+          },
+        },
+      }
+      cardStore.cards.set('the-clockwork-roast', characterCard as any)
+      cardStore.activeCardId = 'the-clockwork-roast'
+
+      await sandbox.syncProjections()
+
+      const cognitionRaw = await sandbox.readFile('/workspace/.airi/cognition.json')
+      const cognition = JSON.parse(cognitionRaw)
+
+      expect(cognition.character.name).toBe('The Clockwork Roast & Haven Cafe')
+      expect(cognition.character.nickname).toBe('Arona & Cafe Crew')
+      expect(cognition.character.description).toBe('Cafe terminal assistant')
+      expect(cognition.character.personality).toBe('Earnest, playful, calculating')
+      expect(cognition.character.scenario).toBe('Late afternoon in the coffee shop')
+      expect(cognition.character.systemPrompt).toBe('You are Arona running the front desk terminal.')
+
+      // Acting prompts are exposed
+      expect(cognition.character.acting).toBeDefined()
+      expect(cognition.character.acting.modelExpressionPrompt).toBe('Model expression cues: [smile], [smug]')
+      expect(cognition.character.acting.speechExpressionPrompt).toBe('Speech expression cues: [cheerful]')
+      expect(cognition.character.acting.speechMannerismPrompt).toBe('Refers to herself in third person as Arona.')
+      expect(cognition.character.acting.stickerDirectivesPrompt).toBe('<|STICKER id="arona-smug" pos="topRight"|>')
+
+      // Backdoor protection: raw activeStickerIds and stickers registry are excluded
+      expect((cognition.character.acting as any).activeStickerIds).toBeUndefined()
+      expect((cognition.character.acting as any).stickers).toBeUndefined()
+      expect((cognition.character as any).stickers).toBeUndefined()
+    })
+
+    it('preserves root system message (messages[0]) in messages.json when conversation history exceeds 20 turns', async () => {
+      const sandbox = new SandboxManager()
+      await sandbox.init()
+
+      const chatSession = useChatSessionStore()
+      const sessionId = 'session-long-history'
+      chatSession.activeSessionId = sessionId
+
+      const longHistory = [
+        {
+          id: 'sys-0',
+          role: 'system',
+          content: 'You are Arona with sticker directives: <|STICKER id="arona-smug"|>',
+          createdAt: Date.now() - 100000,
+        },
+      ]
+      for (let i = 1; i <= 25; i++) {
+        longHistory.push({
+          id: `msg-${i}`,
+          role: i % 2 === 1 ? 'user' : 'assistant',
+          content: `Turn ${i} conversation content`,
+          createdAt: Date.now() - (100000 - i * 1000),
+        })
+      }
+      chatSession.sessionMessages[sessionId] = longHistory as any
+
+      await sandbox.syncProjections()
+
+      const raw = await sandbox.readFile('/workspace/.airi/messages.json')
+      const msgs = JSON.parse(raw)
+
+      expect(msgs).toHaveLength(20)
+      // Root system message is preserved at index 0
+      expect(msgs[0].id).toBe('sys-0')
+      expect(msgs[0].role).toBe('system')
+      expect(msgs[0].content).toContain('<|STICKER id="arona-smug"|>')
+      // Remaining 19 messages are the latest conversation turns
+      expect(msgs[msgs.length - 1].id).toBe('msg-25')
+      expect(msgs[1].id).toBe('msg-7')
+    })
   })
 
   describe('ansi formatting helpers', () => {

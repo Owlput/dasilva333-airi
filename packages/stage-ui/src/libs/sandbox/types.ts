@@ -48,11 +48,25 @@ export interface SandboxVfsSessionProjection {
   createdAt: string | null
 }
 
+export interface SandboxVfsCharacterActingCognition {
+  modelExpressionPrompt?: string
+  speechExpressionPrompt?: string
+  speechMannerismPrompt?: string
+  stickerDirectivesPrompt?: string
+}
+
+export interface SandboxVfsCharacterCognition {
+  name: string
+  nickname?: string
+  description?: string
+  personality?: string
+  scenario?: string
+  systemPrompt?: string
+  acting?: SandboxVfsCharacterActingCognition
+}
+
 export interface SandboxVfsCognitionProjection {
-  character: {
-    name: string
-    description?: string
-  }
+  character: SandboxVfsCharacterCognition
   consciousness: {
     activeProvider: string
     activeModel: string

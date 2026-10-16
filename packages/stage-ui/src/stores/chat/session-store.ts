@@ -57,7 +57,12 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   }
 
   const isMainWindow = !isStageTamagotchi()
-    || (typeof window !== 'undefined' && (window.location.hash === '' || window.location.hash === '#/' || window.location.hash === '#'))
+    || (typeof window !== 'undefined' && (
+      window.location.hash === ''
+      || window.location.hash === '#/'
+      || window.location.hash === '#'
+      || window.location.hash.startsWith('#/chat')
+    ))
 
   const activeSessionId = ref<string>('')
   const sessionMessages = ref<Record<string, ChatHistoryItem[]>>({})
@@ -921,7 +926,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       if (personaIndices.includes(i)) {
         if (i === headIndex || i === tailIndex) {
           const content = extractMessageContent(msg)
-          if (options?.force || content !== nextContent) {
+          if (content !== nextContent) {
             changed = true
             finalMessages.push({
               ...nextSystemMessage,

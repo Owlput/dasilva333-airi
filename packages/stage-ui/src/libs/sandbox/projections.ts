@@ -63,16 +63,47 @@ export function buildCognitionProjection(): SandboxVfsCognitionProjection {
     const consciousnessStore = useConsciousnessStore()
     const nan0Store = useNan0Store()
 
-    const airiExt = cardStore.activeCard?.extensions?.airi as any
+    const activeCard = cardStore.activeCard
+    const airiExt = activeCard?.extensions?.airi as any
     const cognitionModule = airiExt?.modules?.cognition ?? airiExt?.cognition
     const processor = cognitionModule?.processor ?? cognitionModule?.firstHopProcessor ?? airiExt?.firstHopProcessor
     const isNan0Enabled = cognitionModule?.enabled ?? (processor === 'local_nan0' || processor === 'nan0')
 
+    const actingExt = airiExt?.acting
+    let acting: SandboxVfsCognitionProjection['character']['acting']
+    if (actingExt) {
+      const modelExpressionPrompt = actingExt.modelExpressionPrompt?.trim() || undefined
+      const speechExpressionPrompt = actingExt.speechExpressionPrompt?.trim() || undefined
+      const speechMannerismPrompt = actingExt.speechMannerismPrompt?.trim() || undefined
+      const stickerDirectivesPrompt = actingExt.stickerDirectivesPrompt?.trim() || undefined
+
+      if (modelExpressionPrompt || speechExpressionPrompt || speechMannerismPrompt || stickerDirectivesPrompt) {
+        acting = {
+          modelExpressionPrompt,
+          speechExpressionPrompt,
+          speechMannerismPrompt,
+          stickerDirectivesPrompt,
+        }
+      }
+    }
+
+    const character: SandboxVfsCognitionProjection['character'] = {
+      name: activeCard?.name || 'Airi',
+      description: activeCard?.description || '',
+    }
+    if (activeCard?.nickname)
+      character.nickname = activeCard.nickname
+    if (activeCard?.personality)
+      character.personality = activeCard.personality
+    if (activeCard?.scenario)
+      character.scenario = activeCard.scenario
+    if (activeCard?.systemPrompt)
+      character.systemPrompt = activeCard.systemPrompt
+    if (acting)
+      character.acting = acting
+
     const base: SandboxVfsCognitionProjection = {
-      character: {
-        name: cardStore.activeCard?.name || 'Airi',
-        description: cardStore.activeCard?.description || '',
-      },
+      character,
       consciousness: {
         activeProvider: consciousnessStore.activeProvider || '',
         activeModel: consciousnessStore.activeModel || '',
@@ -247,7 +278,17 @@ export function buildMessagesProjection(): SandboxVfsMessageItem[] {
       return []
 
     const messages = sessionStore.getSessionMessages(activeSessionId) || []
-    return messages.slice(-20).map((m: any) => ({
+    if (messages.length === 0)
+      return []
+
+    let projectedMessages = messages
+    if (messages.length > 20) {
+      const rootSystem = messages[0]?.role === 'system' ? [messages[0]] : []
+      const recent = messages.slice(-(20 - rootSystem.length))
+      projectedMessages = [...rootSystem, ...recent]
+    }
+
+    return projectedMessages.map((m: any) => ({
       id: m.id || '',
       role: m.role || 'user',
       createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : undefined,
