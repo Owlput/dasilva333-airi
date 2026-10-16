@@ -3,7 +3,7 @@ import { useElectronAllDisplays, useElectronEventaContext, useElectronEventaInvo
 import { resolveAtmosphereComponent } from '@proj-airi/stage-layouts/components/Backgrounds'
 import { StageConfigOverlay, WhisperDock } from '@proj-airi/stage-ui/components'
 import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
-import { useProducer, useSpeechCaptionPlayer } from '@proj-airi/stage-ui/composables'
+import { useAutoSuggestions, useProducer, useSpeechCaptionPlayer } from '@proj-airi/stage-ui/composables'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useSpeakingStore } from '@proj-airi/stage-ui/stores/audio'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
@@ -479,6 +479,13 @@ async function handleGetSuggestions(guidance: string) {
     isGeneratingSuggestions.value = false
   }
 }
+
+useAutoSuggestions({
+  getGuidance: () => whisperDockRef.value?.inputText?.trim() || '',
+  onTurnComplete: async (guidance) => {
+    await handleGetSuggestions(guidance)
+  },
+})
 
 function handleClearSuggestions() {
   stopPlayAll()

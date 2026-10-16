@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
+
+const isAutoSuggestionsEnabled = useLocalStorage('airi:producer:auto-suggestions-enabled', false)
+
+function handleToggleAutoSuggestions() {
+  isAutoSuggestionsEnabled.value = !isAutoSuggestionsEnabled.value
+}
 
 const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
@@ -305,6 +312,34 @@ function handleToggleCognitivePipeline() {
       >
         <span
           :class="isAutonomousArtistryEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+          class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+        />
+      </div>
+    </div>
+
+    <!-- Toggle: Auto Suggestions -->
+    <div
+      class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+      @click="handleToggleAutoSuggestions"
+    >
+      <div class="flex items-center gap-2.5">
+        <div
+          class="size-4.5"
+          :class="isAutoSuggestionsEnabled
+            ? 'text-amber-500 i-solar:magic-stick-3-bold-duotone'
+            : 'text-neutral-400 dark:text-neutral-500 i-solar:magic-stick-3-linear'"
+        />
+        <div class="flex flex-col">
+          <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Auto Suggestions</span>
+          <span class="text-[9px] text-neutral-400">Generates reply choices after each turn</span>
+        </div>
+      </div>
+      <div
+        :class="isAutoSuggestionsEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+        class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+      >
+        <span
+          :class="isAutoSuggestionsEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
           class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
         />
       </div>

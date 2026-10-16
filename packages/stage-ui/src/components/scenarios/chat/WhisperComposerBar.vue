@@ -9,6 +9,7 @@ import { toast } from 'vue-sonner'
 import ProducerChoiceBubble from './ProducerChoiceBubble.vue'
 import ProducerGuidanceModal from './ProducerGuidanceModal.vue'
 
+import { useAutoSuggestions } from '../../../composables/use-auto-suggestions'
 import { useChatComposer } from '../../../composables/use-chat-composer'
 import { useProducer } from '../../../composables/use-producer'
 import { useChatOrchestratorStore } from '../../../stores/chat'
@@ -67,6 +68,21 @@ const lastProducerConfig = ref<{ guidance: string, contextDepth: number, count: 
 const quickSuggestContextDepth = useLocalStorage('airi:producer:context-depth', 6)
 const quickSuggestCount = useLocalStorage('airi:producer:suggestion-count', 2)
 const quickSuggestShortReplies = useLocalStorage('airi:producer:short-replies', true)
+
+const { isAutoSuggestionsEnabled } = useAutoSuggestions({
+  getGuidance: () => messageInput.value.trim(),
+  onTurnComplete: async (guidance) => {
+    if (!activeProvider.value || !activeModel.value)
+      return
+
+    await handleProducerSubmit({
+      guidance,
+      contextDepth: quickSuggestContextDepth.value,
+      count: quickSuggestCount.value,
+      shortReplies: quickSuggestShortReplies.value,
+    })
+  },
+})
 
 function showConfigPrompt(reason: string) {
   console.error(`[WhisperComposerBar] ${reason}: No active AI provider or model configured.`)
@@ -351,14 +367,17 @@ defineExpose({
           v-if="showMagicWand"
           type="button"
           :class="[
-            'flex items-center justify-center size-8.5 rounded-full transition-all cursor-pointer shrink-0',
-            'bg-neutral-100 hover:bg-neutral-200/80 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300',
+            'relative flex items-center justify-center size-8.5 rounded-full transition-all cursor-pointer shrink-0',
+            isAutoSuggestionsEnabled
+              ? 'bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:bg-amber-500/20 dark:text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
+              : 'bg-neutral-100 hover:bg-neutral-200/80 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300',
             producerSuggestion?.loading ? 'animate-pulse text-amber-500' : '',
           ]"
-          title="Producer Suggestions (empty input opens config, with text generates quick suggestions)"
+          :title="isAutoSuggestionsEnabled ? 'Auto Suggestions active (generates reply choices after each turn)' : 'Producer Suggestions (empty input opens config, with text generates quick suggestions)'"
           @click.stop="handleWandClick"
         >
           <div class="i-solar:magic-stick-3-bold-duotone size-4 text-amber-500" />
+          <span v-if="isAutoSuggestionsEnabled" class="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
         </button>
       </div>
 

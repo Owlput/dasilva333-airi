@@ -16,7 +16,7 @@ import {
   ProducerGuidanceModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
-import { useProducer } from '@proj-airi/stage-ui/composables'
+import { useAutoSuggestions, useProducer } from '@proj-airi/stage-ui/composables'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { appendDraftText, CHAT_COMPOSER_DRAFT_CHANNEL, CHAT_COMPOSER_DRAFT_STORAGE_KEY } from '@proj-airi/stage-ui/stores/chat/composer-draft-bridge'
@@ -450,6 +450,18 @@ const requestNotice = useElectronEventaInvoke(noticeWindowEventa.openWindow)
 const quickSuggestContextDepth = useLocalStorage('airi:producer:context-depth', 6)
 const quickSuggestCount = useLocalStorage('airi:producer:suggestion-count', 2)
 const quickSuggestShortReplies = useLocalStorage('airi:producer:short-replies', true)
+
+const { isAutoSuggestionsEnabled } = useAutoSuggestions({
+  getGuidance: () => messageInput.value.trim(),
+  onTurnComplete: async (guidance) => {
+    await handleProducerSubmit({
+      guidance,
+      contextDepth: quickSuggestContextDepth.value,
+      count: quickSuggestCount.value,
+      shortReplies: quickSuggestShortReplies.value,
+    })
+  },
+})
 
 function handleOpenUserProfile() {
   void requestNotice({
@@ -1384,17 +1396,20 @@ defineExpose({
             <PopoverRoot v-model:open="isWandMenuOpen">
               <PopoverAnchor as-child>
                 <button
-                  class="ml-1 h-8 w-8 flex cursor-pointer items-center justify-center rounded-xl transition-all duration-250 active:scale-95 hover:bg-neutral-200/40 hover:text-neutral-700 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-200"
+                  class="relative ml-1 h-8 w-8 flex cursor-pointer items-center justify-center rounded-xl transition-all duration-250 active:scale-95 hover:bg-neutral-200/40 hover:text-neutral-700 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-200"
                   :class="[
                     messageInput.trim()
                       ? 'bg-primary-500/15 text-primary-500 shadow-[0_0_12px_rgba(168,85,247,0.2)] dark:bg-primary-500/20 dark:text-primary-400 border-primary-500/30'
-                      : 'bg-neutral-200/20 text-neutral-500 dark:bg-neutral-800/20 dark:text-neutral-400',
+                      : isAutoSuggestionsEnabled
+                        ? 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                        : 'bg-neutral-200/20 text-neutral-500 dark:bg-neutral-800/20 dark:text-neutral-400',
                   ]"
-                  title="Suggest responses (Right-click to configure)"
+                  :title="isAutoSuggestionsEnabled ? 'Auto Suggestions active (generates reply choices after each turn)' : 'Suggest responses (Right-click to configure)'"
                   @click="handleQuickSuggest"
                   @contextmenu.prevent="isWandMenuOpen = true"
                 >
                   <div class="i-solar:magic-stick-3-bold-duotone text-base" />
+                  <span v-if="isAutoSuggestionsEnabled" class="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
                 </button>
               </PopoverAnchor>
               <PopoverPortal>
@@ -1425,6 +1440,15 @@ defineExpose({
                   >
                     <span>{{ opt.label }}</span>
                     <div v-if="settingsChat.suggestMode === opt.value" class="i-solar:check-circle-bold text-xs" />
+                  </button>
+                  <div class="my-1 h-px bg-neutral-200/60 dark:bg-neutral-800/60" />
+                  <button
+                    class="w-full flex cursor-pointer items-center justify-between rounded-lg px-2 py-1 text-left text-[10px] font-semibold transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    :class="isAutoSuggestionsEnabled ? 'bg-amber-50/50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 font-bold' : 'text-neutral-600 dark:text-neutral-400'"
+                    @click="isAutoSuggestionsEnabled = !isAutoSuggestionsEnabled; isWandMenuOpen = false"
+                  >
+                    <span>Auto Suggestions</span>
+                    <div v-if="isAutoSuggestionsEnabled" class="i-solar:check-circle-bold text-xs" />
                   </button>
                 </PopoverContent>
               </PopoverPortal>

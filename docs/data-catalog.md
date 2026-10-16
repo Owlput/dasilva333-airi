@@ -1186,6 +1186,7 @@ Persisted Three.js scene state — camera rig, model transform, lighting, and sk
 | `airi:producer:cache-aligned-migrated-v1` | `string` | `'true'` | `composables/use-producer.ts` |
 | `airi:producer:suggestion-count` | `number` | — | `composables/use-producer.ts` |
 | `airi:producer:system-prompt-template:{cardId}` | `string` | — | `composables/use-producer.ts` |
+| `airi:producer:auto-suggestions-enabled` | `boolean` | `false` | `composables/use-auto-suggestions.ts` |
 | `airi:dating-sim:game-mode` | `'open_ended' \| 'goal_driven'` | `'goal_driven'` | `stores/dating-sim.ts` |
 | `airi:dating-sim:show-choice-weights` | `boolean` | `false` | `stores/dating-sim.ts` |
 | `airi:dating-sim:max-score` | `number` | `15` | `stores/dating-sim.ts` |
