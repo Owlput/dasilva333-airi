@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'navigate', view: 'capabilities' | 'tools' | 'injections' | 'appearance' | 'staging' | 'voice'): void
+  (e: 'navigate', view: 'capabilities' | 'tools' | 'injections' | 'memories' | 'appearance' | 'staging' | 'voice'): void
   (e: 'applyPreset', preset: 'mini' | 'medium' | 'large' | 'full'): void
 }>()
 
@@ -22,6 +22,19 @@ const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 // --- Image Spawn Mode ---
 const currentSpawnMode = computed(() => {
   return activeCard.value?.extensions?.airi?.artistry?.spawnMode ?? 'bg'
+})
+
+const isAutonomousArtistryEnabled = computed(() => {
+  return activeCard.value?.extensions?.airi?.artistry?.autonomousEnabled ?? false
+})
+
+const hasImageJournalTool = computed(() => {
+  const allowed = activeCard.value?.extensions?.airi?.generation?.known?.allowedTools
+  return allowed === undefined || allowed.includes('image_journal')
+})
+
+const showImageSpawnMode = computed(() => {
+  return isAutonomousArtistryEnabled.value || hasImageJournalTool.value
 })
 
 function handleSetSpawnMode(mode: 'bg' | 'widget' | 'inline') {
@@ -49,24 +62,26 @@ function handleApplyPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
 <template>
   <div class="flex flex-col gap-1.5">
     <!-- Section: Image Spawn Mode -->
-    <div class="select-none px-2 pt-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-      Image Spawn Mode
-    </div>
-    <div class="mx-1 mb-1 flex gap-0.5 rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-900">
-      <button
-        v-for="mode in (['bg', 'widget', 'inline'] as const)"
-        :key="mode"
-        :class="[
-          'flex-1 py-1 text-[10px] font-bold rounded-md transition-all text-center whitespace-nowrap cursor-pointer',
-          currentSpawnMode === mode
-            ? 'bg-white dark:bg-neutral-800 text-primary-600 dark:text-primary-400 shadow-sm'
-            : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
-        ]"
-        @click="handleSetSpawnMode(mode)"
-      >
-        {{ mode === 'bg' ? 'Background' : mode === 'widget' ? 'Widget' : 'Inline' }}
-      </button>
-    </div>
+    <template v-if="showImageSpawnMode">
+      <div class="select-none px-2 pt-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+        Image Spawn Mode
+      </div>
+      <div class="mx-1 mb-1 flex gap-0.5 rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-900">
+        <button
+          v-for="mode in (['bg', 'widget', 'inline'] as const)"
+          :key="mode"
+          :class="[
+            'flex-1 py-1 text-[10px] font-bold rounded-md transition-all text-center whitespace-nowrap cursor-pointer',
+            currentSpawnMode === mode
+              ? 'bg-white dark:bg-neutral-800 text-primary-600 dark:text-primary-400 shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+          ]"
+          @click="handleSetSpawnMode(mode)"
+        >
+          {{ mode === 'bg' ? 'Background' : mode === 'widget' ? 'Widget' : 'Inline' }}
+        </button>
+      </div>
+    </template>
 
     <!-- Section: Chat Layout (Shown if enabled) -->
     <template v-if="props.showChatLayout && props.hasApplyChatPreset">
@@ -132,6 +147,22 @@ function handleApplyPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
         <div class="flex flex-col text-left">
           <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-100">Context Injections</span>
           <span class="text-[9px] text-neutral-400">Sensors, memory and intrusions</span>
+        </div>
+      </div>
+      <div class="i-solar:alt-arrow-right-linear size-4 text-neutral-400" />
+    </button>
+
+    <!-- 3.5. Memories -->
+    <button
+      type="button"
+      class="w-full flex cursor-pointer items-center justify-between rounded-xl p-2.5 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+      @click="emit('navigate', 'memories')"
+    >
+      <div class="flex items-center gap-2.5">
+        <div class="i-solar:history-bold-duotone size-5 text-indigo-500 dark:text-indigo-400" />
+        <div class="flex flex-col text-left">
+          <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-100">Memories</span>
+          <span class="text-[9px] text-neutral-400">Sessions, daily summaries, search &amp; storage</span>
         </div>
       </div>
       <div class="i-solar:alt-arrow-right-linear size-4 text-neutral-400" />

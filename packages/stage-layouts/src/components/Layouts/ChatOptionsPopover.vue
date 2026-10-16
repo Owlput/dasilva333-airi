@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
+import { CharacterContextDialog, ChatSessionModal, StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import ChatOptionsAppearanceView from './ChatOptions/ChatOptionsAppearanceView.vue'
 import ChatOptionsCapabilitiesView from './ChatOptions/ChatOptionsCapabilitiesView.vue'
 import ChatOptionsInjectionsView from './ChatOptions/ChatOptionsInjectionsView.vue'
+import ChatOptionsMemoriesView from './ChatOptions/ChatOptionsMemoriesView.vue'
 import ChatOptionsRootView from './ChatOptions/ChatOptionsRootView.vue'
 import ChatOptionsStagingView from './ChatOptions/ChatOptionsStagingView.vue'
 import ChatOptionsToolsView from './ChatOptions/ChatOptionsToolsView.vue'
@@ -26,18 +28,31 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'openStagingSettings'): void
   (e: 'openVoiceSettings'): void
+  (e: 'openMemorySettings'): void
+  (e: 'openCardSettings'): void
+  (e: 'searchMemories'): void
 }>()
 
 const airiCardStore = useAiriCardStore()
-const { activeCardId } = storeToRefs(airiCardStore)
+const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
 const backgroundStore = useBackgroundStore()
 const { chatboxActiveBackgroundId } = storeToRefs(backgroundStore)
 
 const isOpen = ref(false)
-type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appearance' | 'staging' | 'voice'
+type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'memories' | 'appearance' | 'staging' | 'voice'
 const currentView = ref<ChatOptionsView>('root')
 const stageBackgroundDialogOpen = ref(false)
+const chatSessionModalOpen = ref(false)
+const characterContextDialogOpen = ref(false)
+
+let router: any
+try {
+  router = useRouter()
+}
+catch {
+  router = null
+}
 
 watch(isOpen, (val) => {
   if (!val) {
@@ -53,6 +68,8 @@ const viewTitle = computed(() => {
       return 'Tools & Workstation'
     case 'injections':
       return 'Context Injections'
+    case 'memories':
+      return 'Memories'
     case 'appearance':
       return 'Appearance'
     case 'staging':
@@ -77,6 +94,38 @@ function handleOpenStagingSettings() {
 function handleOpenVoiceSettings() {
   isOpen.value = false
   emit('openVoiceSettings')
+}
+
+function handleViewContext() {
+  isOpen.value = false
+  characterContextDialogOpen.value = true
+}
+
+function handleManageSessions() {
+  isOpen.value = false
+  chatSessionModalOpen.value = true
+}
+
+function handleSearchMemories() {
+  isOpen.value = false
+  emit('searchMemories')
+}
+
+function handleOpenMemorySettings() {
+  isOpen.value = false
+  emit('openMemorySettings')
+  if (router && typeof window !== 'undefined' && !(window as any).electron) {
+    void router.push('/settings/memory').catch(() => {})
+  }
+}
+
+function handleOpenCardSettings() {
+  isOpen.value = false
+  emit('openCardSettings')
+  if (router && typeof window !== 'undefined' && !(window as any).electron) {
+    const targetId = activeCardId.value || 'default'
+    void router.push(`/settings/airi-card/edit?id=${targetId}`).catch(() => {})
+  }
 }
 </script>
 
@@ -163,7 +212,7 @@ function handleOpenVoiceSettings() {
           </button>
           <span
             v-if="currentView !== 'appearance' && currentView !== 'staging' && currentView !== 'voice'"
-            class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100"
+            class="truncate whitespace-nowrap text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100"
           >
             {{ viewTitle }}
           </span>
@@ -215,6 +264,17 @@ function handleOpenVoiceSettings() {
               key="injections"
             />
 
+            <!-- ================= MEMORIES & TIMELINES VIEW ================= -->
+            <ChatOptionsMemoriesView
+              v-else-if="currentView === 'memories'"
+              key="memories"
+              @view-context="handleViewContext"
+              @manage-sessions="handleManageSessions"
+              @search-memories="handleSearchMemories"
+              @open-memory-settings="handleOpenMemorySettings"
+              @open-card-settings="handleOpenCardSettings"
+            />
+
             <!-- ================= APPEARANCE VIEW ================= -->
             <ChatOptionsAppearanceView
               v-else-if="currentView === 'appearance'"
@@ -248,5 +308,14 @@ function handleOpenVoiceSettings() {
     :close-on-pick="true"
     :selected-id="chatboxActiveBackgroundId"
     @pick="(id: string) => backgroundStore.setChatboxActiveBackground(id)"
+  />
+
+  <!-- Timelines & Context Modals -->
+  <ChatSessionModal v-model="chatSessionModalOpen" />
+
+  <CharacterContextDialog
+    v-model="characterContextDialogOpen"
+    :character-id="activeCardId"
+    :character-name="activeCard?.name || 'AIRI'"
   />
 </template>

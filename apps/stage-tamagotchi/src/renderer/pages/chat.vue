@@ -6,7 +6,7 @@ import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { ChatOptionsPopover } from '@proj-airi/stage-layouts'
 import { resolveAtmosphereComponent } from '@proj-airi/stage-layouts/components/Backgrounds'
 import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
-import { ChatBrainPopover, ChatMemoryPopover, ChatSessionModal } from '@proj-airi/stage-ui/components'
+import { ChatBrainPopover, ChatSessionModal } from '@proj-airi/stage-ui/components'
 import { DEFAULT_SANDBOX_WORKSTATION_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/character-defaults'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
@@ -97,6 +97,16 @@ function handleOpenStagingSettings() {
     route,
   }).catch((err: any) => {
     console.error('Failed to open Staging settings:', err)
+  })
+}
+
+function handleOpenVoiceSettings() {
+  const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
+  const route = `/settings/airi-card/edit?id=${targetId}&tab=voice`
+  void openSettings({
+    route,
+  }).catch((err: any) => {
+    console.error('Failed to open Voice settings:', err)
   })
 }
 
@@ -1494,19 +1504,6 @@ function selectSurface(surface: typeof activeSurface.value) {
             </PopoverPortal>
           </PopoverRoot>
 
-          <!-- Memory & Context Popover (moved from bottom toolbar) -->
-          <ChatMemoryPopover
-            show-cache-status
-            :title="`Memory & Context for ${activeCard?.name || 'Character'}`"
-            @view-context="handleViewContext"
-            @manage-sessions="handleManageSessions"
-            @search-memories="handleSearchMemories"
-            @clear-messages="handleClearMessages"
-            @open-studio="handleOpenStudio"
-            @open-memory-settings="handleOpenMemorySettings"
-            @open-card-settings="handleOpenCharacterConfig"
-          />
-
           <!-- Brain LLM Icon Button (opens downwards) -->
           <ChatBrainPopover side="bottom" />
 
@@ -1516,6 +1513,10 @@ function selectSurface(surface: typeof activeSurface.value) {
             :show-chat-layout="true"
             :on-apply-chat-preset="handleApplyChatPreset"
             @open-staging-settings="handleOpenStagingSettings"
+            @open-voice-settings="handleOpenVoiceSettings"
+            @open-memory-settings="handleOpenMemorySettings"
+            @open-card-settings="handleOpenCharacterConfig"
+            @search-memories="handleSearchMemories"
           />
 
           <!-- Right Context Panel Toggle (md+) -->

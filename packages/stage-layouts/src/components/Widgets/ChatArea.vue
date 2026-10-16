@@ -3,15 +3,12 @@ import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 
 import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
 import {
-  CharacterContextDialog,
   ChatImagesPopover,
-  ChatMemoryPopover,
-  ChatSessionModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
 import { useChatComposer } from '@proj-airi/stage-ui/composables'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
-import { buildSystemPrompt, useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useSettings, useSettingsAudioDevice, useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
 import { BasicContentEditable } from '@proj-airi/ui'
@@ -27,8 +24,6 @@ const props = defineProps<{
   tools?: any[]
 }>()
 
-const showContext = ref(false)
-const showSessions = ref(false)
 const backgroundDialogOpen = ref(false)
 const stageBackgroundDialogOpen = ref(false)
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
@@ -74,9 +69,6 @@ async function handleVoiceClick() {
   }
   isAudioInputEnabled.value = !isAudioInputEnabled.value
 }
-
-const characterName = computed(() => activeCard.value?.name || 'AIRI')
-const effectiveSystemPrompt = computed(() => buildSystemPrompt(activeCard.value))
 
 function handleScreenshotClick() {
   // Vision capture is typically restricted in browser unless using getDisplayMedia
@@ -207,15 +199,6 @@ const contextPercentage = computed(() => {
         <span>{{ formattedTokenCount }}</span>
       </div>
 
-      <!-- Memory Popover -->
-      <ChatMemoryPopover
-        variant="mobile"
-        show-cache-status
-        :title="`Memory & Context for ${characterName}`"
-        @view-context="showContext = true"
-        @manage-sessions="showSessions = true"
-      />
-
       <!-- Images Popover (incl. Background Picker) -->
       <ChatImagesPopover
         variant="mobile"
@@ -307,13 +290,5 @@ const contextPercentage = computed(() => {
     <!-- Modals -->
     <BackgroundDialogPicker v-model="backgroundDialogOpen" />
     <StageBackgroundDialogPicker v-model="stageBackgroundDialogOpen" :card-id="activeCardId" />
-
-    <ChatSessionModal v-model="showSessions" />
-
-    <CharacterContextDialog
-      v-model="showContext"
-      :character-name="characterName"
-      :system-prompt="effectiveSystemPrompt"
-    />
   </div>
 </template>
