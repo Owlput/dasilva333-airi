@@ -18,10 +18,26 @@
         height: 100%;
         overflow: hidden;
         background: transparent;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
 
+      /* Base Theme Variables */
       .splash-card {
+        --airi-ink: #27364b;
+        --airi-title: #0f172a;
+        --airi-muted: #586b82;
+        --airi-edge: #d4e5ed;
+        --airi-card-bg: rgba(255, 255, 255, 0.72);
+        --airi-card-border: rgba(226, 232, 240, 0.85);
+        --airi-track-bg: #e2e8f0;
+        --airi-button-bg: #ffffffcc;
+        --airi-button-border: #d4e5ed;
+        --airi-badge-bg: #e0f2fe;
+        --airi-badge-color: #0284c7;
+        --airi-shadow: 45, 88, 122;
+        --airi-bg: radial-gradient(ellipse at 12% 12%, #dcf7ff 0%, transparent 56%),
+                   radial-gradient(ellipse at 90% 90%, #ece5ff 0%, transparent 55%), #f8fbff;
+
         position: relative;
         display: flex;
         flex-direction: column;
@@ -29,17 +45,34 @@
         width: 100vw;
         height: 100vh;
         border-radius: 24px;
-        border: 1px solid rgba(226, 232, 240, 0.85);
-        background:
-          radial-gradient(circle at 12% 14%, rgba(186, 230, 253, 0.45) 0%, transparent 35%),
-          radial-gradient(circle at 88% 14%, rgba(221, 214, 254, 0.45) 0%, transparent 35%),
-          radial-gradient(circle at 12% 86%, rgba(251, 207, 232, 0.35) 0%, transparent 40%),
-          radial-gradient(circle at 88% 86%, rgba(199, 210, 254, 0.4) 0%, transparent 40%),
-          radial-gradient(circle at 50% 30%, #ffffff 0%, #f6fafe 70%, #ebf3fb 100%);
+        border: 1px solid var(--airi-edge);
+        background: var(--airi-bg);
+        color: var(--airi-ink);
         box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08), 0 8px 24px rgba(148, 163, 184, 0.12);
-        transition: opacity 0.3s ease, transform 0.3s ease;
+        transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
         -webkit-app-region: drag;
         overflow: hidden;
+        isolation: isolate;
+      }
+
+      /* Dark Theme */
+      .splash-card[data-theme="dark"] {
+        --airi-ink: #e9f2ff;
+        --airi-title: #f8fafc;
+        --airi-muted: #a4b4cb;
+        --airi-edge: #2c3a50;
+        --airi-card-bg: rgba(24, 34, 50, 0.72);
+        --airi-card-border: rgba(255, 255, 255, 0.08);
+        --airi-track-bg: #273549;
+        --airi-button-bg: #1c2a40;
+        --airi-button-border: #2c3a50;
+        --airi-badge-bg: rgba(2, 132, 199, 0.22);
+        --airi-badge-color: #38bdf8;
+        --airi-shadow: 0, 0, 0;
+        --airi-bg: radial-gradient(ellipse at 12% 12%, #123647 0%, transparent 56%),
+                   radial-gradient(ellipse at 90% 90%, #302947 0%, transparent 55%), #101823;
+        color-scheme: dark;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
       }
 
       .splash-card.exiting {
@@ -47,7 +80,7 @@
         transform: scale(0.97);
       }
 
-      /* macOS Traffic Light Window Controls */
+      /* Top Header Toolbar */
       .window-controls {
         -webkit-app-region: no-drag;
         position: absolute;
@@ -85,7 +118,40 @@
         background: #27c93f;
       }
 
-      /* Corner Sparkle Stars */
+      /* Theme Toggle Button */
+      .theme-toggle-btn {
+        -webkit-app-region: no-drag;
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--airi-button-border);
+        background: var(--airi-button-bg);
+        color: var(--airi-ink);
+        font-size: 11.5px;
+        font-weight: 500;
+        cursor: pointer;
+        z-index: 30;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+      }
+
+      .theme-toggle-btn:hover {
+        transform: scale(1.04);
+      }
+
+      .theme-toggle-btn svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      /* Atmospheric Sparkles */
       .sparkle {
         position: absolute;
         pointer-events: none;
@@ -95,7 +161,7 @@
 
       .sparkle-tl {
         top: 60px;
-        left: 72px;
+        left: 68px;
         width: 16px;
         height: 16px;
         color: #7dd3fc;
@@ -103,7 +169,7 @@
 
       .sparkle-tr {
         top: 64px;
-        right: 72px;
+        right: 68px;
         width: 16px;
         height: 16px;
         color: #c084fc;
@@ -143,48 +209,81 @@
         }
       }
 
-      /* Brand Area */
+      /* Brand Area & Calm 4-Tile Loader */
       .brand-section {
         display: flex;
         flex-direction: column;
         align-items: center;
-        margin-top: 52px;
+        margin-top: 50px;
       }
 
-      .logo-container {
+      .airi-calm-loader {
+        --airi-size: 92px;
+        --airi-cycle: 6s;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: calc(var(--airi-size) * .065);
+        width: var(--airi-size);
+        aspect-ratio: 1;
+        perspective: 650px;
+        background: transparent;
+      }
+
+      .airi-calm-tile {
+        --delay: 0s;
         position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 84px;
-        height: 84px;
-        animation: airi-gentle-bob 3.2s ease-in-out infinite alternate;
+        border-radius: 25%;
+        background:
+          radial-gradient(ellipse at 28% 12%, #ffffff80, transparent 68%),
+          linear-gradient(145deg, var(--tile-top), var(--tile-bottom));
+        box-shadow: inset 0 1px 2px #ffffff80,
+                    inset 0 -3px 5px #3a6c8e16;
+        transform-origin: 50% 70%;
+        animation: airi-calm-lift var(--airi-cycle) cubic-bezier(.4, 0, .2, 1) infinite;
+        animation-delay: var(--delay);
+        will-change: transform;
       }
 
-      .logo-img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        mix-blend-mode: multiply;
-        filter: drop-shadow(0 4px 12px rgba(186, 230, 253, 0.4));
+      .airi-calm-tile::before {
+        content: "";
+        position: absolute;
+        inset: 5% 3% -2%;
+        z-index: -1;
+        border-radius: inherit;
+        box-shadow: 0 6px 8px rgba(var(--airi-shadow, 45, 88, 122), .18);
+        animation: airi-calm-shadow var(--airi-cycle) ease-in-out infinite;
+        animation-delay: var(--delay);
       }
 
-      @keyframes airi-gentle-bob {
-        0% {
-          transform: translateY(0);
-        }
-        100% {
-          transform: translateY(-4px);
-        }
+      /* Four Spans Clockwise (TL -> TR -> BR -> BL) */
+      .airi-calm-tile:nth-child(1) { --tile-top: #c7f6fc; --tile-bottom: #a9dfeb; --delay: 0s; }
+      .airi-calm-tile:nth-child(2) { --tile-top: #acf0fc; --tile-bottom: #81d7ee; --delay: 1.5s; }
+      .airi-calm-tile:nth-child(3) { --tile-top: #b9d9ff; --tile-bottom: #91b9ed; --delay: 4.5s; }
+      .airi-calm-tile:nth-child(4) { --tile-top: #ded1ff; --tile-bottom: #b8a6ef; --delay: 3s; }
+
+      @keyframes airi-calm-lift {
+        0%, 25%, 100% { transform: translateY(0) scale(1) rotateX(0) rotateZ(0); }
+        10% { transform: translateY(-9%) scale(1.035) rotateX(-7deg) rotateZ(-1.5deg); }
+      }
+
+      @keyframes airi-calm-shadow {
+        0%, 25%, 100% { opacity: .65; transform: translateY(0) scale(.98); }
+        10% { opacity: .95; transform: translateY(6px) scale(1.03); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .airi-calm-tile,
+        .airi-calm-tile::before { animation: none; will-change: auto; }
       }
 
       .app-title {
         font-size: 19px;
         font-weight: 700;
         letter-spacing: 0.38em;
-        color: #1e293b;
+        color: var(--airi-title);
         margin-top: 14px;
-        margin-left: 0.38em; /* optical centering for letter-spacing */
+        margin-left: 0.38em; /* optical centering */
+        transition: color 0.3s ease;
       }
 
       /* Hero Section */
@@ -193,23 +292,25 @@
         flex-direction: column;
         align-items: center;
         text-align: center;
-        margin-top: 20px;
+        margin-top: 18px;
         padding: 0 24px;
       }
 
       .hero-title {
         font-size: 21px;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--airi-title);
         letter-spacing: -0.015em;
         line-height: 1.25;
+        transition: color 0.3s ease;
       }
 
       .hero-subtitle {
         font-size: 13.5px;
         font-weight: 400;
-        color: #64748b;
+        color: var(--airi-muted);
         margin-top: 6px;
+        transition: color 0.3s ease;
       }
 
       /* Floating Milestone Progress Card */
@@ -218,15 +319,16 @@
         width: 340px;
         border-radius: 18px;
         padding: 16px 18px;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(226, 232, 240, 0.85);
+        background: var(--airi-card-bg);
+        border: 1px solid var(--airi-card-border);
         backdrop-filter: blur(14px);
         -webkit-backdrop-filter: blur(14px);
-        box-shadow: 0 8px 24px rgba(148, 163, 184, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03);
-        margin-top: 24px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+        margin-top: 22px;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        transition: background 0.3s ease, border-color 0.3s ease;
       }
 
       .card-header {
@@ -250,8 +352,8 @@
         width: 38px;
         height: 38px;
         border-radius: 12px;
-        background: #e0f2fe;
-        color: #0284c7;
+        background: var(--airi-badge-bg);
+        color: var(--airi-badge-color);
         flex-shrink: 0;
         transition: background 0.25s ease, color 0.25s ease;
       }
@@ -264,27 +366,30 @@
       .milestone-label {
         font-size: 14px;
         font-weight: 600;
-        color: #0f172a;
+        color: var(--airi-title);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         max-width: 200px;
+        transition: color 0.3s ease;
       }
 
       .progress-percent {
         font-size: 14px;
         font-weight: 500;
-        color: #64748b;
+        color: var(--airi-muted);
         font-variant-numeric: tabular-nums;
         flex-shrink: 0;
+        transition: color 0.3s ease;
       }
 
       .progress-track {
         width: 100%;
         height: 7px;
         border-radius: 9999px;
-        background: #e2e8f0;
+        background: var(--airi-track-bg);
         overflow: hidden;
+        transition: background 0.3s ease;
       }
 
       .progress-bar {
@@ -297,11 +402,12 @@
 
       .sub-hint {
         font-size: 12px;
-        color: #94a3b8;
+        color: var(--airi-muted);
         font-weight: 400;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        transition: color 0.3s ease;
       }
 
       /* Error Zone */
@@ -328,6 +434,12 @@
         font-size: 12px;
       }
 
+      .splash-card[data-theme="dark"] .error-banner {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #fca5a5;
+      }
+
       .error-banner svg {
         width: 16px;
         height: 16px;
@@ -343,6 +455,10 @@
         color: #b91c1c;
         margin-top: 4px;
         word-break: break-word;
+      }
+
+      .splash-card[data-theme="dark"] .error-details-box {
+        color: #f87171;
       }
 
       .btn-action-group {
@@ -374,15 +490,15 @@
         font-size: 12px;
         font-weight: 500;
         border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        background: #f8fafc;
-        color: #334155;
+        border: 1px solid var(--airi-edge);
+        background: var(--airi-button-bg);
+        color: var(--airi-ink);
         cursor: pointer;
         transition: background 0.15s ease;
       }
 
       .btn-secondary:hover {
-        background: #f1f5f9;
+        filter: brightness(0.95);
       }
 
       /* Footer */
@@ -390,20 +506,40 @@
         margin-top: auto;
         margin-bottom: 18px;
         font-size: 11.5px;
-        color: #94a3b8;
+        color: var(--airi-muted);
         letter-spacing: 0.02em;
         text-align: center;
+        transition: color 0.3s ease;
       }
     </style>
   </head>
   <body>
-    <div id="splash-card" class="splash-card">
+    <div id="splash-card" class="splash-card" data-theme="light">
       <!-- Traffic Light Window Controls -->
       <div class="window-controls">
         <div id="btn-close-window" class="control-dot close" title="Close AIRI"></div>
         <div class="control-dot min"></div>
         <div class="control-dot max"></div>
       </div>
+
+      <!-- Quick Theme Toggle for Testing Light/Dark Mode -->
+      <button id="btn-theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle theme">
+        <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg id="theme-icon-sun" style="display: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <span id="theme-label">Dark</span>
+      </button>
 
       <!-- Atmospheric Sparkles -->
       <svg class="sparkle sparkle-tl" viewBox="0 0 20 20" fill="currentColor">
@@ -419,15 +555,13 @@
         <path d="M 10 0 C 10 5.5, 14.5 10, 20 10 C 14.5 10, 10 14.5, 10 20 C 10 14.5, 5.5 10, 0 10 C 5.5 10, 10 5.5, 10 0 Z" />
       </svg>
 
-      <!-- Brand Area -->
+      <!-- Brand Area with Calm 4-Tile Animated Squares -->
       <div class="brand-section">
-        <div class="logo-container">
-          <img
-            id="logo-img"
-            class="logo-img"
-            src="./assets/splash/pastel-tiles.png"
-            alt="AIRI"
-          />
+        <div class="airi-calm-loader" role="img" aria-label="Four pastel tiles gently lifting in a clockwise sequence">
+          <span class="airi-calm-tile"></span>
+          <span class="airi-calm-tile"></span>
+          <span class="airi-calm-tile"></span>
+          <span class="airi-calm-tile"></span>
         </div>
         <div class="app-title">A I R I</div>
       </div>

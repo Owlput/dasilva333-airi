@@ -4,8 +4,6 @@ import { defineInvoke } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { version } from '~build/package'
 
-import pastelTilesUrl from './assets/splash/pastel-tiles.png'
-
 import {
   electronSplashDismiss,
   electronSplashGetSnapshot,
@@ -67,8 +65,11 @@ const ICON_FAILED = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 
 // DOM Elements
 const splashCard = document.getElementById('splash-card')
-const logoImg = document.getElementById('logo-img') as HTMLImageElement | null
 const btnCloseWindow = document.getElementById('btn-close-window')
+const btnThemeToggle = document.getElementById('btn-theme-toggle')
+const themeLabel = document.getElementById('theme-label')
+const themeIconSun = document.getElementById('theme-icon-sun')
+const themeIconMoon = document.getElementById('theme-icon-moon')
 const iconBadge = document.getElementById('icon-badge')
 const milestoneLabel = document.getElementById('milestone-label')
 const progressBar = document.getElementById('progress-bar')
@@ -81,10 +82,42 @@ const btnRetry = document.getElementById('btn-retry')
 const btnSkipAvatar = document.getElementById('btn-skip-avatar')
 const versionFooter = document.getElementById('version-footer')
 
-// Populate logo image source safely
-if (logoImg && pastelTilesUrl) {
-  logoImg.src = pastelTilesUrl
+// Theme Toggle Management
+function applyTheme(isDark: boolean) {
+  if (!splashCard)
+    return
+  splashCard.dataset.theme = isDark ? 'dark' : 'light'
+  if (themeLabel) {
+    themeLabel.textContent = isDark ? 'Light' : 'Dark'
+  }
+  if (themeIconSun && themeIconMoon) {
+    themeIconSun.style.display = isDark ? 'block' : 'none'
+    themeIconMoon.style.display = isDark ? 'none' : 'block'
+  }
+  try {
+    localStorage.setItem('vueuse-color-mode', isDark ? 'dark' : 'light')
+  }
+  catch {}
 }
+
+const initialIsDark = (() => {
+  try {
+    const saved = localStorage.getItem('vueuse-color-mode')
+    if (saved === 'dark')
+      return true
+    if (saved === 'light')
+      return false
+  }
+  catch {}
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+})()
+
+applyTheme(initialIsDark)
+
+btnThemeToggle?.addEventListener('click', () => {
+  const currentDark = splashCard?.dataset.theme === 'dark'
+  applyTheme(!currentDark)
+})
 
 // Populate version footer in the exact "v0.9.38 · stable" format
 if (versionFooter && version) {
@@ -218,8 +251,9 @@ function render(snap: StartupSnapshot) {
 
   if (iconBadge && info) {
     iconBadge.innerHTML = info.icon
-    iconBadge.style.background = '#e0f2fe'
-    iconBadge.style.color = '#0284c7'
+    const isDark = splashCard?.dataset.theme === 'dark'
+    iconBadge.style.background = isDark ? 'rgba(2, 132, 199, 0.22)' : '#e0f2fe'
+    iconBadge.style.color = isDark ? '#38bdf8' : '#0284c7'
   }
 
   if (milestoneLabel) {
