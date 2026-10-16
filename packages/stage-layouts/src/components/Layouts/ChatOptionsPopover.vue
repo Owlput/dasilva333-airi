@@ -167,7 +167,7 @@ function handleOpenAllSettings() {
           'z-[10000] max-h-[min(630px,88dvh)] w-80 max-w-[calc(100vw-24px)]',
           'flex flex-col overflow-hidden',
           'border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl',
-          'bg-white/95 dark:bg-neutral-950/95 shadow-2xl backdrop-blur-2xl duration-200',
+          'bg-white/70 dark:bg-neutral-950/70 shadow-2xl backdrop-blur-2xl duration-200',
         ]"
       >
         <!-- Header Bar -->
