@@ -187,6 +187,17 @@ function handleToggleCognitivePipeline() {
 
 <template>
   <div class="flex flex-col gap-1">
+    <!-- Header Banner -->
+    <div class="mb-1 flex items-center gap-3 px-1 py-1">
+      <div class="size-10 flex shrink-0 items-center justify-center border border-primary-500/20 rounded-xl bg-primary-500/15 text-primary-500 dark:bg-primary-500/20">
+        <div class="i-solar:heart-pulse-bold-duotone size-6" />
+      </div>
+      <div class="flex flex-col">
+        <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">Core Capabilities</span>
+        <span class="text-[10px] text-neutral-400 dark:text-neutral-500">Heartbeats, watching, cues, stickers</span>
+      </div>
+    </div>
+
     <!-- Toggle: Heartbeats -->
     <div
       class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"

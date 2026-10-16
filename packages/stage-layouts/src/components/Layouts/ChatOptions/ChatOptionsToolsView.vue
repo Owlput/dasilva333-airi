@@ -62,6 +62,17 @@ function handleToggleTool(toolName: string) {
 
 <template>
   <div class="flex flex-col gap-1">
+    <!-- Header Banner -->
+    <div class="mb-1 flex items-center gap-3 px-1 py-1">
+      <div class="size-10 flex shrink-0 items-center justify-center border border-sky-500/20 rounded-xl bg-sky-500/15 text-sky-500 dark:bg-sky-500/20">
+        <div class="i-solar:laptop-minimalistic-bold-duotone size-6" />
+      </div>
+      <div class="flex flex-col">
+        <span class="text-xs text-neutral-800 font-bold dark:text-neutral-100">Tools & Workstation</span>
+        <span class="text-[10px] text-neutral-400 dark:text-neutral-500">Terminal, files, web, screenshots</span>
+      </div>
+    </div>
+
     <!-- 1. Virtual Terminal (bash) -->
     <div
       class="w-full flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"

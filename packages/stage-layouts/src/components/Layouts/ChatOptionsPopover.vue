@@ -4,7 +4,7 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import ChatOptionsAppearanceView from './ChatOptions/ChatOptionsAppearanceView.vue'
@@ -57,27 +57,6 @@ catch {
 watch(isOpen, (val) => {
   if (!val) {
     currentView.value = 'root'
-  }
-})
-
-const viewTitle = computed(() => {
-  switch (currentView.value) {
-    case 'capabilities':
-      return 'Core Capabilities'
-    case 'tools':
-      return 'Tools & Workstation'
-    case 'injections':
-      return 'Context Injections'
-    case 'memories':
-      return 'Memories'
-    case 'appearance':
-      return 'Appearance'
-    case 'staging':
-      return 'Cast & Staging'
-    case 'voice':
-      return 'Voice & Audio'
-    default:
-      return 'Chat options'
   }
 })
 
@@ -210,12 +189,6 @@ function handleOpenCardSettings() {
             <div class="i-solar:alt-arrow-left-linear size-4" />
             <span>Chat options</span>
           </button>
-          <span
-            v-if="currentView !== 'appearance' && currentView !== 'staging' && currentView !== 'voice'"
-            class="truncate whitespace-nowrap text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100"
-          >
-            {{ viewTitle }}
-          </span>
           <button
             type="button"
             class="flex cursor-pointer items-center justify-center rounded-full p-0.5 text-neutral-400 transition-colors dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
