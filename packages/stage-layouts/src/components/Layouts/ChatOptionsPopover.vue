@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { CharacterContextDialog, ChatSessionModal, StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -34,11 +35,13 @@ const emit = defineEmits<{
   (e: 'searchMemories'): void
 }>()
 
+const isElectron = isStageTamagotchi()
+
 const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
 const backgroundStore = useBackgroundStore()
-const { chatboxActiveBackgroundId } = storeToRefs(backgroundStore)
+const { chatboxActiveBackgroundId, activeBackgroundId } = storeToRefs(backgroundStore)
 
 const isOpen = ref(false)
 type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'memories' | 'appearance' | 'staging' | 'voice'
@@ -289,8 +292,8 @@ function handleOpenAllSettings() {
     :card-id="activeCardId"
     :auto-apply="false"
     :close-on-pick="true"
-    :selected-id="chatboxActiveBackgroundId"
-    @pick="(id: string) => backgroundStore.setChatboxActiveBackground(id)"
+    :selected-id="isElectron ? chatboxActiveBackgroundId : activeBackgroundId"
+    @pick="(id: string) => isElectron ? backgroundStore.setChatboxActiveBackground(id) : backgroundStore.setActiveBackground(id)"
   />
 
   <!-- Timelines & Context Modals -->

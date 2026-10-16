@@ -8,6 +8,7 @@ import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 
 import cozyTeaCornerInPastelHuesUrl from '../assets/backgrounds/cozy-tea-corner-in-pastel-hues.avif'
 import cuteStreamingRoomWithPastelDecorUrl from '../assets/backgrounds/cute-streaming-room-with-pastel-decor.avif'
+import summerSkyMeadowUrl from '../assets/backgrounds/summer-sky-meadow-with-wildflowers.avif'
 
 import { useChatSessionStore } from './chat/session-store'
 import { useEventLogStore } from './event-log'
@@ -40,6 +41,11 @@ const BUILTIN_BACKGROUNDS = [
     id: 'builtin:cute-streaming-room',
     url: cuteStreamingRoomWithPastelDecorUrl,
     title: 'Cute streaming room with pastel decor',
+  },
+  {
+    id: 'builtin:summer-sky-meadow',
+    url: summerSkyMeadowUrl,
+    title: 'Summer sky meadow with wildflowers',
   },
 ]
 

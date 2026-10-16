@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StageAtmosphere } from '@proj-airi/stage-ui/stores'
 
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { SettingsThemeHeaderWidget } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { storeToRefs } from 'pinia'
@@ -12,12 +13,24 @@ const emit = defineEmits<{
   (e: 'browseScenes'): void
 }>()
 
+const isElectron = isStageTamagotchi()
+
 const backgroundStore = useBackgroundStore()
 const {
   chatboxActiveAtmosphereId,
   chatboxActiveBackgroundId,
+  activeAtmosphereId,
+  activeBackgroundId,
   availableBackgrounds,
 } = storeToRefs(backgroundStore)
+
+const currentAtmosphereId = computed(() => {
+  return isElectron ? chatboxActiveAtmosphereId.value : activeAtmosphereId.value
+})
+
+const currentBackgroundId = computed(() => {
+  return isElectron ? chatboxActiveBackgroundId.value : activeBackgroundId.value
+})
 
 const visualAtmospheres = computed(() => {
   return ATMOSPHERE_OPTIONS.filter(opt => opt.id !== 'none').map(opt => ({
@@ -30,20 +43,40 @@ const quickWallpapers = computed(() => {
   return (availableBackgrounds.value || []).slice(0, 6)
 })
 
-function handleSetChatboxAtmosphere(id: StageAtmosphere) {
-  backgroundStore.setChatboxActiveAtmosphere(id)
+function handleSetAtmosphere(id: StageAtmosphere) {
+  if (isElectron) {
+    backgroundStore.setChatboxActiveAtmosphere(id)
+  }
+  else {
+    backgroundStore.setActiveAtmosphere(id)
+  }
 }
 
-function handleClearChatboxAtmosphere() {
-  backgroundStore.setChatboxActiveAtmosphere('none')
+function handleClearAtmosphere() {
+  if (isElectron) {
+    backgroundStore.setChatboxActiveAtmosphere('none')
+  }
+  else {
+    backgroundStore.setActiveAtmosphere('none')
+  }
 }
 
-function handleSetChatboxBackground(id: string) {
-  backgroundStore.setChatboxActiveBackground(id)
+function handleSetBackground(id: string) {
+  if (isElectron) {
+    backgroundStore.setChatboxActiveBackground(id)
+  }
+  else {
+    backgroundStore.setActiveBackground(id)
+  }
 }
 
-function handleClearChatboxBackground() {
-  backgroundStore.setChatboxActiveBackground('none')
+function handleClearBackground() {
+  if (isElectron) {
+    backgroundStore.setChatboxActiveBackground('none')
+  }
+  else {
+    backgroundStore.setActiveBackground('none')
+  }
 }
 </script>
 
@@ -72,11 +105,11 @@ function handleClearChatboxBackground() {
         type="button"
         :class="[
           'flex items-center gap-1 text-[11px] font-medium transition cursor-pointer',
-          chatboxActiveAtmosphereId === 'none'
+          currentAtmosphereId === 'none'
             ? 'text-primary-500 dark:text-primary-400 font-semibold'
             : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200',
         ]"
-        @click="handleClearChatboxAtmosphere"
+        @click="handleClearAtmosphere"
       >
         <div class="i-solar:forbidden-circle-linear size-3.5" />
         <span>Clear effect</span>
@@ -91,11 +124,11 @@ function handleClearChatboxBackground() {
         type="button"
         :class="[
           'relative aspect-[4/3] rounded-xl overflow-hidden border transition-all duration-200 ease-out cursor-pointer flex flex-col items-center justify-end pb-1.5 hover:scale-[1.02] active:scale-[0.98]',
-          chatboxActiveAtmosphereId === opt.id
+          currentAtmosphereId === opt.id
             ? 'border-primary-400 bg-neutral-900 shadow-[0_0_12px_rgba(56,189,248,0.25)] ring-1 ring-primary-400/50'
             : 'border-neutral-200/50 dark:border-neutral-800/80 bg-neutral-100/80 dark:bg-neutral-900/90 hover:border-neutral-300 dark:hover:border-neutral-700',
         ]"
-        @click="handleSetChatboxAtmosphere(opt.id)"
+        @click="handleSetAtmosphere(opt.id)"
       >
         <!-- Live Mini Particle Canvas -->
         <component
@@ -116,7 +149,7 @@ function handleClearChatboxBackground() {
           leave-to-class="opacity-0 scale-50"
         >
           <div
-            v-if="chatboxActiveAtmosphereId === opt.id"
+            v-if="currentAtmosphereId === opt.id"
             class="absolute right-1.5 top-1.5 z-10 size-4 flex items-center justify-center rounded-full bg-primary-500 text-white shadow-md"
           >
             <div class="i-solar:check-read-bold size-2.5" />
@@ -127,7 +160,7 @@ function handleClearChatboxBackground() {
         <span
           :class="[
             'z-10 text-[11px] tracking-wide select-none drop-shadow-sm transition font-medium',
-            chatboxActiveAtmosphereId === opt.id
+            currentAtmosphereId === opt.id
               ? 'text-primary-400 font-bold'
               : 'text-neutral-700 dark:text-neutral-200',
           ]"
@@ -144,11 +177,11 @@ function handleClearChatboxBackground() {
         type="button"
         :class="[
           'flex items-center gap-1 text-[11px] font-medium transition cursor-pointer',
-          chatboxActiveBackgroundId === 'none'
+          currentBackgroundId === 'none'
             ? 'text-primary-500 dark:text-primary-400 font-semibold'
             : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200',
         ]"
-        @click="handleClearChatboxBackground"
+        @click="handleClearBackground"
       >
         <div class="i-solar:forbidden-circle-linear size-3.5" />
         <span>None</span>
@@ -163,11 +196,11 @@ function handleClearChatboxBackground() {
         type="button"
         :class="[
           'group relative aspect-[4/3] rounded-xl overflow-hidden border transition-all duration-200 ease-out cursor-pointer hover:scale-[1.02] active:scale-[0.98]',
-          chatboxActiveBackgroundId === bg.id
+          currentBackgroundId === bg.id
             ? 'border-primary-400 shadow-[0_0_12px_rgba(56,189,248,0.25)] ring-1 ring-primary-400/50'
             : 'border-neutral-200/50 dark:border-neutral-800/80 hover:border-neutral-300 dark:hover:border-neutral-700 bg-neutral-100 dark:bg-neutral-900',
         ]"
-        @click="handleSetChatboxBackground(bg.id)"
+        @click="handleSetBackground(bg.id)"
       >
         <img
           v-if="bg.url || backgroundStore.getBackgroundUrl(bg.id)"
@@ -193,7 +226,7 @@ function handleClearChatboxBackground() {
           leave-to-class="opacity-0 scale-50"
         >
           <div
-            v-if="chatboxActiveBackgroundId === bg.id"
+            v-if="currentBackgroundId === bg.id"
             class="absolute right-1.5 top-1.5 z-10 size-4 flex items-center justify-center rounded-full bg-primary-500 text-white shadow-md"
           >
             <div class="i-solar:check-read-bold size-2.5" />
