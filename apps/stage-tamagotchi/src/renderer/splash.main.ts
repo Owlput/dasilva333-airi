@@ -4,6 +4,8 @@ import { defineInvoke } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { version } from '~build/package'
 
+import pastelTilesUrl from './assets/splash/pastel-tiles.png'
+
 import {
   electronSplashDismiss,
   electronSplashGetSnapshot,
@@ -12,22 +14,63 @@ import {
   electronStageRelease,
 } from '../shared/eventa'
 
-// NOTICE: Milestone labels for the dedicated splash screen.
+// NOTICE: Milestone labels and hints tailored for the warm companion experience.
 // Kept self-contained so the splash paints instantly (<10ms) without waiting
 // on i18n initialization or the monolithic main.ts application graph.
-const MILESTONE_LABELS: Record<StartupMilestoneId, string> = {
-  'core-services': 'Starting core services...',
-  'sync-engine': 'Initializing sync engine...',
-  'character-card': 'Loading active character...',
-  'stage-actor': 'Preparing avatar stage...',
+interface MilestoneInfo {
+  label: string
+  subHint: string
+  icon: string
 }
+
+const MILESTONE_INFO: Record<StartupMilestoneId, MilestoneInfo> = {
+  'core-services': {
+    label: 'Starting core systems',
+    subHint: 'Initializing runtime environment',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+    </svg>`,
+  },
+  'sync-engine': {
+    label: 'Syncing your companion',
+    subHint: 'Restoring local state and memories',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+    </svg>`,
+  },
+  'character-card': {
+    label: 'Loading your character',
+    subHint: 'Preparing the stage',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+      <circle cx="12" cy="7" r="4"></circle>
+    </svg>`,
+  },
+  'stage-actor': {
+    label: 'Preparing the stage',
+    subHint: 'Loading avatar shaders & lights',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+    </svg>`,
+  },
+}
+
+const ICON_READY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="20 6 9 17 4 12"></polyline>
+</svg>`
+
+const ICON_FAILED = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"></circle>
+  <line x1="12" y1="8" x2="12" y2="12"></line>
+  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+</svg>`
 
 // DOM Elements
 const splashCard = document.getElementById('splash-card')
-const versionBadge = document.getElementById('version-badge')
-const spinner = document.getElementById('spinner')
-const checkIcon = document.getElementById('check-icon')
-const statusLabel = document.getElementById('status-label')
+const logoImg = document.getElementById('logo-img') as HTMLImageElement | null
+const btnCloseWindow = document.getElementById('btn-close-window')
+const iconBadge = document.getElementById('icon-badge')
+const milestoneLabel = document.getElementById('milestone-label')
 const progressBar = document.getElementById('progress-bar')
 const progressPercent = document.getElementById('progress-percent')
 const subHint = document.getElementById('sub-hint')
@@ -36,11 +79,24 @@ const errorMsg = document.getElementById('error-msg')
 const errorDetails = document.getElementById('error-details')
 const btnRetry = document.getElementById('btn-retry')
 const btnSkipAvatar = document.getElementById('btn-skip-avatar')
+const versionFooter = document.getElementById('version-footer')
 
-// Populate version badge immediately
-if (versionBadge && version) {
-  versionBadge.textContent = `v${version}`
+// Populate logo image source safely
+if (logoImg && pastelTilesUrl) {
+  logoImg.src = pastelTilesUrl
 }
+
+// Populate version footer in the exact "v0.9.38 · stable" format
+if (versionFooter && version) {
+  const cleanVersion = version.split('-')[0] || '0.9.38'
+  const channel = version.includes('stable') ? 'stable' : 'dev'
+  versionFooter.textContent = `v${cleanVersion} · ${channel}`
+}
+
+// Close button quits / closes the splash window
+btnCloseWindow?.addEventListener('click', () => {
+  window.close()
+})
 
 // IPC & Eventa context
 const ipcRenderer = (window as unknown as { electron?: { ipcRenderer?: unknown } })?.electron?.ipcRenderer
@@ -67,34 +123,11 @@ function resetWatchdog() {
   // If no milestone updates arrive for 15s, show timeout warning
   watchdogTimer = setTimeout(() => {
     if (!currentSnapshot?.ready && !currentSnapshot?.failed) {
-      if (statusLabel) {
-        statusLabel.textContent = 'Startup is taking longer than expected...'
+      if (subHint) {
+        subHint.textContent = 'Startup is taking longer than expected...'
       }
     }
   }, 15000)
-}
-
-function resolveStatusLabel(snap: StartupSnapshot): string {
-  if (snap.failed) {
-    return snap.failed.error || 'Startup failed'
-  }
-  if (snap.ready) {
-    return 'Ready!'
-  }
-  const stageSkipped = snap.resources.find(r => r.id === 'stage-actor')?.status === 'skipped'
-  const active = snap.resources.find(r => r.status === 'loading')
-    ?? snap.resources.find(r => r.status === 'queued')
-
-  if (!active && stageSkipped) {
-    return 'Avatar skipped (starting in minimal mode)'
-  }
-  if (!active) {
-    return 'Ready!'
-  }
-  if (active.id === 'stage-actor' && stageSkipped) {
-    return 'Avatar skipped (starting in minimal mode)'
-  }
-  return MILESTONE_LABELS[active.id] || 'Loading AIRI...'
 }
 
 function render(snap: StartupSnapshot) {
@@ -112,16 +145,26 @@ function render(snap: StartupSnapshot) {
   }
 
   if (failed) {
-    if (spinner)
-      spinner.style.display = 'none'
-    if (checkIcon)
-      checkIcon.style.display = 'none'
-    if (errorZone)
+    if (iconBadge) {
+      iconBadge.innerHTML = ICON_FAILED
+      iconBadge.style.background = '#fee2e2'
+      iconBadge.style.color = '#dc2626'
+    }
+    if (milestoneLabel) {
+      milestoneLabel.textContent = 'Startup issue detected'
+    }
+    if (subHint) {
+      subHint.textContent = failed.error || 'A problem occurred while loading'
+    }
+    if (errorZone) {
       errorZone.classList.add('visible')
-    if (errorMsg)
+    }
+    if (errorMsg) {
       errorMsg.textContent = failed.error || 'Startup failed'
-    if (errorDetails)
+    }
+    if (errorDetails) {
       errorDetails.textContent = failed.error || 'Unknown error occurred during startup'
+    }
     if (btnSkipAvatar) {
       btnSkipAvatar.style.display = failed.id === 'stage-actor' ? 'inline-block' : 'none'
     }
@@ -132,17 +175,18 @@ function render(snap: StartupSnapshot) {
     errorZone.classList.remove('visible')
   }
 
-  if (statusLabel) {
-    statusLabel.textContent = resolveStatusLabel(snap)
-  }
-
   if (isReady) {
-    if (spinner)
-      spinner.style.display = 'none'
-    if (checkIcon)
-      checkIcon.style.display = 'block'
-    if (subHint)
-      subHint.style.display = 'none'
+    if (iconBadge) {
+      iconBadge.innerHTML = ICON_READY
+      iconBadge.style.background = '#dcfce7'
+      iconBadge.style.color = '#16a34a'
+    }
+    if (milestoneLabel) {
+      milestoneLabel.textContent = 'Ready!'
+    }
+    if (subHint) {
+      subHint.textContent = 'Welcome back'
+    }
 
     // NOTICE: Zero-click auto-close. Hold "Ready!" so the user perceives
     // completion, fade out, then let Main atomically reveal the windows and destroy the splash.
@@ -161,12 +205,39 @@ function render(snap: StartupSnapshot) {
         }, 300)
       }, 350)
     }
+    return
   }
-  else {
-    if (spinner)
-      spinner.style.display = 'block'
-    if (checkIcon)
-      checkIcon.style.display = 'none'
+
+  // Active or queued milestone resolution
+  const stageSkipped = snap.resources.find(r => r.id === 'stage-actor')?.status === 'skipped'
+  const active = snap.resources.find(r => r.status === 'loading')
+    ?? snap.resources.find(r => r.status === 'queued')
+
+  const milestoneId = active?.id || 'character-card'
+  const info = MILESTONE_INFO[milestoneId]
+
+  if (iconBadge && info) {
+    iconBadge.innerHTML = info.icon
+    iconBadge.style.background = '#e0f2fe'
+    iconBadge.style.color = '#0284c7'
+  }
+
+  if (milestoneLabel) {
+    if (stageSkipped && (!active || active.id === 'stage-actor')) {
+      milestoneLabel.textContent = 'Text-only companion mode'
+    }
+    else {
+      milestoneLabel.textContent = info ? info.label : 'Loading your companion...'
+    }
+  }
+
+  if (subHint) {
+    if (stageSkipped && (!active || active.id === 'stage-actor')) {
+      subHint.textContent = 'Stage actor bypassed'
+    }
+    else {
+      subHint.textContent = info ? info.subHint : 'Preparing the stage'
+    }
   }
 }
 
