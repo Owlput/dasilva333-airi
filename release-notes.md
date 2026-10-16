@@ -1,8 +1,8 @@
 # 🚀 AIRI v0.9.39-stable.20261015 — Release Notes
 
-This release brings a monumental expansion to AIRI's agency, intelligence, and visual workspace: introducing **On-Demand Agent Screenshots**—enabling companions to visually inspect your desktop, individual monitors, or specific application windows whenever they need to—alongside **Intelligent Tool Step Budgeting**, **Hierarchical Chat Staging Controls**, the **Winnow System-1 Memory Compaction Engine**, **Modular Chat Dashboard Cards**, a **Shared Generative Micro-App Catalog**, and **Multi-Instance Model Favorites**.
+This release brings a monumental expansion to AIRI's agency, intelligence, and visual workspace: introducing **On-Demand Agent Screenshots**—enabling companions to visually inspect your desktop, individual monitors, or specific application windows whenever they need to—alongside **Project Amadeus Live2D Micro-App Bridges & Tactile HitArea Introspection**, a **Modernized 4-Tile Desktop Startup Splash**, **Intelligent Tool Step Budgeting**, **Hierarchical Chat Staging Controls**, the **Winnow System-1 Memory Compaction Engine**, **Modular Chat Dashboard Cards**, a **Shared Generative Micro-App Catalog**, and **Multi-Instance Model Favorites**.
 
-Companions can now gracefully handle complex multi-step tool loops without abrupt cutoffs, capture and discuss what's on your monitors with inline full-resolution previews, intelligently compact lifetime memories with emotional salience preservation, and let you customize your workspace down to particle atmospheres and per-actor voice overrides.
+Companions can now gracefully handle complex multi-step tool loops without abrupt cutoffs, capture and discuss what's on your monitors with inline full-resolution previews, control Live2D avatars via virtual terminal commands or interactive glassmorphic micro-apps, trigger tactile hit reactions on creator-scripted models, intelligently compact lifetime memories with emotional salience preservation, and greet you with a calm, theme-reactive pastel splash screen upon launching.
 
 ---
 
@@ -14,6 +14,13 @@ Companions can now gracefully handle complex multi-step tool loops without abrup
 * **Multi-Monitor & Window Title Targeting**: Companions can intelligently select specific displays (e.g. primary vs secondary monitor) or capture background windows by exact title match.
 * **Card-Level Security & Onboarding Discovery**: Agent screenshot capabilities are securely gated via `allowedTools` in the character editor, controllable in real-time from the chat options menu, and discoverable as an optional tool pack during Onboarding V3.
 * **Previewing Attached User Images**: Clicking on any image attached to user messages now opens an expanded high-resolution image preview modal.
+
+### 🎭 Project Amadeus: Live2D Micro-App Bridge & Tactile Introspection
+* **Universal Live2D Controller Micro-App**: Inducted a bundled generative micro-app (`Live2D Controller (Generic)`) into the starter catalog, providing an interactive, glassmorphic control surface to trigger motions, expressions, and parameter sliders in real time with two-way stage reactivity.
+* **Virtual Terminal Live2D CLI & Runtime Shim**: Companions and users can now issue `live2d` terminal commands (`live2d motion`, `live2d expression`, `live2d set`, `live2d status`) or write custom scripts using `require('live2d')` with full execution telemetry.
+* **Tactile HitArea Introspection & Gimmick Deck**: Unlocked creator-scripted Live2D packages (such as Steins;Gate Makise Kurisu / Project Amadeus) by parsing `hit_areas` and `open_url` DSL opcodes, enabling interactive tap zones, safe URL launching, and sound-only reaction lines without animation interrupts.
+* **Ambient VFS State Mirror**: Projected live avatar posture, active motions, and blend parameters into the virtual workstation at `/airi/ambient/live2d.json` for zero-overhead background inspection.
+* **Motion Loop Elimination**: Fixed an issue where Live2D models executing custom DSL scripts would unintentionally loop their start motions indefinitely.
 
 ### ⏱️ Intelligent Tool Budgets & Graceful Loop Termination
 * **Graceful Synthesis at Step Limits**: When a companion exhausts their per-reply tool turns budget (`maxToolSteps`), pending tool executions halt gracefully and the model is given extra turns to synthesize a complete, thoughtful reply rather than abruptly cutting off mid-execution.
@@ -42,6 +49,10 @@ Companions can now gracefully handle complex multi-step tool loops without abrup
 * **CloudSync Deletion Tombstones**: Added deletion tombstones for generative micro-apps to eliminate zombie widget resurrection across multi-device cloud synchronization.
 
 ### 🛠️ Desktop Experience & Navigation Polish
+* **Modernized MPA Splash Loader**: Completely revamped the desktop startup window with a pastel companion aesthetic, calm animated 4-tile loading indicator, and dynamic initialization milestone cards.
+* **Dynamic Startup Theme Synchronization**: The desktop splash window now detects and applies your preferred Light or Dark theme immediately upon launch before the stage window mounts.
+* **Full Model Roster in Card Export**: Exporting character cards in CCv2 format now automatically bundles the entire multi-model roster (VRM, Live2D, Spine, MMD) and associated on-set assets, preserving your companion's complete wardrobe.
+* **Speaker-Owned Actor Transitions**: Resolved model synchronization gates to allow seamless actor handoffs when switching speakers in multi-character scenarios.
 * **Modular Chat Dashboard Cards**: Added customizable header controls and flexible layout configurations to the embedded chat dashboard panel, with stage window visibility decoupled from the desktop companion.
 * **Model Favorites Manager (`BrainModelFavoriteModal`)**: Added a full-featured model favorites manager supporting multi-instance cloud providers, custom parameters, and adaptive Light/Dark styling.
 * **Intelligent Avatar Search**: Expanded model selector search to query tags, franchise groups, and multi-word terms.
@@ -57,4 +68,3 @@ Companions can now gracefully handle complex multi-step tool loops without abrup
 * **PR [#22](https://github.com/dasilva333/airi/pull/22): feat: add screenshot support to the agent** — Contributed by **@meckbaig**, adding on-demand agent screenshots (`take_screenshot`), multi-display/window targeting, inline multimodal chat rendering, and onboarding tool integration.
 * **PR [#24](https://github.com/dasilva333/airi/pull/24): feat(stage-ui,stage-pages): graceful stop + per-character limit actually applied** — Contributed by **@meckbaig**, implementing graceful tool loop termination at step limits, making character tool step limits unconditionally active, and consolidating tool controls.
 * **PR [#26](https://github.com/dasilva333/airi/pull/26): fix(stage-tamagotchi): collapse hidden journal strip and make grounding header responsive** — Contributed by **@meckbaig**, refining compact desktop window responsiveness and collapsing idle journal strips.
-

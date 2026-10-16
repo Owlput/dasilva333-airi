@@ -1,20 +1,15 @@
 <script setup lang="ts">
-import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
-
-import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
 import {
   ChatImagesPopover,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
 import { useChatComposer } from '@proj-airi/stage-ui/composables'
-import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useSettings, useSettingsAudioDevice, useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
 import { BasicContentEditable } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, ref, useTemplateRef } from 'vue'
+import { ref, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -28,17 +23,13 @@ const backgroundDialogOpen = ref(false)
 const stageBackgroundDialogOpen = ref(false)
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 
-const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
 const settingsChat = useSettingsChat()
 const settingsAudioDevice = useSettingsAudioDevice()
 const { enabled: isAudioInputEnabled, stream: audioStream } = storeToRefs(settingsAudioDevice)
 
-const chatSession = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
-
-const { activeCard, activeCardId } = storeToRefs(airiCardStore)
-const { messages } = storeToRefs(chatSession)
+const { activeCardId } = storeToRefs(airiCardStore)
 const { t } = useI18n()
 
 // Initialize shared useChatComposer composable
@@ -74,75 +65,31 @@ function handleScreenshotClick() {
   // Vision capture is typically restricted in browser unless using getDisplayMedia
   toast.info('Vision capture is optimized for desktop. Please use the attach button for screenshots.')
 }
-
-// --- Token Counter ---
-const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
-
-const sessionTokenCount = computed(() => {
-  let total = 0
-  for (const message of historyMessages.value) {
-    if (typeof message.content === 'string') {
-      total += estimateTokens(message.content)
-    }
-    else if (Array.isArray(message.content)) {
-      const textOnly = message.content
-        .map((part) => {
-          if (typeof part === 'string')
-            return part
-          if (part && typeof part === 'object' && 'text' in part && !('image_url' in part))
-            return String(part.text ?? '')
-          return ''
-        })
-        .join('')
-      total += estimateTokens(textOnly)
-    }
-  }
-  return total
-})
-
-const formattedTokenCount = computed(() => formatTokenCount(sessionTokenCount.value))
-
-const globalContextWidth = computed(() => {
-  if (!activeProvider.value || !activeModel.value)
-    return undefined
-  try {
-    const rawMap = localStorage.getItem('airi:context-width-map')
-    if (!rawMap)
-      return undefined
-    const map = JSON.parse(rawMap)
-    return map[activeProvider.value]?.[activeModel.value]
-  }
-  catch {
-    return undefined
-  }
-})
-
-const effectiveContextWidth = computed(() => activeCard.value?.extensions?.airi?.generation?.known?.contextWidth || globalContextWidth.value)
-
-const contextPercentage = computed(() => {
-  if (!effectiveContextWidth.value)
-    return 0
-  return (sessionTokenCount.value / effectiveContextWidth.value) * 100
-})
 </script>
 
 <template>
-  <div h="<md:full" flex="~ col" gap-1 class="ph-no-capture font-sans">
+  <div :class="['w-full flex flex-col font-sans ph-no-capture']">
     <input ref="fileInput" type="file" accept="image/*" class="hidden" multiple @change="handleFileSelect">
 
-    <!-- Input Area -->
+    <!-- Unified Composer Card -->
     <div
       :class="[
-        'relative',
-        'w-full',
-        'bg-primary-200/20 dark:bg-primary-400/20 rounded-xl overflow-hidden',
+        'relative w-full flex flex-col',
+        'rounded-2xl overflow-hidden',
+        'bg-neutral-100/70 dark:bg-neutral-900/60 backdrop-blur-xl',
+        'border border-neutral-200/50 dark:border-neutral-800/60',
+        'shadow-sm transition-all duration-200',
       ]"
     >
       <!-- Attachments Preview -->
-      <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 border-b border-primary-100/50 p-2">
+      <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 border-b border-neutral-200/30 p-2 dark:border-neutral-800/40">
         <div v-for="(attachment, index) in attachments" :key="index" class="relative">
           <img :src="attachment.url" class="h-16 w-16 rounded-md object-cover">
-          <button class="absolute h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-[10px] text-white -right-1 -top-1" @click="removeAttachment(index)">
+          <button
+            type="button"
+            class="absolute h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-[10px] text-white -right-1 -top-1"
+            @click="removeAttachment(index)"
+          >
             &times;
           </button>
         </div>
@@ -152,9 +99,9 @@ const contextPercentage = computed(() => {
         v-model="messageInput"
         :submit-on-enter="settingsChat.sendMode === 'enter'"
         :placeholder="isImagineMode ? 'Describe a scene to imagine...' : t('stage.message')"
-        default-height="100px"
+        default-height="64px"
         :class="[
-          'min-h-[100px] max-h-[300px] w-full p-4 font-medium outline-none overflow-y-auto bg-transparent',
+          'min-h-[64px] max-h-[260px] w-full px-4 pt-3.5 pb-1 font-medium outline-none overflow-y-auto bg-transparent',
           'text-neutral-900 dark:text-primary-50',
           'data-[empty]:before:text-neutral-900/60 dark:data-[empty]:before:text-white/60',
           'transition-all duration-250 ease-in-out data-[empty]:before:transition-all data-[empty]:before:duration-250 data-[empty]:before:ease-in-out',
@@ -165,125 +112,103 @@ const contextPercentage = computed(() => {
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
       />
-    </div>
 
-    <!-- Action Row (Token Stats, Memory, Images, Mic, Send) -->
-    <div flex items-center justify-end gap-2 px-1 py-1>
-      <!-- Token Indicator -->
+      <!-- Action Row: Left (Images) and Right (Mic + Divider + Send Button) -->
       <div
-        v-if="effectiveContextWidth"
-        class="flex cursor-help items-center gap-1.5 px-2 py-1"
-        :title="`${globalContextWidth ? '[Inherited] ' : ''}Context: ${formattedTokenCount} / ${formatTokenCount(effectiveContextWidth)} (${contextPercentage.toFixed(1)}%)`"
+        :class="[
+          'flex items-center justify-between px-3 pb-2.5 pt-1',
+        ]"
       >
-        <div class="i-solar:graph-bold-duotone text-[10px] text-neutral-400 dark:text-neutral-500" />
-        <span class="text-[10px] text-neutral-400 font-bold leading-none tracking-tight uppercase dark:text-neutral-500">{{ formattedTokenCount }}</span>
-        <div class="h-1.5 w-12 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-          <div
-            class="h-full transition-all duration-300"
+        <!-- Images Popover -->
+        <ChatImagesPopover
+          variant="ghost"
+          @attach="fileInput?.click()"
+          @screenshot="handleScreenshotClick"
+        />
+
+        <!-- Right Side: Mic + Divider + Send Split Button -->
+        <div class="flex items-center gap-2">
+          <!-- Voice / STT Mic Button -->
+          <button
+            type="button"
             :class="[
-              contextPercentage > 85 ? 'bg-red-500' : contextPercentage > 60 ? 'bg-amber-500' : 'bg-emerald-500',
+              'p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 active:scale-95 transition-all cursor-pointer flex items-center justify-center',
+              isAudioInputEnabled ? 'text-rose-500 hover:text-rose-600 animate-pulse' : '',
             ]"
-            :style="{ width: `${Math.min(contextPercentage, 100)}%` }"
-          />
-        </div>
-      </div>
-      <div
-        v-else
-        class="flex cursor-help items-center gap-1.5 px-2 py-1 text-[10px] font-bold tracking-tight uppercase"
-        :class="[
-          sessionTokenCount > 100000 ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 dark:text-neutral-500',
-        ]"
-        title="Est. of tokens used for this chat"
-      >
-        <div class="i-solar:graph-bold-duotone text-xs" />
-        <span>{{ formattedTokenCount }}</span>
-      </div>
+            :title="isAudioInputEnabled ? 'Stop Listening' : 'Voice Input'"
+            @click="handleVoiceClick"
+          >
+            <div :class="[isAudioInputEnabled ? 'i-solar:microphone-3-bold text-xl' : 'i-solar:microphone-linear text-xl']" />
+          </button>
 
-      <!-- Images Popover (incl. Background Picker) -->
-      <ChatImagesPopover
-        variant="mobile"
-        :imagine-mode="isImagineMode"
-        @toggle-imagine="isImagineMode = !isImagineMode"
-        @attach="fileInput?.click()"
-        @screenshot="handleScreenshotClick"
-        @view-journal="stageBackgroundDialogOpen = true"
-        @background-picker="backgroundDialogOpen = true"
-      />
+          <!-- Subtle Divider -->
+          <div class="h-4 w-px bg-neutral-300/60 dark:bg-neutral-700/60" />
 
-      <!-- [🎤] Voice / STT Mic Button -->
-      <button
-        type="button"
-        :class="[
-          'flex items-center justify-center size-9 rounded-xl border-2 border-neutral-100/60 bg-neutral-50/70 dark:border-neutral-800/30 dark:bg-neutral-800/70 transition-all cursor-pointer shrink-0 backdrop-blur-md active:scale-95',
-          isAudioInputEnabled
-            ? 'border-rose-500/50 bg-rose-500 text-white shadow-md shadow-rose-500/30 animate-pulse'
-            : 'text-neutral-500 hover:text-primary-500 dark:text-neutral-400 dark:hover:text-primary-400',
-        ]"
-        :title="isAudioInputEnabled ? 'Stop Listening' : 'Voice Input'"
-        @click="handleVoiceClick"
-      >
-        <div :class="[isAudioInputEnabled ? 'i-solar:microphone-3-bold text-lg' : 'i-solar:microphone-linear text-lg']" />
-      </button>
-
-      <!-- Smart Send Split Button -->
-      <div
-        class="flex items-center overflow-hidden border-2 border-neutral-100/60 rounded-xl border-solid bg-neutral-50/70 backdrop-blur-md transition-all dark:border-neutral-800/30 dark:bg-neutral-800/70"
-        max-h="[10lh]"
-      >
-        <button
-          v-if="canStop"
-          class="h-9 w-10 flex items-center justify-center outline-none transition-transform active:scale-95 hover:bg-red-500/10"
-          :title="sending ? 'Stop Generating' : 'Stop Speaking'"
-          @click="stopGeneration"
-        >
-          <div class="i-solar:stop-bold-duotone text-xl text-red-500 dark:text-red-400" />
-        </button>
-        <button
-          v-else
-          class="h-9 w-10 flex items-center justify-center outline-none transition-transform active:scale-95 hover:bg-primary-500/10"
-          title="Send Message"
-          @click="handleSend"
-        >
-          <div class="i-solar:plain-2-bold-duotone text-xl text-primary-600 dark:text-primary-400" />
-        </button>
-
-        <PopoverRoot>
-          <PopoverTrigger as-child>
+          <!-- Smart Send Split Button (Primary Accent) -->
+          <div
+            :class="[
+              'flex items-center overflow-hidden rounded-xl transition-all shadow-sm',
+              canStop ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-primary-500 hover:bg-primary-600 text-white',
+            ]"
+          >
             <button
-              class="h-9 w-6 flex items-center justify-center border-l border-neutral-200/50 outline-none transition-colors dark:border-neutral-700/50 hover:bg-primary-500/10"
-              text="neutral-500 dark:neutral-400"
-              title="Change Send Key Mode"
+              v-if="canStop"
+              type="button"
+              class="h-8.5 flex cursor-pointer items-center justify-center px-3 outline-none transition-transform active:scale-95"
+              :title="sending ? 'Stop Generating' : 'Stop Speaking'"
+              @click="stopGeneration"
             >
-              <div class="i-solar:alt-arrow-down-linear text-xs" />
+              <div class="i-solar:stop-bold text-base text-white" />
             </button>
-          </PopoverTrigger>
-          <PopoverPortal>
-            <PopoverContent
-              class="z-100 flex flex-col gap-1 border border-neutral-200 rounded-xl bg-white/95 p-1.5 shadow-2xl backdrop-blur-md dark:border-neutral-700 dark:bg-neutral-900/95"
-              side="top"
-              align="end"
-              :side-offset="12"
+            <button
+              v-else
+              type="button"
+              class="h-8.5 flex cursor-pointer items-center justify-center px-3 outline-none transition-transform active:scale-95"
+              title="Send Message"
+              @click="handleSend"
             >
-              <div class="px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-                Send Key Mode
-              </div>
-              <button
-                v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
-                :key="mode"
-                :class="[
-                  'px-3 py-2 text-xs font-semibold rounded-lg transition-all text-left flex items-center justify-between gap-4',
-                  settingsChat.sendMode === mode
-                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/50 dark:text-primary-300'
-                    : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
-                ]"
-                @click="settingsChat.sendMode = mode"
-              >
-                <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
-                <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
-              </button>
-            </PopoverContent>
-          </PopoverPortal>
-        </PopoverRoot>
+              <div class="i-solar:plain-2-bold text-base text-white" />
+            </button>
+
+            <PopoverRoot>
+              <PopoverTrigger as-child>
+                <button
+                  type="button"
+                  class="h-8.5 flex cursor-pointer items-center justify-center border-l border-white/25 px-2 outline-none transition-colors hover:bg-white/10"
+                  title="Change Send Key Mode"
+                >
+                  <div class="i-solar:alt-arrow-down-linear text-xs text-white" />
+                </button>
+              </PopoverTrigger>
+              <PopoverPortal>
+                <PopoverContent
+                  class="z-100 flex flex-col gap-1 border border-neutral-200 rounded-xl bg-white/95 p-1.5 shadow-2xl backdrop-blur-md dark:border-neutral-700 dark:bg-neutral-900/95"
+                  side="top"
+                  align="end"
+                  :side-offset="8"
+                >
+                  <div class="px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                    Send Key Mode
+                  </div>
+                  <button
+                    v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
+                    :key="mode"
+                    :class="[
+                      'px-3 py-2 text-xs font-semibold rounded-lg transition-all text-left flex items-center justify-between gap-4 cursor-pointer',
+                      settingsChat.sendMode === mode
+                        ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/50 dark:text-primary-300'
+                        : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
+                    ]"
+                    @click="settingsChat.sendMode = mode"
+                  >
+                    <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
+                    <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
+                  </button>
+                </PopoverContent>
+              </PopoverPortal>
+            </PopoverRoot>
+          </div>
+        </div>
       </div>
     </div>
 
