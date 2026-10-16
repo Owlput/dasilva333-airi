@@ -78,6 +78,11 @@ const WATCHED_PRS = [
     title: 'feat(stage-ui,stage-pages): add voiceprint enrollment',
     focus: 'Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port',
   },
+  {
+    number: 2552,
+    title: 'add bilingual subtitles',
+    focus: 'Bilingual subtitle rendering in stage overlays; monitor for closure/merge to evaluate for fork adoption',
+  },
 ]
 
 // 2. Subsystem Definitions & Selective-Sync Classification

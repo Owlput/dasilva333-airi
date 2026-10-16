@@ -202,11 +202,76 @@ A key point of confusion in desktop automation is the distinction between displa
 * **Host Process Context**:
   - Because AIRI is already a signed macOS Electron bundle with user-granted permissions, managing AUV as an internal daemon spawned by Electron main ensures the subprocess operates under AIRI's established TCC security envelope, rather than triggering fragmented permissions for unbundled Node/npx scripts.
 
+##### Dual-Tier Automation Model: Physical OS Actions (AUV) & Protocol Directives (`spark:command`)
+While raw computer use via AUV handles physical desktop OS manipulation (clicking, typing, display capture via `xcap`), computer use in AIRI operates across a **dual-tier architecture**:
+
+1. **Tier A: Physical OS Canvas (AUV Daemon)**:
+   - Operates on raw desktop display pixels and window coordinates.
+   - Ideal for native desktop applications (e.g. Photoshop, Discord, Spotify, terminal emulators).
+   - Tools: `computer_use` (dispatches actions) and `computer_use_read_image` (formats screenshot artifacts for multimodal VLM consumption).
+
+2. **Tier B: Protocol Swarm Directives (`spark:command` / `builtIn_emitSparkCommand`)**:
+   - Operates over the typed WebSocket event bus (`port 6121`) to send high-level guidance, task priorities, and interrupts to connected frontend modules and companion bots.
+   - **AIRI Web Extension (`plugins/airi-plugin-web-extension`)**: Browser DOM automation, form filling, tab navigation, and element interaction without blind pixel scraping or accessibility coordinate drift.
+   - **Gaming Companions (`integrations/minecraft`)**: Tactical in-game commands, survival priorities, and spatial navigation.
+   - **Editor Extensions (`integrations/vscode`, `integrations/claude-code`)**: Automated test execution, workspace diagnostics, and multi-file code editing.
+
+##### Virtual Workstation Headless Automation: `require('spark')` & `spark-cli` in In-Memory Bash
+A major bottleneck of purely conversational tool calling is that multi-step automated workflows require 10–20 sequential autoregressive LLM round-trips in the main chat context, clogging prompt memory and degrading conversational flow.
+
+By leveraging AIRI's **In-Memory POSIX Virtual Workstation** (`just-bash` + RAM disk `/workspace`), the agent can author and execute headless automation scripts that combine filesystem manipulation, System-1 triage, and spark directives:
+
+1. **Node.js Runtime Integration (`require('spark')`)**:
+   Extending `customRequire` in `packages/stage-ui/src/libs/sandbox/manager.ts` alongside `fs`, `path`, `mcp`, and `jev`:
+   ```javascript
+   const fs = require('node:fs')
+
+   // /workspace/scripts/browse-and-summarize.js
+   const spark = require('spark')
+
+   // Command browser extension to navigate and capture DOM text
+   await spark.command({
+     destinations: ['web-extension'],
+     intent: 'action',
+     priority: 'normal',
+     contexts: [{
+       lane: 'browser:dom',
+       text: 'Navigate to https://news.ycombinator.com and extract top stories',
+     }],
+   })
+
+   // Log status into sandbox RAM disk
+   fs.writeFileSync('/workspace/run.log', `Dispatched browser extraction at ${Date.now()}`)
+   ```
+
+2. **Virtual POSIX CLI Interface (`spark`)**:
+   Providing a turnkey shell utility in the virtual terminal:
+   ```bash
+   # Emit a command directly from a shell script or pipeline
+   spark emit --to web-extension --intent action --lane "browser:dom" --text "Click the sign-in button"
+
+   # Command a connected gaming bot
+   spark command --to minecraft-bot --intent action --priority urgent --text "Retreat to shelter"
+   ```
+   This gives the agent full headless scripting agency: write a bash or node automation script, execute it in the background (`node script.js &`), monitor ambient state in `/workspace/.airi/`, and report back only the final synthesized result to the user.
+
+##### Rich Tool Call Inspection & Widget Result Cards (Chiba Architecture: PR #2990 / #2992 / #2994)
+As demonstrated by upstream PRs #2990, #2992, and #2994 (@chiba233), tool executions should not appear as raw, unformatted JSON blocks in chat. The unfolded tool panel elevates the user experience with dedicated presentation widgets:
+
+1. **`computer_use` Result Widget**:
+   - Parses the real `--json` output of `@auv-js/cli` commands (`invoke display.capture`, `invoke input.click`, `invoke app.launch`).
+   - Displays a structured command card with `command_id`, execution `exit_code`, structured `argv`, and an expandable result tree with 1px indentation guides, type-specific coloring (numbers in theme color, strings quoted, booleans in gray), and one-click copy buttons.
+   - For image-capture operations, embeds an off-screen rendered screenshot preview drawer directly in the panel.
+2. **`spark:command` Card**:
+   - Visualizes outgoing swarm directives: target destination badges (`web-extension`, `minecraft-bot`), intent tags (`action`, `plan`, `proposal`), priority indicators, and delivery/acknowledgment status.
+
 ##### Hardened Plan of Attack for `dasilva333/airi`
 1. **Service Registration**: Wrap the AUV daemon runtime in an `injeca` service (`apps/stage-tamagotchi/src/main/services/airi/computer-use.ts`).
 2. **IPC Contracts**: Maintain typed `@moeru/eventa` definitions for `computerUseRun` and `computerUseReadImage`.
 3. **Safety Guardrail**: Adopt upstream's `requiresExplicitSelection` store logic in `packages/stage-ui/src/stores/chat.ts` to protect prompt turns from accidental tool inheritance.
-4. **UI Presentation**: Surface the capability pack in `CardCreationTabTools.vue` as a Tier 3 pack, with clear status indicators for macOS Accessibility and Screen Recording readiness.
+4. **Virtual Workstation Bridge**: Add `require('spark')` to `customRequire` and register the `spark` CLI binary in `packages/stage-ui/src/libs/sandbox/manager.ts`.
+5. **Tool-Call UI Polish**: Adopt Chiba's compact combo-pill and unfolded result widget architecture (`packages/stage-ui/src/components/scenarios/chat/components/tool-call-*`) for clean visual inspection of computer-use and spark directives.
+6. **UI Presentation**: Surface the capability pack in `CardCreationTabTools.vue` as a Tier 3 pack, with clear status indicators for macOS Accessibility and Screen Recording readiness.
 
 ---
 

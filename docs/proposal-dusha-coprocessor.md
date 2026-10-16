@@ -1,8 +1,8 @@
-# Proposal: Dusha Co-Processor & External State-Context Standard Integration
+# Proposal: Two-Hop Cognition & Zero-LLM First-Hop Coprocessors (Dusha External Soul & Universe RAG++ System-1 Routing)
 
 **Status:** Proposed Architecture & Integration Specification
 **Author:** AIRI Engineering
-**Date:** October 11, 2026
+**Date:** October 11, 2026 (Updated October 16, 2026)
 **Target Systems:**
 - `packages/stage-pages/src/pages/settings/airi-card/components/tabs/cognition/CognitionSubTabRouting.vue`
 - `packages/stage-ui/src/stores/chat.ts` (Two-Hop Cognition Pipeline Seam)
@@ -14,26 +14,19 @@
 
 ## 1. Executive Summary & Motivation
 
-### 1.1 The Multi-Harness Portability Problem
-Users who interact with autonomous companions across multiple environments (e.g., AIRI for desktop 3D/Live2D companion presence, OpenCode for developer workflows, AstrBot/Discord for mobile chat, and terminal CLI harnesses) currently face a fragmentation dilemma: **memory and affect are trapped inside individual harness storage silos.**
+### 1.1 The Multi-Harness Portability Problem & Heavy 1st-Hop Dilemma
+Creators and companions in AIRI face two distinct architectural challenges in multi-hop cognition:
+1. **Harness Silos**: Users who interact with companions across multiple environments (AIRI desktop, OpenCode, Discord bots, CLI harnesses) have memory and affect trapped in individual harness storage silos. Externalizing state via daemons like [Dusha](https://github.com/Somme4096/dusha) solves cross-harness amnesia.
+2. **The "Two-LLM Hop 1" Bottleneck**: In earlier designs, cognitive routing options like **Universe RAG++** were conceived as chaining two full autoregressive LLMs (Hop 1: Deductive Coprocessor LLM generating a "Fact Dossier" $\rightarrow$ Hop 2: Outward Speech LLM). This introduced severe 2–3s latency spikes, doubled API token costs, fractured the prompt prefix cache, and added unnecessary complexity.
 
-Every time a creator migrates or hops between harnesses, they must either export/import disparate database formats or accept total amnesia. As articulated by community contributors (e.g. Birch [NOUS]):
-> *"I use Dusha to separate context and memory. In short I don't want to migrate memory everytime I switch my harnesses so I made a small API to separately store everything externally."*
+### 1.2 The Emerging "State-Context Standard" & Zero-LLM Coprocessors
+The [Dusha](https://github.com/Somme4096/dusha) project establishes an open HTTP daemon pattern externalizing conversation messages, evergreen facts, active memos, and emotional affect.
 
-### 1.2 The Emerging "State-Context Standard"
-The [Dusha](https://github.com/Somme4096/dusha) project (Russian: *душа*, "soul") establishes an open HTTP daemon pattern that externalizes:
-- **Conversation messages** (SQLite FTS5 + vector search)
-- **Evergreen facts** (persistent user/companion knowledge graph)
-- **Active memos** (short-term notes, action items, task state)
-- **Affect dynamics** (emotional vectors, sensitivity, decay half-life, and silence drift)
-
-### 1.3 The Goal of This Proposal
-This proposal specifies the first-class integration of Dusha into AIRI's **Two-Hop Cognition Pipeline**.
-
-Crucially, instead of chaining two full LLMs (which would incur severe latency penalties and duplicate billing), this architecture formalizes a **"Zero-LLM 1st-Hop Co-Processor"**:
-1. **1st-Hop Co-Processor (`dusha`)**: A zero-LLM REST step (~5ms local latency) that queries Dusha's `POST /state/v1/context` to enrich prompt context with cross-harness memories and affect.
-2. **2nd-Hop Vocal Speech (`gemini` / user model)**: A single outward LLM inference that combines Dusha's soul state with AIRI's harness-specific instructions (such as Live2D/VRM `<|ACT|>` cue tokens, scene staging, and voice TTS).
-3. **Clean Asynchronous Archival**: AIRI strips internal `<|ACT|>` cues before reporting the assistant's speech back to Dusha, preventing harness-specific syntax from polluting cross-harness memories.
+Crucially, AIRI generalizes this pattern into the **"Zero-LLM 1st-Hop Co-Processor" Standard**:
+- **Instead of spending an entire LLM turn in the 1st hop**, the 1st hop is redefined as an ultra-fast, non-autoregressive state enrichment and discrete decision stage.
+- **Dusha Co-Processor (`dusha`)**: A zero-LLM REST step (~5ms local latency) querying `POST /state/v1/context` to enrich prompt context with external soul state.
+- **Universe RAG++ System-1 Co-Processor (`universe_rag`)**: A zero-LLM native classification step (~100–150ms via ModernBERT / Jev) that gates discrete turns (`silence` | `reply` | `recipe`) and extracts relevant memory evidence into clean XML context injections.
+- **2nd-Hop Vocal Speech**: A single outward LLM inference that consumes the injected context alongside AIRI's staging directives, Live2D/VRM `<|ACT|>` cues, and voice TTS.
 
 ---
 
@@ -136,13 +129,21 @@ In `chat.ts` (lines 1883–1920) and `packages/stage-ui/src/utils/actor.ts`:
 
 ---
 
-## 3. Proposed Architecture: Dusha Zero-LLM Co-Processor
+## 3. Proposed Architecture: Zero-LLM 1st-Hop Co-Processors
 
 ### 3.1 The Co-Processor Paradigm
-Instead of forcing every 1st-Hop to be an LLM inference call, we expand the semantic definition of the 1st Hop:
-- **LLM Generators**: `none` (Raw Monologue Prompt), `local_nan0` (Nan0 Thought Engine).
-- **REST State Co-Processors**: `dusha` (Dusha External Soul Daemon), `universe_rag` (Epistemic Memory Grounding).
+Instead of forcing every 1st-Hop to be an expensive autoregressive LLM inference call, AIRI formalizes the **1st-Hop Processor Taxonomy**:
 
+| Processor ID | 1st-Hop Nature | 1st-Hop Operations | 2nd-Hop (Speech LLM) | Typical Latency | Cost / Tokens |
+| :--- | :--- | :--- | :--- | :---: | :---: |
+| `none` | Single-Hop Direct | Pass-through / raw prompt | Direct LLM character generation | 0ms | 0 |
+| `universe_rag` | Zero-LLM Native Co-Processor | **Step 1:** System-1 Gating `(silence \| reply \| recipe)`<br/>**Step 2:** Semantic Memory Classifier $\rightarrow$ Dusha-style injection | Outward Speech LLM with `<memory_context>` injection | ~100–150ms | $0.00004 (Jev) |
+| `dusha` | Zero-LLM External REST Co-Processor | `POST /state/v1/context` queries external daemon $\rightarrow$ Dusha soul injection | Outward Speech LLM with `<dusha_soul_context>` injection | ~5ms | 0 (Local SQLite) |
+| `local_nan0` | Full Multi-Stage Cognitive Engine | Pre-classifier $\rightarrow$ Monologue LLM $\rightarrow$ Post-classifier | Outward Speech LLM with emotional state & monologue directives | ~1.5–3.0s | 2 full LLM turns |
+
+---
+
+### 3.2 Dusha External State Co-Processor Flow
 ```mermaid
 sequenceDiagram
     autonumber
@@ -180,6 +181,48 @@ sequenceDiagram
 
 ---
 
+### 3.3 Universe RAG++ System-1 Co-Processor Flow
+In earlier designs, Universe RAG++ attempted to use a secondary LLM in Hop 1 to write an "Epistemic Dossier". In this refactored architecture, Hop 1 is completely freed from autoregressive LLM calls, operating as a 2-stage System-1 classifier:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant AIRI as AIRI Core (chat.ts)
+    participant Jev as System-1 Jev Coprocessor
+    participant Engine as Semantic Memory Engine (LTMM/STMM)
+    participant Model as 2nd LLM (Speech)
+
+    User->>AIRI: "Hey, are you still there?"
+
+    rect rgb(240, 248, 255)
+    Note over AIRI,Jev: Hop 1, Stage 1: Discrete Gating Classifier (~100ms)
+    AIRI->>Jev: execute("User message", { gate: "choice: silence | reply | recipe" })
+    Jev-->>AIRI: { choice: "reply" } (or "silence" / "recipe")
+    end
+
+    alt Decision == "silence"
+        Note over AIRI: Fast Exit (NO_REPLY). Drops turn immediately.<br/>Zero tokens spent, 0 LLM calls.
+    else Decision == "recipe"
+        Note over AIRI: Spawns background task/recipe subagent session.<br/>Main chat stays unblocked.
+    else Decision == "reply"
+        rect rgb(240, 248, 255)
+        Note over AIRI,Engine: Hop 1, Stage 2: Memory Retrieval & Context Injection (~50ms)
+        AIRI->>Jev: runTriage(userQuery) -> C1..C4 category
+        AIRI->>Engine: Search LTMM/STMM/Lifetime with category weights
+        Engine-->>AIRI: Formatted <memory_context> injection
+        end
+
+        rect rgb(255, 250, 240)
+        Note over AIRI,Model: Hop 2: Outward Speech Generation (1 LLM call)
+        AIRI->>Model: POST generateStream (Persona + <memory_context> + User Message)
+        Model-->>AIRI: "<|ACT:nod|>Yep, right here with you!"
+        end
+    end
+```
+
+---
+
 ## 4. UI Specification: `CognitionSubTabRouting.vue`
 
 ### 4.1 Dropdown Option
@@ -187,32 +230,61 @@ In `packages/stage-pages/src/pages/settings/airi-card/components/tabs/cognition/
 ```typescript
 const processorOptions = [
   { value: 'none', label: 'None (Direct Proxy / Raw Prompt)' },
-  { value: 'local_nan0', label: 'Nan0 Local Engine (Emotional & Attention Rules)' },
   { value: 'universe_rag', label: 'Universe RAG++ (Epistemic Memory & Grounding)' },
   { value: 'dusha', label: 'Dusha State Daemon (External Cross-Harness Soul & Memory)' },
+  { value: 'local_nan0', label: 'Nan0 Local Engine (Emotional & Attention Rules)' },
 ]
 ```
 
-### 4.2 Dynamic Form Behavior
-When `firstHopProcessor === 'dusha'`:
-1. **Hide / Disable 1st LLM Selectors**:
-   - The "1st LLM Provider (Thoughts)" and "1st LLM Model" selectors are hidden or replaced with an informative banner:
+### 4.2 Dynamic Form Behavior: Zero-LLM Adaptive Layout
+A crucial UX flaw in earlier versions was that the form **always** rendered `1st LLM Provider (Thoughts)` and `1st LLM Model` even when the user selected a non-LLM processor.
+
+Under the unified specification:
+
+1. **When `firstHopProcessor === 'universe_rag'`**:
+   - **HIDE** the 1st LLM Provider & Model dropdowns.
+   - Render the **System-1 Jev Zero-LLM Banner**:
    ```html
-   <div class="border border-blue-200/80 rounded-xl bg-blue-50/50 p-3.5 dark:border-blue-900/40 dark:bg-blue-950/20">
-     <div class="flex items-center gap-2 text-xs font-semibold text-blue-900 dark:text-blue-200">
-       <div i-lucide:sparkles class="text-blue-500" />
-       Zero-LLM External Co-Processor Active
+   <div class="border border-emerald-200/80 rounded-xl bg-emerald-50/50 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+     <div class="flex items-center justify-between">
+       <div class="flex items-center gap-2 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+         <div i-lucide:zap class="text-emerald-500" />
+         System-1 Jev Fast Co-Processor Active (~100ms)
+       </div>
+       <span class="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-300">
+         Zero 1st-Hop LLM Tokens
+       </span>
      </div>
-     <p class="text-[11px] text-blue-700/80 dark:text-blue-300/80 mt-1">
-       Dusha enriches messages via its local HTTP API (http://127.0.0.1:8765). No 1st-hop LLM inference is required. Outward speech is handled entirely by the 2nd LLM below.
+     <p class="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 mt-1.5">
+       Discrete gating (silence / reply / recipe) and memory semantic triage execute via your configured System-1 Coprocessor. Outward speech is generated entirely by the 2nd LLM below.
      </p>
    </div>
    ```
-2. **Dusha Connection Configuration**:
-   - Daemon URL (default: `http://127.0.0.1:8765`)
-   - API Token (optional, for `X-Companion-Token`)
-   - Harness Identifier (default: `airi`)
-   - Conversation ID Mode (binds to active AIRI Session ID or Card UUID)
+
+2. **When `firstHopProcessor === 'dusha'`**:
+   - **HIDE** the 1st LLM Provider & Model dropdowns.
+   - Render the **Dusha External Daemon Banner & Config Block**:
+   ```html
+   <div class="border border-blue-200/80 rounded-xl bg-blue-50/50 p-3.5 dark:border-blue-900/40 dark:bg-blue-950/20">
+     <div class="flex items-center justify-between">
+       <div class="flex items-center gap-2 text-xs font-semibold text-blue-900 dark:text-blue-200">
+         <div i-lucide:sparkles class="text-blue-500" />
+         External Dusha State Daemon Active (~5ms)
+       </div>
+       <span class="rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-300">
+         Zero 1st-Hop LLM Tokens
+       </span>
+     </div>
+     <p class="text-[11px] text-blue-700/80 dark:text-blue-300/80 mt-1.5">
+       Dusha enriches messages via its local HTTP API (http://127.0.0.1:8765). Cross-harness memories and affect vectors are injected without intermediate LLM cost.
+     </p>
+   </div>
+   ```
+   - Render Dusha connection inputs: `baseUrl`, `apiToken`, `harness` (default `airi`), `conversationId`.
+
+3. **When `firstHopProcessor === 'local_nan0'`**:
+   - **SHOW** the 1st LLM Provider & Model dropdowns.
+   - Render the Nan0 Local Cognition Engine callout with link to the Affect & Triggers lab tabs.
 
 ---
 
@@ -297,6 +369,48 @@ if (processorMode === 'dusha') {
     console.warn('[Dusha] State API request failed, proceeding with generation:', err)
   }
 }
+else if (processorMode === 'universe_rag') {
+  const userQuery = typeof sendingMessage === 'string' ? sendingMessage : getMsgStringContent(inferenceUserMessage?.content)
+
+  // 1. Stage 1: System-1 Discrete Gating (silence | reply | recipe)
+  if (systemOneStore.configured) {
+    const gateRes = await systemOneStore.execute(
+      `User said: "${userQuery}"`,
+      {
+        action: {
+          type: 'choice',
+          instructions: 'Should the companion reply, stay silent (e.g. routine background/filler), or run a recipe?',
+          criteria: {
+            reply: 'User asked a question, made a greeting, or expects dialogue.',
+            silence: 'Routine observation, self-talk, or statement not warranting speech.',
+            recipe: 'User requested a structured multi-step automation task or SOP.',
+          },
+        },
+      },
+    )
+
+    const decision = gateRes.answers?.action?.choice || 'reply'
+
+    if (decision === 'silence') {
+      // Fast Exit: Drop turn without invoking 2nd LLM (NO_REPLY)
+      console.log('[Universe RAG++] System-1 elected silence. Dropping turn (0 LLM tokens).')
+      return
+    }
+
+    if (decision === 'recipe') {
+      // Delegate to autonomous recipe task loop
+      console.log('[Universe RAG++] System-1 routed to recipe task loop.')
+      await executeRecipeTaskSession({ userQuery })
+      return
+    }
+  }
+
+  // 2. Stage 2: Semantic Memory Retrieval & Context Extraction
+  const memoryContext = await buildGroundingMessages({ query: userQuery, characterId: activeCard.value.id })
+  if (memoryContext?.length) {
+    newMessages.splice(insertIdx, 0, ...memoryContext)
+  }
+}
 ```
 
 ### 5.3 Post-Turn Archival Hook
@@ -327,20 +441,21 @@ if (processorMode === 'dusha' && turnSpeechContent.trim()) {
 
 ## 6. Architectural Tradeoff Matrix
 
-| Criterion | Direct Dusha Proxy (Single Hop) | Dusha as 1st-Hop LLM (Original Idea) | Dusha State Co-Processor (This Proposal) |
-| :--- | :---: | :---: | :---: |
-| **Total LLM Calls Per Turn** | 1 (Upstream) | 2 (Upstream + 2nd LLM) | **1 (2nd LLM only)** |
-| **Network Latency Overhead** | None | ~1.5s–3.0s | **~5ms (Local REST)** |
-| **Cross-Harness Memory Purity** | ❌ Polluted with `<|ACT|>` cues | ❌ Polluted with monologue scratchpads | **✅ 100% Clean Dialogue** |
-| **AIRI Persona & Staging Control** | Limited to upstream prompt | Fragmented across hops | **Full AIRI Staging & Prompt Engine** |
-| **Affect Continuity** | Standard | Distorted by monologue prompts | **✅ Accurate per user turns** |
-| **Configuration Complexity** | Requires Dusha upstream key | Requires Dusha upstream key + AIRI key | **Only AIRI 2nd LLM key required** |
+| Criterion | Direct Dusha Proxy (Single Hop) | Two-Hop with 1st-Hop LLM (Old Universe RAG++) | Dusha State Co-Processor (`dusha`) | System-1 Co-Processor (`universe_rag`) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Total LLM Calls Per Turn** | 1 (Upstream) | 2 (1st LLM Dossier + 2nd LLM Speech) | **1 (2nd LLM only)** | **1 (2nd LLM only)** |
+| **Network Latency Overhead** | None | ~1.5s–3.0s | **~5ms (Local REST)** | **~100–150ms (System 1)** |
+| **Discrete Turn Gating** | ❌ None | ❌ None (Always speaks) | ❌ Handled by Dusha affect | **✅ Silence / Reply / Recipe** |
+| **Prefix Cache Integrity** | Poor (Monologue drifts) | Broken by 1st-hop variance | **✅ 100% Stable Prefix** | **✅ 100% Stable Prefix** |
+| **Cross-Harness Memory Purity** | ❌ Polluted with `<|ACT|>` cues | Internal to AIRI | **✅ 100% Clean Dialogue** | Local Flat Universe Keys |
+| **AIRI Persona & Staging Control** | Limited to upstream | Fragmented across hops | **Full AIRI Staging Engine** | **Full AIRI Staging Engine** |
+| **Configuration Complexity** | Upstream key required | 2 separate LLM configs | **Only AIRI 2nd LLM key** | **System 1 + 2nd LLM key** |
 
 ---
 
 ## 7. Next Steps & Implementation Milestones
 
-1. **Card Schema Validation**: Add `dusha` to `firstHopProcessor` in `card.schema.ts` and card stores.
-2. **UI Updates**: Add `dusha` option to `CognitionSubTabRouting.vue` with conditional hiding of the 1st LLM selectors.
-3. **Seam Integration**: Wire `fetch` calls to `POST /state/v1/context` and `POST /state/v1/messages` inside `packages/stage-ui/src/stores/chat.ts`.
-4. **End-to-End Validation**: Launch local `dusha serve` daemon, verify that dialogue in AIRI enriches via Dusha's evergreen facts, and confirm that responses appear in Dusha's SQLite database without `<|ACT|>` tokens.
+1. **Card Schema Validation**: Add `dusha` and preserve `universe_rag` in `firstHopProcessor` in `card.schema.ts` and card stores.
+2. **UI Updates (`CognitionSubTabRouting.vue`)**: Implement dynamic form hiding so `universe_rag` and `dusha` hide 1st LLM selectors and display their dedicated co-processor banners.
+3. **Seam Integration (`packages/stage-ui/src/stores/chat.ts`)**: Wire `POST /state/v1/context` for Dusha and System-1 discrete gating + memory extraction for Universe RAG++.
+4. **End-to-End Validation**: Verify fast-path silence drops (`NO_REPLY`), recipe auto-spawning, and clean Dusha SQLite message ingestion.

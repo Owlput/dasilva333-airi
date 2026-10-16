@@ -38,10 +38,10 @@ We move beyond naive keyword search and simple flat vector similarity toward a *
 │   │ • Direct LLM Character    │           │ • Hop 2: Character Voice               │   │
 │   └───────────────────────────┘           └────────────────────────────────────────┘   │
 │                                                                                        │
-│                   Option C: Universe RAG++ Epistemic Pipeline                          │
+│                   Option C: Universe RAG++ System-1 Pipeline                           │
 │                   ┌────────────────────────────────────────┐                           │
-│                   │ • Hop 1: System-2 Deductive Coprocessor│                           │
-│                   │   (Multi-hop, Temporal Math, Dossier)  │                           │
+│                   │ • Hop 1: Zero-LLM System-1 Classifier  │                           │
+│                   │   (Gate: silence/reply/recipe + triage)│                           │
 │                   │ • Hop 2: Character Voice (Speech)      │                           │
 │                   └────────────────────────────────────────┘                           │
 └────────────────────────────────────────────────────────────────────────────────────────┘
@@ -264,27 +264,28 @@ In AIRI, they do not collide—they **compose naturally across pipeline stages**
                ┌─────────────────────┴─────────────────────┐
                ▼                                           ▼
       [Nan0 Mode Active]                        [Universe RAG++ Mode Active]
-      Hop 1: Nan0 Internal Mind                 Hop 1: Epistemic Analyst
-      - Ingests User Prompt + Injected Context   - Ingests User Prompt + Injected Context
-      - Knows pin code is 4821                   - Resolves multi-hop / temporal links
-      - Decides Tsundere attitude                - Produces verified Epistemic Dossier
-      - [MONOLOGUE] "He forgot again..."         Hop 2: Character Voice
-      - [EMOTION] Annoyed / Affectionate         - Natural dialogue using dossier
-      Hop 2: Character Voice
+      Hop 1: Nan0 Internal Mind                 Hop 1: Zero-LLM System-1 Coprocessor (~100ms)
+      - Ingests User Prompt + Injected Context   - Evaluates Gate: silence | reply | recipe
+      - Knows pin code is 4821                   - If silence: instant exit (0 tokens)
+      - Decides Tsundere attitude                - If recipe: spawns autonomous task
+      - [MONOLOGUE] "He forgot again..."         - If reply: extracts memory context
+      - [EMOTION] Annoyed / Affectionate         Hop 2: Character Voice
+      Hop 2: Character Voice                     - Outward speech with <memory_context>
       - "Did you seriously forget it's 4821?"
 ```
 
-### The 3 Cognition Pipeline Modes
-In the application settings, users can select how AIRI's cognitive architecture processes incoming dialogue:
+### The 4 Cognition Pipeline Modes
+In the character card editor (`Cognition > Routing`), users configure how AIRI's cognitive architecture processes incoming dialogue:
 
 | Mode | Pipeline Shape | Focus | Primary Advantage |
 | :--- | :--- | :--- | :--- |
 | **1. Standard (Direct)** | 1-Hop: `Prompt + Memory Context` → LLM Character Voice | Conversational Fluidity | Lowest latency, zero intermediate token overhead. |
-| **2. Nan0 Affective Pipeline** | 2-Hop: `Prompt + Memory Context` → Nan0 Internal Mind (`[MONOLOGUE]`, `[EMOTION]`, `[DECISION]`) → Character Voice | Affective Biology & "Sims Mode" | Deep emotional personality, relationship grudges, dynamic mood decay, silence vetoes. |
-| **3. Universe RAG++ Epistemic Pipeline** | 2-Hop: `Prompt + Memory Context` → System-2 Deductive Coprocessor (Fact Dossier) → Character Voice | Epistemic Precision & Detective Logic | Zero hallucination on dates, multi-hop reasoning, temporal timelines, and contradiction resolution. |
+| **2. Universe RAG++ System-1** | 2-Hop: **Zero-LLM 1st-Hop** (System-1 Jev Gating `silence`/`reply`/`recipe` + Memory Triage) → LLM Character Voice | Fast Gating & Epistemic Precision | ~100–150ms triage, eliminates 2nd-LLM billing in Hop 1, supports instant silence drops and recipe dispatch. |
+| **3. Dusha State Co-Processor** | 2-Hop: **Zero-LLM 1st-Hop** (`POST /state/v1/context` REST lookup) → LLM Character Voice | External Cross-Harness Soul | ~5ms local REST lookup, external SQLite memory/affect, zero LLM tokens in Hop 1. |
+| **4. Nan0 Affective Pipeline** | 2-Hop: `Prompt + Memory Context` → Nan0 Internal Mind (`[MONOLOGUE]`, `[EMOTION]`, `[DECISION]`) → Character Voice | Affective Biology & "Sims Mode" | Deep emotional personality, relationship grudges, dynamic mood decay, silence vetoes. |
 
 > [!NOTE]
-> When **Nan0 Mode** is active, Nan0's private monologue is already grounded in the facts retrieved by Universe RAG. If the user asks for their apartment pin code, Nan0's first hop knows the pin is `4821` and can express personality around that knowledge (e.g. *"He's asking for the pin code again... typical baka"*). The wires do not short-circuit; epistemic memory feeds affective reasoning.
+> When **Universe RAG++** or **Dusha** mode is active, the 1st-hop LLM provider selectors are hidden in `CognitionSubTabRouting.vue`. The entire 1st hop runs as a fast, non-autoregressive co-processor (System-1 Jev classification or local REST), reserving expensive LLM tokens strictly for 2nd-hop vocal speech.
 
 ---
 

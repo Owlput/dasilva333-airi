@@ -16,11 +16,187 @@
 | [#2290](https://github.com/moeru-ai/airi/pull/2290) | `feat(server): stream official ASR over WebSocket` | `@luoling8192` | `Open` (Changes Requested) | 🟡 **Audio Architecture** (ASR transport) | Official ASR streaming transport. User `@dasilva333` suggested OpenAI-compatible HTTP SSE (`stream: true`) to avoid per-utterance WS handshake overhead. **Directive**: Track author rebase and backend transport/billing decisions. |
 | [#2120](https://github.com/moeru-ai/airi/pull/2120) | `refactor(stage-pages): rebuild AIRI Card editor` | `@luoling8192` | `Open` (Changes Requested) | 🟡 **UI Architecture** (Editor lifecycle) | Rebuilding card editor in `stage-pages`. User `@dasilva333` shared dedicated route design. **Directive**: Track dirty-draft browser unload protection and component decoupling. |
 | [#2980](https://github.com/moeru-ai/airi/pull/2980) | `feat(stage-ui,stage-pages): add voiceprint enrollment` | `@sumimakito` | `Merged` (15 comments) | 🟢 **Acoustic Intelligence** (Local diarization) | Follow-up to merged PR #2975. Implements local voiceprint enrollment UX and CAM++ tracker integration. **Directive**: Track WebAssembly/worker bundling, false-rejection handling, and evaluate for local Mode 1/Mode 2 port per `docs/proposal-speaker-diarization-and-voiceprint-tracker.md`. |
+| [#2552](https://github.com/moeru-ai/airi/pull/2552) | `add bilingual subtitles` | `@phx3334` | `Open` (32 comments) | 🟡 **Subtitles & Localization** | Implements bilingual subtitle rendering in stage overlays. **Directive**: Monitor for closure/merge; review when closed for fork adoption per user request. |
 
 ---
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-16] Upstream Delta: `d79a5489..bceda51e` (3 commits, 92 files, 10 PR update(s))
+
+### 🎯 Executive Highlights
+
+#### Key Milestones & Features
+- **Memory & Skills Subsystem Landed (#2748)**: Upstream merged the massive 92-file PR #2748 (`d70ab4dd32`), adding a 'recipes' DSL (`builtIn_useRecipe`, `builtIn_judge`), keyword skills, background task execution with conversational notices, and Long-Term Memory approval settings.
+- **Chat Tool Calls Overhaul (#2990, #2992, #2994)**: Merged PR #2990 and PR #2992 by @chiba233 replace raw tool call cards with compact 'combo pills' featuring MingCute icons, status dots, edge fades, syntax tree guides, and copy buttons. Follow-up PR #2994 adds rich result widgets (search, weather, Home Assistant, computer use).
+- **Speaker Recognition Pipeline (#2980, #2989)**: Following the merge of PR #2980 (CAM++ voiceprint enrollment), @sumimakito opened PR #2989 to implement real-time speaker evidence collection during speech input (VAD windowing and CAM++ cosine comparison against enrolled voiceprint).
+
+### Discussion & Community Buzz
+- **#2935** (`fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction`): +11 new comments (41 total) — high discussion velocity resolving 32-bit integer timeout overflows in Electron overlay widget destruction.
+- **#2920** (`feat(provider-inference): add OpenRouter transcription provider`): +9 new comments (35 total) — ongoing discussion around OpenRouter audio STT routing.
+- **#2552** (`add bilingual subtitles`): +8 new comments (32 total) — active conversation around bilingual subtitle rendering.
+
+### Cherry-Pick Candidates
+- ⭐ **PR #2935 (`clamp ttlMs`)**: High-priority bug fix for `apps/stage-tamagotchi/src/main/windows/widgets/index.ts`. Clamps `record.ttlMs` with `Math.min(snapshot.ttlMs, 2147483647)` to prevent Node 32-bit signed int overflow from instantly destroying overlay widgets. Directly applicable to our fork.
+- 🎨 **PR #2990 / #2992 (`tool-call-group` Combo Pill & Unfolded Detail Panel)**: High-quality UI polish for chat surfaces (`packages/stage-ui/src/components/scenarios/chat/components/tool-call-*`). Decoupled from backend execution and safe to port.
+- 🎙️ **PR #2980 / #2989 (Speaker Diarization & Biometric Recognition)**: Tracks local Mode 1 owner gating per `docs/proposal-speaker-diarization-and-voiceprint-tracker.md`. Candidate for porting once PR #2989 stabilizes.
+
+### Divergence / Collision Warnings
+- 🚨 **PR #2748 (`chat.ts` & `core-agent`)**: Upstream's recipe/background task orchestrator rewrites large sections of `packages/stage-ui/src/stores/chat.ts` (+377/-16) and `chat-orchestrator-runtime.ts` (+66/-18). DO NOT merge: our fork's `chat.ts` contains custom multi-actor `<|ACTOR|>`, streaming reasoning normalization, stop/cancel propagation, Echo chips, and STMM/LTMM hooks.
+- 🚨 **Recipe DSL vs Eight Pillars Architecture**: Upstream's recipe-based long-term memory contradicts our local-first, autonomous Eight Pillars (STMM daily summaries, Sacred Journal LTMM, Echo chips, Dreaming Worker). Upstream's `memory-long-term*.vue` and recipe stores are permanent auto-rejects.
+
+### 📋 Upstream Commits
+- `bceda51e5e` feat(stage-ui): polish the unfolded tool call panel (#2992) [#2992](https://github.com/moeru-ai/airi/pull/2992) _(蓝莓🫐, 2026-10-16)_
+- `9b27b007b5` feat(stage-ui): show tool calls as a combo pill with tool icons (#2990) [#2990](https://github.com/moeru-ai/airi/pull/2990) _(蓝莓🫐, 2026-10-16)_
+- `d70ab4dd32` feat: add skills, long-term memory, and background tasks (#2748) [#2748](https://github.com/moeru-ai/airi/pull/2748) _(蓝莓🫐, 2026-10-15)_
+
+### 🔬 Subsystem Breakdown
+#### Mobile & Web Platforms (`⚪ ignore / low-priority`) — 2 file(s) (+4/-2)
+- `apps/stage-pocket/src/App.vue` *(+2/-1)*
+- `apps/stage-web/src/App.vue` *(+2/-1)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 7 file(s) (+32/-18)
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/stores/tools/built-in.ts` *(+10/-7)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/stores/tools/mcp.ts` *(+2/-0)*
+- `apps/stage-tamagotchi/src/renderer/App.vue` *(+2/-1)*
+- `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` *(+3/-2)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/built-in.ts` *(+11/-8)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/home-assistant.ts` *(+2/-0)*
+- `apps/stage-tamagotchi/src/renderer/stores/tools/mcp.ts` *(+2/-0)*
+
+#### Documentation & Scaffolding (`⚪ ignore`) — 4 file(s) (+110/-0)
+- `docs/ai/adr/2026-10-10-skills-automations-and-memory.md` *(+90/-0)*
+- `integrations/discord-bot/README.md` *(+4/-0)*
+- `packages/plugin-protocol/README.md` *(+3/-0)*
+- `packages/server-runtime/README.md` *(+13/-0)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 45 file(s) (+2335/-170)
+- `integrations/discord-bot/src/adapters/airi-adapter.ts` *(+3/-24)*
+- `integrations/discord-bot/src/bots/discord/commands/summon.ts` *(+2/-1)*
+- `packages/plugin-protocol/src/types/events.ts` *(+2/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/assistant-item.vue` *(+42/-29)*
+- `packages/stage-ui/src/components/scenarios/chat/components/background-tasks.browser.test.ts` *(+41/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/background-tasks.vue` *(+66/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/history.browser.test.ts` *(+68/-2)*
+- `packages/stage-ui/src/components/scenarios/chat/components/history.vue` *(+10/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/judge-call-block.vue` *(+36/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/notice-item.vue` *(+29/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/recipe-call-block.vue` *(+44/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/recipe-details.vue` *(+72/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/sessions-drawer.vue` *(+2/-1)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-block.test.ts` *(+0/-20)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-block.vue` *(+0/-81)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.browser.test.ts` *(+58/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.story.vue` *(+35/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.test.ts` *(+77/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.ts` *(+172/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.vue` *(+259/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-payload-node.vue` *(+72/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-payload.vue` *(+86/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/index.ts` *(+1/-0)*
+- `packages/stage-ui/src/composables/use-data-maintenance.browser.test.ts` *(+19/-0)*
+- `packages/stage-ui/src/composables/use-data-maintenance.ts` *(+7/-0)*
+- `packages/stage-ui/src/composables/use-modules-list.ts` *(+3/-1)*
+- `packages/stage-ui/src/libs/chat-sync/wire-message.test.ts` *(+6/-0)*
+- `packages/stage-ui/src/libs/chat-sync/wire-message.ts` *(+7/-1)*
+- `packages/stage-ui/src/stores/ai/chat-llm/tools.ts` *(+11/-0)*
+- `packages/stage-ui/src/stores/character/orchestrator/store.ts` *(+36/-7)*
+- `packages/stage-ui/src/stores/mods/api/channel-server.ts` *(+1/-0)*
+- `packages/stage-ui/src/stores/mods/api/context-bridge.contract.browser.test.ts` *(+21/-1)*
+- `packages/stage-ui/src/stores/mods/api/context-bridge.ts` *(+11/-2)*
+- `packages/stage-ui/src/stores/recipes.test.ts` *(+48/-0)*
+- `packages/stage-ui/src/stores/recipes.ts` *(+82/-0)*
+- `packages/stage-ui/src/tools/icons.ts` *(+60/-0)*
+- `packages/stage-ui/src/tools/judge-recipe.test.ts` *(+81/-0)*
+- `packages/stage-ui/src/tools/judge-recipe.ts` *(+137/-0)*
+- `packages/stage-ui/src/tools/memory.test.ts` *(+52/-0)*
+- `packages/stage-ui/src/tools/memory.ts` *(+94/-0)*
+- `packages/stage-ui/src/tools/propose-recipe.test.ts` *(+94/-0)*
+- `packages/stage-ui/src/tools/propose-recipe.ts` *(+132/-0)*
+- `packages/stage-ui/src/tools/use-recipe.test.ts` *(+88/-0)*
+- `packages/stage-ui/src/tools/use-recipe.ts` *(+146/-0)*
+- `packages/stage-ui/src/types/chat-session.ts` *(+22/-0)*
+
+#### Core Agent Runtime (`🔍 inspect`) — 9 file(s) (+448/-18)
+- `packages/core-agent/README.md` *(+31/-0)*
+- `packages/core-agent/src/index.ts` *(+3/-0)*
+- `packages/core-agent/src/runtime/chat-orchestrator-host-options.test.ts` *(+123/-0)*
+- `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` *(+66/-18)*
+- `packages/core-agent/src/runtime/context-registry.test.ts` *(+10/-0)*
+- `packages/core-agent/src/runtime/context-registry.ts` *(+3/-0)*
+- `packages/core-agent/src/runtime/recipe.test.ts` *(+71/-0)*
+- `packages/core-agent/src/runtime/recipe.ts` *(+121/-0)*
+- `packages/core-agent/src/types/chat.ts` *(+20/-0)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 4 file(s) (+242/-0)
+- `packages/i18n/src/locales/en/settings.yaml` *(+84/-0)*
+- `packages/i18n/src/locales/en/stage.yaml` *(+37/-0)*
+- `packages/i18n/src/locales/zh-Hans/settings.yaml` *(+84/-0)*
+- `packages/i18n/src/locales/zh-Hans/stage.yaml` *(+37/-0)*
+
+#### Stage Layouts & Shells (`🔍 inspect`) — 2 file(s) (+6/-4)
+- `packages/stage-layouts/src/components/Layouts/InteractiveArea.vue` *(+3/-2)*
+- `packages/stage-layouts/src/components/Layouts/MobileInteractiveArea.vue` *(+3/-2)*
+
+#### UI Primitives & Pages (`📦 import / inspect`) — 5 file(s) (+637/-2)
+- `packages/stage-pages/src/pages/settings/modules/components/recipe-editor.browser.test.ts` *(+50/-0)*
+- `packages/stage-pages/src/pages/settings/modules/components/recipe-editor.vue` *(+214/-0)*
+- `packages/stage-pages/src/pages/settings/modules/memory-long-term-memories.vue` *(+91/-0)*
+- `packages/stage-pages/src/pages/settings/modules/memory-long-term-recipes.vue` *(+247/-0)*
+- `packages/stage-pages/src/pages/settings/modules/memory-long-term.vue` *(+35/-2)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 1 file(s) (+1/-0)
+- `packages/stage-ui/package.json` *(+1/-0)*
+
+#### 3D, Live2D & Motion (`🔍 inspect`) — 1 file(s) (+15/-3)
+- `packages/stage-ui/src/components/scenes/Stage.vue` *(+15/-3)*
+
+#### Cognitive & Consciousness (`⚠️ hand-merge`) — 12 file(s) (+1225/-314)
+- `packages/stage-ui/src/stores/chat-background-tasks.browser.test.ts` *(+170/-0)*
+- `packages/stage-ui/src/stores/chat.contract.test.ts` *(+196/-71)*
+- `packages/stage-ui/src/stores/chat.ts` *(+377/-16)*
+- `packages/stage-ui/src/stores/chat/context-store.ts` *(+9/-0)*
+- `packages/stage-ui/src/stores/chat/prompt-recipe.test.ts` *(+28/-0)*
+- `packages/stage-ui/src/stores/chat/prompt-recipe.ts` *(+32/-0)*
+- `packages/stage-ui/src/stores/chat/session-locality.ts` *(+9/-0)*
+- `packages/stage-ui/src/stores/chat/session-store-lifecycle.browser.test.ts` *(+0/-104)*
+- `packages/stage-ui/src/stores/chat/session-store.browser.test.ts` *(+124/-22)*
+- `packages/stage-ui/src/stores/chat/session-store.ts` *(+112/-101)*
+- `packages/stage-ui/src/stores/memory.test.ts` *(+52/-0)*
+- `packages/stage-ui/src/stores/memory.ts` *(+116/-0)*
+
+### 📬 Upstream PR Radar
+#### 🆕 New PRs Opened (6)
+- [#2994](https://github.com/moeru-ai/airi/pull/2994) `feat(stage-ui): show tool results as widgets in the tool call panel` by **@chiba233** *(6 comments)*
+- [#2993](https://github.com/moeru-ai/airi/pull/2993) `fix(core-agent): skip invisible notice replies` by **@nayounsang** *(2 comments)*
+- [#2991](https://github.com/moeru-ai/airi/pull/2991) `chore(i18n): update translations` by **@github-actions** *(5 comments)*
+- [#2992](https://github.com/moeru-ai/airi/pull/2992) `feat(stage-ui): polish the unfolded tool call panel` by **@chiba233** *(8 comments)*
+- [#2989](https://github.com/moeru-ai/airi/pull/2989) `feat(stage-ui,stage-pages): add speaker recognition` by **@sumimakito** *(6 comments)*
+- [#2990](https://github.com/moeru-ai/airi/pull/2990) `feat(stage-ui): show tool calls as a combo pill with tool icons` by **@chiba233** *(8 comments)*
+
+#### 🔄 PR Status & Lifecycle Changes (1)
+- [#2748](https://github.com/moeru-ai/airi/pull/2748) `feat: add skills, long-term memory, and background tasks` — `OPEN` ➔ `MERGED`
+
+#### 💬 Discussion Activity (3)
+- [#2552](https://github.com/moeru-ai/airi/pull/2552) ` add bilingual subtitles` — *+8 comments (24 ➔ 32 total)*
+- [#2935](https://github.com/moeru-ai/airi/pull/2935) `fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction` — *+11 comments (30 ➔ 41 total)*
+- [#2920](https://github.com/moeru-ai/airi/pull/2920) `feat(provider-inference): add OpenRouter transcription provider` — *+9 comments (26 ➔ 35 total)*
+
+### 👁️ Watched PRs Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+- [#2980](https://github.com/moeru-ai/airi/pull/2980) `feat(stage-ui,stage-pages): add voiceprint enrollment` [MERGED] — *(15 comments)*
+  - *Focus*: Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port
+
+---
 ## [2026-10-15] Upstream Delta: `febfd707..d79a5489` (14 commits, 214 files, 23 PR update(s))
 
 ### 🎯 Executive Highlights
