@@ -8,6 +8,7 @@ import {
   normalizeIntensity,
   parseActEmotion,
   parseDelay,
+  parseSticker,
 } from './queues'
 
 describe('queues: ACT tokens & timing parsing invariants', () => {
@@ -193,6 +194,64 @@ describe('queues: ACT tokens & timing parsing invariants', () => {
       expect(parseDelay('Let me think... <|DELAY:2|> Ah, got it!')).toBe(2000)
       expect(parseDelay('Wait! <|DELAY:0.8|>')).toBe(800)
       expect(parseDelay('No delay here')).toBeNull()
+    })
+  })
+
+  describe('parseSticker', () => {
+    it('parses bare sticker ID with defaults', () => {
+      expect(parseSticker('<|STICKER airi-happy|>')).toEqual({
+        id: 'airi-happy',
+        surface: 'chat',
+        weight: 0.5,
+        pos: 'random',
+      })
+    })
+
+    it('parses parametric desktop slapper sticker', () => {
+      expect(parseSticker('<|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|>')).toEqual({
+        id: 'airi-celebrate',
+        surface: 'widget',
+        weight: 0.8,
+        pos: 'topRight',
+      })
+    })
+
+    it('parses explicit id attribute and dual surface', () => {
+      expect(parseSticker('<|STICKER id="lupin-warm-smile" surface="both" weight="0.2" pos="bottomLeft"|>')).toEqual({
+        id: 'lupin-warm-smile',
+        surface: 'both',
+        weight: 0.2,
+        pos: 'bottomLeft',
+      })
+    })
+
+    it('parses JSON format sticker payload', () => {
+      expect(parseSticker('<|STICKER:{"id":"character-annoyed","surface":"widget","weight":1.0,"pos":"bottomRight"}|>')).toEqual({
+        id: 'character-annoyed',
+        surface: 'widget',
+        weight: 1.0,
+        pos: 'bottomRight',
+      })
+    })
+
+    it('tolerates legacy bare > close', () => {
+      expect(parseSticker('<|STICKER airi-sparkle surface="widget">')).toEqual({
+        id: 'airi-sparkle',
+        surface: 'widget',
+        weight: 0.5,
+        pos: 'random',
+      })
+    })
+
+    it('clamps weight to [0.1, 1.0]', () => {
+      expect(parseSticker('<|STICKER airi-happy weight="0.01"|>')?.weight).toBe(0.1)
+      expect(parseSticker('<|STICKER airi-happy weight="1.5"|>')?.weight).toBe(1.0)
+    })
+
+    it('returns null for non-sticker or invalid tags', () => {
+      expect(parseSticker('<|ACT:emotion="happy"|>')).toBeNull()
+      expect(parseSticker('<|STICKER |>')).toBeNull()
+      expect(parseSticker('Just regular text')).toBeNull()
     })
   })
 })

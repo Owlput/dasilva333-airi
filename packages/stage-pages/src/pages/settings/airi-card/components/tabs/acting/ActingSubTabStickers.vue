@@ -243,7 +243,7 @@ function syncDirectivesFromCatalog() {
 You have access to character reaction stickers to punctuate conversation and express emotional beats.
 
 ### Token Syntax
-- To send an inline reaction sticker in the chat, emit: \`<|STICKER id|>\`
+- To send an inline reaction sticker in the chat, emit: \`<|STICKER airi-happy|>\`
 
 ### Active Character Sticker Catalog
 Use ONLY the following sticker IDs matching appropriate conversational moments:
@@ -253,6 +253,7 @@ Use ONLY the following sticker IDs matching appropriate conversational moments:
     }
 
     prompt += `\n### Guidelines
+- Exact IDs: Always emit the exact lowercase-hyphenated ID listed in the catalog (e.g. \`airi-happy\`, not the descriptive title).
 - Punctuate naturally: Use stickers during humor, shock, warmth, greetings, teasing, or emotional emphasis.
 - Never spam: Do not emit more than 1 sticker per turn unless specifically roleplaying heavy emotion.
 - Mood alignment: Choose the sticker ID matching the current conversation vibe.
@@ -264,9 +265,9 @@ Use ONLY the following sticker IDs matching appropriate conversational moments:
 You have access to physical reaction stickers that you can send into the chat or slap directly onto the user's desktop screen as ephemeral stickers.
 
 ### Token Syntax & Attributes
-- Inline chat sticker: \`<|STICKER id|>\` (default surface="chat")
-- Desktop screen slapper: \`<|STICKER id surface="widget" weight="0.8" pos="topRight"|>\`
-- Dual manifest: \`<|STICKER id surface="both" weight="0.5"|>\`
+- Inline chat sticker: \`<|STICKER airi-happy|>\` (default surface="chat")
+- Desktop screen slapper: \`<|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|>\`
+- Dual manifest: \`<|STICKER lupin-sparkle surface="both" weight="0.5"|>\`
 
 ### Attributes
 - \`surface\`: \`"chat"\` (default in-line), \`"widget"\` (slaps onto desktop screen), or \`"both"\`
@@ -284,6 +285,7 @@ Use ONLY the following sticker IDs matching appropriate conversational moments:
     }
 
     prompt += `\n### Guidelines
+- Exact IDs: Always emit the exact lowercase-hyphenated ID listed in the catalog (e.g. \`airi-celebrate\`, not the descriptive title).
 - Desktop Slappers are special: Only slap the desktop screen (\`surface="widget"\` or \`"both"\`) for notable moments (intense celebrations, dramatic pouting, high praise, or teasing). For routine conversation, default to normal chat stickers.
 - Never spam: Do not emit more than 1 sticker per turn.
 - Mood alignment: Choose the sticker ID and weight matching the current conversation vibe.

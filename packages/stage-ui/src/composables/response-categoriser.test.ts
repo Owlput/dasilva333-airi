@@ -553,4 +553,10 @@ describe('stripMarkers', () => {
     const stripped = stripMarkers(input)
     expect(stripped).toBe('Hello!  How are you?')
   })
+
+  it('should strip parametric STICKER tokens with surface, weight, and pos', () => {
+    const input = 'Look at this: <|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|> Amazing, right? <|STICKER id="lupin-warm-smile" surface="both" weight="0.5" pos="bottomLeft"|>'
+    const stripped = stripMarkers(input)
+    expect(stripped).toBe('Look at this:  Amazing, right? ')
+  })
 })

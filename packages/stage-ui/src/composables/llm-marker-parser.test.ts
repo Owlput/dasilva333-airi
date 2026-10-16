@@ -382,4 +382,28 @@ describe('useLlmmarkerParser', async () => {
     expect(collectedLiterals.join('')).toBe('Check this out  woohoo!')
     expect(collectedSpecials).toEqual(['<|STICKER airi-celebrate|>'])
   })
+
+  it('should parse parametric STICKER tokens with surface, weight, and pos', async () => {
+    const fullText = 'Slapping sticker! <|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|> Boom!'
+    const collectedLiterals: string[] = []
+    const collectedSpecials: string[] = []
+
+    const parser = useLlmmarkerParser({
+      onLiteral(literal) {
+        collectedLiterals.push(literal)
+      },
+      onSpecial(special) {
+        collectedSpecials.push(special)
+      },
+    })
+
+    for (const char of fullText) {
+      await parser.consume(char)
+    }
+
+    await parser.end()
+
+    expect(collectedLiterals.join('')).toBe('Slapping sticker!  Boom!')
+    expect(collectedSpecials).toEqual(['<|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|>'])
+  })
 })

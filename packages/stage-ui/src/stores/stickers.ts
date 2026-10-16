@@ -31,10 +31,10 @@ export interface StickerPlacement {
   expiresAt?: number
 }
 
-const KNOWN_STICKER_PREFIXES = new Set(['airi', 'lupin'])
+const KNOWN_STICKER_PREFIXES = new Set(['airi', 'lupin', 'character'])
 
 function tokenizeStickerId(id: string): string[] {
-  return id.toLowerCase().split(/[_-]+/).filter(Boolean)
+  return id.toLowerCase().split(/[\s_-]+/).filter(Boolean)
 }
 
 function stripKnownStickerPrefix(tokens: string[]): string[] {
@@ -56,7 +56,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
    */
   const currentLibrary = computed(() => {
     const airiCardStore = useAiriCardStore()
-    return libraryMetadata.value.filter(s => s.characterId === airiCardStore.activeCardId)
+    return libraryMetadata.value.filter(s => !s.characterId || s.characterId === airiCardStore.activeCardId)
   })
 
   // Reactive state for active instances on screen
@@ -68,22 +68,10 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
   // Cache for object URLs to avoid recreating them constantly
   const objectUrlCache = new Map<string, string>()
 
-  // Pruning interval for expired stickers
-  if (typeof window !== 'undefined') {
-    setInterval(() => {
-      const now = Date.now()
-      activePlacements.value = activePlacements.value.filter(p => !p.expiresAt || p.expiresAt > now)
-    }, 1000)
-  }
-
   /**
    * Resolve a model-emitted sticker id to a catalog id.
-   * Order: exact match, normalized exact (_/-/case-insensitive),
-   * then token-overlap fuzzy on prefix-stripped tokens so e.g.
-   * `arona_warm_smile` ([arona,warm,smile]) matches `lupin-warm-smile`
-   * ([warm,smile] after stripping the `lupin` prefix) with 2 shared tokens.
-   * Custom/character stickers win over builtin fuzzy matches via the
-   * normalized-exact step.
+   * Order: exact match, normalized exact (_/-/case-insensitive/whitespace),
+   * exact label/description match, then token-overlap fuzzy on prefix-stripped tokens.
    */
   function resolveStickerId(rawId: string): string | undefined {
     const raw = rawId?.trim()
@@ -106,12 +94,23 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
       ...chatStickers.map(s => s.id),
       ...customIds,
       ...currentLibrary.value.map(m => m.id),
+      ...libraryMetadata.value.map(m => m.id),
     ]
 
     const normalizedRaw = normalizeStickerKey(raw)
     const normalizedMatch = candidates.find(c => normalizeStickerKey(c) === normalizedRaw)
     if (normalizedMatch)
       return normalizedMatch
+
+    // Match against user-facing custom sticker labels and builtin descriptions
+    const labelMatch = currentLibrary.value.find(m => normalizeStickerKey(m.label) === normalizedRaw)
+      ?? libraryMetadata.value.find(m => normalizeStickerKey(m.label) === normalizedRaw)
+    if (labelMatch)
+      return labelMatch.id
+
+    const descMatch = chatStickers.find(s => normalizeStickerKey(s.description) === normalizedRaw)
+    if (descMatch)
+      return descMatch.id
 
     const inputTokens = stripKnownStickerPrefix(tokenizeStickerId(raw))
     if (inputTokens.length === 0)
@@ -122,14 +121,23 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     let bestShared = 0
     let bestLen = Number.POSITIVE_INFINITY
     for (const candidate of candidates) {
-      const candidateTokens = stripKnownStickerPrefix(tokenizeStickerId(candidate))
-      const shared = candidateTokens.filter(t => inputSet.has(t)).length
+      const customMeta = currentLibrary.value.find(m => m.id === candidate)
+        ?? libraryMetadata.value.find(m => m.id === candidate)
+      const builtinMeta = chatStickers.find(s => s.id === candidate)
+
+      const candidateTokens = [
+        ...stripKnownStickerPrefix(tokenizeStickerId(candidate)),
+        ...(customMeta ? stripKnownStickerPrefix(tokenizeStickerId(customMeta.label)) : []),
+        ...(builtinMeta ? stripKnownStickerPrefix(tokenizeStickerId(builtinMeta.description)) : []),
+      ]
+      const uniqueCandidateTokens = [...new Set(candidateTokens)]
+      const shared = uniqueCandidateTokens.filter(t => inputSet.has(t)).length
       if (shared === 0)
         continue
-      if (shared > bestShared || (shared === bestShared && candidateTokens.length < bestLen)) {
+      if (shared > bestShared || (shared === bestShared && uniqueCandidateTokens.length < bestLen)) {
         best = candidate
         bestShared = shared
-        bestLen = candidateTokens.length
+        bestLen = uniqueCandidateTokens.length
       }
     }
     return best
@@ -343,6 +351,36 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     }
   }, 2000)
 
+  /**
+   * Slap a sticker to the desktop via the Electron widget MPA if available,
+   * falling back to in-DOM placement on web or stage surfaces.
+   */
+  async function slapSticker(idOrLabel: string, options: { weight?: number, pos?: string, ttlMs?: number } = {}) {
+    const builtin = chatStickers.find(s => s.id === idOrLabel || s.description.toLowerCase() === idOrLabel.toLowerCase())
+    const resolvedId = builtin ? builtin.id : (resolveStickerId(idOrLabel) ?? idOrLabel)
+
+    if (typeof window !== 'undefined') {
+      const win = window as any
+      if (typeof win.spawnSticker === 'function') {
+        return await win.spawnSticker(resolvedId, options)
+      }
+      if (win.electron?.ipcRenderer?.invoke) {
+        return await win.electron.ipcRenderer.invoke('eventa:invoke:electron:windows:widgets:add', [{
+          componentName: 'sticker',
+          componentProps: {
+            stickerId: resolvedId,
+            weight: options.weight ?? 0.5,
+            pos: options.pos ?? 'random',
+          },
+          ttlMs: options.ttlMs ?? 0,
+        }])
+      }
+    }
+
+    // Web / non-electron fallback: spawn in-DOM placement on stage
+    return spawnSticker(resolvedId)
+  }
+
   return {
     libraryMetadata,
     currentLibrary,
@@ -353,6 +391,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     addSticker,
     deleteSticker,
     spawnSticker,
+    slapSticker,
     removePlacement,
     updatePlacement,
     clearPlacements,

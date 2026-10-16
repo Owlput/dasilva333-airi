@@ -199,4 +199,29 @@ describe('hydrateStickerSlices', () => {
       { type: 'text', text: 'After sticker text.' },
     ])
   })
+
+  it('does NOT hydrate surface="widget" stickers into chat slices', () => {
+    const slices: ChatSlices[] = [
+      { type: 'text', text: 'Desktop decal test.' },
+    ]
+    const raw = 'Desktop decal test.\n\n<|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|>'
+    const result = hydrateStickerSlices(slices, raw)
+
+    expect(result).toEqual([
+      { type: 'text', text: 'Desktop decal test.' },
+    ])
+  })
+
+  it('hydrates surface="both" and explicit id="..." stickers into chat slices', () => {
+    const slices: ChatSlices[] = [
+      { type: 'text', text: 'Dual manifest test.' },
+    ]
+    const raw = 'Dual manifest test.\n\n<|STICKER id="lupin-warm-smile" surface="both" weight="0.5" pos="bottomLeft"|>'
+    const result = hydrateStickerSlices(slices, raw)
+
+    expect(result).toEqual([
+      { type: 'text', text: 'Dual manifest test.' },
+      { type: 'sticker', stickerId: 'lupin-warm-smile' },
+    ])
+  })
 })

@@ -48,6 +48,7 @@ import { useSettings } from '../../stores/settings'
 import { useSettingsControlStrip } from '../../stores/settings/control-strip'
 import { useSettingsUserProfile } from '../../stores/settings/user-profile'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
+import { useStickersStore } from '../../stores/stickers'
 import { useVHackStore } from '../../stores/vhack'
 import { logMemoryProbe } from '../../utils/memory-sentinel'
 import { StageWidgetsContainer } from '../widgets'
@@ -457,6 +458,21 @@ specialTokenQueue.onHandlerEvent('actor', (actorId) => {
   debug('[Stage] Actor swap token detected (parser):', actorId)
   parserActorId.value = actorId
 })
+specialTokenQueue.onHandlerEvent('sticker', (payload: any) => {
+  debug('[Stage] Sticker token detected in queue:', payload)
+  try {
+    const stickersStore = useStickersStore()
+    if (payload.surface === 'widget' || payload.surface === 'both') {
+      void stickersStore.slapSticker(payload.id, { weight: payload.weight, pos: payload.pos })
+    }
+    else if (payload.surface === 'chat') {
+      void stickersStore.spawnSticker(payload.id)
+    }
+  }
+  catch (err) {
+    debug('[Stage] Failed to execute sticker token:', err)
+  }
+})
 
 // Play special token: delay or emotion
 function playSpecialToken(special: string) {
@@ -564,7 +580,7 @@ const autonomousCues = useAutonomousCues({
 const modsServer = useModsServerChannelStore()
 
 function processMarkers(content: string) {
-  const markers = content.match(/<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>)/gi)
+  const markers = content.match(/<\|(?:ACT|DELAY|ACTOR|STICKER)[^\r\n]*?(?:\|>|>)/gi)
   if (markers) {
     debug('[Stage] Markers detected:', markers)
     for (const marker of markers) {
@@ -645,7 +661,7 @@ if (typeof window !== 'undefined') {
     const intent = ensureSpeechIntent()
 
     // Split content into markers and text segments
-    const parts = content.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
+    const parts = content.split(/(<\|(?:ACT|DELAY|ACTOR|STICKER)[^\r\n]*?(?:\|>|>))/gi)
     for (const part of parts) {
       if (!part)
         continue
@@ -671,7 +687,7 @@ if (typeof window !== 'undefined') {
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
     // Split content into markers and text segments
-    const parts = content.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
+    const parts = content.split(/(<\|(?:ACT|DELAY|ACTOR|STICKER)[^\r\n]*?(?:\|>|>))/gi)
     for (const part of parts) {
       if (!part)
         continue
