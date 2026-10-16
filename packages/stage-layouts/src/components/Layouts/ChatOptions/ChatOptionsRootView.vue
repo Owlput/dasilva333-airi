@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'navigate', view: 'capabilities' | 'tools' | 'injections' | 'memories' | 'appearance' | 'staging' | 'voice'): void
   (e: 'applyPreset', preset: 'mini' | 'medium' | 'large' | 'full'): void
+  (e: 'openAllSettings'): void
 }>()
 
 const airiCardStore = useAiriCardStore()
@@ -214,6 +215,22 @@ function handleApplyPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
         </div>
       </div>
       <div class="i-solar:alt-arrow-right-linear size-4 text-neutral-400" />
+    </button>
+
+    <!-- Divider -->
+    <div class="mx-1 my-1 border-t border-neutral-200/30 dark:border-neutral-800/40" />
+
+    <!-- All Settings -->
+    <button
+      type="button"
+      class="w-full flex cursor-pointer items-center justify-between rounded-xl p-2.5 transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+      @click="emit('openAllSettings')"
+    >
+      <div class="flex items-center gap-2.5">
+        <div class="i-solar:tuning-2-linear size-5 text-neutral-500 dark:text-neutral-400" />
+        <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-100">All settings</span>
+      </div>
+      <div class="i-solar:arrow-right-linear size-4 text-neutral-400" />
     </button>
   </div>
 </template>

@@ -61,7 +61,7 @@ const tokenBarColorClass = computed(() => {
         <MobileHeaderLink class="shrink-0" />
       </div>
 
-      <!-- Right: Action Cluster (Brain, Injections, Customizer, Settings) -->
+      <!-- Right: Action Cluster (Brain, Customizer, Quick Settings) -->
       <div class="flex shrink-0 items-center gap-1.5">
         <!-- 1. Brain / LLM Model Switcher -->
         <BrainModelPicker
@@ -69,10 +69,7 @@ const tokenBarColorClass = computed(() => {
           side="bottom"
         />
 
-        <!-- 2. Utility / Runtime Feature Toggles & Injections -->
-        <MobileUtilityPopover />
-
-        <!-- 3. Control Strip Customizer Trigger -->
+        <!-- 2. Control Strip Customizer Trigger -->
         <RouterLink
           to="/settings/stage"
           class="size-8.5 flex items-center justify-center border border-neutral-200/30 rounded-full bg-white/10 text-neutral-700 shadow-sm backdrop-blur-md transition-all active:scale-95 dark:border-neutral-700/40 dark:bg-neutral-800/60 dark:text-neutral-200"
@@ -81,14 +78,8 @@ const tokenBarColorClass = computed(() => {
           <div class="i-solar:widget-2-bold-duotone size-4.5 text-sky-500 dark:text-sky-400" />
         </RouterLink>
 
-        <!-- 4. Settings Gear -->
-        <RouterLink
-          to="/settings"
-          class="size-8.5 flex items-center justify-center border border-neutral-200/30 rounded-full bg-white/10 text-neutral-700 shadow-sm backdrop-blur-md transition-all active:scale-95 dark:border-neutral-700/40 dark:bg-neutral-800/60 dark:text-neutral-200"
-          title="Settings"
-        >
-          <div class="i-solar:settings-bold-duotone size-4.5 text-neutral-600 dark:text-neutral-300" />
-        </RouterLink>
+        <!-- 3. Quick Settings (Popover with Cog trigger) -->
+        <MobileUtilityPopover />
       </div>
     </div>
 

@@ -30,6 +30,7 @@ const emit = defineEmits<{
   (e: 'openVoiceSettings'): void
   (e: 'openMemorySettings'): void
   (e: 'openCardSettings'): void
+  (e: 'openSettings'): void
   (e: 'searchMemories'): void
 }>()
 
@@ -106,6 +107,14 @@ function handleOpenCardSettings() {
     void router.push(`/settings/airi-card/edit?id=${targetId}`).catch(() => {})
   }
 }
+
+function handleOpenAllSettings() {
+  isOpen.value = false
+  emit('openSettings')
+  if (router && typeof window !== 'undefined' && !(window as any).electron) {
+    void router.push('/settings').catch(() => {})
+  }
+}
 </script>
 
 <template>
@@ -137,9 +146,9 @@ function handleOpenCardSettings() {
             'border-neutral-200/30 bg-white/10 dark:border-neutral-700/40 dark:bg-neutral-800/60 dark:text-neutral-200',
             isOpen ? 'ring-2 ring-primary-500/30' : '',
           ]"
-          title="Chat Options"
+          title="Quick settings"
         >
-          <div class="i-solar:bolt-bold-duotone size-4.5 text-amber-500/90 dark:text-amber-400" />
+          <div class="i-solar:settings-bold-duotone size-4.5 text-neutral-600 dark:text-neutral-300" />
         </button>
       </slot>
     </PopoverTrigger>
@@ -152,7 +161,7 @@ function handleOpenCardSettings() {
         align="end"
         :collision-padding="12"
         :class="[
-          'z-[10000] max-h-[min(540px,85dvh)] w-80 max-w-[calc(100vw-24px)]',
+          'z-[10000] max-h-[min(630px,88dvh)] w-80 max-w-[calc(100vw-24px)]',
           'flex flex-col overflow-hidden',
           'border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl',
           'bg-white/95 dark:bg-neutral-950/95 shadow-2xl backdrop-blur-2xl duration-200',
@@ -164,8 +173,8 @@ function handleOpenCardSettings() {
           class="flex items-center justify-between border-b border-neutral-100 px-3.5 py-2.5 dark:border-neutral-800/80"
         >
           <div class="flex items-center gap-2">
-            <div class="i-solar:tuning-square-2-bold-duotone text-lg text-neutral-800 dark:text-neutral-100" />
-            <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Chat options</span>
+            <div class="i-solar:settings-bold-duotone text-lg text-neutral-800 dark:text-neutral-100" />
+            <span class="text-sm text-neutral-900 font-bold font-sans-rounded dark:text-neutral-100">Quick settings</span>
           </div>
           <button
             type="button"
@@ -187,7 +196,7 @@ function handleOpenCardSettings() {
             @click="currentView = 'root'"
           >
             <div class="i-solar:alt-arrow-left-linear size-4" />
-            <span>Chat options</span>
+            <span>Quick settings</span>
           </button>
           <button
             type="button"
@@ -217,6 +226,7 @@ function handleOpenCardSettings() {
               :show-chat-layout="props.showChatLayout"
               @navigate="(view) => currentView = view"
               @apply-preset="(preset) => props.onApplyChatPreset?.(preset)"
+              @open-all-settings="handleOpenAllSettings"
             />
 
             <!-- ================= CAPABILITIES VIEW ================= -->
