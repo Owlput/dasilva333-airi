@@ -38,6 +38,57 @@ Furthermore, upstream made stickers global to the client settings rather than sc
 4. **Zero-Tax MPA Execution (`sticker.html`)**:
    Instead of paying the heavy ~80 MB SPA boot tax (Vue runtime, Pinia, Vue Router, UnoCSS, Eventa) just to display a single floating PNG, desktop stickers mount through a dedicated, zero-dependency Electron MPA entry point (`sticker.html`) featuring interactive "tap to peel off" physics and weight-scaled lifespans.
 
+### The "Zero Tool Calls" Invariant: Why Streaming Tokens Defeat Native Function Calling
+
+A frequent architectural temptation in agentic systems is wrapping every external manifestation into a native LLM tool call (e.g., a function call like `spawn_sticker(id, surface, weight)`). AIRI strictly rejects and excises native tool calling for character reaction stickers in favor of inline streaming tokens (`<|STICKER id ... |>`).
+
+This architectural invariant was solidified by live multi-actor empirical testing (e.g., across Madoka, Arona, and Kurisu in "The Clockwork Roast & Haven Cafe"), proving 4 decisive operational advantages:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                 NATIVE FUNCTION CALL vs. STREAMING INLINE TOKEN                         │
+├────────────────────────────────┬────────────────────────────────────────────────────────┤
+│ Native Tool Call (Broken UX)   │ Streaming Inline Token (AIRI Paradigm)                 │
+├────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ • Batch-fired upfront in turn  │ • Streamed in exact temporal lockstep with speech     │
+│ • Spams UI before dialogue     │ • Slaps onto screen as character utters the line       │
+│ • No voice / sentence audio sync│ • Precise Sentence-Sync audio playback millisecond    │
+│ • Global assistant level only  │ • Scoped cleanly inside <|ACTOR:...|> turns            │
+│ • Incurs KV cache schema bloat │ • 100% frozen prefix cache reuse                       │
+│ • Hallucinates tool/text drift │ • Single unambiguous acting token pipeline            │
+└────────────────────────────────┴────────────────────────────────────────────────────────┘
+```
+
+#### 1. Temporal Lockstep & Conversational Pacing (Elimination of Upfront Batching)
+In standard LLM tool calling protocols (OpenAI function calling, Anthropic tool use, Gemini Live tools), tool invocations are emitted as structured frames prior to or distinct from the assistant's prose stream (`toolCallQueue`).
+- **Failure Mode with Tool Calls**: When a character's turn is meant to contain multiple expressive beats or when multiple characters converse in an ensemble, tool calls execute in an upfront batch before any speech text streams. The UI gets instantly spammed with 3–4 sticker stamps simultaneously before a single word is rendered. The narrative suspense, dramatic timing, and comedic beat are destroyed.
+- **The Inline Token Solution**: The `<|STICKER id|>` token is embedded directly in the text stream. It is received and executed at the exact temporal moment in the generation loop when the character produces that conversational thought.
+
+#### 2. Sentence-Sync Audio & Avatar Gesture Synchronization
+AIRI's audio runtime (`useSpeechCaptionPlayer`, `airi-speech-runtime`, `airi-acting-cue-act-tokens`) synchronizes TTS voice generation with Live2D/VRM speech bubbles and avatar gestures.
+- Because `<|STICKER id|>` is colocated inside the character's verbal sentence, the sticker slaps onto the screen at the exact millisecond when the character utters that phrase in voice audio.
+- Native tool calls have zero audio temporal grounding; they trigger before audio synthesis even begins.
+
+#### 3. True Multi-Actor Attribution & Spatial Boundaries
+In multi-character cards (ensembles or cafe/office scenes), multiple personas interact within a single assistant generation pass, delimited by `<|ACTOR:{actorId}|>` tokens.
+- Native tool calls exist at the global assistant level with no inherent actor attribution unless awkward metadata parameters are manually plumbed through schemas.
+- Inline tokens naturally live within each actor's speech block:
+  ```text
+  <|ACTOR:actor_kaname_madoka|>
+  ...And you still never drank the tea.
+  <|STICKER id="madoka-gentle-worry" surface="chat" pos="bottomLeft"|>
+
+  <|ACTOR:actor_arona_blue_archive|>
+  Then the fallback earned its keep, Sensei!
+  <|STICKER id="arona-sparkle-pride" surface="both" weight="0.8" pos="topRight"|>
+  ```
+  Each character independently owns their emotional cues, physical placement quadrant, and delivery timing without cross-actor contamination.
+
+#### 4. Prefix Cache Preservation & Zero-Hallucination Discipline
+- Registering a native `spawn_sticker` tool requires serializing tool schemas and parameters into every API dispatch payload, bloating token count and risking KV cache invalidation across turns.
+- Giving the LLM two distinct pathways (a tool call *and* inline markers) creates prompt competition, causing models to alternate unpredictably between tool calls and text, hallucinate non-existent tool signatures, or emit incomplete JSON blocks.
+- By permanently excising `spawn_sticker` and treating stickers as first-class acting tokens, the directives compile once into the frozen system prompt prefix (`buildCharacterSystemPrompt`), achieving 100% prefix cache hits with zero runtime tool calling overhead.
+
 ---
 
 
@@ -175,6 +226,8 @@ To protect TTS, captions, and history replay, the token pipeline enforces six ga
 6. **Dual Storage Contract**:
    - `content`: Display prose with all sticker markers stripped.
    - `rawContent`: Ground-truth inference record preserving `<|STICKER ...|>` so replaying turns into inference context prevents model forgetfulness.
+7. **Zero Tool Calls Invariant (No Upfront Batch Spam)**:
+   Native tool calling (`spawn_sticker`) is strictly prohibited and excised. Stickers are purely non-tool streaming acting tokens. This ensures reaction visual badges slap into view sequentially in exact lockstep with character dialogue and vocal cues, rather than spamming the interface in an upfront batch before text streaming begins.
 
 ---
 
