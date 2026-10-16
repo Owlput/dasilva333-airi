@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import {
   ChatImagesPopover,
+  ProducerChoiceBubble,
+  ProducerGuidanceModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
-import { useChatComposer } from '@proj-airi/stage-ui/composables'
+import { useChatComposer, useProducer } from '@proj-airi/stage-ui/composables'
+import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSettings, useSettingsAudioDevice, useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
 import { BasicContentEditable } from '@proj-airi/ui'
+import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { ref, useTemplateRef } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -28,8 +32,10 @@ const settingsChat = useSettingsChat()
 const settingsAudioDevice = useSettingsAudioDevice()
 const { enabled: isAudioInputEnabled, stream: audioStream } = storeToRefs(settingsAudioDevice)
 
+const chatSession = useChatSessionStore()
+const { messages } = storeToRefs(chatSession)
 const airiCardStore = useAiriCardStore()
-const { activeCardId } = storeToRefs(airiCardStore)
+const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { t } = useI18n()
 
 // Initialize shared useChatComposer composable
@@ -48,6 +54,83 @@ const {
 } = useChatComposer({
   tools: props.tools,
 })
+
+// Producer / Quick Suggestions (Director Lite)
+const { generateSuggestions } = useProducer()
+const isProducerModalOpen = ref(false)
+const producerSuggestion = ref<{ choices: Array<{ title: string, message: string }>, loading?: boolean } | null>(null)
+const lastProducerConfig = ref<{ guidance: string, contextDepth: number, count: number, shortReplies: boolean } | null>(null)
+const quickSuggestContextDepth = useLocalStorage<number>('airi:producer:context-depth', 6)
+const quickSuggestCount = useLocalStorage<number>('airi:producer:count', 3)
+const quickSuggestShortReplies = useLocalStorage<boolean>('airi:producer:short-replies', true)
+
+const characterName = computed(() => activeCard.value?.name || 'Companion')
+
+function handleWandClick() {
+  const input = messageInput.value.trim()
+  if (input) {
+    messageInput.value = ''
+    void handleProducerSubmit({
+      guidance: input,
+      contextDepth: quickSuggestContextDepth.value,
+      count: quickSuggestCount.value,
+      shortReplies: quickSuggestShortReplies.value,
+    })
+  }
+  else {
+    isProducerModalOpen.value = true
+  }
+}
+
+async function handleProducerSubmit(payload: { guidance: string, contextDepth: number, count: number, shortReplies: boolean }) {
+  lastProducerConfig.value = payload
+  producerSuggestion.value = {
+    choices: [],
+    loading: true,
+  }
+
+  try {
+    const choices = await generateSuggestions({
+      characterName: characterName.value,
+      messages: messages.value as any,
+      guidance: payload.guidance || undefined,
+      contextDepth: payload.contextDepth,
+      count: payload.count,
+      shortReplies: payload.shortReplies,
+    })
+
+    producerSuggestion.value = {
+      choices,
+      loading: false,
+    }
+  }
+  catch (err) {
+    console.error('[ChatArea] Failed to generate suggestions:', err)
+    producerSuggestion.value = null
+    toast.error('Failed to generate suggestions. Please check your provider settings.')
+  }
+}
+
+async function handleRetryProducer() {
+  if (!lastProducerConfig.value) {
+    isProducerModalOpen.value = true
+    return
+  }
+  await handleProducerSubmit(lastProducerConfig.value)
+}
+
+function handleDeleteProducer() {
+  producerSuggestion.value = null
+}
+
+function handleChooseOption(choice: { title: string, message: string }) {
+  messageInput.value = choice.message
+  const autoSend = localStorage.getItem('airi:producer:auto-send') === 'true'
+  if (autoSend) {
+    producerSuggestion.value = null
+    handleSend()
+  }
+}
 
 async function handleVoiceClick() {
   if (!audioStream.value && !isAudioInputEnabled.value) {
@@ -68,8 +151,17 @@ function handleScreenshotClick() {
 </script>
 
 <template>
-  <div :class="['w-full flex flex-col font-sans ph-no-capture']">
+  <div :class="['w-full flex flex-col font-sans ph-no-capture gap-1.5']">
     <input ref="fileInput" type="file" accept="image/*" class="hidden" multiple @change="handleFileSelect">
+
+    <!-- Producer Suggestions Bubble (Floating above composer) -->
+    <ProducerChoiceBubble
+      v-if="producerSuggestion"
+      :message="producerSuggestion"
+      @choose="handleChooseOption"
+      @retry="handleRetryProducer"
+      @delete="handleDeleteProducer"
+    />
 
     <!-- Unified Composer Card -->
     <div
@@ -126,8 +218,25 @@ function handleScreenshotClick() {
           @screenshot="handleScreenshotClick"
         />
 
-        <!-- Right Side: Mic + Divider + Send Split Button -->
-        <div class="flex items-center gap-2">
+        <!-- Right Side: Wand + Mic + Divider + Send Split Button -->
+        <div class="flex items-center gap-1.5">
+          <!-- Magic Wand / Director Lite (Producer Suggestions) Button -->
+          <button
+            type="button"
+            :class="[
+              'p-1.5 rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center',
+              producerSuggestion?.loading
+                ? 'animate-pulse text-amber-500'
+                : messageInput.trim()
+                  ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300'
+                  : 'text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400',
+            ]"
+            title="Suggest responses (Empty input opens config)"
+            @click="handleWandClick"
+          >
+            <div class="i-solar:magic-stick-3-bold-duotone text-xl" />
+          </button>
+
           <!-- Voice / STT Mic Button -->
           <button
             type="button"
@@ -215,5 +324,10 @@ function handleScreenshotClick() {
     <!-- Modals -->
     <BackgroundDialogPicker v-model="backgroundDialogOpen" />
     <StageBackgroundDialogPicker v-model="stageBackgroundDialogOpen" :card-id="activeCardId" />
+    <ProducerGuidanceModal
+      v-model="isProducerModalOpen"
+      :character-name="characterName"
+      @submit="handleProducerSubmit"
+    />
   </div>
 </template>
