@@ -229,3 +229,50 @@ All five audio and text models green on `@huggingface/transformers@4.3.1`. Combi
 6. [x] Stand up unified `packages/neural-runtime` on `@huggingface/transformers@4.3.1` with isolated workspace patching (`pnpm-workspace.yaml`).
 7. [x] Validate all 10 monorepo neural models (Track A Vision: 5/5 green; Track B Audio & Text: 5/5 green; full suite: 10 files / 20 tests pass in 38.7 s).
 8. [ ] Port `RawImage` canvas memory-leak patch to `@huggingface/transformers@4.3.1` (adaptation hunks mapped in `07-background-removal-rmbg.test.ts`) and merge the migration into `stage-ui`.
+
+## 10. WD Tagger WebGPU Outage — Root Cause & Anime Matting Upgrade Path (2026-10-17)
+
+**Root cause (proven A/B in headed Brave, Metal-3, all else identical):**
+`pnpm-workspace.yaml` globally pins `onnxruntime-web: npm:onnxruntime-web@^1.24.2`,
+but stage-ui now runs `@huggingface/transformers@4.3.1`, which was built against
+ORT 1.31. Under the pinned 1.24.2, WebGPU session creation throws
+`TypeError: Failed to construct 'URL': Invalid URL` (its wasm-path bootstrap
+assumes a resolvable script base that the Vite-bundled worker context does not
+provide);
+under the native 1.31 the identical `AutoModel.from_pretrained` call loads cleanly
+in 13 s. The `Unknown model class "null"` warning is benign (EncoderOnly fallback
+works). Fix: scope the override to the legacy tree
+(`'@huggingface/transformers@3.8.1>onnxruntime-web': 'npm:onnxruntime-web@1.24.2'`)
+and let 4.3.1 resolve its native ORT. Direct `onnxruntime-web` dependents
+(`stage-ui`, `stage-pocket`, `stage-tamagotchi`, `stage-web` all pin `^1.24.2`)
+are unaffected.
+
+**Anime matting shootout (real failing sticker, Metal WebGPU, new compositing curve):**
+
+| Model | Fwd | Corner-bg mean | Mid-range frac | Precision / Recall vs ground-truth alpha |
+|---|---|---|---|---|
+| MODNet (current) | 0.5 s | 0.188 | 7.3% | 0.937 / 0.94 |
+| IS-Net anime | 0.5 s | 0.081 | 1.2% | **0.998 / 0.994** |
+| BiRefNet full | — | — | — | BLOCKED: fp32/fp16 both die in ORT WebGPU shader compile (`ShaderHelper::AddVariableImpl`); no q4 export exists upstream |
+
+BiRefNet-ONNX (`onnx-community/BiRefNet-ONNX`) is unloadable on our WebGPU path
+despite a native 4.3.1 model class — too big/complex a graph for Dawn.
+`briaai/RMBG-2.0` is HTTP 401 (gated) and therefore not shippable as-is.
+**Recommendation: IS-Net anime as the sticker/card cutter** (176 MB, anime-native,
+6× more decisive masks, same 0.5 s). It has no transformers config, so the bg
+worker needs a raw-ORT session branch (laya-worker pattern): input `img`,
+output `mask`. Keep MODNet as the photorealistic fallback behind the same
+model-selector plumbing.
+
+**Compositing fix shipped** (`applyAlphaMask`): anchored normalization
+(p1/p99, floor 0.08 / ceiling 0.85) spreads compressed masks, cutoff range
+widened 0.25 → 0.45, gamma smoothing kept for anti-aliased edges. Measured on
+ground-truth anime art: −1 to −2.6% kept-background at equal-or-better recall.
+Connected-component cleanup was evaluated and rejected: kept regions form one
+blob (decor hearts are legit separate components — removal would eat them).
+
+**Failing-image verdict (2026-10-17, `personal_airi/madoka/character-so-happy-1792009831164.png`, 1280px, Metal WebGPU, new curve @65%):**
+cutouts: `tmp/embedder-poc/showdown/cutout-isnet-madoka.png` vs `cutout-modnet.png`.
+IS-Net: corners kept 16.4%, character center 100% intact — clean cutout, edges tight.
+MODNet: corners kept 23.9% (the exact top-right block from the bug report), character center eroded to 89.2% (eats interior highlights).
+Verdict: IS-Net is the fix for anime stickers. Remaining 16% corner residue on IS-Net is the faint "KusArt" watermark text, not background wash — correct behavior.

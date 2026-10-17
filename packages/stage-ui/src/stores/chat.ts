@@ -5,6 +5,7 @@ import type { CommonContentPart, Message, ToolMessage } from '@xsai/shared-chat'
 
 import type { ChatAssistantMessage, ChatSlices, ChatStreamEventContext } from '../types/chat'
 import type { PacingMetrics } from '../types/pacing'
+import type { GroundingMessage } from './chat/grounding-assembler'
 import type { ChatInputBridgePayload } from './chat/input-bridge'
 import type { StreamEvent, StreamOptions } from './llm'
 
@@ -98,6 +99,14 @@ export interface SendOptions {
    * Optional metadata to attach to the user message (e.g. source platform info).
    */
   metadata?: Record<string, any>
+  /**
+   * Pre-flight staged GroundingMessage compiled from the composer drawer (eliminates duplicate search).
+   */
+  stagedGroundingPayload?: GroundingMessage | null
+  /**
+   * Pre-flight staged raw semantic memory/KG items (for Nan0 and down-stream telemetry).
+   */
+  stagedSemanticMemories?: any[]
 }
 
 interface ForkOptions {
@@ -815,47 +824,62 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         || cognitionSearch?.universeRagEnabled
 
       if (isUniverseRagEnabled && !options.triggerOnly && typeof sendingMessage === 'string' && sendingMessage.trim().length > 3) {
-        chatLog('Grounding Memory active. Fetching semantic query matches with conversational anaphora...')
-        try {
-          // Extract preceding completed turn for anaphora resolution
-          const sessionMessages = chatSession.getSessionMessages(sessionId)
-          let previousTurnText: string | undefined
-          for (let i = sessionMessages.length - 1; i >= 0; i--) {
-            const msg = sessionMessages[i]
-            if (msg && msg.id !== userMessageId) {
-              const text = typeof msg.content === 'string'
-                ? msg.content
-                : Array.isArray(msg.content)
-                  ? msg.content.map((p: any) => p?.text || '').join(' ')
-                  : ''
-              if (text.trim()) {
-                previousTurnText = text.trim()
-                break
+        if (options.stagedGroundingPayload || (options.stagedSemanticMemories && options.stagedSemanticMemories.length > 0)) {
+          chatLog('Grounding Memory active. Using pre-flight staged grounding payload (0 duplicate search).')
+          if (options.stagedSemanticMemories) {
+            retrievedSemanticMemories = options.stagedSemanticMemories
+          }
+          if (options.stagedGroundingPayload) {
+            groundingMessages.push(options.stagedGroundingPayload)
+          }
+          else if (options.stagedSemanticMemories) {
+            groundingMessages.push(formatSemanticMemoriesBlock(options.stagedSemanticMemories))
+          }
+          chatLog('Pre-flight staged Grounding Memory payload injected directly into inference step.')
+        }
+        else {
+          chatLog('Grounding Memory active. Fetching semantic query matches with conversational anaphora...')
+          try {
+            // Extract preceding completed turn for anaphora resolution
+            const sessionMessages = chatSession.getSessionMessages(sessionId)
+            let previousTurnText: string | undefined
+            for (let i = sessionMessages.length - 1; i >= 0; i--) {
+              const msg = sessionMessages[i]
+              if (msg && msg.id !== userMessageId) {
+                const text = typeof msg.content === 'string'
+                  ? msg.content
+                  : Array.isArray(msg.content)
+                    ? msg.content.map((p: any) => p?.text || '').join(' ')
+                    : ''
+                if (text.trim()) {
+                  previousTurnText = text.trim()
+                  break
+                }
               }
             }
-          }
 
-          const textJournalStore = useTextJournalStore()
-          const searchEngineConfig = activeCard.value?.extensions?.airi?.cognition?.searchEngine
-          const results = await textJournalStore.searchEntries({
-            query: sendingMessage,
-            limit: searchEngineConfig?.evidenceLimit ?? 6,
-            characterId: activeCardId.value,
-            previousTurn: previousTurnText,
-            anaphoraEnabled: searchEngineConfig?.anaphoraEnabled ?? true,
-          })
-          const minScore = searchEngineConfig?.relevanceThreshold
-            ?? activeCard.value?.extensions?.airi?.universeRag?.minScore
-            ?? 0.25
-          const filteredResults = results.filter(r => (r.score === undefined || r.score >= minScore))
-          if (filteredResults && filteredResults.length > 0) {
-            retrievedSemanticMemories = filteredResults
-            groundingMessages.push(formatSemanticMemoriesBlock(filteredResults))
-            chatLog('Grounding Memory payload injected into inference step.')
+            const textJournalStore = useTextJournalStore()
+            const searchEngineConfig = activeCard.value?.extensions?.airi?.cognition?.searchEngine
+            const results = await textJournalStore.searchEntries({
+              query: sendingMessage,
+              limit: searchEngineConfig?.evidenceLimit ?? 6,
+              characterId: activeCardId.value,
+              previousTurn: previousTurnText,
+              anaphoraEnabled: searchEngineConfig?.anaphoraEnabled ?? true,
+            })
+            const minScore = searchEngineConfig?.relevanceThreshold
+              ?? activeCard.value?.extensions?.airi?.universeRag?.minScore
+              ?? 0.25
+            const filteredResults = results.filter(r => (r.score === undefined || r.score >= minScore))
+            if (filteredResults && filteredResults.length > 0) {
+              retrievedSemanticMemories = filteredResults
+              groundingMessages.push(formatSemanticMemoriesBlock(filteredResults))
+              chatLog('Grounding Memory payload injected into inference step.')
+            }
           }
-        }
-        catch (err) {
-          console.error('[ChatStore] Failed to query semantic memories during ingest:', err)
+          catch (err) {
+            console.error('[ChatStore] Failed to query semantic memories during ingest:', err)
+          }
         }
       }
 

@@ -13,6 +13,7 @@ import {
   defaultScorerConfig,
   scoreHybridResults,
 } from './hybrid-scorer'
+import { CONVERSATIONAL_STOPWORDS } from './ledger-priming'
 import { analyzeQuery, decomposeQuery, heuristicTriage } from './query-analyzer'
 
 const indexStorage = createStorage({
@@ -259,14 +260,19 @@ export const layeredMemory = {
       const matchedEntityIds = new Set<string>()
 
       for (const ent of ledger.entities.values()) {
-        const entLabelLower = ent.label.toLowerCase()
+        const entLabelLower = ent.label.toLowerCase().trim()
+        if (CONVERSATIONAL_STOPWORDS.has(entLabelLower) || entLabelLower.length < 3)
+          continue
         if (qLower.includes(entLabelLower) || searchTokens.some(t => t.length > 2 && entLabelLower.includes(t))) {
           matchedEntityIds.add(ent.entityId)
         }
       }
 
       for (const [alias, entIds] of ledger.byAlias.entries()) {
-        if (qLower.includes(alias) || searchTokens.some(t => t.length > 2 && alias.includes(t))) {
+        const aliasLower = alias.toLowerCase().trim()
+        if (CONVERSATIONAL_STOPWORDS.has(aliasLower) || aliasLower.length < 3)
+          continue
+        if (qLower.includes(aliasLower) || searchTokens.some(t => t.length > 2 && aliasLower.includes(t))) {
           for (const id of entIds) {
             matchedEntityIds.add(id)
           }
@@ -370,7 +376,9 @@ export const layeredMemory = {
           continue
 
         // Mod 3: Exact match only for fallback (query contains full entity label or token exact matches entity label)
-        const entLabelLower = ent.label.toLowerCase()
+        const entLabelLower = ent.label.toLowerCase().trim()
+        if (CONVERSATIONAL_STOPWORDS.has(entLabelLower) || entLabelLower.length < 3)
+          continue
         const isExactEntityMatch = (entLabelLower.length >= 3 && qLower.includes(entLabelLower))
           || searchTokens.includes(entLabelLower)
         if (!isExactEntityMatch)
@@ -662,19 +670,24 @@ export const layeredMemory = {
       })),
     })
 
-    // 7. Merge Knowledge Graph hits + Scored Worker hits (with Date-Hook Quota)
+    // 7. Merge Knowledge Graph hits + Scored Worker hits (Dual-Track Fair-Share Quota)
     const mergedHits: LayeredSearchResult[] = []
     const seen = new Set<string>()
 
-    // Priority 1: High-confidence Knowledge Graph claims
-    for (const kg of kgHits) {
+    // Separate true S-P-O claims from fallback mentions
+    const trueKgClaims = kgHits.filter(h => h.predicate !== 'mentioned in')
+    const kgMentions = kgHits.filter(h => h.predicate === 'mentioned in')
+
+    // 1. High-confidence S-P-O claims get up to half the quota (e.g. up to 3 slots)
+    const maxKgSlots = Math.min(3, Math.floor(returnLimit / 2))
+    for (const kg of trueKgClaims.slice(0, maxKgSlots)) {
       if (!seen.has(kg.id)) {
         seen.add(kg.id)
         mergedHits.push(kg)
       }
     }
 
-    // Priority 2: Temporal Date-matched worker hits if query has temporal intent (C2 quota)
+    // 2. Temporal Date-matched worker hits if query has temporal intent (C2 quota)
     if (isTemporal) {
       const dateHits = scoredWorkerHits.filter(h => h.dateMatchBoost && h.dateMatchBoost > 0)
       for (const dh of dateHits.slice(0, 3)) {
@@ -685,11 +698,31 @@ export const layeredMemory = {
       }
     }
 
-    // Priority 3: Remaining hybrid worker hits
-    for (const h of scoredWorkerHits) {
+    // 3. Guaranteed slots for episodic worker hits (raw dialogue, journals, daily recaps)
+    const workerQuota = Math.max(3, returnLimit - mergedHits.length)
+    for (const h of scoredWorkerHits.slice(0, workerQuota)) {
       if (!seen.has(h.id)) {
         seen.add(h.id)
         mergedHits.push({ ...h, triage })
+      }
+    }
+
+    // 4. Fill remaining slots from remaining worker hits, then remaining KG claims & mentions
+    for (const h of scoredWorkerHits.slice(workerQuota)) {
+      if (mergedHits.length >= returnLimit)
+        break
+      if (!seen.has(h.id)) {
+        seen.add(h.id)
+        mergedHits.push({ ...h, triage })
+      }
+    }
+
+    for (const kg of [...trueKgClaims.slice(maxKgSlots), ...kgMentions]) {
+      if (mergedHits.length >= returnLimit)
+        break
+      if (!seen.has(kg.id)) {
+        seen.add(kg.id)
+        mergedHits.push(kg)
       }
     }
 

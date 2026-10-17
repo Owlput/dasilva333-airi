@@ -18,6 +18,7 @@ export * from './use-idle-animations'
 
 export * from './use-native-app-modal'
 export * from './use-optimistic'
+export * from './use-preflight-grounding'
 export * from './use-process-spawner'
 export * from './use-producer'
 export * from './use-sandbox'

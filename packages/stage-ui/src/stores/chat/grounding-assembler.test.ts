@@ -141,6 +141,49 @@ describe('grounding-assembler pure formatters', () => {
       expect(result.content).toContain('[VERBATIM DIALOGUE MEMORIES]')
       expect(result.content).toContain('[USER_TURN] Memory [2026-06-05 14:20]\nWhere did we leave the backpack?')
     })
+
+    it('routes entity mentions (predicate: mentioned in) to verbatim dialogue memories, preserving excerpt text', () => {
+      const memoriesAlone = [
+        {
+          id: 'kg-mention:turn-1',
+          title: '[Knowledge Graph] Academy (Mention)',
+          kind: 'raw',
+          content: 'Ren stands alone in the alley... Behind him, the massive towers of the Imperial Academy rise.',
+          subject: 'Academy',
+          predicate: 'mentioned in',
+          object: 'C6rlV2MvRWuQJJnXHiDFq\'s turn',
+          isKgClaim: true,
+          timestamp: '2026-10-17T14:00:00.000Z',
+        },
+      ]
+      const resultAlone = formatSemanticMemoriesBlock(memoriesAlone)
+
+      expect(resultAlone.content).toContain('[RAW] [Knowledge Graph] Academy (Mention) [2026-10-17 14:00]')
+      expect(resultAlone.content).toContain('Ren stands alone in the alley... Behind him, the massive towers of the Imperial Academy rise.')
+      expect(resultAlone.content).not.toContain('• Academy ➔ mentioned in')
+
+      // When combined with real KG claims, it sits under [VERBATIM DIALOGUE MEMORIES]
+      const memoriesCombined = [
+        {
+          id: 'claim:finch-banker',
+          isKgClaim: true,
+          kind: 'kg_claim',
+          subject: 'Finch',
+          predicate: 'is',
+          object: 'Banker',
+          content: '[Knowledge Graph] Finch is Banker',
+        },
+        ...memoriesAlone,
+      ]
+      const resultCombined = formatSemanticMemoriesBlock(memoriesCombined)
+
+      expect(resultCombined.content).toContain('[CONFIRMED KNOWLEDGE GRAPH FACTS]')
+      expect(resultCombined.content).toContain('• Finch ➔ is ➔ Banker')
+      expect(resultCombined.content).toContain('[VERBATIM DIALOGUE MEMORIES]')
+      expect(resultCombined.content).toContain('[RAW] [Knowledge Graph] Academy (Mention) [2026-10-17 14:00]')
+      expect(resultCombined.content).toContain('Ren stands alone in the alley... Behind him, the massive towers of the Imperial Academy rise.')
+      expect(resultCombined.content).not.toContain('• Academy ➔ mentioned in')
+    })
   })
 
   describe('formatRecentTopicsBlock', () => {

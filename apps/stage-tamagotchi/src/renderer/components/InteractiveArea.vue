@@ -16,7 +16,7 @@ import {
   ProducerGuidanceModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
-import { useAutoSuggestions, useProducer } from '@proj-airi/stage-ui/composables'
+import { useAutoSuggestions, usePreFlightGrounding, useProducer } from '@proj-airi/stage-ui/composables'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { appendDraftText, CHAT_COMPOSER_DRAFT_CHANNEL, CHAT_COMPOSER_DRAFT_STORAGE_KEY } from '@proj-airi/stage-ui/stores/chat/composer-draft-bridge'
@@ -36,7 +36,7 @@ import { useProactivityStore } from '@proj-airi/stage-ui/stores/proactivity'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea, Button } from '@proj-airi/ui'
-import { useBroadcastChannel, useLocalStorage, watchDebounced } from '@vueuse/core'
+import { useBroadcastChannel, useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
@@ -187,81 +187,18 @@ const latestDirectorScratchpad = computed(() => {
   return lastNoteWithScratchpad?.scratchpad || ''
 })
 
-const groundedMemories = ref<any[]>([])
-const isSearchingMemories = ref(false)
-
-watchDebounced(
+const {
+  memories: preFlightMemories,
+  kgFacts: preFlightKgFacts,
+  rawResults: preFlightRawResults,
+  isSearching: isSearchingMemories,
+  stagedGroundingPayload,
+  hasGroundingHits,
+  clear: clearPreFlightGrounding,
+} = usePreFlightGrounding({
   messageInput,
-  async (newVal) => {
-    const isMemoryEnabled = activeCard.value?.extensions?.airi?.groundingMemoryEnabled
-    if (!isMemoryEnabled) {
-      groundedMemories.value = []
-      return
-    }
-
-    const query = newVal.trim()
-    if (query.length <= 3) {
-      groundedMemories.value = []
-      return
-    }
-
-    try {
-      console.log('[Telemetry:InteractiveArea:AmberBar:Start]', {
-        query,
-        activeCardId: activeCardId.value,
-        characterName: activeCard.value?.name,
-        groundingMemoryEnabled: isMemoryEnabled,
-      })
-      isSearchingMemories.value = true
-      const results = await textJournalStore.searchEntries({
-        query,
-        limit: 3,
-        characterId: activeCardId.value,
-      })
-      console.log('[Telemetry:InteractiveArea:AmberBar:Results]', {
-        query,
-        count: results.length,
-        results: results.map(r => ({ id: r.id, title: r.title, kind: r.kind, score: r.score, source: r.source })),
-      })
-      groundedMemories.value = results
-    }
-    catch (err) {
-      console.error('[InteractiveArea] Failed to search semantic memory context:', err)
-      groundedMemories.value = []
-    }
-    finally {
-      isSearchingMemories.value = false
-    }
-  },
-  { debounce: 500 },
-)
-
-watch(
-  () => activeCard.value?.extensions?.airi?.groundingMemoryEnabled,
-  async (enabled) => {
-    if (!enabled) {
-      groundedMemories.value = []
-    }
-    else if (messageInput.value.trim().length > 3) {
-      try {
-        isSearchingMemories.value = true
-        const results = await textJournalStore.searchEntries({
-          query: messageInput.value.trim(),
-          limit: 3,
-          characterId: activeCardId.value,
-        })
-        groundedMemories.value = results
-      }
-      catch (err) {
-        console.error('[InteractiveArea] Failed to search semantic memory context:', err)
-        groundedMemories.value = []
-      }
-      finally {
-        isSearchingMemories.value = false
-      }
-    }
-  },
-)
+  activeCardId,
+})
 
 const journalPreviewStore = useJournalPreviewStore()
 const visionStore = useVisionStore()
@@ -636,12 +573,14 @@ async function handleSend() {
 
   const textToSend = messageInput.value
   const attachmentsToSend = attachments.value.map(att => ({ ...att }))
+  const stagedPayloadToSend = stagedGroundingPayload.value
+  const stagedMemoriesToSend = [...preFlightRawResults.value]
 
   // optimistic clear without deleting draft from localStorage immediately
   isOptimisticClearing = true
   messageInput.value = ''
   attachments.value = []
-  groundedMemories.value = []
+  clearPreFlightGrounding()
   producerSuggestion.value = null
   isOptimisticClearing = false
 
@@ -662,6 +601,8 @@ async function handleSend() {
         chatProvider: activeProvider.value,
         providerConfig,
         attachments: attachmentsToSend,
+        stagedGroundingPayload: stagedPayloadToSend,
+        stagedSemanticMemories: stagedMemoriesToSend,
       }, activeSessionId.value)
     }
 
@@ -1275,7 +1216,7 @@ defineExpose({
           <!-- Quick Status Badges (hidden on narrow windows; the toggle buttons on the right cover the same sections) -->
           <span v-if="activeCard?.extensions?.airi?.groundingEnabled" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Sensors Active</span>
           <span v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">
-            {{ groundedMemories.length > 0 ? `Grounded Memories (${groundedMemories.length})` : 'Universe RAG Active' }}
+            {{ hasGroundingHits ? `Grounded (${preFlightMemories.length + preFlightKgFacts.length})` : 'Universe RAG Active' }}
           </span>
           <span v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Recent Topics ({{ activeCard.extensions.airi.recentTopics.length }})</span>
           <!-- Phase 6: L9–L11 Δh salience indicator. Shows Salience Standby when armed; lights Salience Vibe Active on hot verdict. -->
@@ -1307,7 +1248,7 @@ defineExpose({
             class="flex items-center gap-1 border border-amber-300 rounded bg-amber-100/70 px-2 py-0.5 text-xs text-amber-800 font-bold font-mono transition-colors dark:border-amber-500/25 dark:bg-black/50 hover:bg-amber-200/80 dark:text-amber-400 dark:hover:bg-black/80"
             @click="isMemoriesPreviewExpanded = !isMemoriesPreviewExpanded"
           >
-            <span>Memories{{ groundedMemories.length > 0 ? ` (${groundedMemories.length})` : '' }}</span>
+            <span>Grounded{{ hasGroundingHits ? ` (${preFlightMemories.length + preFlightKgFacts.length})` : '' }}</span>
             <span class="text-amber-600 transition-transform dark:text-amber-500" :class="isMemoriesPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
           </button>
           <button
@@ -1340,7 +1281,7 @@ defineExpose({
         <pre v-show="isGroundingPreviewExpanded" class="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-amber-100/30 p-2 text-[10px] text-amber-900 leading-normal font-mono scrollbar-thin dark:bg-amber-950/20 dark:text-amber-300/90">{{ proactivityStore.sensorPayload || 'Polling sensors...' }}</pre>
       </div>
 
-      <!-- Grounded Memories Section -->
+      <!-- Grounded Memories & Knowledge Graph Section (Dual Column) -->
       <div
         v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled"
         :class="[
@@ -1349,24 +1290,69 @@ defineExpose({
         ]"
       >
         <div v-show="isMemoriesPreviewExpanded">
-          <div v-if="groundedMemories.length > 0" class="max-h-36 overflow-y-auto scrollbar-thin space-y-1.5">
-            <div
-              v-for="entry in groundedMemories"
-              :key="entry.id"
-              class="flex flex-col cursor-pointer border border-amber-200 rounded bg-amber-50/50 p-2 text-[10px] leading-normal transition-all dark:border-amber-500/10 hover:border-amber-300 dark:bg-amber-950/10 hover:bg-amber-100/80 dark:hover:border-amber-500/20 dark:hover:bg-amber-950/20"
-              @click="openTextPreview({ title: entry.title || 'Untitled Memory', content: entry.content })"
-            >
-              <div class="mb-0.5 flex items-center justify-between text-amber-800 font-bold dark:text-amber-300">
-                <span class="truncate pr-2">{{ entry.title || 'Untitled Memory' }}</span>
-                <span class="shrink-0 text-[8px] font-normal uppercase opacity-60">{{ entry.kind || 'Journal' }}</span>
+          <div
+            v-if="hasGroundingHits"
+            class="grid grid-cols-1 max-h-52 gap-2.5 overflow-y-auto scrollbar-thin md:grid-cols-2"
+          >
+            <!-- Column 1: Episodic & Journal Memories -->
+            <div class="min-w-0 flex flex-col space-y-1.5">
+              <div class="flex items-center justify-between px-1 text-[9px] text-amber-800/80 font-bold tracking-wider uppercase dark:text-amber-300/80">
+                <span>Grounded Memories ({{ preFlightMemories.length }})</span>
+                <span class="text-[8px] opacity-75">Episodic / Raw</span>
               </div>
-              <p class="line-clamp-2 text-amber-900 dark:text-amber-200/80">
-                {{ entry.content }}
-              </p>
+              <div v-if="preFlightMemories.length > 0" class="flex flex-col space-y-1.5">
+                <div
+                  v-for="entry in preFlightMemories"
+                  :key="entry.id"
+                  class="flex flex-col cursor-pointer border border-amber-200 rounded bg-amber-50/50 p-2 text-[10px] leading-normal transition-all dark:border-amber-500/10 hover:border-amber-300 dark:bg-amber-950/10 hover:bg-amber-100/80 dark:hover:border-amber-500/20 dark:hover:bg-amber-950/20"
+                  @click="openTextPreview({ title: entry.title || 'Untitled Memory', content: entry.content })"
+                >
+                  <div class="mb-0.5 flex items-center justify-between text-amber-800 font-bold dark:text-amber-300">
+                    <span class="truncate pr-2">{{ entry.title || 'Untitled Memory' }}</span>
+                    <span class="shrink-0 text-[8px] font-normal uppercase opacity-60">{{ entry.kind }}</span>
+                  </div>
+                  <p class="line-clamp-2 text-amber-900 dark:text-amber-200/80">
+                    {{ entry.content }}
+                  </p>
+                </div>
+              </div>
+              <div v-else class="flex items-center justify-center border border-amber-300/40 rounded border-dashed p-3 text-center text-[10px] text-amber-800/60 dark:border-amber-500/20 dark:text-amber-300/50">
+                No episodic memories matched for current query.
+              </div>
+            </div>
+
+            <!-- Column 2: Knowledge Graph Associations -->
+            <div class="min-w-0 flex flex-col space-y-1.5">
+              <div class="flex items-center justify-between px-1 text-[9px] text-amber-800/80 font-bold tracking-wider uppercase dark:text-amber-300/80">
+                <span>Knowledge Graph ({{ preFlightKgFacts.length }})</span>
+                <span class="text-[8px] opacity-75">Confirmed Facts & Entities</span>
+              </div>
+              <div v-if="preFlightKgFacts.length > 0" class="flex flex-col space-y-1.5">
+                <div
+                  v-for="fact in preFlightKgFacts"
+                  :key="fact.id"
+                  class="flex flex-col cursor-pointer border border-amber-200 rounded bg-amber-50/50 p-2 text-[10px] leading-normal transition-all dark:border-amber-500/10 hover:border-amber-300 dark:bg-amber-950/10 hover:bg-amber-100/80 dark:hover:border-amber-500/20 dark:hover:bg-amber-950/20"
+                  @click="openTextPreview({ title: `[Knowledge Graph] ${fact.subject} ${fact.predicate} ${fact.object}`, content: fact.content || `${fact.subject} ➔ ${fact.predicate} ➔ ${fact.object}` })"
+                >
+                  <div class="mb-0.5 flex items-center justify-between text-amber-800 font-bold dark:text-amber-300">
+                    <div class="flex items-center gap-1 truncate pr-2">
+                      <span class="i-solar:graph-bold shrink-0 text-xs text-amber-600 dark:text-amber-400" />
+                      <span class="truncate">{{ fact.subject }} ➔ {{ fact.predicate }} ➔ {{ fact.object }}</span>
+                    </div>
+                    <span v-if="fact.dateLabel" class="shrink-0 text-[8px] font-normal opacity-60">[{{ fact.dateLabel }}]</span>
+                  </div>
+                  <p v-if="fact.content && fact.content !== `${fact.subject} ${fact.predicate} ${fact.object}`" class="line-clamp-2 text-[9px] text-amber-900/80 dark:text-amber-200/70">
+                    {{ fact.content }}
+                  </p>
+                </div>
+              </div>
+              <div v-else class="flex items-center justify-center border border-amber-300/40 rounded border-dashed p-3 text-center text-[10px] text-amber-800/60 dark:border-amber-500/20 dark:text-amber-300/50">
+                No graph claims or entity associations matched for current query.
+              </div>
             </div>
           </div>
           <div v-else class="rounded bg-amber-100/30 p-2 text-[10px] text-amber-900 leading-normal font-mono dark:bg-amber-950/20 dark:text-amber-300/90">
-            {{ isSearchingMemories ? 'Searching universe memories...' : (messageInput.trim().length > 3 ? 'No matching semantic memories found for current query.' : 'Type a message to retrieve relevant semantic memories in real time...') }}
+            {{ isSearchingMemories ? 'Searching universe memories & knowledge graph...' : (messageInput.trim().length > 3 ? 'No matching semantic memories or graph facts found for current query.' : 'Type a message to retrieve relevant semantic memories and graph facts in real time...') }}
           </div>
         </div>
       </div>

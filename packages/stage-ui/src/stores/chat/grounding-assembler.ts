@@ -99,8 +99,8 @@ export function formatLifetimeMemoryBlock(context: string): GroundingMessage {
  * Knowledge Graph facts, proof bundle sub-goals, and episodic verbatim turns.
  */
 export function formatSemanticMemoriesBlock(memories: SemanticMemoryItem[]): GroundingMessage {
-  const kgClaims = memories.filter(r => r.isKgClaim || r.kind === 'kg_claim')
-  const episodicMemories = memories.filter(r => !r.isKgClaim && r.kind !== 'kg_claim')
+  const kgClaims = memories.filter(r => (r.isKgClaim || r.kind === 'kg_claim') && r.predicate !== 'mentioned in')
+  const episodicMemories = memories.filter(r => (!r.isKgClaim && r.kind !== 'kg_claim') || r.predicate === 'mentioned in')
 
   const sections: string[] = []
 
