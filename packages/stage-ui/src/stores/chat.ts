@@ -639,6 +639,20 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     updateUI()
     trackFirstMessage()
 
+    // Received calls stay here until their slices join the reply. Interrupted turns preserve them without waiting for token hooks.
+    const pendingToolCalls = new Set<ChatSlices>()
+
+    function preservePendingToolCalls() {
+      for (const call of pendingToolCalls) {
+        ;(buildingMessage.slices as any).push({
+          ...call,
+          state: 'executing',
+        })
+      }
+      pendingToolCalls.clear()
+      updateUI()
+    }
+
     const proactivityStore = useProactivityStore()
     proactivityStore.incrementMetric('chat')
     let streamIdleTimeout: ReturnType<typeof setTimeout> | undefined
@@ -978,7 +992,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         },
       })
 
-      let literalInterceptor = createLiteralInterceptor()
+      const literalInterceptor = createLiteralInterceptor()
 
       /**
        * Evaluates a potential tool marker string.
@@ -1040,6 +1054,10 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
               return
 
             if (ctx.data.type === 'tool-call') {
+              if (pendingToolCalls.has(ctx.data)) {
+                pendingToolCalls.delete(ctx.data)
+              }
+
               ;(buildingMessage.slices as any).push({
                 ...ctx.data,
                 state: 'executing',
@@ -1236,7 +1254,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           minLiteralEmitLength: 24,
         })
 
-        let parser = createParser()
+        const parser = createParser()
 
         let noReplyBuffer = ''
         let isCheckingNoReply = true
@@ -1761,17 +1779,24 @@ Format your output as a raw thought log.`
           onStreamEvent: async (event: StreamEvent) => {
             resetStreamIdleTimeout()
             switch (event.type) {
-              case 'tool-call':
-                await parser.end()
-                await literalInterceptor.end()
-                // Re-create the parser and interceptor so that subsequent text-delta calls are not ignored
-                parser = createParser()
-                literalInterceptor = createLiteralInterceptor()
-                toolCallQueue.enqueue({
+              case 'tool-call': {
+                // The flush covers only preceding text. A call stays pending until its slice joins, including during interruption.
+                const call: ChatSlices = {
                   type: 'tool-call',
                   toolCall: event,
-                })
+                }
+                pendingToolCalls.add(call)
+                const enqueue = async () => {
+                  if (pendingToolCalls.has(call)) {
+                    if (literalInterceptor?.flush) {
+                      await literalInterceptor.flush()
+                    }
+                    toolCallQueue.enqueue(call)
+                  }
+                }
+                void parser.flush().then(enqueue, enqueue)
                 break
+              }
               case 'tool-result':
                 toolCallQueue.enqueue({
                   type: 'tool-call-result',
@@ -2105,6 +2130,7 @@ Format your output as a raw thought log.`
       // Exit cleanly — no error bubble, no rethrow (a rethrow would reject the queued send's promise
       // and trick the composer into restoring the already-sent draft).
       if (isStaleGeneration() && activeAbortController?.signal.aborted) {
+        preservePendingToolCalls()
         const hadContent = (typeof buildingMessage.content === 'string' && buildingMessage.content.trim().length > 0)
           || buildingMessage.slices.length > 0
           || !!rawFullText?.trim()
@@ -2139,6 +2165,7 @@ Format your output as a raw thought log.`
         return
       }
 
+      preservePendingToolCalls()
       rollbackIntrusions(turnLeaseId)
 
       console.error('Error sending message:', { sessionId, generation, error })
@@ -2182,6 +2209,11 @@ Format your output as a raw thought log.`
       throw error
     }
     finally {
+      if (activeAbortController?.signal.aborted && !isStaleGeneration()) {
+        preservePendingToolCalls()
+      }
+      // A late flush cannot enqueue calls after this turn ends
+      pendingToolCalls.clear()
       rollbackIntrusions(turnLeaseId)
       if (streamIdleTimeout)
         clearTimeout(streamIdleTimeout)
