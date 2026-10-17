@@ -1,4 +1,4 @@
-import type { ClaimRecord, EntityLedger } from './entity-ledger'
+import type { ClaimRecord, EntityLedger, SourceRecord } from './entity-ledger'
 import type { HybridSearchResult, MemoryLayer, SearchDocumentMeta } from './hybrid-scorer'
 import type { TriageDecision } from './query-analyzer'
 
@@ -20,12 +20,14 @@ const indexStorage = createStorage({
 })
 
 export interface LayeredSearchResult extends HybridSearchResult {
+  title?: string
   subject?: string
   predicate?: string
   object?: string
   dateInfo?: any
   claimId?: string
   entityId?: string
+  characterId?: string
   evidence?: string[]
   isKgClaim?: boolean
   triage?: TriageDecision
@@ -137,6 +139,17 @@ export const layeredMemory = {
     characterId?: string,
     options?: LayeredSearchOptions,
   ): Promise<LayeredSearchResult[]> {
+    console.log('[Telemetry:LayeredMemory:search:Start]', {
+      query,
+      limit,
+      characterId,
+      hasLedger: !!options?.ledger,
+      ledgerEntitiesCount: options?.ledger?.entities?.size ?? 0,
+      ledgerClaimsCount: options?.ledger?.claims?.size ?? 0,
+      ledgerSourcesCount: options?.ledger?.sources?.size ?? 0,
+      hasSystemOneStore: !!options?.systemOneStore?.configured,
+    })
+
     // 1. Triage Decision (System 1 Zero-Shot vs Fallback Heuristic)
     let triage: TriageDecision
     let mode: 'pass11' | 'baseline' = 'baseline'
@@ -310,6 +323,143 @@ export const layeredMemory = {
           triage,
         })
       }
+
+      // D. Direct entity mentions in dialogue sources (Mention fallback)
+      // When an entity matches, surface its dialogue sources from the Knowledge Graph
+      // so characters/entities without explicit S-P-O claims still return grounded dialogue context.
+      // Mod 1: Score below claims (~0.70 vs 0.95 so verified S-P-O claims stay Priority 1).
+      // Mod 2: Cap per-entity (5 max) and filter concept/unknown junk with only 1 mention.
+      // Mod 3: Exact-match only for fallback: qLower.includes(entLabelLower) or exact token match.
+      // Mod 4: Stable IDs: `kg-mention:${src.turnId}` for seen dedup.
+      // Mod 5: Carry sessionId in source (`chat:${sessionId}`) for isSameSession/jumpToMessage.
+      // Mod 6: Bound to target character so cross-character mentions do not leak.
+      const MAX_SOURCES_PER_ENTITY = 5
+      const MAX_FALLBACK_MENTION_HITS = 8
+      const matchedSources = new Map<string, { src: SourceRecord, entityLabel: string }>()
+
+      for (const entId of matchedEntityIds) {
+        if (matchedSources.size >= MAX_FALLBACK_MENTION_HITS)
+          break
+
+        const ent = ledger.entities.get(entId)
+        if (!ent)
+          continue
+
+        // Mod 2: Skip single-mention concept or unknown junk to prevent graph clutter
+        if ((ent.type === 'concept' || ent.type === 'unknown') && ent.mentions.size < 2)
+          continue
+
+        // Mod 3: Exact match only for fallback (query contains full entity label or token exact matches entity label)
+        const entLabelLower = ent.label.toLowerCase()
+        const isExactEntityMatch = (entLabelLower.length >= 3 && qLower.includes(entLabelLower))
+          || searchTokens.includes(entLabelLower)
+        if (!isExactEntityMatch)
+          continue
+
+        const entSources: SourceRecord[] = []
+        const seenTurnIds = new Set<string>()
+
+        for (const mId of ent.mentions) {
+          let src = ledger.sources.get(mId)
+          if (!src) {
+            const mention = ledger.mentions.get(mId)
+            if (mention?.turnId) {
+              src = ledger.sources.get(mention.turnId)
+            }
+          }
+          if (src && !seenTurnIds.has(src.turnId)) {
+            seenTurnIds.add(src.turnId)
+            entSources.push(src)
+          }
+        }
+
+        // Sort newest first
+        entSources.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+
+        for (const src of entSources.slice(0, MAX_SOURCES_PER_ENTITY)) {
+          if (!matchedSources.has(src.turnId) && matchedSources.size < MAX_FALLBACK_MENTION_HITS) {
+            matchedSources.set(src.turnId, { src, entityLabel: ent.label })
+          }
+        }
+      }
+
+      for (const { src, entityLabel } of matchedSources.values()) {
+        const isoDate = src.timestamp ? new Date(src.timestamp).toISOString() : new Date().toISOString()
+        let textContent = src.text
+        if (textContent.length > 2000) {
+          const matchIdx = textContent.toLowerCase().indexOf(entityLabel.toLowerCase())
+          if (matchIdx !== -1) {
+            const start = Math.max(0, matchIdx - 200)
+            const end = Math.min(textContent.length, matchIdx + 800)
+            textContent = `${start > 0 ? '... ' : ''}${textContent.slice(start, end).trim()}${end < textContent.length ? ' ...' : ''}`
+          }
+          else {
+            textContent = `${textContent.slice(0, 1000)} ...`
+          }
+        }
+
+        const speakerPrefix = src.speaker && src.speaker !== 'Unknown' ? `${src.speaker}: ` : ''
+        const content = `${speakerPrefix}${textContent}`
+
+        // Mod 5: Carry session ID for jumpToMessage / isSameSession
+        let sessionSource = `kg:source:${src.turnId}`
+        if (src.session) {
+          sessionSource = `chat:${src.session}`
+        }
+        else if (src.turnId.startsWith('turn-')) {
+          const parts = src.turnId.split('-')
+          if (parts.length >= 3) {
+            sessionSource = `chat:${parts.slice(1, -1).join('-')}`
+          }
+        }
+
+        kgHits.push({
+          id: `kg-mention:${src.turnId}`,
+          title: `[Knowledge Graph] ${entityLabel} (Mention)`,
+          content,
+          kind: 'raw',
+          characterId: characterId || undefined,
+          timestamp: isoDate,
+          source: sessionSource,
+          score: 0.70, // Mod 1: Below S-P-O claims (0.95) so verified claims take priority
+          vectorScore: 0.65,
+          keywordScore: 0.70,
+          temporalScore: 0.50,
+          layerBoost: 0.05,
+          profile: 'default',
+          subject: entityLabel,
+          predicate: 'mentioned in',
+          object: `${src.speaker || 'dialogue'}'s turn`,
+          evidence: [src.turnId],
+          isKgClaim: true,
+          triage,
+        })
+      }
+
+      console.log('[Telemetry:LayeredMemory:KGTraversal:Result]', {
+        query,
+        hasLedger: true,
+        matchedEntityIdsCount: matchedEntityIds.size,
+        matchedEntities: [...matchedEntityIds].map(id => ledger.entities.get(id)?.label),
+        matchedClaimsCount: matchedClaims.size,
+        matchedSourcesCount: matchedSources.size,
+        kgHitsCount: kgHits.length,
+        kgHits: kgHits.map(h => ({
+          id: h.id,
+          title: h.title,
+          subject: h.subject,
+          predicate: h.predicate,
+          object: h.object,
+          source: h.source,
+        })),
+      })
+    }
+    else {
+      console.log('[Telemetry:LayeredMemory:KGTraversal:Result]', {
+        query,
+        hasLedger: false,
+        kgHitsCount: 0,
+      })
     }
 
     // 5. Candidate Retrieval from Search Web Worker (Vector + BM25)
@@ -319,155 +469,178 @@ export const layeredMemory = {
     const subQueries = decomposeQuery(query, triage).slice(0, MAX_SUB_QUERIES)
     let scoredWorkerHits: LayeredSearchResult[] = []
 
-    if (subQueries.length > 1) {
+    try {
+      if (subQueries.length > 1) {
       // Multi-Pass Sub-Query Retrieval (Pass 11 Proof Bundles)
       // NOTICE: embed primary query once and reuse queryVector across sub-queries
       // so we do not run multiple sequential WebGPU ONNX embeddings per turn.
-      options?.signal?.throwIfAborted?.()
+        options?.signal?.throwIfAborted?.()
 
-      // 1. Run primary query first to compute the base vector
-      const primaryRes = await searchWorker.search(
-        analysis.expandedQuery,
-        workerLimit,
-        characterId,
-        analysis.temporalHooks,
-        options?.signal,
-      )
-      const primaryVector = primaryRes.queryVector
-
-      // 2. Run remaining sub-queries reusing primaryVector (with specialized keyword/BM25 per sub-plan)
-      const secondaryResults = await Promise.all(
-        subQueries.slice(1).map(async (sq) => {
-          const subAnalysis = analyzeQuery(sq, { anaphoraEnabled: false })
-          const res = await searchWorker.search(
-            subAnalysis.expandedQuery,
-            workerLimit,
-            characterId,
-            subAnalysis.temporalHooks.length > 0 ? subAnalysis.temporalHooks : analysis.temporalHooks,
-            options?.signal,
-            primaryVector,
-          )
-          return { sq, subAnalysis, res, isPrimary: false }
-        }),
-      )
-
-      const subResults = [
-        { sq: subQueries[0], subAnalysis: analysis, res: primaryRes, isPrimary: true },
-        ...secondaryResults,
-      ]
-
-      // Merge unique documents across all sub-queries
-      const docMap = new Map<string, SearchDocumentMeta>()
-      for (const sub of subResults) {
-        for (const doc of sub.res.documents) {
-          if (!docMap.has(doc.id)) {
-            docMap.set(doc.id, {
-              ...doc,
-              kind: resolveMemoryLayer(doc.kind),
-            })
-          }
-        }
-      }
-      const allDocs = Array.from(docMap.values())
-
-      // Score candidates per sub-query plan
-      const perSubScored = subResults.map((sub) => {
-        const hits = scoreHybridResults(
-          sub.sq,
-          allDocs,
-          sub.res.vectorHits,
-          sub.res.keywordHits,
-          categoryScorerConfig,
-          sub.subAnalysis.temporalHooks.length > 0 ? sub.subAnalysis.temporalHooks : analysis.temporalHooks,
+        // 1. Run primary query first to compute the base vector
+        const primaryRes = await searchWorker.search(
+          analysis.expandedQuery,
+          workerLimit,
+          characterId,
+          analysis.temporalHooks,
+          options?.signal,
         )
-        return { ...sub, hits }
-      })
+        const primaryVector = primaryRes.queryVector
 
-      // Cross-Plan Reciprocal Rank Fusion & Fair-Share Quota Reservation
-      const rrfScores = new Map<string, number>()
-      const bestHitMap = new Map<string, LayeredSearchResult>()
-      const reservedHits: LayeredSearchResult[] = []
-      const reservedIds = new Set<string>()
+        // 2. Run remaining sub-queries reusing primaryVector (with specialized keyword/BM25 per sub-plan)
+        const secondaryResults = await Promise.all(
+          subQueries.slice(1).map(async (sq) => {
+            const subAnalysis = analyzeQuery(sq, { anaphoraEnabled: false })
+            const res = await searchWorker.search(
+              subAnalysis.expandedQuery,
+              workerLimit,
+              characterId,
+              subAnalysis.temporalHooks.length > 0 ? subAnalysis.temporalHooks : analysis.temporalHooks,
+              options?.signal,
+              primaryVector,
+            )
+            return { sq, subAnalysis, res, isPrimary: false }
+          }),
+        )
 
-      // 1. Quota reservation: reserve top 1-2 hits from each sub-query to guarantee both clue halves
-      const quotaPerSub = isMultiHop || isTemporal ? 2 : 1
-      for (const sub of perSubScored) {
-        let reservedCount = 0
-        for (const h of sub.hits) {
-          if (reservedCount >= quotaPerSub)
-            break
-          if (!reservedIds.has(h.id)) {
-            reservedIds.add(h.id)
-            const taggedHit: LayeredSearchResult = {
-              ...h,
-              subGoal: sub.sq !== query ? sub.sq : undefined,
-              triage,
+        const subResults = [
+          { sq: subQueries[0], subAnalysis: analysis, res: primaryRes, isPrimary: true },
+          ...secondaryResults,
+        ]
+
+        // Merge unique documents across all sub-queries
+        const docMap = new Map<string, SearchDocumentMeta>()
+        for (const sub of subResults) {
+          for (const doc of sub.res.documents) {
+            if (!docMap.has(doc.id)) {
+              docMap.set(doc.id, {
+                ...doc,
+                kind: resolveMemoryLayer(doc.kind),
+              })
             }
-            reservedHits.push(taggedHit)
-            reservedCount++
           }
         }
-      }
+        const allDocs = Array.from(docMap.values())
 
-      // 2. Compute RRF across all plans
-      const RRF_K = 60
-      for (const sub of perSubScored) {
-        const planWeight = sub.isPrimary ? 1.0 : 0.85
-        sub.hits.forEach((h, rank) => {
-          const currentRrf = rrfScores.get(h.id) ?? 0
-          rrfScores.set(h.id, currentRrf + planWeight / (RRF_K + rank + 1))
-          if (!bestHitMap.has(h.id) || (bestHitMap.get(h.id)!.score < h.score)) {
-            bestHitMap.set(h.id, {
-              ...h,
-              subGoal: sub.sq !== query ? sub.sq : undefined,
-              triage,
-            })
-          }
+        // Score candidates per sub-query plan
+        const perSubScored = subResults.map((sub) => {
+          const hits = scoreHybridResults(
+            sub.sq,
+            allDocs,
+            sub.res.vectorHits,
+            sub.res.keywordHits,
+            categoryScorerConfig,
+            sub.subAnalysis.temporalHooks.length > 0 ? sub.subAnalysis.temporalHooks : analysis.temporalHooks,
+          )
+          return { ...sub, hits }
         })
-      }
 
-      // 3. Assemble final candidate pool:
-      // Start with reserved quota hits to ensure complete proof bundle,
-      // then fill remaining slots with remaining documents ordered by RRF score.
-      const fusedRemaining: LayeredSearchResult[] = []
-      const sortedByRrf = Array.from(rrfScores.entries())
-        .sort((a, b) => b[1] - a[1])
+        // Cross-Plan Reciprocal Rank Fusion & Fair-Share Quota Reservation
+        const rrfScores = new Map<string, number>()
+        const bestHitMap = new Map<string, LayeredSearchResult>()
+        const reservedHits: LayeredSearchResult[] = []
+        const reservedIds = new Set<string>()
 
-      for (const [id] of sortedByRrf) {
-        if (!reservedIds.has(id)) {
-          const hit = bestHitMap.get(id)
-          if (hit) {
-            fusedRemaining.push(hit)
+        // 1. Quota reservation: reserve top 1-2 hits from each sub-query to guarantee both clue halves
+        const quotaPerSub = isMultiHop || isTemporal ? 2 : 1
+        for (const sub of perSubScored) {
+          let reservedCount = 0
+          for (const h of sub.hits) {
+            if (reservedCount >= quotaPerSub)
+              break
+            if (!reservedIds.has(h.id)) {
+              reservedIds.add(h.id)
+              const taggedHit: LayeredSearchResult = {
+                ...h,
+                subGoal: sub.sq !== query ? sub.sq : undefined,
+                triage,
+              }
+              reservedHits.push(taggedHit)
+              reservedCount++
+            }
           }
         }
+
+        // 2. Compute RRF across all plans
+        const RRF_K = 60
+        for (const sub of perSubScored) {
+          const planWeight = sub.isPrimary ? 1.0 : 0.85
+          sub.hits.forEach((h, rank) => {
+            const currentRrf = rrfScores.get(h.id) ?? 0
+            rrfScores.set(h.id, currentRrf + planWeight / (RRF_K + rank + 1))
+            if (!bestHitMap.has(h.id) || (bestHitMap.get(h.id)!.score < h.score)) {
+              bestHitMap.set(h.id, {
+                ...h,
+                subGoal: sub.sq !== query ? sub.sq : undefined,
+                triage,
+              })
+            }
+          })
+        }
+
+        // 3. Assemble final candidate pool:
+        // Start with reserved quota hits to ensure complete proof bundle,
+        // then fill remaining slots with remaining documents ordered by RRF score.
+        const fusedRemaining: LayeredSearchResult[] = []
+        const sortedByRrf = Array.from(rrfScores.entries())
+          .sort((a, b) => b[1] - a[1])
+
+        for (const [id] of sortedByRrf) {
+          if (!reservedIds.has(id)) {
+            const hit = bestHitMap.get(id)
+            if (hit) {
+              fusedRemaining.push(hit)
+            }
+          }
+        }
+
+        scoredWorkerHits = [...reservedHits, ...fusedRemaining]
       }
-
-      scoredWorkerHits = [...reservedHits, ...fusedRemaining]
-    }
-    else {
+      else {
       // Standard Single-Pass Retrieval
-      options?.signal?.throwIfAborted?.()
-      const rawResults = await searchWorker.search(
-        analysis.expandedQuery,
-        workerLimit,
-        characterId,
-        analysis.temporalHooks,
-        options?.signal,
-      )
-      const documents = rawResults.documents.map((document: SearchDocumentMeta & { kind: string }) => ({
-        ...document,
-        kind: resolveMemoryLayer(document.kind),
-      }))
+        options?.signal?.throwIfAborted?.()
+        const rawResults = await searchWorker.search(
+          analysis.expandedQuery,
+          workerLimit,
+          characterId,
+          analysis.temporalHooks,
+          options?.signal,
+        )
+        const documents = rawResults.documents.map((document: SearchDocumentMeta & { kind: string }) => ({
+          ...document,
+          kind: resolveMemoryLayer(document.kind),
+        }))
 
-      scoredWorkerHits = scoreHybridResults(
-        query,
-        documents,
-        rawResults.vectorHits,
-        rawResults.keywordHits,
-        categoryScorerConfig,
-        analysis.temporalHooks,
-      ).map(h => ({ ...h, triage }))
+        scoredWorkerHits = scoreHybridResults(
+          query,
+          documents,
+          rawResults.vectorHits,
+          rawResults.keywordHits,
+          categoryScorerConfig,
+          analysis.temporalHooks,
+        ).map(h => ({ ...h, triage }))
+      }
     }
+    catch (workerErr) {
+      if ((workerErr as Error)?.name === 'AbortError')
+        throw workerErr
+      console.warn('[LayeredMemory] Search worker candidate retrieval failed, proceeding with in-memory KG hits:', workerErr)
+    }
+
+    console.log('[Telemetry:LayeredMemory:WorkerRetrieval:Result]', {
+      query,
+      subQueriesCount: subQueries.length,
+      workerLimit,
+      scoredWorkerHitsCount: scoredWorkerHits.length,
+      topWorkerHits: scoredWorkerHits.slice(0, 5).map(h => ({
+        id: h.id,
+        title: (h as any).title,
+        kind: h.kind,
+        score: h.score,
+        vectorScore: h.vectorScore,
+        keywordScore: h.keywordScore,
+        source: h.source,
+      })),
+    })
 
     // 7. Merge Knowledge Graph hits + Scored Worker hits (with Date-Hook Quota)
     const mergedHits: LayeredSearchResult[] = []
@@ -531,7 +704,24 @@ export const layeredMemory = {
       }
     }
 
-    return finalHits.slice(0, returnLimit)
+    const sliced = finalHits.slice(0, returnLimit)
+    console.log('[Telemetry:LayeredMemory:search:Return]', {
+      query,
+      returnLimit,
+      totalMerged: mergedHits.length,
+      finalHitsCount: finalHits.length,
+      slicedCount: sliced.length,
+      topHits: sliced.map(h => ({
+        id: h.id,
+        title: (h as any).title,
+        kind: h.kind,
+        score: h.score,
+        source: h.source,
+        snippet: h.content ? h.content.slice(0, 100) : '',
+      })),
+    })
+
+    return sliced
   },
 
   async indexDocuments(documents: any[]) {

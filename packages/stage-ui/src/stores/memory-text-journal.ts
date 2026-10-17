@@ -523,12 +523,39 @@ export const useTextJournalStore = defineStore('text-journal', () => {
       let results: Awaited<ReturnType<typeof layeredMemory.search>> = []
       try {
         input.signal?.throwIfAborted?.()
+        if (entityLedgerStore && targetCharacterId && entityLedgerStore.currentLoadedCharacterId !== targetCharacterId) {
+          await entityLedgerStore.loadLedger(targetCharacterId)
+        }
+
+        const activeLedgerCharId = entityLedgerStore?.currentLoadedCharacterId
+        const isLedgerForTargetChar = !activeLedgerCharId || !targetCharacterId || activeLedgerCharId === targetCharacterId
+
+        console.log('[Telemetry:TextJournal:searchEntries:Start]', {
+          query,
+          targetCharacterId,
+          activeCardId: activeCardId.value,
+          hasLedgerStore: !!entityLedgerStore,
+          activeLedgerCharId,
+          isLedgerForTargetChar,
+          ledgerEntitiesCount: entityLedgerStore?.activeLedger?.entities?.size ?? 0,
+          ledgerClaimsCount: entityLedgerStore?.activeLedger?.claims?.size ?? 0,
+          ledgerSourcesCount: entityLedgerStore?.activeLedger?.sources?.size ?? 0,
+          hasSystemOneStore: !!systemOneStore,
+        })
+
         results = await layeredMemory.search(query, input.limit ?? 3, targetCharacterId, {
           previousTurn: input.previousTurn,
           anaphoraEnabled: input.anaphoraEnabled,
-          ledger: entityLedgerStore?.activeLedger,
+          ledger: isLedgerForTargetChar ? entityLedgerStore?.activeLedger : undefined,
           systemOneStore,
           signal: input.signal,
+        })
+
+        console.log('[Telemetry:TextJournal:searchEntries:LayeredResults]', {
+          query,
+          targetCharacterId,
+          resultsCount: results.length,
+          resultsSummary: results.map(r => ({ id: r.id, kind: r.kind, score: r.score, isKgClaim: r.isKgClaim, title: (r as any).title })),
         })
       }
       catch (err) {
@@ -553,9 +580,9 @@ export const useTextJournalStore = defineStore('text-journal', () => {
               userId: getCurrentUserId(),
               characterId: input.characterId ?? activeCardId.value ?? '',
               characterName: activeCard.value?.name ?? 'Unknown',
-              title: `[Knowledge Graph] ${res.subject} ${res.predicate} ${res.object}`,
+              title: res.title || (res.subject && res.predicate && res.object ? `[Knowledge Graph] ${res.subject} ${res.predicate} ${res.object}` : `[Knowledge Graph] Memory`),
               content: res.content,
-              kind: 'kg_claim',
+              kind: res.kind || 'kg_claim',
               score: res.score,
               source: res.source ?? 'tool',
               type: 'message',
@@ -643,7 +670,19 @@ export const useTextJournalStore = defineStore('text-journal', () => {
         .map(({ entry, score }) => ({ ...entry, kind: 'ltmm' as string, score: Number((score / 7).toFixed(3)) }))
 
       const limit = Math.max(1, Math.min(input.limit ?? 10, 10))
-      return ranked.slice(0, limit)
+      const fallbackResult = ranked.slice(0, limit)
+
+      console.log('[Telemetry:TextJournal:searchEntries:FallbackExecuted]', {
+        query,
+        targetCharacterId,
+        totalEntries: entries.value.length,
+        scopedEntriesCount: scopedEntries.length,
+        rankedMatchesCount: ranked.length,
+        fallbackResultCount: fallbackResult.length,
+        topRanked: fallbackResult.map(r => ({ id: r.id, title: r.title, score: r.score })),
+      })
+
+      return fallbackResult
     })()
     inFlightSearches.set(flightKey, task)
     try {

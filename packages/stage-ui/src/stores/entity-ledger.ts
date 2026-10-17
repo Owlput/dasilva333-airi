@@ -71,6 +71,13 @@ export const useEntityLedgerStore = defineStore('entity-ledger', () => {
       else {
         activeLedger.value = new EntityLedger()
       }
+      console.log('[Telemetry:EntityLedger:loadLedger]', {
+        characterId,
+        hasData: !!data,
+        entitiesCount: activeLedger.value.entities.size,
+        claimsCount: activeLedger.value.claims.size,
+        sourcesCount: activeLedger.value.sources.size,
+      })
     }
     catch (err) {
       console.warn('[EntityLedgerStore] Failed to load ledger:', err)
@@ -448,6 +455,7 @@ export const useEntityLedgerStore = defineStore('entity-ledger', () => {
             speaker: turn.speaker,
             text: turn.text,
             timestamp: turn.timestamp,
+            session: turn.sessionId,
           },
           ledger,
           classificationMap,

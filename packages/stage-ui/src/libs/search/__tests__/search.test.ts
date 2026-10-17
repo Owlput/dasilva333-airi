@@ -254,5 +254,34 @@ describe('semantic Search & Memory Refinements', () => {
       expect(layeredMemory.lastTriage?.choice).toBe('c1_multihop')
       expect(results.length).toBeGreaterThan(0)
     })
+
+    it('surfaces direct dialogue source mentions from Knowledge Graph when entity has no S-P-O claims', async () => {
+      const ledger = new EntityLedger()
+      ledger.addSource({
+        turnId: 'turn-theodore-1',
+        text: 'Theodore, a small mouse assistant, clutches a ledger nearby while counting crystals.',
+        speaker: 'Assistant',
+        timestamp: 1720000000000,
+        session: 'session-ch116',
+      })
+      const ent = ledger.getOrCreateEntity('Theodore', 'person')
+      ledger.addMention({ span: 'Theodore', turnId: 'turn-theodore-1', entityId: ent.entityId })
+
+      // Theodore has NO S-P-O claims in ledger.claims
+      expect(ledger.claims.size).toBe(0)
+
+      const results = await layeredMemory.search('Theodore', 5, 'card-1', {
+        ledger,
+      })
+
+      // Must find the mention hit from the Knowledge Graph
+      const mentionHit = results.find(r => r.id === 'kg-mention:turn-theodore-1')
+      expect(mentionHit).toBeDefined()
+      expect(mentionHit?.subject).toBe('Theodore')
+      expect(mentionHit?.content).toContain('Theodore, a small mouse assistant')
+      expect(mentionHit?.source).toBe('chat:session-ch116')
+      expect(mentionHit?.score).toBe(0.70)
+      expect(mentionHit?.isKgClaim).toBe(true)
+    })
   })
 })

@@ -462,6 +462,12 @@ globalThis.addEventListener('message', async (e) => {
         // cosine math never mixes geometries; the backfill re-embeds through
         // the index handler below.
         hydrateDocuments(normalizedSnapshot?.documents, { stripEmbeddings: !compatible })
+        console.log('[Telemetry:SearchWorker:init]', {
+          hasSnapshot: !!payload?.snapshot,
+          snapshotDocCount: normalizedSnapshot?.documents?.length ?? 0,
+          compatible,
+          workerDocumentsCount: documents.size,
+        })
         globalThis.postMessage({
           id,
           type: 'ready',
@@ -514,6 +520,10 @@ globalThis.addEventListener('message', async (e) => {
         }
 
         rebuildKeywordStats()
+        console.log('[Telemetry:SearchWorker:index:Complete]', {
+          indexedCount,
+          totalDocumentsInWorker: documents.size,
+        })
         globalThis.postMessage({ id, type: 'indexed', count: indexedCount })
         break
       }
@@ -543,6 +553,18 @@ globalThis.addEventListener('message', async (e) => {
           ...keywordHits.map(h => h.id),
           ...temporalHits.map(h => h.id),
         ])
+
+        console.log('[Telemetry:SearchWorker:search]', {
+          query,
+          limit,
+          characterId,
+          totalDocumentsInWorker: documents.size,
+          candidateLimit,
+          vectorHitsCount: vectorHits.length,
+          keywordHitsCount: keywordHits.length,
+          temporalHitsCount: temporalHits.length,
+          matchedCandidatesCount: candidateIds.size,
+        })
 
         // NOTICE: never ship document embedding arrays back over postMessage — each
         // 256-dim number[] cloned per candidate per search is MBs of structured-

@@ -206,11 +206,22 @@ watchDebounced(
     }
 
     try {
+      console.log('[Telemetry:InteractiveArea:AmberBar:Start]', {
+        query,
+        activeCardId: activeCardId.value,
+        characterName: activeCard.value?.name,
+        groundingMemoryEnabled: isMemoryEnabled,
+      })
       isSearchingMemories.value = true
       const results = await textJournalStore.searchEntries({
         query,
         limit: 3,
         characterId: activeCardId.value,
+      })
+      console.log('[Telemetry:InteractiveArea:AmberBar:Results]', {
+        query,
+        count: results.length,
+        results: results.map(r => ({ id: r.id, title: r.title, kind: r.kind, score: r.score, source: r.source })),
       })
       groundedMemories.value = results
     }
@@ -932,13 +943,25 @@ watch(modalSearchTerm, (term) => {
   modalSearchTimeout = setTimeout(async () => {
     modalIsSearching.value = true
     try {
+      console.log('[Telemetry:InteractiveArea:ModalSearch:Start]', {
+        query: trimmed,
+        activeCardId: activeCardId.value,
+        characterName: activeCard.value?.name,
+      })
       const results = await textJournalStore.searchEntries({
         query: trimmed,
         limit: 30,
       })
-      modalSearchResults.value = results.filter(
+      const filtered = results.filter(
         res => !activeCardId.value || res.characterId === activeCardId.value,
       )
+      console.log('[Telemetry:InteractiveArea:ModalSearch:Results]', {
+        query: trimmed,
+        rawCount: results.length,
+        filteredCount: filtered.length,
+        rawResults: results.map(r => ({ id: r.id, title: r.title, kind: r.kind, characterId: r.characterId, score: r.score })),
+      })
+      modalSearchResults.value = filtered
     }
     catch (err) {
       console.error('[InteractiveArea:Search] Semantic search failed:', err)

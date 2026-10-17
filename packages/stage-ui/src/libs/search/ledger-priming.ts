@@ -219,6 +219,7 @@ export interface DialogueTurn {
   text: string
   timestamp: number
   sessionDate?: string
+  session?: number | string
 }
 
 export interface ExtractedFragments {
@@ -511,6 +512,7 @@ export function extractTurnKnowledge(
     speaker: turn.speaker,
     timestamp: turn.timestamp,
     sessionDate: turn.sessionDate,
+    session: turn.session,
   })
 
   // 2. Register Speaker as a Person entity
