@@ -1,4 +1,4 @@
-import type { ClaimRecord, EntityLedger, SourceRecord } from './entity-ledger'
+import type { ClaimRecord, EntityLedger, EntityRecord, SourceRecord } from './entity-ledger'
 import type { HybridSearchResult, MemoryLayer, SearchDocumentMeta } from './hybrid-scorer'
 import type { TriageDecision } from './query-analyzer'
 
@@ -13,7 +13,7 @@ import {
   defaultScorerConfig,
   scoreHybridResults,
 } from './hybrid-scorer'
-import { CONVERSATIONAL_STOPWORDS } from './ledger-priming'
+import { CONVERSATIONAL_STOPWORDS, LEADING_GRAMMATICAL_WORDS } from './ledger-priming'
 import { analyzeQuery, decomposeQuery, heuristicTriage } from './query-analyzer'
 
 const indexStorage = createStorage({
@@ -47,7 +47,15 @@ export interface LayeredSearchOptions {
     configured: boolean
     runTriage: (q: string, options?: { signal?: AbortSignal }) => Promise<any>
     runRerank: (q: string, candidates: Array<{ id: string, text: string, score?: number }>, options?: { signal?: AbortSignal }) => Promise<any>
+    identifyFocusEntity?: (query: string, candidates: Array<{ id: string, label: string, type?: string, detail?: string }>, options?: { signal?: AbortSignal }) => Promise<string | null>
   }
+}
+
+function matchesWordBoundary(text: string, term: string): boolean {
+  if (!text || !term)
+    return false
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-zA-Z0-9_])${escaped}([^a-zA-Z0-9_]|$)`, 'i').test(text)
 }
 
 let isPersisting = false
@@ -56,8 +64,8 @@ let lastPersistAt = 0
 let indexLock: Promise<void> = Promise.resolve()
 let persistLock: Promise<void> = Promise.resolve()
 const MIN_PERSIST_INTERVAL_MS = 30_000
-const TRIAGE_TIMEOUT_MS = 2500
-const RERANK_TIMEOUT_MS = 4000
+const TRIAGE_TIMEOUT_MS = 10_000
+const RERANK_TIMEOUT_MS = 10_000
 const MAX_SUB_QUERIES = 3
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -259,20 +267,33 @@ export const layeredMemory = {
       // A. Direct entity & alias matches
       const matchedEntityIds = new Set<string>()
 
+      function isEntityMatch(targetLabel: string): boolean {
+        const norm = targetLabel.trim().toLowerCase()
+        if (CONVERSATIONAL_STOPWORDS.has(norm) || LEADING_GRAMMATICAL_WORDS.has(norm) || norm.length < 3)
+          return false
+
+        // Exact whole-word match in query
+        if (matchesWordBoundary(query, targetLabel))
+          return true
+
+        // Significant constituent words from multi-word entity (e.g. query has "Sirius", entity is "Sirius Starweaver" or "Uncle Sirius")
+        // Filter out stopwords, leading conjunctions/prepositions, and short tokens so "And Lynn" only matches if query mentions "Lynn"
+        const words = norm.split(/\s+/).filter(w => w.length >= 3 && !CONVERSATIONAL_STOPWORDS.has(w) && !LEADING_GRAMMATICAL_WORDS.has(w))
+        if (words.some(w => matchesWordBoundary(query, w)))
+          return true
+
+        // Exact match with searchTokens
+        return searchTokens.some(t => t.length > 2 && !CONVERSATIONAL_STOPWORDS.has(t) && !LEADING_GRAMMATICAL_WORDS.has(t) && (matchesWordBoundary(targetLabel, t) || matchesWordBoundary(t, targetLabel)))
+      }
+
       for (const ent of ledger.entities.values()) {
-        const entLabelLower = ent.label.toLowerCase().trim()
-        if (CONVERSATIONAL_STOPWORDS.has(entLabelLower) || entLabelLower.length < 3)
-          continue
-        if (qLower.includes(entLabelLower) || searchTokens.some(t => t.length > 2 && entLabelLower.includes(t))) {
+        if (isEntityMatch(ent.label)) {
           matchedEntityIds.add(ent.entityId)
         }
       }
 
       for (const [alias, entIds] of ledger.byAlias.entries()) {
-        const aliasLower = alias.toLowerCase().trim()
-        if (CONVERSATIONAL_STOPWORDS.has(aliasLower) || aliasLower.length < 3)
-          continue
-        if (qLower.includes(aliasLower) || searchTokens.some(t => t.length > 2 && aliasLower.includes(t))) {
+        if (isEntityMatch(alias)) {
           for (const id of entIds) {
             matchedEntityIds.add(id)
           }
@@ -351,37 +372,54 @@ export const layeredMemory = {
       }
 
       // D. Direct entity mentions in dialogue sources (Mention fallback)
-      // When an entity matches, surface its dialogue sources from the Knowledge Graph
+      // When entities match, surface their dialogue sources from the Knowledge Graph
       // so characters/entities without explicit S-P-O claims still return grounded dialogue context.
       // Mod 1: Score below claims (~0.70 vs 0.95 so verified S-P-O claims stay Priority 1).
-      // Mod 2: Cap per-entity (5 max) and filter concept/unknown junk with only 1 mention.
-      // Mod 3: Exact-match only for fallback: qLower.includes(entLabelLower) or exact token match.
+      // Mod 2: System-1 Focal Entity Disambiguation: when multiple candidate entities match the query,
+      //        ask System 1 (Jev choice) to select the primary inquiry subject (~100ms).
+      // Mod 3: Weighted Fair-Share Allocation: Focal entity gets up to 50% quota; remaining distinct entities
+      //        divide the rest equally. On System 1 failure or 429, quota is divided equally.
       // Mod 4: Stable IDs: `kg-mention:${src.turnId}` for seen dedup.
       // Mod 5: Carry sessionId in source (`chat:${sessionId}`) for isSameSession/jumpToMessage.
-      // Mod 6: Bound to target character so cross-character mentions do not leak.
-      const MAX_SOURCES_PER_ENTITY = 5
       const MAX_FALLBACK_MENTION_HITS = 8
-      const matchedSources = new Map<string, { src: SourceRecord, entityLabel: string }>()
+
+      // 1. Identify focal entity via System 1 when multiple entities are present
+      let focalEntityId: string | null = null
+      if (options?.systemOneStore?.configured && options?.systemOneStore?.identifyFocusEntity && matchedEntityIds.size > 1) {
+        try {
+          const candidateList = Array.from(matchedEntityIds)
+            .map((id) => {
+              const ent = ledger.entities.get(id)
+              return ent ? { id: ent.entityId, label: ent.label, type: ent.type } : null
+            })
+            .filter((c): c is { id: string, label: string, type: any } => !!c)
+
+          if (candidateList.length > 1) {
+            options?.signal?.throwIfAborted?.()
+            focalEntityId = await withTimeout(
+              options.systemOneStore.identifyFocusEntity(query, candidateList, { signal: options?.signal }),
+              TRIAGE_TIMEOUT_MS,
+              'System-1 focus entity classification',
+            )
+          }
+        }
+        catch (err) {
+          if ((err as Error)?.name === 'AbortError')
+            throw err
+          console.warn('[LayeredMemory] System 1 focus entity classification failed, falling back to equal fair-share:', err)
+        }
+      }
+
+      // 2. Group candidate sources by distinct entity
+      const entitySourcesMap = new Map<string, { entity: EntityRecord, sources: SourceRecord[] }>()
 
       for (const entId of matchedEntityIds) {
-        if (matchedSources.size >= MAX_FALLBACK_MENTION_HITS)
-          break
-
         const ent = ledger.entities.get(entId)
         if (!ent)
           continue
 
-        // Mod 2: Skip single-mention concept or unknown junk to prevent graph clutter
+        // Skip single-mention concept or unknown junk to prevent graph clutter
         if ((ent.type === 'concept' || ent.type === 'unknown') && ent.mentions.size < 2)
-          continue
-
-        // Mod 3: Exact match only for fallback (query contains full entity label or token exact matches entity label)
-        const entLabelLower = ent.label.toLowerCase().trim()
-        if (CONVERSATIONAL_STOPWORDS.has(entLabelLower) || entLabelLower.length < 3)
-          continue
-        const isExactEntityMatch = (entLabelLower.length >= 3 && qLower.includes(entLabelLower))
-          || searchTokens.includes(entLabelLower)
-        if (!isExactEntityMatch)
           continue
 
         const entSources: SourceRecord[] = []
@@ -403,11 +441,60 @@ export const layeredMemory = {
 
         // Sort newest first
         entSources.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        if (entSources.length > 0) {
+          entitySourcesMap.set(ent.entityId, { entity: ent, sources: entSources })
+        }
+      }
 
-        for (const src of entSources.slice(0, MAX_SOURCES_PER_ENTITY)) {
-          if (!matchedSources.has(src.turnId) && matchedSources.size < MAX_FALLBACK_MENTION_HITS) {
-            matchedSources.set(src.turnId, { src, entityLabel: ent.label })
+      // 3. Fair-Share Allocation across distinct entities
+      const matchedSources = new Map<string, { src: SourceRecord, entityLabel: string }>()
+      const distinctEntityIds = Array.from(entitySourcesMap.keys())
+
+      if (distinctEntityIds.length > 0) {
+        // Sort so that if System-1 identified a focal entity, it comes first
+        if (focalEntityId && entitySourcesMap.has(focalEntityId)) {
+          distinctEntityIds.sort((a, b) => (a === focalEntityId ? -1 : b === focalEntityId ? 1 : 0))
+        }
+
+        // Focal entity gets up to 50% quota; remaining quota is divided equally across other distinct entities
+        const focalQuota = (focalEntityId && entitySourcesMap.has(focalEntityId))
+          ? Math.min(Math.ceil(MAX_FALLBACK_MENTION_HITS / 2), entitySourcesMap.get(focalEntityId)!.sources.length)
+          : 0
+        const remainingQuota = MAX_FALLBACK_MENTION_HITS - focalQuota
+        const otherCount = distinctEntityIds.filter(id => id !== focalEntityId).length
+        const quotaPerOther = otherCount > 0 ? Math.max(1, Math.floor(remainingQuota / otherCount)) : 0
+
+        // Round 1: Allocated quotas per entity
+        for (const entId of distinctEntityIds) {
+          const { entity, sources } = entitySourcesMap.get(entId)!
+          const quota = entId === focalEntityId ? focalQuota : quotaPerOther
+          for (const src of sources.slice(0, quota)) {
+            if (!matchedSources.has(src.turnId) && matchedSources.size < MAX_FALLBACK_MENTION_HITS) {
+              matchedSources.set(src.turnId, { src, entityLabel: entity.label })
+            }
           }
+        }
+
+        // Round 2: Fill any remaining unfilled slots round-robin from remaining sources
+        let addedMore = true
+        let roundIdx = 0
+        while (matchedSources.size < MAX_FALLBACK_MENTION_HITS && addedMore) {
+          addedMore = false
+          for (const entId of distinctEntityIds) {
+            if (matchedSources.size >= MAX_FALLBACK_MENTION_HITS)
+              break
+            const { entity, sources } = entitySourcesMap.get(entId)!
+            for (const src of sources) {
+              if (!matchedSources.has(src.turnId)) {
+                matchedSources.set(src.turnId, { src, entityLabel: entity.label })
+                addedMore = true
+                break
+              }
+            }
+          }
+          roundIdx++
+          if (roundIdx > 10)
+            break
         }
       }
 
@@ -674,13 +761,15 @@ export const layeredMemory = {
     const mergedHits: LayeredSearchResult[] = []
     const seen = new Set<string>()
 
-    // Separate true S-P-O claims from fallback mentions
+    // Prioritize true S-P-O claims first, followed by entity dialogue mentions
     const trueKgClaims = kgHits.filter(h => h.predicate !== 'mentioned in')
     const kgMentions = kgHits.filter(h => h.predicate === 'mentioned in')
+    const orderedKgHits = [...trueKgClaims, ...kgMentions]
 
-    // 1. High-confidence S-P-O claims get up to half the quota (e.g. up to 3 slots)
-    const maxKgSlots = Math.min(3, Math.floor(returnLimit / 2))
-    for (const kg of trueKgClaims.slice(0, maxKgSlots)) {
+    // 1. Guaranteed slots for Knowledge Graph hits (up to half the quota, min 1 if hits exist)
+    const kgQuota = Math.min(Math.max(1, Math.floor(returnLimit / 2)), orderedKgHits.length)
+    const selectedKg = orderedKgHits.slice(0, kgQuota)
+    for (const kg of selectedKg) {
       if (!seen.has(kg.id)) {
         seen.add(kg.id)
         mergedHits.push(kg)
@@ -699,7 +788,7 @@ export const layeredMemory = {
     }
 
     // 3. Guaranteed slots for episodic worker hits (raw dialogue, journals, daily recaps)
-    const workerQuota = Math.max(3, returnLimit - mergedHits.length)
+    const workerQuota = Math.min(Math.max(3, returnLimit - mergedHits.length), scoredWorkerHits.length)
     for (const h of scoredWorkerHits.slice(0, workerQuota)) {
       if (!seen.has(h.id)) {
         seen.add(h.id)
@@ -707,7 +796,7 @@ export const layeredMemory = {
       }
     }
 
-    // 4. Fill remaining slots from remaining worker hits, then remaining KG claims & mentions
+    // 4. Fill remaining slots from remaining worker hits, then remaining KG items
     for (const h of scoredWorkerHits.slice(workerQuota)) {
       if (mergedHits.length >= returnLimit)
         break
@@ -717,7 +806,7 @@ export const layeredMemory = {
       }
     }
 
-    for (const kg of [...trueKgClaims.slice(maxKgSlots), ...kgMentions]) {
+    for (const kg of orderedKgHits.slice(kgQuota)) {
       if (mergedHits.length >= returnLimit)
         break
       if (!seen.has(kg.id)) {

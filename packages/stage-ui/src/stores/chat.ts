@@ -907,7 +907,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       // const salienceText = ... (disabled)
 
       // Splice them into the message list!
-      const budgetedGroundingMessages = budgetGroundingMessages(groundingMessages, 14000, 2500)
+      const budgetedGroundingMessages = budgetGroundingMessages(groundingMessages, 15000, 8000)
       if (budgetedGroundingMessages.length > 0) {
         if (options.triggerOnly) {
           const nextInferenceMessages = [...sessionMessagesForSend]

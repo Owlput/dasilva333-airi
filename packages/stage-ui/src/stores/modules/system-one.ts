@@ -481,6 +481,41 @@ export const useSystemOneStore = defineStore('system-one', () => {
     }
   }
 
+  async function identifyFocusEntity(
+    query: string,
+    candidates: Array<{ id: string, label: string, type?: string, detail?: string }>,
+    options?: { signal?: AbortSignal },
+  ): Promise<string | null> {
+    if (!configured.value || candidates.length === 0)
+      return null
+    if (candidates.length === 1)
+      return candidates[0].id
+
+    // Cap to 8 candidates to keep Jev single forward pass well inside ~100ms
+    const pool = candidates.slice(0, 8)
+    const criteria: Record<string, string> = {}
+    for (const c of pool) {
+      criteria[c.id] = `${c.label}${c.type ? ` (${c.type})` : ''}${c.detail ? `: ${c.detail}` : ''}`
+    }
+
+    try {
+      const questions = {
+        focus_entity: {
+          type: 'choice',
+          instructions: `Analyze the user query: "${query}". Which of the following candidate entities is the primary subject, focus, or target being asked about in the query?`,
+          criteria,
+        },
+      }
+      const res = await execute(`Query to classify focus: ${query}`, questions, undefined, options)
+      const choice = res.answers?.focus_entity?.choice
+      return choice || null
+    }
+    catch (err) {
+      console.warn('[SystemOne] identifyFocusEntity failed, degrading gracefully:', err)
+      return null
+    }
+  }
+
   async function runAffect(dialogueHistory: Array<{ role: string, text: string }>, targetUtterance: string) {
     const lines: string[] = []
     if (dialogueHistory.length > 0) {
@@ -686,6 +721,7 @@ export const useSystemOneStore = defineStore('system-one', () => {
     execute,
     runTriage,
     runRerank,
+    identifyFocusEntity,
     runLifetimeDayGate,
     runWinnowTurnCompaction,
     runAffect,

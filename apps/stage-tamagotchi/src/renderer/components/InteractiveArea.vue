@@ -1245,10 +1245,21 @@ defineExpose({
           </button>
           <button
             v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled"
-            class="flex items-center gap-1 border border-amber-300 rounded bg-amber-100/70 px-2 py-0.5 text-xs text-amber-800 font-bold font-mono transition-colors dark:border-amber-500/25 dark:bg-black/50 hover:bg-amber-200/80 dark:text-amber-400 dark:hover:bg-black/80"
+            :class="[
+              'flex items-center gap-1 border border-amber-300 rounded px-2 py-0.5',
+              'text-xs text-amber-800 font-bold font-mono transition-colors',
+              'bg-amber-100/70 hover:bg-amber-200/80',
+              'dark:border-amber-500/25 dark:bg-black/50 dark:hover:bg-black/80 dark:text-amber-400',
+            ]"
             @click="isMemoriesPreviewExpanded = !isMemoriesPreviewExpanded"
           >
-            <span>Grounded{{ hasGroundingHits ? ` (${preFlightMemories.length + preFlightKgFacts.length})` : '' }}</span>
+            <template v-if="isSearchingMemories">
+              <span class="i-svg-spinners:3-dots-bounce size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>Syncing</span>
+            </template>
+            <template v-else>
+              <span>Grounded{{ hasGroundingHits ? ` (${preFlightMemories.length + preFlightKgFacts.length})` : '' }}</span>
+            </template>
             <span class="text-amber-600 transition-transform dark:text-amber-500" :class="isMemoriesPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
           </button>
           <button

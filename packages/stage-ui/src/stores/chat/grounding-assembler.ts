@@ -125,7 +125,12 @@ export function formatSemanticMemoriesBlock(memories: SemanticMemoryItem[]): Gro
       ? (hasDialogue ? '[VERBATIM DIALOGUE MEMORIES]\n' : '[EPISODIC & JOURNAL MEMORIES]\n')
       : ''
 
-    const itemsFormatted = episodicMemories.map((r) => {
+    // Prioritize entity mentions at the top of dialogue memories so key character/entity lore is never pushed out
+    const entityMentions = episodicMemories.filter(r => r.isKgClaim || r.kind === 'kg_claim' || r.id?.startsWith('kg-'))
+    const rawMemories = episodicMemories.filter(r => !r.isKgClaim && r.kind !== 'kg_claim' && !r.id?.startsWith('kg-'))
+    const orderedEpisodic = [...entityMentions, ...rawMemories]
+
+    const itemsFormatted = orderedEpisodic.map((r) => {
       const kindTag = (r.kind || 'Journal').toUpperCase()
       const titleTag = r.title || 'Memory'
       let metaStr = ''
@@ -246,8 +251,8 @@ const MAX_LIFETIME_BLOCK_CHARS = 13000
  */
 export function budgetGroundingMessages(
   messages: readonly GroundingMessage[],
-  maxTotalChars = 14000,
-  maxPerBlockChars = 2500,
+  maxTotalChars = 15000,
+  maxPerBlockChars = 8000,
 ): GroundingMessage[] {
   let remainingBudget = maxTotalChars
   const budgeted: GroundingMessage[] = []

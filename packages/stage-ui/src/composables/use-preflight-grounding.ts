@@ -76,43 +76,48 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
     try {
       const results = await textJournalStore.searchEntries({
         query: trimmed,
-        limit: evidenceLimit,
+        limit: Math.max(12, evidenceLimit * 2),
         characterId: charId,
       })
 
-      rawResults.value = results
-
       const nextMemories: PreFlightMemoryItem[] = []
       const nextKgFacts: PreFlightKgFact[] = []
+      const stagedItems: any[] = []
 
       for (const rawItem of results) {
         const item = rawItem as any
         const isKg = item.isKgClaim || item.kind === 'kg_claim' || item.id?.startsWith('claim:') || item.id?.startsWith('kg-')
         if (isKg && item.subject) {
-          nextKgFacts.push({
-            id: item.id,
-            subject: item.subject,
-            predicate: item.predicate || 'associated with',
-            object: item.object || 'dialogue',
-            dateLabel: item.dateInfo?.formatted_label || (item.timestamp ? String(item.timestamp).split('T')[0] : undefined),
-            content: item.content,
-            score: item.score,
-          })
+          if (nextKgFacts.length < evidenceLimit) {
+            nextKgFacts.push({
+              id: item.id,
+              subject: item.subject,
+              predicate: item.predicate || 'associated with',
+              object: item.object || 'dialogue',
+              dateLabel: item.dateInfo?.formatted_label || (item.timestamp ? String(item.timestamp).split('T')[0] : undefined),
+              content: item.content,
+              score: item.score,
+            })
+            stagedItems.push(rawItem)
+          }
         }
         else {
-          // Narrative dialogue turns, text journals, recaps
-          nextMemories.push({
-            id: item.id,
-            title: item.title || 'Memory',
-            kind: item.kind || 'Journal',
-            content: item.content,
-            timestamp: item.timestamp ? String(item.timestamp) : undefined,
-            score: item.score,
-            subGoal: item.subGoal,
-          })
+          if (nextMemories.length < evidenceLimit) {
+            nextMemories.push({
+              id: item.id,
+              title: item.title || 'Memory',
+              kind: item.kind || 'Journal',
+              content: item.content,
+              timestamp: item.timestamp ? String(item.timestamp) : undefined,
+              score: item.score,
+              subGoal: item.subGoal,
+            })
+            stagedItems.push(rawItem)
+          }
         }
       }
 
+      rawResults.value = stagedItems
       memories.value = nextMemories
       kgFacts.value = nextKgFacts
     }

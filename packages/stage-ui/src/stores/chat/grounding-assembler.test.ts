@@ -184,6 +184,35 @@ describe('grounding-assembler pure formatters', () => {
       expect(resultCombined.content).toContain('Ren stands alone in the alley... Behind him, the massive towers of the Imperial Academy rise.')
       expect(resultCombined.content).not.toContain('• Academy ➔ mentioned in')
     })
+
+    it('places entity mentions ahead of general raw episodic memories', () => {
+      const rawTurn = {
+        id: 'turn-generic',
+        title: 'Campfire',
+        kind: 'raw',
+        content: 'Taro counted his crackers at the campfire.',
+      }
+      const entityMention = {
+        id: 'kg-mention:sirius',
+        title: '[Knowledge Graph] Sirius Starweaver (Mention)',
+        kind: 'raw',
+        content: 'Sirius Starweaver stood near the door.',
+        subject: 'Sirius Starweaver',
+        predicate: 'mentioned in',
+        object: 'Turn 1',
+        isKgClaim: true,
+      }
+      // Pass rawTurn first, entityMention second
+      const result = formatSemanticMemoriesBlock([rawTurn, entityMention])
+
+      const entityIdx = result.content.indexOf('Sirius Starweaver')
+      const rawIdx = result.content.indexOf('Taro counted his crackers')
+
+      // Entity mention must appear BEFORE the generic raw turn
+      expect(entityIdx).toBeGreaterThan(-1)
+      expect(rawIdx).toBeGreaterThan(-1)
+      expect(entityIdx).toBeLessThan(rawIdx)
+    })
   })
 
   describe('formatRecentTopicsBlock', () => {
@@ -314,12 +343,12 @@ describe('grounding-assembler pure formatters', () => {
   // lost their trailing sections (Meaningful Old Moments, Inside Jokes) on
   // every turn. The lifetime block is now exempt up to 13,000 chars.
   describe('budgetGroundingMessages lifetime exemption (F1A)', () => {
-    it('truncates a standard block at 2,500 chars', () => {
-      const content = `[GROUNDED LONG-TERM MEMORIES]\n${'x'.repeat(4000)}`
+    it('truncates a standard block at 8,000 chars', () => {
+      const content = `[GROUNDED LONG-TERM MEMORIES]\n${'x'.repeat(10000)}`
       const [result] = budgetGroundingMessages([{ role: 'system', content }])
       expect(result.content.length).toBeLessThan(content.length)
       expect(result.content).toContain('[...truncated to fit budget]')
-      expect(result.content.length).toBeLessThanOrEqual(2500 + 50)
+      expect(result.content.length).toBeLessThanOrEqual(8000 + 50)
     })
 
     it('passes a 10,500-char lifetime artifact through completely intact', () => {
@@ -333,7 +362,7 @@ describe('grounding-assembler pure formatters', () => {
       expect(result.content).not.toContain('truncated')
     })
 
-    it('bounds the combined array at maxTotalChars = 14000', () => {
+    it('bounds the combined array at maxTotalChars = 15000', () => {
       const lifetime = `[LIFETIME RELATIONSHIP ARTIFACT]\n${'a'.repeat(12900)}`
       const rag = `[GROUNDED LONG-TERM MEMORIES]\n${'b'.repeat(2400)}`
       const env = `[ENVIRONMENTAL AWARENESS]\n${'c'.repeat(2400)}`
@@ -343,7 +372,7 @@ describe('grounding-assembler pure formatters', () => {
         { role: 'system', content: env },
       ])
       const total = results.reduce((sum, m) => sum + m.content.length, 0)
-      expect(total).toBeLessThanOrEqual(14000 + 100)
+      expect(total).toBeLessThanOrEqual(15000 + 100)
       // Lifetime block is first and stable: it must survive intact.
       expect(results[0].content).toBe(lifetime)
     })
