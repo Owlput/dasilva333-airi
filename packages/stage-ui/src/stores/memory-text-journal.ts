@@ -28,6 +28,14 @@ import { useAiriCardStore } from './modules/airi-card'
 import { useSystemOneStore } from './modules/system-one'
 import { useProvidersStore } from './providers'
 
+export interface VectorIndexRebuildProgress {
+  phase: 'idle' | 'discovering' | 'chunking' | 'embedding' | 'persisting' | 'completed' | 'cancelled' | 'error'
+  current: number
+  total: number
+  percent: number
+  message?: string
+}
+
 function normalizeEntry(entry: TextJournalEntry): TextJournalEntry {
   return {
     id: String(entry.id),
@@ -158,9 +166,67 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     return ''
   }
 
+  /**
+   * Shared raw-turn fan-out for both index paths (background fast path and
+   * explicit rebuild deep pass). Mega-turns split into overlapping windows
+   * (turn-chunker.ts: 1500 chars / 200 overlap — the canonical sizes); short
+   * turns keep their bare id/title so snapshots and worker reuse-by-content
+   * stay stable. Stops once target reaches maxDocs.
+   */
+  function appendChunkedTurnDocs(
+    target: Map<string, any>,
+    input: {
+      text: string
+      messageId: string | undefined
+      role: string
+      sessionId: string | undefined
+      cardId: string
+      turnDate: string
+      maxDocs: number
+    },
+  ): void {
+    // NOTICE: mega-turns (novel chapters) fan out into overlapping windows
+    // so no single forward faces an unconstrained attention tensor
+    // (§7 D3, §5b ceiling).
+    const baseTitle = `Chat ${input.role} turn — ${input.turnDate.slice(0, 10)} ${String(input.sessionId).slice(0, 8)}`
+    for (const chunk of chunkTurnText(input.text)) {
+      if (target.size >= input.maxDocs)
+        break
+      const chunkText = chunk.total === 1 ? input.text : chunk.text
+      const chunkKey = chunk.total === 1 ? input.text : `${input.messageId}:c${chunk.index}:${chunk.text}`
+      if (target.has(chunkKey))
+        continue
+      target.set(chunkKey, {
+        id: chunk.total === 1 ? input.messageId : `${input.messageId}:c${chunk.index}`,
+        characterId: input.cardId,
+        // NOTICE: synthetic role+date title disambiguates
+        // repeat one-liners across sessions (§7 D3).
+        title: chunk.total === 1 ? baseTitle : `${baseTitle} [Part ${chunk.index + 1}/${chunk.total}]`,
+        fact: chunkText,
+        kind: 'raw_turn',
+        timestamp: input.turnDate,
+        source: `chat:${input.sessionId}`,
+      })
+    }
+  }
+
   let indexingInProgress: Promise<void> | null = null
+  // Set when backgroundIndexAll stands down for an active rebuild; the
+  // rebuild consumes it in `finally` so skipped cycles are re-run, not lost.
+  let needsBackgroundIndex = false
+
+  const isRebuildingVectorIndex = ref(false)
+  const vectorIndexProgress = ref<VectorIndexRebuildProgress | null>(null)
+  const vectorIndexError = ref<string | null>(null)
+  const lastVectorIndexRebuiltAt = ref<number | null>(null)
+  let vectorIndexAbortController: AbortController | null = null
 
   async function backgroundIndexAll() {
+    if (isRebuildingVectorIndex.value) {
+      console.info('[TextJournal:Index] Vector index rebuild in progress; deferring backgroundIndexAll until it finishes.')
+      needsBackgroundIndex = true
+      return
+    }
     if (indexingInProgress) {
       return indexingInProgress
     }
@@ -253,34 +319,15 @@ export const useTextJournalStore = defineStore('text-journal', () => {
                   if (m.role === 'user' || m.role === 'assistant') {
                     const text = extractTextContent(m.content).trim()
                     if (text.length > 10) {
-                      if (!uniqueRaw.has(text)) {
-                        const turnDate = new Date(m.createdAt || Date.now()).toISOString()
-                        // NOTICE: mega-turns (novel chapters) fan out into
-                        // overlapping windows so no single forward faces an
-                        // unconstrained attention tensor (§7 D3, §5b ceiling).
-                        // Short turns keep their bare id/title for snapshot
-                        // and worker reuse-by-content stability.
-                        const baseTitle = `Chat ${m.role} turn — ${turnDate.slice(0, 10)} ${String(s.sessionId).slice(0, 8)}`
-                        for (const chunk of chunkTurnText(text)) {
-                          if (uniqueRaw.size >= MAX_RAW_DOCS)
-                            break
-                          const chunkText = chunk.total === 1 ? text : chunk.text
-                          const chunkKey = chunk.total === 1 ? text : `${m.id}:c${chunk.index}:${chunk.text}`
-                          if (uniqueRaw.has(chunkKey))
-                            continue
-                          uniqueRaw.set(chunkKey, {
-                            id: chunk.total === 1 ? m.id : `${m.id}:c${chunk.index}`,
-                            characterId: cardId,
-                            // NOTICE: synthetic role+date title disambiguates
-                            // repeat one-liners across sessions (§7 D3).
-                            title: chunk.total === 1 ? baseTitle : `${baseTitle} [Part ${chunk.index + 1}/${chunk.total}]`,
-                            fact: chunkText,
-                            kind: 'raw_turn',
-                            timestamp: turnDate,
-                            source: `chat:${s.sessionId}`,
-                          })
-                        }
-                      }
+                      appendChunkedTurnDocs(uniqueRaw, {
+                        text,
+                        messageId: m.id,
+                        role: m.role,
+                        sessionId: s.sessionId,
+                        cardId,
+                        turnDate: new Date(m.createdAt || Date.now()).toISOString(),
+                        maxDocs: MAX_RAW_DOCS,
+                      })
                     }
                   }
                 }
@@ -351,6 +398,315 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     })()
 
     return indexingInProgress
+  }
+
+  /**
+   * Explicit Deep Pass: Rebuilds the vector search index across all historical
+   * dialogue turns, episodic journals, daily summaries, echo chips, and lifetime
+   * memory without artificial 30-session caps or FIFO dropouts.
+   *
+   * Purely deterministic and local: chunks text via `turn-chunker.ts` and indexes
+   * via `@huggingface/transformers` in the search worker. Does NOT invoke System 1
+   * or LLM API calls, preserving API quota and running in parallel on-device.
+   */
+  async function rebuildVectorIndex(options?: {
+    characterId?: string
+    universeId?: string
+    maxRawDocs?: number
+    batchSize?: number
+  }) {
+    if (isRebuildingVectorIndex.value)
+      return
+
+    // Resolve identity before taking the mutex: an early return here must
+    // not leave isRebuildingVectorIndex latched (that would stand down
+    // backgroundIndexAll forever and no-op every future rebuild).
+    const userId = getCurrentUserId()
+    const cardId = options?.characterId || activeCardId.value
+    if (!userId || !cardId)
+      return
+
+    isRebuildingVectorIndex.value = true
+    vectorIndexError.value = null
+    vectorIndexAbortController = new AbortController()
+    const signal = vectorIndexAbortController.signal
+
+    vectorIndexProgress.value = {
+      phase: 'discovering',
+      current: 0,
+      total: 0,
+      percent: 0,
+      message: 'Discovering universe memory records and chat sessions...',
+    }
+
+    try {
+      signal.throwIfAborted()
+
+      // Serialize against any active backgroundIndexAll call
+      if (indexingInProgress) {
+        try {
+          await indexingInProgress
+        }
+        catch {}
+      }
+
+      signal.throwIfAborted()
+
+      // Hydrate entries before reading entries.value cold
+      try {
+        await load()
+      }
+      catch (err) {
+        console.error('[TextJournal:RebuildVector] Failed to load entries before rebuild:', err)
+      }
+
+      signal.throwIfAborted()
+
+      const chatSessionStore = useChatSessionStore()
+      const activeSessionId = cardId
+        ? (chatSessionStore.getCharacterIndex(cardId)?.activeSessionId || chatSessionStore.activeSessionId)
+        : chatSessionStore.activeSessionId
+      const activeSessionMeta = chatSessionStore.getSessionMeta(activeSessionId)
+      const currentUniverseId = options?.universeId || activeSessionMeta?.universeId || 'global'
+      signal.throwIfAborted()
+
+      // 1. LTMM (Episodic Sacred Records)
+      const ltmm = entries.value
+        .filter(e => e.characterId === cardId && (e.universeId || 'global') === currentUniverseId)
+        .map(e => ({
+          id: e.id,
+          characterId: cardId,
+          title: (e.title && e.title.trim() && e.title !== 'Journal Entry')
+            ? e.title
+            : e.content.slice(0, 40),
+          fact: e.content,
+          kind: 'ltmm_entry',
+          timestamp: new Date(e.createdAt).toISOString(),
+          source: e.source,
+          embedding: e.embedding,
+        }))
+
+      signal.throwIfAborted()
+
+      // 2. STMM (Daily Recaps)
+      let stmm: any[] = []
+      try {
+        const stmmRaw = await shortTermMemoryRepo.getAll(userId) ?? []
+        stmm = stmmRaw
+          .filter(b => b.characterId === cardId && (b.universeId || 'global') === currentUniverseId)
+          .map(b => ({
+            id: b.id,
+            characterId: cardId,
+            title: b.characterName ? `Daily recap ${b.date} — ${b.characterName}` : `Daily recap ${b.date}`,
+            fact: b.summary,
+            kind: 'stmm_block',
+            timestamp: b.date,
+            source: b.source || 'stmm',
+          }))
+      }
+      catch (err) {
+        console.error('[TextJournal:RebuildVector] Failed to load STMM:', err)
+      }
+
+      signal.throwIfAborted()
+
+      // 3. Echo Chips (Dreamstate)
+      let echoes: any[] = []
+      try {
+        const echoRaw = await echoChipsRepo.getAll(userId) ?? []
+        echoes = echoRaw
+          .filter(c => c.characterId === cardId && (c.universeId || 'global') === currentUniverseId)
+          .map(c => ({
+            id: c.id,
+            characterId: cardId,
+            title: `${c.type} chip ${c.date}`,
+            fact: c.content,
+            kind: 'echo_chip',
+            timestamp: new Date(c.createdAt || Date.now()).toISOString(),
+            source: `echo:${c.type}`,
+          }))
+      }
+      catch (err) {
+        console.error('[TextJournal:RebuildVector] Failed to load Echo Chips:', err)
+      }
+
+      signal.throwIfAborted()
+
+      // 4. Lifetime Memory (Eternal Thread)
+      const lifetime: any[] = []
+      try {
+        const lifetimeRaw = await lifetimeMemoryRepo.getByCharacter(cardId, currentUniverseId)
+        if (lifetimeRaw) {
+          const consumedDay = (lifetimeRaw.metadata as { lastConsumedDay?: string } | undefined)?.lastConsumedDay
+          lifetime.push({
+            id: lifetimeRaw.id,
+            characterId: cardId,
+            title: consumedDay ? `Eternal thread through ${consumedDay}` : 'Eternal thread',
+            fact: lifetimeRaw.distilledContent,
+            kind: 'lifetime_entry',
+            timestamp: new Date(lifetimeRaw.updatedAt || Date.now()).toISOString(),
+            source: 'lifetime',
+          })
+        }
+      }
+      catch (err) {
+        console.error('[TextJournal:RebuildVector] Failed to load Lifetime Memory:', err)
+      }
+
+      signal.throwIfAborted()
+
+      // 5. Raw Dialogue Turns — Uncapped across ALL sessions in the universe!
+      const MAX_RAW_DOCS = options?.maxRawDocs ?? 10000
+      const raw: any[] = []
+      try {
+        const index = await chatSessionsRepo.getIndex(userId)
+        if (index && index.characters[cardId]) {
+          const characterSessions = index.characters[cardId]
+          const sessions = Object.values(characterSessions.sessions)
+            .filter(s => (s.universeId || 'global') === currentUniverseId)
+            .sort((a: any, b: any) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+
+          const uniqueRaw = new Map<string, any>()
+          const totalSessions = sessions.length
+
+          for (let sIdx = 0; sIdx < totalSessions; sIdx++) {
+            signal.throwIfAborted()
+            if (uniqueRaw.size >= MAX_RAW_DOCS)
+              break
+
+            const s = sessions[sIdx]
+            const session = await chatSessionsRepo.getSession(s.sessionId)
+            if (session) {
+              const ordered = [...session.messages].sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+              for (const m of ordered) {
+                if (uniqueRaw.size >= MAX_RAW_DOCS)
+                  break
+                if (m.role === 'user' || m.role === 'assistant') {
+                  const text = extractTextContent(m.content).trim()
+                  if (text.length > 10) {
+                    appendChunkedTurnDocs(uniqueRaw, {
+                      text,
+                      messageId: m.id,
+                      role: m.role,
+                      sessionId: s.sessionId,
+                      cardId,
+                      turnDate: new Date(m.createdAt || Date.now()).toISOString(),
+                      maxDocs: MAX_RAW_DOCS,
+                    })
+                  }
+                }
+              }
+            }
+
+            vectorIndexProgress.value = {
+              phase: 'chunking',
+              current: sIdx + 1,
+              total: totalSessions,
+              percent: Math.round(((sIdx + 1) / totalSessions) * 25),
+              message: `Scanned session ${sIdx + 1}/${totalSessions} (${uniqueRaw.size} dialogue chunks)...`,
+            }
+          }
+          raw.push(...uniqueRaw.values())
+        }
+      }
+      catch (err) {
+        if ((err as Error)?.name === 'AbortError')
+          throw err
+        console.error('[TextJournal:RebuildVector] Failed to scan sessions for indexing:', err)
+      }
+
+      signal.throwIfAborted()
+
+      // 6. Merge & Batch Indexing
+      const allDocs = [...ltmm, ...stmm, ...raw, ...echoes, ...lifetime]
+        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+      const totalDocs = allDocs.length
+      const batchSize = options?.batchSize ?? 25
+      let indexedSoFar = 0
+
+      for (let i = 0; i < totalDocs; i += batchSize) {
+        signal.throwIfAborted()
+        const batch = allDocs.slice(i, i + batchSize)
+        await layeredMemory.indexDocuments(batch)
+        indexedSoFar = Math.min(totalDocs, i + batch.length)
+
+        vectorIndexProgress.value = {
+          phase: 'embedding',
+          current: indexedSoFar,
+          total: totalDocs,
+          percent: 25 + Math.round((indexedSoFar / totalDocs) * 70),
+          message: `Embedded & indexed ${indexedSoFar} of ${totalDocs} documents (${raw.length} chunks)...`,
+        }
+      }
+
+      signal.throwIfAborted()
+
+      // 7. Force Persist snapshot to IndexedDB
+      vectorIndexProgress.value = {
+        phase: 'persisting',
+        current: totalDocs,
+        total: totalDocs,
+        percent: 98,
+        message: 'Persisting vector index snapshot to IndexedDB...',
+      }
+      await layeredMemory.persist(true)
+
+      lastVectorIndexRebuiltAt.value = Date.now()
+      vectorIndexProgress.value = {
+        phase: 'completed',
+        current: totalDocs,
+        total: totalDocs,
+        percent: 100,
+        message: `Vector search index rebuild complete: ${totalDocs} documents (${raw.length} chunks, ${ltmm.length} journals, ${stmm.length} recaps).`,
+      }
+    }
+    catch (err) {
+      if ((err as Error)?.name === 'AbortError' || signal.aborted) {
+        vectorIndexProgress.value = {
+          phase: 'cancelled',
+          current: 0,
+          total: 0,
+          percent: 0,
+          message: 'Vector search index rebuild cancelled.',
+        }
+      }
+      else {
+        const msg = err instanceof Error ? err.message : String(err)
+        vectorIndexError.value = msg
+        vectorIndexProgress.value = {
+          phase: 'error',
+          current: 0,
+          total: 0,
+          percent: 0,
+          message: `Rebuild failed: ${msg}`,
+        }
+        console.error('[TextJournal:RebuildVector] Failed:', err)
+      }
+    }
+    finally {
+      isRebuildingVectorIndex.value = false
+      vectorIndexAbortController = null
+      // Re-run any background cycles that stood down for this rebuild so
+      // turns arriving mid-rebuild are not left unindexed.
+      if (needsBackgroundIndex) {
+        needsBackgroundIndex = false
+        void backgroundIndexAll().catch(err => console.error('[TextJournal:RebuildVector] Deferred background indexing failed:', err))
+      }
+    }
+  }
+
+  function cancelRebuildVectorIndex() {
+    if (vectorIndexAbortController) {
+      vectorIndexAbortController.abort()
+      vectorIndexProgress.value = {
+        phase: 'cancelled',
+        current: vectorIndexProgress.value?.current ?? 0,
+        total: vectorIndexProgress.value?.total ?? 0,
+        percent: vectorIndexProgress.value?.percent ?? 0,
+        message: 'Cancelling vector search index rebuild after current batch...',
+      }
+    }
   }
 
   async function persist(nextEntries: TextJournalEntry[]) {
@@ -924,6 +1280,12 @@ ${input.instructions ? `\nAdditional Instructions: ${input.instructions}\n` : ''
     seedActiveCharacterEntry,
     searchEntries,
     backgroundIndexAll,
+    rebuildVectorIndex,
+    cancelRebuildVectorIndex,
+    isRebuildingVectorIndex,
+    vectorIndexProgress,
+    vectorIndexError,
+    lastVectorIndexRebuiltAt,
     persist,
     createJournalMoment,
     lastSearchTriage,

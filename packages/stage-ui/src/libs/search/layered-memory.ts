@@ -52,6 +52,8 @@ export interface LayeredSearchOptions {
 let isPersisting = false
 let isIndexing = false
 let lastPersistAt = 0
+let indexLock: Promise<void> = Promise.resolve()
+let persistLock: Promise<void> = Promise.resolve()
 const MIN_PERSIST_INTERVAL_MS = 30_000
 const TRIAGE_TIMEOUT_MS = 2500
 const RERANK_TIMEOUT_MS = 4000
@@ -102,6 +104,14 @@ export const layeredMemory = {
   lastSearchMode: 'baseline' as 'pass11' | 'baseline',
   lastIndexState: null as SearchIndexState | null,
 
+  get isIndexing(): boolean {
+    return isIndexing
+  },
+
+  get isPersisting(): boolean {
+    return isPersisting
+  },
+
   async init(): Promise<SearchIndexState> {
     const snapshot = await indexStorage.getItem('snapshot')
     const res = await searchWorker.init(snapshot)
@@ -114,23 +124,33 @@ export const layeredMemory = {
     return this.lastIndexState
   },
 
-  async persist() {
-    if (isPersisting)
+  async persist(force = false) {
+    if (!force && (isPersisting || Date.now() - lastPersistAt < MIN_PERSIST_INTERVAL_MS))
       return
-    // NOTICE: indexDocuments persists per cycle; without throttling every
-    // journal write serializes the full embedding snapshot to IndexedDB,
-    // spiking compressor/swap with MBs of number[] JSON.
-    if (Date.now() - lastPersistAt < MIN_PERSIST_INTERVAL_MS)
-      return
-    isPersisting = true
-    try {
-      const snapshot = await searchWorker.persist()
-      await indexStorage.setItem('snapshot', snapshot)
-      lastPersistAt = Date.now()
-    }
-    finally {
-      isPersisting = false
-    }
+
+    const previousLock = persistLock
+    persistLock = (async () => {
+      try {
+        await previousLock
+      }
+      catch {}
+
+      // Double-check interval within lock unless forced
+      if (!force && Date.now() - lastPersistAt < MIN_PERSIST_INTERVAL_MS)
+        return
+
+      isPersisting = true
+      try {
+        const snapshot = await searchWorker.persist()
+        await indexStorage.setItem('snapshot', snapshot)
+        lastPersistAt = Date.now()
+      }
+      finally {
+        isPersisting = false
+      }
+    })()
+
+    return await persistLock
   },
 
   async search(
@@ -725,16 +745,27 @@ export const layeredMemory = {
   },
 
   async indexDocuments(documents: any[]) {
-    if (isIndexing)
-      return
-    isIndexing = true
-    try {
-      await searchWorker.index(documents)
-      await this.persist()
+    const run = async () => {
+      isIndexing = true
+      try {
+        await searchWorker.index(documents)
+        await this.persist()
+      }
+      finally {
+        isIndexing = false
+      }
     }
-    finally {
-      isIndexing = false
-    }
+
+    const previousLock = indexLock
+    indexLock = (async () => {
+      try {
+        await previousLock
+      }
+      catch {}
+      await run()
+    })()
+
+    return await indexLock
   },
 
   async removeDocument(id: string) {

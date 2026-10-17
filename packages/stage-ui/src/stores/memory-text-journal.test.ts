@@ -5,6 +5,9 @@ import { createTestingPinia } from '@pinia/testing'
 import { setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
+import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
+import { layeredMemory } from '../libs/search/layered-memory'
 import { useTextJournalStore } from './memory-text-journal'
 
 // Mock the database repo so tests don't touch IndexedDB
@@ -373,6 +376,191 @@ describe('useTextJournalStore', () => {
 
       expect(store.entries[0].id).toBe('b')
       expect(store.entries[1].id).toBe('a')
+    })
+  })
+
+  // ————————————————— rebuildVectorIndex ———————————————————————————————————————————
+
+  describe('rebuildVectorIndex', () => {
+    it('crawls sessions, chunks dialogue, indexes batches, and persists snapshot', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      const persistSpy = vi.spyOn(layeredMemory, 'persist').mockResolvedValue(undefined)
+
+      vi.spyOn(chatSessionsRepo, 'getIndex').mockResolvedValue({
+        userId: 'local',
+        characters: {
+          'card-1': {
+            sessions: {
+              's-1': {
+                sessionId: 's-1',
+                characterId: 'card-1',
+                createdAt: 1000,
+                updatedAt: 2000,
+                universeId: 'default',
+              },
+            },
+            activeSessionId: 's-1',
+          },
+        },
+      } as any)
+
+      vi.spyOn(chatSessionsRepo, 'getSession').mockResolvedValue({
+        id: 's-1',
+        title: 'Session 1',
+        createdAt: 1000,
+        updatedAt: 2000,
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Hello Finch and Theodore!',
+            createdAt: 1500,
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Hello! I remember Finch the little mouse and Theodore clearly.',
+            createdAt: 1600,
+          },
+        ],
+      } as any)
+
+      vi.spyOn(shortTermMemoryRepo, 'getAll').mockResolvedValue([
+        {
+          id: 'stmm-1',
+          characterId: 'card-1',
+          summary: 'Met with Finch and Theodore.',
+          date: '2026-10-17',
+          universeId: 'default',
+        } as any,
+      ])
+
+      const store = useTextJournalStore()
+      expect(store.isRebuildingVectorIndex).toBe(false)
+
+      await store.rebuildVectorIndex({ characterId: 'card-1', universeId: 'default' })
+
+      expect(store.isRebuildingVectorIndex).toBe(false)
+      expect(store.vectorIndexProgress?.phase).toBe('completed')
+      expect(store.vectorIndexProgress?.percent).toBe(100)
+      expect(store.lastVectorIndexRebuiltAt).toBeGreaterThan(0)
+      expect(indexDocsSpy).toHaveBeenCalled()
+      expect(persistSpy).toHaveBeenCalledWith(true)
+
+      const indexedBatches = indexDocsSpy.mock.calls
+      const allIndexed = indexedBatches.flatMap(call => call[0])
+      expect(allIndexed.some((d: any) => d.kind === 'raw_turn' && d.fact.includes('Finch the little mouse'))).toBe(true)
+      expect(allIndexed.some((d: any) => d.kind === 'stmm_block' && d.fact.includes('Met with Finch'))).toBe(true)
+    })
+
+    it('chunks mega-turns (>1,500 chars) into multiple indexed documents with Part tags', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'persist').mockResolvedValue(undefined)
+
+      // Construct a 3500-char dialogue turn
+      const repeatedText = 'Finch the mouse and Theodore the cat discussed the grand secret of the old clock tower. '
+      const longMessageText = repeatedText.repeat(40) // ~3500 chars
+
+      vi.spyOn(chatSessionsRepo, 'getIndex').mockResolvedValue({
+        userId: 'local',
+        characters: {
+          'card-1': {
+            sessions: {
+              's-1': { sessionId: 's-1', characterId: 'card-1', universeId: 'default' },
+            },
+            activeSessionId: 's-1',
+          },
+        },
+      } as any)
+
+      vi.spyOn(chatSessionsRepo, 'getSession').mockResolvedValue({
+        id: 's-1',
+        title: 'Session 1',
+        messages: [
+          {
+            id: 'm-long',
+            role: 'assistant',
+            content: longMessageText,
+            createdAt: 2000,
+          },
+        ],
+      } as any)
+
+      const store = useTextJournalStore()
+      await store.rebuildVectorIndex({ characterId: 'card-1', universeId: 'default' })
+
+      const indexedBatches = indexDocsSpy.mock.calls
+      const allIndexed = indexedBatches.flatMap(call => call[0])
+      const chunkedDocs = allIndexed.filter((d: any) => d.id.startsWith('m-long:c'))
+
+      expect(chunkedDocs.length).toBeGreaterThan(1)
+      expect(chunkedDocs[0].title).toMatch(/\[Part 1\/\d+\]/)
+      expect(chunkedDocs[1].title).toMatch(/\[Part 2\/\d+\]/)
+      expect(chunkedDocs[0].id).toBe('m-long:c0')
+      expect(chunkedDocs[1].id).toBe('m-long:c1')
+    })
+
+    it('hydrates unhydrated journal entries from repo before indexing', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'persist').mockResolvedValue(undefined)
+
+      ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'journal-cold-1',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'Cold Hydration Test',
+          content: 'This was loaded from repo during rebuildVectorIndex',
+          source: 'tool',
+          createdAt: 5000,
+          updatedAt: 5000,
+          universeId: 'default',
+        },
+      ])
+
+      const store = useTextJournalStore()
+      await store.rebuildVectorIndex({ characterId: 'card-1', universeId: 'default' })
+
+      const indexedBatches = indexDocsSpy.mock.calls
+      const allIndexed = indexedBatches.flatMap(call => call[0])
+      expect(allIndexed.some((d: any) => d.id === 'journal-cold-1' && d.fact.includes('loaded from repo'))).toBe(true)
+    })
+
+    it('can be cancelled via cancelRebuildVectorIndex', async () => {
+      vi.spyOn(layeredMemory, 'indexDocuments').mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      })
+      vi.spyOn(layeredMemory, 'persist').mockResolvedValue(undefined)
+
+      vi.spyOn(chatSessionsRepo, 'getIndex').mockResolvedValue({
+        userId: 'local',
+        characters: {
+          'card-1': {
+            sessions: {
+              's-1': { sessionId: 's-1', characterId: 'card-1', universeId: 'default' },
+            },
+          },
+        },
+      } as any)
+
+      vi.spyOn(chatSessionsRepo, 'getSession').mockResolvedValue({
+        id: 's-1',
+        messages: Array.from({ length: 30 }, (_, i) => ({
+          id: `m-${i}`,
+          role: 'user',
+          content: `Message ${i} long enough to be indexed with extra text padding`,
+        })),
+      } as any)
+
+      const store = useTextJournalStore()
+      const rebuildPromise = store.rebuildVectorIndex({ characterId: 'card-1', universeId: 'default', batchSize: 2 })
+
+      store.cancelRebuildVectorIndex()
+      await rebuildPromise
+
+      expect(store.isRebuildingVectorIndex).toBe(false)
+      expect(store.vectorIndexProgress?.phase).toBe('cancelled')
     })
   })
 })

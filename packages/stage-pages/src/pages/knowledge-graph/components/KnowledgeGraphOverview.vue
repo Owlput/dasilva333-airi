@@ -2,6 +2,7 @@
 import type { EntityType } from '@proj-airi/stage-ui/libs/search/entity-ledger'
 
 import { useEntityLedgerStore } from '@proj-airi/stage-ui/stores/entity-ledger'
+import { useTextJournalStore } from '@proj-airi/stage-ui/stores/memory-text-journal'
 import { Button, Progress } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -23,10 +24,12 @@ const emit = defineEmits<{
   (e: 'selectEntity', entityId: string): void
   (e: 'rebuild'): void
   (e: 'clear'): void
+  (e: 'rebuildVector'): void
 }>()
 
 const router = useRouter()
 const entityLedgerStore = useEntityLedgerStore()
+const textJournalStore = useTextJournalStore()
 
 const graphSubTab = ref<'entities' | 'claims' | 'sources'>('entities')
 const entityTypeFilter = ref<EntityType | 'all'>('all')
@@ -108,6 +111,20 @@ const filteredClaims = computed(() => {
               @click="navigateToWorkspaceMindMap"
             />
             <Button
+              :label="textJournalStore.isRebuildingVectorIndex ? 'Rebuilding Index...' : 'Rebuild Vector Search Index'"
+              icon="i-solar:database-bold-duotone"
+              variant="secondary"
+              :disabled="entityLedgerStore.isPriming || textJournalStore.isRebuildingVectorIndex"
+              @click="emit('rebuildVector')"
+            />
+            <Button
+              v-if="textJournalStore.isRebuildingVectorIndex"
+              label="Cancel"
+              icon="i-solar:close-circle-bold-duotone"
+              variant="secondary"
+              @click="textJournalStore.cancelRebuildVectorIndex()"
+            />
+            <Button
               label="Rebuild Knowledge Graph"
               icon="i-solar:bolt-bold-duotone"
               variant="primary"
@@ -165,6 +182,18 @@ const filteredClaims = computed(() => {
             <span class="font-bold">{{ Math.round(entityLedgerStore.primingProgress * 100) }}%</span>
           </div>
           <Progress :progress="entityLedgerStore.primingProgress * 100" />
+        </div>
+
+        <!-- Progress Bar during Vector Index Rebuilding -->
+        <div v-if="textJournalStore.isRebuildingVectorIndex" class="flex flex-col gap-2 rounded-2xl bg-emerald-500/5 p-4 dark:bg-emerald-500/10">
+          <div class="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-300">
+            <span class="flex items-center gap-2">
+              <div class="i-solar:loading-bold animate-spin" />
+              {{ textJournalStore.vectorIndexProgress?.message || 'Rebuilding vector search index...' }}
+            </span>
+            <span class="font-bold">{{ textJournalStore.vectorIndexProgress?.percent ?? 0 }}%</span>
+          </div>
+          <Progress :progress="textJournalStore.vectorIndexProgress?.percent ?? 0" />
         </div>
       </div>
     </section>

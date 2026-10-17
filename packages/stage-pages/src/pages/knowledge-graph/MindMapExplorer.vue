@@ -4,6 +4,7 @@ import type { GraphEdge, GraphNode } from './components/ConstellationCanvas.vue'
 
 import { useEntityLedgerStore } from '@proj-airi/stage-ui/stores/entity-ledger'
 import { useShortTermMemoryStore } from '@proj-airi/stage-ui/stores/memory-short-term'
+import { useTextJournalStore } from '@proj-airi/stage-ui/stores/memory-text-journal'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 
 const entityLedgerStore = useEntityLedgerStore()
 const shortTermStore = useShortTermMemoryStore()
+const textJournalStore = useTextJournalStore()
 const airiCardStore = useAiriCardStore()
 const { activeCardId } = storeToRefs(airiCardStore)
 
@@ -187,6 +189,14 @@ async function handleRebuild() {
   calculateTimeBounds()
 }
 
+async function handleRebuildVector() {
+  if (!activeCardId.value)
+    return
+  await textJournalStore.rebuildVectorIndex({
+    characterId: activeCardId.value,
+  })
+}
+
 async function handleClear() {
   if (!activeCardId.value)
     return
@@ -243,6 +253,7 @@ onMounted(() => {
               @select-entity="handleSelectEntity"
               @rebuild="handleRebuild"
               @clear="handleClear"
+              @rebuild-vector="handleRebuildVector"
             />
           </div>
           <ConstellationCanvas

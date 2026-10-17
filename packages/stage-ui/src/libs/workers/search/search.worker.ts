@@ -423,7 +423,7 @@ function getTemporalCandidates(
 // NOTICE: bound worker RAM — chat history is unbounded but the in-memory
 // embedding + BM25 caches must not be. Evict oldest docs past the cap,
 // protecting high-value memory tiers (LTMM, STMM, lifetime, echo chips).
-const MAX_WORKER_DOCUMENTS = 3000
+const MAX_WORKER_DOCUMENTS = 10000
 function upsertDocument(document: SearchDocument) {
   if (!documents.has(document.id) && documents.size >= MAX_WORKER_DOCUMENTS) {
     // Tier-aware eviction: Prefer evicting oldest raw_turn entries first
