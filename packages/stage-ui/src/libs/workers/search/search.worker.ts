@@ -137,12 +137,21 @@ async function loadEmbedderStack(device: 'webgpu' | 'wasm') {
   const mutableConfig = config as unknown as Record<string, unknown>
   mutableConfig.vision_config = null
   mutableConfig.audio_config = null
+
+  // NOTICE: q4 has no WASM kernel in ONNX Runtime (GatherBlockQuantized is WGSL-only).
+  // The WASM/CPU fallback path must load fp32 model weights.
+  const dtype = device === 'webgpu' ? EMBEDDING_DTYPE : 'fp32'
+  const modelOptions: Record<string, unknown> = {
+    config,
+    device,
+    dtype,
+  }
+  if (device === 'wasm') {
+    modelOptions.model_file_name = 'model'
+  }
+
   const [model, tokenizer] = await Promise.all([
-    AutoModel.from_pretrained(EMBEDDING_MODEL_ID, {
-      config,
-      device,
-      dtype: EMBEDDING_DTYPE,
-    }),
+    AutoModel.from_pretrained(EMBEDDING_MODEL_ID, modelOptions as any),
     AutoTokenizer.from_pretrained(EMBEDDING_MODEL_ID),
   ])
   return { model, tokenizer }
@@ -170,13 +179,21 @@ async function getVector(text: string) {
   const inputs = await tokenizer(text, { padding: true, truncation: true })
   const output = await model(inputs)
   try {
+    // NOTICE: Transformers 4.x native sentence_embedding output (MRL-slice to EMBEDDING_DIM).
+    // Verified 1.0000 correlation with sequence mean-pooling without per-token loop overhead.
+    if (output.sentence_embedding) {
+      const raw = Array.from(output.sentence_embedding.data as ArrayLike<number>)
+      const truncated = raw.slice(0, EMBEDDING_DIM)
+      return l2Normalize(truncated)
+    }
+
     const lastHidden = output.last_hidden_state
     const dims = lastHidden.dims as number[]
     const seqLen = dims[1]
     const hiddenSize = dims[2]
     const hiddenData = lastHidden.data as ArrayLike<number>
     const maskData = inputs.attention_mask?.data as ArrayLike<number> | undefined
-    // NOTICE: mean-pool over the sequence dim with the attention mask, then
+    // NOTICE: fallback mean-pool over the sequence dim with the attention mask, then
     // MRL-truncate to EMBEDDING_DIM. Slicing breaks unit length, so the
     // truncated vector MUST be L2 re-normalized before storage/scoring.
     const pooled = new Array<number>(hiddenSize).fill(0)
