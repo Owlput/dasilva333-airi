@@ -10,7 +10,7 @@ import * as Pinia from 'pinia'
 
 import { chatStickers } from '../assets/stickers'
 import { createBackgroundRemovalAdapter } from '../libs/inference/adapters/background-removal'
-import { blobToImageData, imageDataToPngBlob } from '../libs/stickers/image-convert'
+import { applyAlphaMask, blobToImageData, imageDataToPngBlob } from '../libs/stickers/image-convert'
 import { useAiriCardStore } from './modules/airi-card'
 
 export { chatStickers }
@@ -33,6 +33,17 @@ export interface StickerPlacement {
   scale: number
   createdAt: number
   expiresAt?: number
+}
+
+export interface BackgroundRemovalOptions {
+  signal?: AbortSignal
+  sensitivity?: number
+  onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void
+}
+
+export type CutoutBlob = Blob & {
+  maskData?: Uint8Array
+  sourceImageData?: ImageData
 }
 
 const KNOWN_STICKER_PREFIXES = new Set(['airi', 'lupin', 'character'])
@@ -472,15 +483,34 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
    */
   async function removeImageBackground(
     blob: Blob,
-    options?: { signal?: AbortSignal, onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void },
-  ): Promise<Blob> {
+    options?: BackgroundRemovalOptions,
+  ): Promise<CutoutBlob> {
     const adapter = await ensureBgAdapter(options?.onProgress, options?.signal)
     options?.signal?.throwIfAborted()
 
     const imageData = await blobToImageData(blob)
     options?.onProgress?.('segmenting')
-    const cutout = await adapter.processImage(imageData, options?.signal ? { signal: options.signal } : undefined)
-    return imageDataToPngBlob(cutout)
+    const cutout = await adapter.processImage(imageData, {
+      signal: options?.signal,
+      sensitivity: options?.sensitivity ?? 65,
+    })
+    const outBlob = await imageDataToPngBlob(cutout) as CutoutBlob
+    outBlob.maskData = cutout.maskData
+    outBlob.sourceImageData = imageData
+    return outBlob
+  }
+
+  /**
+   * Re-composite a cutout blob with a new sensitivity value using cached mask data.
+   * Zero model latency (instant canvas update).
+   */
+  async function recomputeCutoutBlob(
+    sourceImageData: ImageData,
+    maskData: Uint8Array,
+    sensitivity = 65,
+  ): Promise<Blob> {
+    const updated = applyAlphaMask(sourceImageData, maskData, sensitivity)
+    return imageDataToPngBlob(updated)
   }
 
   /**
@@ -490,7 +520,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
    */
   async function makeTransparent(
     id: string,
-    options?: { signal?: AbortSignal, onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void },
+    options?: BackgroundRemovalOptions,
   ): Promise<void> {
     const blob = await localforage.getItem<Blob>(`sticker-data-${id}`)
     if (!blob)
@@ -582,6 +612,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     clearPlacements,
     clearLibrary,
     removeImageBackground,
+    recomputeCutoutBlob,
     makeTransparent,
     revertTransparency,
     hasTransparencyBackup,

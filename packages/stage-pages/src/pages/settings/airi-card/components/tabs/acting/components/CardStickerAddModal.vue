@@ -48,6 +48,9 @@ const isRemovingBg = ref(false)
 const bgProgress = ref<number | null>(null)
 const bgPhase = ref<'idle' | 'loading-model' | 'segmenting'>('idle')
 const originalFileBackup = ref<File | Blob | null>(null)
+const lastMaskData = ref<Uint8Array | null>(null)
+const lastSourceImageData = ref<ImageData | null>(null)
+const bgSensitivity = ref(65)
 let bgAborter: AbortController | null = null
 
 const isBusy = computed(() => isSaving.value || isRemovingBg.value)
@@ -191,6 +194,9 @@ function resetForm() {
   emotionsInput.value = ''
   idManuallyEdited.value = false
   isSaving.value = false
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  bgSensitivity.value = 65
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
@@ -199,6 +205,9 @@ function resetForm() {
 function handleRemoveNewFile() {
   bgAborter?.abort()
   originalFileBackup.value = null
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  bgSensitivity.value = 65
   isRemovingBg.value = false
   bgPhase.value = 'idle'
 
@@ -247,11 +256,15 @@ async function handleRemoveBackground() {
   try {
     const cutout = await stickersStore.removeImageBackground(blobToProcess, {
       signal: bgAborter.signal,
+      sensitivity: bgSensitivity.value,
       onProgress: (stage, percent) => {
         bgPhase.value = stage
         bgProgress.value = typeof percent === 'number' && percent >= 0 ? Math.round(percent) : null
       },
     })
+
+    lastMaskData.value = cutout.maskData ?? null
+    lastSourceImageData.value = cutout.sourceImageData ?? null
 
     const originalName = selectedFile.value?.name || (label.value ? `${label.value}.png` : 'sticker.png')
     const pngName = `${originalName.replace(/\.[^/.]+$/, '')}.png`
@@ -277,10 +290,40 @@ async function handleRemoveBackground() {
   }
 }
 
+async function handleSensitivityChange() {
+  if (!lastSourceImageData.value || !lastMaskData.value)
+    return
+
+  try {
+    const newCutout = await stickersStore.recomputeCutoutBlob(
+      lastSourceImageData.value,
+      lastMaskData.value,
+      bgSensitivity.value,
+    )
+
+    const originalName = selectedFile.value?.name || (label.value ? `${label.value}.png` : 'sticker.png')
+    const pngName = `${originalName.replace(/\.[^/.]+$/, '')}.png`
+    const newFile = new File([newCutout], pngName, { type: 'image/png' })
+
+    if (previewUrl.value && selectedFile.value) {
+      URL.revokeObjectURL(previewUrl.value)
+    }
+
+    selectedFile.value = newFile
+    previewUrl.value = URL.createObjectURL(newCutout)
+  }
+  catch (err) {
+    console.error('[CardStickerAddModal] Failed to recompute cutout with sensitivity:', err)
+  }
+}
+
 function handleRevert() {
   if (isBusy.value)
     return
   bgAborter?.abort()
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  bgSensitivity.value = 65
 
   if (originalFileBackup.value) {
     if (selectedFile.value && previewUrl.value) {
@@ -541,6 +584,33 @@ async function handleSave() {
                     </button>
                   </template>
                 </div>
+              </div>
+            </div>
+
+            <!-- Edge Sensitivity Slider (Active after background removal) -->
+            <div v-if="lastMaskData" class="mt-2.5 w-full flex flex-col gap-1.5 border border-neutral-200/80 rounded-lg bg-neutral-50/80 p-2.5 text-left dark:border-neutral-700/80 dark:bg-neutral-800/50">
+              <div class="flex items-center justify-between text-xs">
+                <label for="sticker-card-sensitivity-slider" class="flex items-center gap-1.5 text-neutral-600 font-medium dark:text-neutral-300">
+                  <div class="i-ph:sliders-horizontal-bold size-3.5 text-primary-500" />
+                  <span>Edge Sensitivity</span>
+                </label>
+                <span class="text-[11px] text-neutral-500 font-mono dark:text-neutral-400">{{ bgSensitivity }}%</span>
+              </div>
+              <input
+                id="sticker-card-sensitivity-slider"
+                v-model.number="bgSensitivity"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                :disabled="isBusy"
+                class="h-1.5 w-full cursor-pointer rounded-lg bg-neutral-200 accent-primary-500 dark:bg-neutral-700"
+                @input="handleSensitivityChange"
+              >
+              <div class="flex justify-between text-[10px] text-neutral-400">
+                <span>Clean (0%)</span>
+                <span class="text-neutral-500 font-medium">Default (65%)</span>
+                <span>Preserve Edges (100%)</span>
               </div>
             </div>
           </div>

@@ -24,6 +24,9 @@ const label = ref('')
 const phase = ref<'idle' | 'loading-model' | 'segmenting'>('idle')
 const progress = ref<number | null>(null)
 const error = ref<string | null>(null)
+const lastMaskData = ref<Uint8Array | null>(null)
+const lastSourceImageData = ref<ImageData | null>(null)
+const sensitivity = ref(65)
 
 let aborter: AbortController | null = null
 
@@ -44,6 +47,9 @@ function reset(file: Blob | null) {
   error.value = null
   phase.value = 'idle'
   progress.value = null
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  sensitivity.value = 65
   workingBlob.value = file
   label.value = ''
   if (file) {
@@ -62,6 +68,9 @@ function close() {
   aborter?.abort()
   aborter = null
   revokePreview()
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  sensitivity.value = 65
   workingBlob.value = null
   open.value = false
   emit('close')
@@ -78,11 +87,14 @@ async function handleMakeTransparent() {
   try {
     const cutout = await stickersStore.removeImageBackground(props.file, {
       signal: aborter.signal,
+      sensitivity: sensitivity.value,
       onProgress: (stage, percent) => {
         phase.value = stage
         progress.value = typeof percent === 'number' && percent >= 0 ? Math.round(percent) : null
       },
     })
+    lastMaskData.value = cutout.maskData ?? null
+    lastSourceImageData.value = cutout.sourceImageData ?? null
     workingBlob.value = cutout
     revokePreview()
     previewUrl.value = URL.createObjectURL(cutout)
@@ -98,11 +110,33 @@ async function handleMakeTransparent() {
   }
 }
 
+async function handleSensitivityChange() {
+  if (!lastSourceImageData.value || !lastMaskData.value)
+    return
+
+  try {
+    const newCutout = await stickersStore.recomputeCutoutBlob(
+      lastSourceImageData.value,
+      lastMaskData.value,
+      sensitivity.value,
+    )
+    workingBlob.value = newCutout
+    revokePreview()
+    previewUrl.value = URL.createObjectURL(newCutout)
+  }
+  catch (err) {
+    console.error('[StickerUploadDialog] Failed to recompute cutout with sensitivity:', err)
+  }
+}
+
 function handleRevert() {
   if (!props.file || isBusy.value)
     return
   aborter?.abort()
   error.value = null
+  lastMaskData.value = null
+  lastSourceImageData.value = null
+  sensitivity.value = 65
   workingBlob.value = props.file
   revokePreview()
   previewUrl.value = URL.createObjectURL(props.file)
@@ -193,6 +227,33 @@ const statusText = computed(() => {
             <div class="i-ph:arrow-counter-clockwise-bold size-3" />
             Revert
           </Button>
+        </div>
+
+        <!-- Edge Sensitivity Slider (Active after background removal) -->
+        <div v-if="lastMaskData" class="w-full flex flex-col gap-1.5 border border-neutral-200/80 rounded-lg bg-neutral-50/80 p-2.5 text-left dark:border-neutral-700/80 dark:bg-neutral-800/50">
+          <div class="flex items-center justify-between text-xs">
+            <label for="sticker-upload-sensitivity-slider" class="flex items-center gap-1.5 text-neutral-600 font-medium dark:text-neutral-300">
+              <div class="i-ph:sliders-horizontal-bold size-3.5 text-primary-500" />
+              <span>Edge Sensitivity</span>
+            </label>
+            <span class="text-[11px] text-neutral-500 font-mono dark:text-neutral-400">{{ sensitivity }}%</span>
+          </div>
+          <input
+            id="sticker-upload-sensitivity-slider"
+            v-model.number="sensitivity"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :disabled="isBusy"
+            class="h-1.5 w-full cursor-pointer rounded-lg bg-neutral-200 accent-primary-500 dark:bg-neutral-700"
+            @input="handleSensitivityChange"
+          >
+          <div class="flex justify-between text-[10px] text-neutral-400">
+            <span>Clean (0%)</span>
+            <span class="text-neutral-500 font-medium">Default (65%)</span>
+            <span>Preserve Edges (100%)</span>
+          </div>
         </div>
 
         <div class="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-700">

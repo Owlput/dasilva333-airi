@@ -55,6 +55,7 @@ vi.mock('../libs/stickers/image-convert', () => ({
     height: 1,
   })),
   imageDataToPngBlob: vi.fn(async (_image: unknown) => new Blob(['cutout'], { type: 'image/png' })),
+  applyAlphaMask: vi.fn((source: any) => source),
 }))
 
 describe('useStickersStore - resolveStickerId', () => {

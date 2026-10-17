@@ -2274,6 +2274,9 @@ importers:
       '@vitest/browser-playwright':
         specifier: catalog:vitest
         version: 4.0.18(bufferutil@4.1.0)(playwright@1.58.2)(utf-8-validate@5.0.10)(vite@6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.1))(vitest@4.0.18)
+      onnxruntime-node:
+        specifier: 1.30.0
+        version: 1.30.0
       playwright:
         specifier: ^1.50.0
         version: 1.58.2
@@ -25584,7 +25587,7 @@ snapshots:
       acorn: 8.16.0
       eslint-visitor-keys: 3.4.3
       espree: 9.6.1
-      semver: 7.7.4
+      semver: 7.8.5
 
   jsonc-eslint-parser@3.1.0:
     dependencies:
