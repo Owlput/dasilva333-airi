@@ -501,6 +501,60 @@
         filter: brightness(0.95);
       }
 
+      /* While You Wait / Discoveries Section */
+      .splash-discovery {
+        -webkit-app-region: no-drag;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        width: 340px;
+        min-height: 54px;
+        margin-top: 18px;
+        padding: 0 14px;
+        transition: opacity 0.3s ease;
+      }
+
+      .discovery-header {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 6px;
+        color: var(--airi-badge-color);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .discovery-icon {
+        width: 11px;
+        height: 11px;
+        flex-shrink: 0;
+      }
+
+      .discovery-text {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--airi-muted);
+        font-weight: 400;
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .discovery-text.fading {
+        opacity: 0;
+        transform: translateY(3px);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .discovery-text {
+          transform: none !important;
+          transition: opacity 0.15s ease;
+        }
+      }
+
       /* Footer */
       .version-footer {
         margin-top: auto;
@@ -612,6 +666,17 @@
             <button id="btn-skip-avatar" class="btn-secondary" style="display: none;">Continue without avatar</button>
           </div>
         </div>
+      </div>
+
+      <!-- Discovery & While You Wait Section -->
+      <div id="splash-discovery" class="splash-discovery" aria-live="polite">
+        <div class="discovery-header">
+          <svg class="discovery-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M 10 0 C 10 5.5, 14.5 10, 20 10 C 14.5 10, 10 14.5, 10 20 C 10 14.5, 5.5 10, 0 10 C 5.5 10, 10 5.5, 10 0 Z" />
+          </svg>
+          <span class="discovery-label">While you wait</span>
+        </div>
+        <p id="discovery-text" class="discovery-text"></p>
       </div>
 
       <!-- Footer Version -->

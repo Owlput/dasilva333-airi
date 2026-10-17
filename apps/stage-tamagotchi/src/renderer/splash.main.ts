@@ -81,6 +81,81 @@ const errorDetails = document.getElementById('error-details')
 const btnRetry = document.getElementById('btn-retry')
 const btnSkipAvatar = document.getElementById('btn-skip-avatar')
 const versionFooter = document.getElementById('version-footer')
+const splashDiscovery = document.getElementById('splash-discovery')
+const discoveryText = document.getElementById('discovery-text')
+
+// NOTICE: Curated discovery quotes and personality lines for the startup screen.
+// Kept self-contained and fact-checked against AIRI features.
+const DISCOVERY_TIPS: string[] = [
+  'Your avatar collection can be searchable by appearance. In Model Selector, open Tags and click \'Reindex\' to automatically tag your avatars.',
+  'Memories have connections. Open the Mind Map to explore the people, places, and topics that shape your conversations.',
+  'The Mind Map includes a Timeline view. Scrub back through your history to see how your shared world evolved.',
+  'Names can be tricky. You can teach your companion custom pronunciation replacements in Audio Settings so they say yours just right.',
+  'Every voice deserves an audition. You can preview your companion\'s greeting before choosing how they sound.',
+  'Companionship respects your sleep. Set quiet hours in Proactivity settings to pause spontaneous check-ins at night.',
+  'Prefer Ctrl+Enter to send? The arrow next to the Send button lets you switch your default chat shortcut.',
+  'Make AIRI your own. Adjust the chromatic theme hue in settings to tint the entire interface with your favorite shade.',
+  'Need help with code or files? The Virtual Terminal gives your companion a sandboxed desktop workstation.',
+  'Wondering when you last discussed something? Search your companion\'s Long-Term Journal directly from the Memory tab.',
+  'Your stage can be useful, too. Ask your companion to spawn a focus timer, sticky notes, or a quick checklist.',
+  'Make room for what matters. You can drag stage widgets anywhere on your screen.',
+  'Four little pastel squares. A suspicious amount of personality.',
+  'Preparing your companion. They insist this loading bar counts as getting dressed.',
+  'No actual strawberries were harmed in the making of Strawberry Pet.',
+  'Your to-do list has formally requested a focus timer. Negotiations are currently underway.',
+  'Not every conversation needs a destination.',
+  'A small ritual can make an ordinary day feel like yours.',
+  'There\'s always room here for unfinished thoughts.',
+  'Sometimes company is simply having someone there while you do your thing.',
+]
+
+function shuffleArray<T>(items: T[]): T[] {
+  const arr = [...items]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+  }
+  return arr
+}
+
+let discoveryDeck = shuffleArray(DISCOVERY_TIPS)
+let discoveryIndex = 0
+let discoveryInterval: ReturnType<typeof setInterval> | undefined
+
+function initDiscovery() {
+  if (!discoveryText)
+    return
+  discoveryText.textContent = discoveryDeck[discoveryIndex]
+  startDiscoveryRotation()
+}
+
+function startDiscoveryRotation() {
+  if (discoveryInterval)
+    return
+  discoveryInterval = setInterval(() => {
+    if (!discoveryText)
+      return
+    discoveryText.classList.add('fading')
+    setTimeout(() => {
+      discoveryIndex++
+      if (discoveryIndex >= discoveryDeck.length) {
+        discoveryDeck = shuffleArray(DISCOVERY_TIPS)
+        discoveryIndex = 0
+      }
+      discoveryText.textContent = discoveryDeck[discoveryIndex]
+      discoveryText.classList.remove('fading')
+    }, 300)
+  }, 8500)
+}
+
+function stopDiscoveryRotation() {
+  if (discoveryInterval) {
+    clearInterval(discoveryInterval)
+    discoveryInterval = undefined
+  }
+}
 
 // Theme Toggle Management
 function applyTheme(isDark: boolean) {
@@ -128,6 +203,7 @@ if (versionFooter && version) {
 
 // Close button quits / closes the splash window
 btnCloseWindow?.addEventListener('click', () => {
+  stopDiscoveryRotation()
   window.close()
 })
 
@@ -178,6 +254,10 @@ function render(snap: StartupSnapshot) {
   }
 
   if (failed) {
+    stopDiscoveryRotation()
+    if (splashDiscovery) {
+      splashDiscovery.style.display = 'none'
+    }
     if (iconBadge) {
       iconBadge.innerHTML = ICON_FAILED
       iconBadge.style.background = '#fee2e2'
@@ -208,7 +288,13 @@ function render(snap: StartupSnapshot) {
     errorZone.classList.remove('visible')
   }
 
+  if (splashDiscovery && splashDiscovery.style.display === 'none') {
+    splashDiscovery.style.display = 'flex'
+    startDiscoveryRotation()
+  }
+
   if (isReady) {
+    stopDiscoveryRotation()
     if (iconBadge) {
       iconBadge.innerHTML = ICON_READY
       iconBadge.style.background = '#dcfce7'
@@ -307,3 +393,4 @@ if (context) {
 }
 
 resetWatchdog()
+initDiscovery()
