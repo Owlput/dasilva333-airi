@@ -1,15 +1,23 @@
 <script setup lang="ts">
+import type { ModelCacheStatusMap } from '../../../libs/inference'
+
 import { Button } from '@proj-airi/ui'
 import { computed, onMounted, ref } from 'vue'
 
-import { clearModelCache, clearSingleModelCache, formatBytes, getModelCacheSize, isModelCached } from '../../../libs/inference'
+import {
+  clearModelCache,
+  clearSingleModelCache,
+  formatBytes,
+  getDetailedModelCacheMap,
+  getModelCacheSize,
+} from '../../../libs/inference'
 
-export type ModelCategory = 'all' | 'llm' | 'audio' | 'vision' | 'misc'
+export type ModelCategory = 'all' | 'installed' | 'llm' | 'audio' | 'vision' | 'misc'
 
 interface KnownModelItem {
   id: string
   name: string
-  category: Exclude<ModelCategory, 'all'>
+  category: Exclude<ModelCategory, 'all' | 'installed'>
   runtime: string
   icon: string
   description?: string
@@ -65,22 +73,6 @@ const knownModels: KnownModelItem[] = [
 
   // 2. Audio & Speech
   {
-    id: 'aoiandroid/kokoro-82m-coreml-ios',
-    name: 'Kokoro 82M TTS (CoreML iOS)',
-    category: 'audio',
-    runtime: 'CoreML / ANE',
-    icon: 'i-solar:volume-loud-bold-duotone',
-    description: 'Sub-100ms neural text-to-speech on Apple Neural Engine',
-  },
-  {
-    id: 'theoracleguy/pocket-tts-coreml',
-    name: 'Pocket-TTS (CoreML)',
-    category: 'audio',
-    runtime: 'CoreML / ANE',
-    icon: 'i-solar:soundwave-bold-duotone',
-    description: 'Native Apple Silicon neural speech synthesis',
-  },
-  {
     id: 'onnx-community/Kokoro-82M-v1.0-ONNX',
     name: 'Kokoro 82M TTS (ONNX Web)',
     category: 'audio',
@@ -107,44 +99,12 @@ const knownModels: KnownModelItem[] = [
 
   // 3. Vision & Artistry
   {
-    id: 'apple/coreml-stable-diffusion-v1-5',
-    name: 'Stable Diffusion 1.5 (CoreML ANE)',
-    category: 'vision',
-    runtime: 'CoreML / ANE',
-    icon: 'i-solar:pallete-2-bold-duotone',
-    description: 'Autonomous Artistry on-device image and journal background generation',
-  },
-  {
-    id: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
-    name: 'WD14 SwinV2 Anime Tagger',
+    id: 'wd-tagger',
+    name: 'WD Anime Tagger (SwinV2 / ViT / ConvNeXt)',
     category: 'vision',
     runtime: 'Transformers.js',
     icon: 'i-solar:gallery-bold-duotone',
-    description: 'Anime character and visual trait recognition',
-  },
-  {
-    id: 'SmilingWolf/wd-v1-4-vit-tagger-v2',
-    name: 'WD14 ViT Anime Tagger',
-    category: 'vision',
-    runtime: 'Transformers.js',
-    icon: 'i-solar:gallery-bold-duotone',
-    description: 'Vision Transformer character auto-tagger',
-  },
-  {
-    id: 'SmilingWolf/wd-swinv2-tagger-v3',
-    name: 'WD SwinV2 Tagger v3',
-    category: 'vision',
-    runtime: 'Transformers.js',
-    icon: 'i-solar:gallery-bold-duotone',
-    description: 'Latest v3 anime and Danbooru character tagger',
-  },
-  {
-    id: 'SmilingWolf/wd-convnext-tagger-v3',
-    name: 'WD ConvNeXt Tagger v3',
-    category: 'vision',
-    runtime: 'Transformers.js',
-    icon: 'i-solar:gallery-bold-duotone',
-    description: 'Latest v3 CNN-based high speed tagger',
+    description: 'Single-slot anime character & visual trait recognition tagger',
   },
   {
     id: 'Xenova/moondream2',
@@ -192,17 +152,19 @@ const knownModels: KnownModelItem[] = [
 
 const categories: { id: ModelCategory, label: string, icon: string }[] = [
   { id: 'all', label: 'All', icon: 'i-solar:widget-bold-duotone' },
+  { id: 'installed', label: 'Installed', icon: 'i-solar:check-circle-bold-duotone' },
   { id: 'llm', label: 'LLMs', icon: 'i-solar:chat-round-line-bold-duotone' },
   { id: 'audio', label: 'Audio & Voice', icon: 'i-solar:volume-loud-bold-duotone' },
   { id: 'vision', label: 'Vision & Art', icon: 'i-solar:gallery-bold-duotone' },
   { id: 'misc', label: 'Misc', icon: 'i-solar:box-minimalistic-bold-duotone' },
 ]
 
-const cachedModelMap = ref<Record<string, boolean>>({})
+const cachedModelMap = ref<ModelCacheStatusMap>({})
 
 const categoryCounts = computed(() => {
   const counts: Record<ModelCategory, { total: number, cached: number }> = {
     all: { total: knownModels.length, cached: 0 },
+    installed: { total: 0, cached: 0 },
     llm: { total: 0, cached: 0 },
     audio: { total: 0, cached: 0 },
     vision: { total: 0, cached: 0 },
@@ -211,9 +173,11 @@ const categoryCounts = computed(() => {
 
   for (const model of knownModels) {
     counts[model.category].total++
-    if (cachedModelMap.value[model.id]) {
+    if (cachedModelMap.value[model.id]?.cached) {
       counts[model.category].cached++
       counts.all.cached++
+      counts.installed.cached++
+      counts.installed.total++
     }
   }
 
@@ -223,20 +187,20 @@ const categoryCounts = computed(() => {
 const filteredModels = computed(() => {
   if (selectedCategory.value === 'all')
     return knownModels
+  if (selectedCategory.value === 'installed')
+    return knownModels.filter(m => cachedModelMap.value[m.id]?.cached)
   return knownModels.filter(m => m.category === selectedCategory.value)
 })
 
 async function refresh() {
   loading.value = true
   try {
-    cacheSize.value = await getModelCacheSize()
+    const [size, map] = await Promise.all([
+      getModelCacheSize(),
+      getDetailedModelCacheMap(),
+    ])
+    cacheSize.value = size
     emit('change', cacheSize.value)
-    const map: Record<string, boolean> = {}
-    await Promise.all(
-      knownModels.map(async (m) => {
-        map[m.id] = await isModelCached(m.id)
-      }),
-    )
     cachedModelMap.value = map
   }
   finally {
@@ -327,12 +291,12 @@ onMounted(refresh)
           :class="[
             selectedCategory === cat.id
               ? 'bg-white/20 text-white dark:bg-neutral-900/20 dark:text-neutral-900'
-              : categoryCounts[cat.id]?.cached > 0
+              : (cat.id === 'installed' ? categoryCounts.installed.cached : categoryCounts[cat.id]?.cached) > 0
                 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                 : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400',
           ]"
         >
-          {{ categoryCounts[cat.id]?.cached > 0 ? `${categoryCounts[cat.id]?.cached} / ${categoryCounts[cat.id]?.total}` : categoryCounts[cat.id]?.total }}
+          {{ cat.id === 'installed' ? categoryCounts.installed.cached : (categoryCounts[cat.id]?.cached > 0 ? `${categoryCounts[cat.id]?.cached} / ${categoryCounts[cat.id]?.total}` : categoryCounts[cat.id]?.total) }}
         </span>
       </button>
     </div>
@@ -353,7 +317,7 @@ onMounted(refresh)
           <div
             class="h-7 w-7 flex shrink-0 items-center justify-center rounded-lg text-sm"
             :class="[
-              cachedModelMap[model.id]
+              cachedModelMap[model.id]?.cached
                 ? 'bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20'
                 : 'bg-neutral-200/50 text-neutral-400 dark:bg-neutral-700/50',
             ]"
@@ -378,16 +342,19 @@ onMounted(refresh)
         <div class="flex shrink-0 items-center gap-2">
           <span
             :class="[
-              'rounded-full px-2 py-0.5 text-[10px] font-bold',
-              cachedModelMap[model.id]
+              'rounded-full px-2 py-0.5 text-[10px] font-bold flex items-center gap-1',
+              cachedModelMap[model.id]?.cached
                 ? 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'
                 : 'bg-neutral-100 text-neutral-400 dark:bg-neutral-700/60 dark:text-neutral-400',
             ]"
           >
-            {{ cachedModelMap[model.id] ? 'Cached' : 'Not Cached' }}
+            <span v-if="cachedModelMap[model.id]?.cached && (cachedModelMap[model.id]?.sizeBytes ?? 0) > 0" class="text-[9px] font-mono opacity-80">
+              {{ formatBytes(cachedModelMap[model.id]?.sizeBytes ?? 0) }} ·
+            </span>
+            <span>{{ cachedModelMap[model.id]?.cached ? 'Cached' : 'Not Cached' }}</span>
           </span>
           <Button
-            v-if="cachedModelMap[model.id]"
+            v-if="cachedModelMap[model.id]?.cached"
             variant="danger"
             size="sm"
             icon="i-solar:trash-bin-trash-linear"
@@ -397,6 +364,14 @@ onMounted(refresh)
             @click="handleClearSingleCache(model.id)"
           />
         </div>
+      </div>
+
+      <div
+        v-if="filteredModels.length === 0"
+        class="flex flex-col items-center justify-center py-8 text-center text-neutral-400 dark:text-neutral-500"
+      >
+        <div class="i-solar:box-minimalistic-linear mb-1 text-xl opacity-60" />
+        <span class="text-xs">No models found in this category</span>
       </div>
     </div>
 

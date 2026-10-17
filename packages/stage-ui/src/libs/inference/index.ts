@@ -13,10 +13,13 @@ export {
   clearModelCache,
   clearNeedleCache,
   clearSingleModelCache,
+  clearWdTaggerCache,
   clearWebLlmCache,
   clearWebRwkvCache,
+  evictOtherWdTaggerModels,
   evictOtherWhisperModels,
   formatBytes,
+  getDetailedModelCacheMap,
   getLayaCacheSize,
   getModelCacheSize,
   getNeedleCacheSize,
@@ -25,10 +28,12 @@ export {
   isModelCached,
   isNeedleModelCached,
   isStateCached,
+  isWdTaggerCached,
   isWebLlmModelCached,
   isWebRwkvSlotOccupied,
   LAYA_CACHE_NAME,
 } from './cache-utils'
+export type { ModelCacheItemStatus, ModelCacheStatusMap } from './cache-utils'
 export {
   DEFAULT_WEB_LLM_FP32_MODEL,
   DEFAULT_WEB_LLM_MODEL,

@@ -173,10 +173,34 @@ defineStreamInvokeHandler(context, blipLoadEvent, toStreamHandler<any, any>(asyn
     })
   }
 
+  /**
+   * Evict all other cached WD tagger models from transformers-cache.
+   * Ensures that only the currently active WD tagger is stored in the single slot.
+   */
+  async function evictOtherTaggers(keepModelId: string): Promise<void> {
+    if (typeof caches === 'undefined')
+      return
+
+    try {
+      const cache = await caches.open('transformers-cache')
+      const keys = await cache.keys()
+      for (const request of keys) {
+        const isOtherTagger = request.url.includes('SmilingWolf') || request.url.includes('wd-v1-4') || request.url.includes('wd-swinv2') || request.url.includes('wd-convnext')
+        if (isOtherTagger && !request.url.includes(keepModelId)) {
+          await cache.delete(request)
+        }
+      }
+    }
+    catch (e) {
+      console.warn('[Vision Worker] Failed to evict other WD taggers:', e)
+    }
+  }
+
   const isTagger = modelId.toLowerCase().includes('wd-v1-4') || modelId.toLowerCase().includes('wd14') || modelId.toLowerCase().includes('wd-') || modelId.toLowerCase().includes('tagger')
 
   if (isTagger) {
     console.log(`[Vision Worker] Loading WD14 Tagger: ${modelId} on ${resolvedDevice}`)
+    await evictOtherTaggers(modelId)
     taggerModel = await AutoModel.from_pretrained(modelId, {
       device: resolvedDevice,
       model_file_name: '../model',

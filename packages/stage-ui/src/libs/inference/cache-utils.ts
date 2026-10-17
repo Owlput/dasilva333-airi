@@ -302,6 +302,10 @@ export async function clearSingleModelCache(modelId: string): Promise<void> {
     await clearWebRwkvCache()
     return
   }
+  if (modelId === 'wd-tagger' || modelId.includes('SmilingWolf') || modelId.includes('wd-v1-4') || modelId.includes('wd-swinv2') || modelId.includes('wd-convnext')) {
+    await clearWdTaggerCache()
+    return
+  }
   if (modelId.startsWith('http')) {
     await clearSingleOpfsModelCache(modelId)
     return
@@ -358,6 +362,68 @@ export async function evictOtherWhisperModels(keepModelId: string): Promise<void
   }
   catch (error) {
     console.warn('[cache-utils] failed to evict other whisper model shards', error)
+  }
+}
+
+/**
+ * Evict all cached WD tagger models except the specified model repository ID.
+ * Ensures that only a single active WD tagger model is retained in browser storage.
+ */
+export async function evictOtherWdTaggerModels(keepModelId: string): Promise<void> {
+  if (typeof caches === 'undefined')
+    return
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    for (const request of keys) {
+      const isOtherTagger = request.url.includes('SmilingWolf') || request.url.includes('wd-v1-4') || request.url.includes('wd-swinv2') || request.url.includes('wd-convnext')
+      if (isOtherTagger && !request.url.includes(keepModelId)) {
+        await cache.delete(request)
+      }
+    }
+  }
+  catch (error) {
+    console.warn('[cache-utils] failed to evict other WD taggers', error)
+  }
+}
+
+/** Clear all WD tagger models from the transformers cache. */
+export async function clearWdTaggerCache(): Promise<void> {
+  if (typeof caches === 'undefined')
+    return
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    for (const request of keys) {
+      const isTagger = request.url.includes('SmilingWolf') || request.url.includes('wd-v1-4') || request.url.includes('wd-swinv2') || request.url.includes('wd-convnext')
+      if (isTagger) {
+        await cache.delete(request)
+      }
+    }
+  }
+  catch (error) {
+    console.warn('[cache-utils] failed to clear WD tagger cache', error)
+  }
+}
+
+export async function isWdTaggerCached(): Promise<boolean> {
+  if (typeof caches === 'undefined')
+    return false
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    return keys.some(request =>
+      request.url.includes('SmilingWolf')
+      || request.url.includes('wd-v1-4')
+      || request.url.includes('wd-swinv2')
+      || request.url.includes('wd-convnext'),
+    )
+  }
+  catch {
+    return false
   }
 }
 
@@ -639,6 +705,9 @@ export async function isModelCached(modelId: string): Promise<boolean> {
   if (modelId === 'web-rwkv') {
     return isWebRwkvSlotOccupied()
   }
+  if (modelId === 'wd-tagger') {
+    return isWdTaggerCached()
+  }
   if (modelId.startsWith('http')) {
     return isOpfsModelCached(modelId)
   }
@@ -669,6 +738,161 @@ async function isTransformersModelCached(modelId: string): Promise<boolean> {
   catch {
     return false
   }
+}
+
+export interface ModelCacheItemStatus {
+  cached: boolean
+  sizeBytes: number
+}
+
+export type ModelCacheStatusMap = Record<string, ModelCacheItemStatus>
+
+/**
+ * Inspects all storage backends (NativeAI, OPFS, CacheStorage) and returns
+ * cache status and byte size for all known model slots in a unified pass.
+ */
+export async function getDetailedModelCacheMap(): Promise<ModelCacheStatusMap> {
+  const result: ModelCacheStatusMap = {}
+
+  // 1. Native AI / CoreML
+  try {
+    const nativeRes = await NativeAI.listCachedModels().catch(() => ({ models: [] }))
+    for (const m of nativeRes.models) {
+      const size = m.sizeBytes ?? 0
+      result[m.modelId] = { cached: true, sizeBytes: size }
+      const slashed = m.modelId.replace(/_/g, '/')
+      result[slashed] = { cached: true, sizeBytes: size }
+    }
+  }
+  catch (error) {
+    console.warn('[cache-utils] failed to inspect NativeAI cache', error)
+  }
+
+  // 2. Web-RWKV (OPFS single-slot)
+  try {
+    const rwkvOccupied = await isWebRwkvSlotOccupied()
+    const rwkvSize = rwkvOccupied ? await getOpfsCacheSize() : 0
+    result['web-rwkv'] = { cached: rwkvOccupied, sizeBytes: rwkvSize }
+  }
+  catch {
+    result['web-rwkv'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 3. MOSS TTS Nano (OPFS)
+  try {
+    const mossCached = await isMossModelCached()
+    const mossSize = mossCached ? await getMossOpfsCacheSize() : 0
+    result['moss-tts-nano'] = { cached: mossCached, sizeBytes: mossSize }
+  }
+  catch {
+    result['moss-tts-nano'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 4. WebLLM (Cache Storage API)
+  try {
+    const webLlmCached = await isWebLlmModelCached()
+    const webLlmSize = webLlmCached ? await getWebLlmCacheSize() : 0
+    result['web-llm'] = { cached: webLlmCached, sizeBytes: webLlmSize }
+  }
+  catch {
+    result['web-llm'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 5. Needle 2 (Cache Storage API)
+  try {
+    const needleCached = await isNeedleModelCached()
+    const needleSize = needleCached ? await getNeedleCacheSize() : 0
+    result['needle-2'] = { cached: needleCached, sizeBytes: needleSize }
+  }
+  catch {
+    result['needle-2'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 6. Laya (Cache Storage API)
+  try {
+    const layaCached = await isLayaModelCached()
+    const layaSize = layaCached ? await getLayaCacheSize() : 0
+    result['tozp/laya-onnx'] = { cached: layaCached, sizeBytes: layaSize }
+  }
+  catch {
+    result['tozp/laya-onnx'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 7. Transformers Cache (transformers-cache)
+  if (typeof caches !== 'undefined') {
+    try {
+      const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+      const keys = await cache.keys()
+
+      const tfModels: { id: string, match: (url: string) => boolean }[] = [
+        { id: 'onnx-community/Kokoro-82M-v1.0-ONNX', match: url => url.includes('Kokoro-82M') },
+        { id: 'whisper', match: url => url.includes('whisper') },
+        { id: 'wd-tagger', match: url => url.includes('SmilingWolf') || url.includes('wd-v1-4') || url.includes('wd-swinv2') || url.includes('wd-convnext') },
+        { id: 'Xenova/moondream2', match: url => url.includes('moondream2') },
+        { id: 'Xenova/modnet', match: url => url.includes('modnet') },
+        { id: 'dasilva333/flowmdm-onnx', match: url => url.includes('flowmdm') },
+        { id: 'Xenova/clip-vit-base-patch32', match: url => url.includes('clip-vit-base-patch32') },
+      ]
+
+      const tfSizes: Record<string, number> = {}
+      const tfCounts: Record<string, number> = {}
+      const tfMoondreamShards = new Set<string>()
+
+      for (const m of tfModels) {
+        tfSizes[m.id] = 0
+        tfCounts[m.id] = 0
+      }
+
+      for (const request of keys) {
+        let reqSize = 0
+        const response = await cache.match(request)
+        if (response) {
+          const cl = response.headers.get('content-length')
+          if (cl) {
+            reqSize = Number.parseInt(cl, 10)
+          }
+          else {
+            try {
+              const blob = await response.blob()
+              reqSize = blob.size
+            }
+            catch {}
+          }
+        }
+
+        for (const m of tfModels) {
+          if (m.match(request.url)) {
+            tfSizes[m.id] += reqSize
+            tfCounts[m.id]++
+            if (m.id === 'Xenova/moondream2') {
+              if (request.url.includes('decoder_model_merged'))
+                tfMoondreamShards.add('decoder_model_merged')
+              if (request.url.includes('vision_encoder'))
+                tfMoondreamShards.add('vision_encoder')
+              if (request.url.includes('embed_tokens'))
+                tfMoondreamShards.add('embed_tokens')
+            }
+          }
+        }
+      }
+
+      for (const m of tfModels) {
+        let isCached = tfCounts[m.id] > 0
+        if (m.id === 'Xenova/moondream2') {
+          isCached = tfMoondreamShards.size >= 3
+        }
+        result[m.id] = {
+          cached: isCached,
+          sizeBytes: tfSizes[m.id] || 0,
+        }
+      }
+    }
+    catch (error) {
+      console.warn('[cache-utils] failed to inspect transformers cache', error)
+    }
+  }
+
+  return result
 }
 
 /**
