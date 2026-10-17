@@ -1,26 +1,32 @@
-import type { IpcRenderer } from '@electron-toolkit/preload'
+import type { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import type { SourcesOptions } from 'electron'
 import type { MaybeRefOrGetter } from 'vue'
 
 import type { ScreenCaptureSetSourceRequest, SerializableDesktopCapturerSource } from '..'
 
 import { defineInvoke } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { toRaw, toValue } from 'vue'
 
 import { screenCapture } from '..'
 
-export function useElectronScreenCapture(ipcRenderer: IpcRenderer, sourcesOptions: MaybeRefOrGetter<SourcesOptions>) {
-  const context = createContext(ipcRenderer).context
+/**
+ * Screen capture commands on the eventa context of the window.
+ *
+ * Pass the shared context of the window, for example `getElectronEventaContext()` of `@proj-airi/electron-vueuse`.
+ * Each eventa context adds an IPC listener that handles every message to the window, and the listener stays for the
+ * life of the page.
+ */
+export function useElectronScreenCapture(context: ReturnType<typeof createContext>['context'] | undefined, sourcesOptions: MaybeRefOrGetter<SourcesOptions>) {
+  const invokeGetSources = context ? defineInvoke(context, screenCapture.getSources) : undefined
+  const setSource = context ? defineInvoke(context, screenCapture.setSource) : undefined
+  const resetSource = context ? defineInvoke(context, screenCapture.resetSource) : undefined
 
-  const invokeGetSources = defineInvoke(context, screenCapture.getSources)
-  const setSource = defineInvoke(context, screenCapture.setSource)
-  const resetSource = defineInvoke(context, screenCapture.resetSource)
-
-  const checkMacOSPermission = defineInvoke(context, screenCapture.checkMacOSPermission)
-  const requestMacOSPermission = defineInvoke(context, screenCapture.requestMacOSPermission)
+  const checkMacOSPermission = context ? defineInvoke(context, screenCapture.checkMacOSPermission) : undefined
+  const requestMacOSPermission = context ? defineInvoke(context, screenCapture.requestMacOSPermission) : undefined
 
   async function getSources() {
+    if (!invokeGetSources)
+      return []
     return invokeGetSources(toRaw(toValue(sourcesOptions)))
   }
 
@@ -34,15 +40,17 @@ export function useElectronScreenCapture(ipcRenderer: IpcRenderer, sourcesOption
 
     let handle: string | undefined
     try {
-      handle = await setSource({
-        options: toRaw(toValue(sourcesOptions)),
-        sourceId,
-        timeout: request?.timeout,
-      })
+      if (setSource) {
+        handle = await setSource({
+          options: toRaw(toValue(sourcesOptions)),
+          sourceId,
+          timeout: request?.timeout,
+        })
+      }
       return await useFn()
     }
     finally {
-      if (handle) {
+      if (handle && resetSource) {
         await resetSource(handle)
       }
     }
@@ -50,10 +58,10 @@ export function useElectronScreenCapture(ipcRenderer: IpcRenderer, sourcesOption
 
   return {
     getSources,
-    setSource,
-    resetSource,
+    setSource: setSource ?? (async () => ''),
+    resetSource: resetSource ?? (async () => {}),
     selectWithSource,
-    checkMacOSPermission,
-    requestMacOSPermission,
+    checkMacOSPermission: checkMacOSPermission ?? (async () => 'not-determined' as const),
+    requestMacOSPermission: requestMacOSPermission ?? (async () => false),
   }
 }
