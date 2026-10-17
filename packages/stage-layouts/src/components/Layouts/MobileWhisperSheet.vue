@@ -5,6 +5,7 @@ import { ChatHistory, WhisperComposerBar } from '@proj-airi/stage-ui/components'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useLocalStorage, useScreenSafeArea } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
@@ -52,6 +53,28 @@ onMounted(async () => {
 const { messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { sending } = storeToRefs(chatOrchestrator)
+
+const airiCardStore = useAiriCardStore()
+const { activeCard } = storeToRefs(airiCardStore)
+
+const isGroundingActive = computed(() => {
+  const ext = activeCard.value?.extensions?.airi
+  return Boolean(ext?.groundingEnabled || ext?.groundingMemoryEnabled || (ext?.groundingTopicsEnabled && ext?.recentTopics?.length) || ext?.groundingDirectorScratchpadEnabled)
+})
+
+const groundingActiveLabel = computed(() => {
+  const ext = activeCard.value?.extensions?.airi
+  const parts: string[] = []
+  if (ext?.groundingMemoryEnabled)
+    parts.push('Universe RAG')
+  if (ext?.groundingEnabled)
+    parts.push('Sensors')
+  if (ext?.groundingTopicsEnabled && ext?.recentTopics?.length)
+    parts.push('Topics')
+  if (ext?.groundingDirectorScratchpadEnabled)
+    parts.push('Visual Scene')
+  return parts.join(' • ') || 'Active'
+})
 
 const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
 
@@ -292,6 +315,18 @@ defineExpose({
           :streaming-message="streamingMessage"
           class="min-h-0 flex-1 overflow-y-auto"
         />
+      </div>
+
+      <!-- Ephemeral Grounding Indicator Bar (Active when Grounding / Universe RAG is toggled ON) -->
+      <div
+        v-if="isGroundingActive"
+        class="shadow-xs pointer-events-auto mx-3 mb-1 flex items-center justify-between border border-amber-300 rounded-lg bg-amber-50/80 px-2.5 py-1 text-[10px] text-amber-900 font-mono backdrop-blur-md dark:border-amber-500/25 dark:bg-black/40 dark:text-amber-300"
+      >
+        <div class="flex items-center gap-1.5 truncate">
+          <span class="i-solar:cpu-bolt-bold-duotone shrink-0 animate-pulse text-amber-500" />
+          <span class="text-[9px] font-bold tracking-wider uppercase">Grounding Active:</span>
+          <span class="truncate opacity-90">{{ groundingActiveLabel }}</span>
+        </div>
       </div>
 
       <!-- Whisper Composer Bar (Active in Postures 2, 3 & 4) -->

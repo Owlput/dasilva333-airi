@@ -83,18 +83,9 @@ const isGroundingMemoryEnabled = computed(() => {
 })
 
 function handleToggleGroundingMemory() {
-  if (!activeCardId.value || !activeCard.value)
-    return
-  const current = isGroundingMemoryEnabled.value
-  airiCardStore.updateCard(activeCardId.value, {
-    extensions: {
-      ...activeCard.value.extensions,
-      airi: {
-        ...activeCard.value.extensions?.airi,
-        groundingMemoryEnabled: !current,
-      },
-    },
-  } as any)
+  if (activeCardId.value) {
+    airiCardStore.toggleGroundingMemory(activeCardId.value)
+  }
 }
 
 const isGroundingDirectorScratchpadEnabled = computed(() => {

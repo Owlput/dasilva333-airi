@@ -70,6 +70,13 @@ function isMainWindow(): boolean {
   return hash === '' || hash === '#/' || hash === '#' || hash === '#!/'
 }
 
+function isChatWindow(): boolean {
+  if (typeof window === 'undefined')
+    return false
+  const hash = window.location.hash || ''
+  return hash.startsWith('#/chat')
+}
+
 export const useTextJournalStore = defineStore('text-journal', () => {
   const { userId } = storeToRefs(useAuthStore())
   const { activeCard, activeCardId, cards } = storeToRefs(useAiriCardStore())
@@ -125,8 +132,8 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
       initializedForUserId.value = currentUserId
 
-      // Fire-and-forget background indexing (strictly restricted to the primary main window)
-      if (isMainWindow()) {
+      // Fire-and-forget background indexing (primary stage window and desktop chat window)
+      if (isMainWindow() || isChatWindow()) {
         backgroundIndexAll().catch(err => console.error('text_journal: background search indexing failed:', err))
       }
     }
@@ -599,6 +606,11 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
       // Fallback: local heuristic ranking on loaded entries (offline / headless fallback)
       const normalizedQuery = query.toLowerCase()
+      const queryTokens = normalizedQuery
+        .split(/[\s,.;:!?]+/)
+        .map(t => t.trim())
+        .filter(t => t.length > 2)
+
       const scopedEntries = entries.value.filter(entry => !targetCharacterId || entry.characterId === targetCharacterId)
       const ranked = scopedEntries
         .map((entry) => {
@@ -613,6 +625,16 @@ export const useTextJournalStore = defineStore('text-journal', () => {
             score += 2
           if (characterName.includes(normalizedQuery))
             score += 1
+
+          // Token-level matching for longer queries
+          for (const token of queryTokens) {
+            if (title.includes(token))
+              score += 1.5
+            if (content.includes(token))
+              score += 1.0
+            if (characterName.includes(token))
+              score += 0.5
+          }
 
           return { entry, score }
         })

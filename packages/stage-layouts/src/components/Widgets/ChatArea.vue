@@ -66,6 +66,25 @@ const quickSuggestShortReplies = useLocalStorage<boolean>('airi:producer:short-r
 
 const characterName = computed(() => activeCard.value?.name || 'Companion')
 
+const isGroundingActive = computed(() => {
+  const ext = activeCard.value?.extensions?.airi
+  return Boolean(ext?.groundingEnabled || ext?.groundingMemoryEnabled || (ext?.groundingTopicsEnabled && ext?.recentTopics?.length) || ext?.groundingDirectorScratchpadEnabled)
+})
+
+const groundingActiveLabel = computed(() => {
+  const ext = activeCard.value?.extensions?.airi
+  const parts: string[] = []
+  if (ext?.groundingMemoryEnabled)
+    parts.push('Universe RAG')
+  if (ext?.groundingEnabled)
+    parts.push('Sensors')
+  if (ext?.groundingTopicsEnabled && ext?.recentTopics?.length)
+    parts.push('Topics')
+  if (ext?.groundingDirectorScratchpadEnabled)
+    parts.push('Visual Scene')
+  return parts.join(' • ') || 'Active'
+})
+
 function handleWandClick() {
   const input = messageInput.value.trim()
   if (input) {
@@ -162,6 +181,18 @@ function handleScreenshotClick() {
       @retry="handleRetryProducer"
       @delete="handleDeleteProducer"
     />
+
+    <!-- Ephemeral Grounding Indicator Bar -->
+    <div
+      v-if="isGroundingActive"
+      class="shadow-xs flex items-center justify-between border border-amber-300 rounded-xl bg-amber-50/80 px-3 py-1 text-xs text-amber-900 font-mono backdrop-blur-md dark:border-amber-500/25 dark:bg-black/40 dark:text-amber-300"
+    >
+      <div class="flex items-center gap-2 truncate">
+        <span class="i-solar:cpu-bolt-bold-duotone shrink-0 animate-pulse text-sm text-amber-500" />
+        <span class="text-[10px] font-bold tracking-wider uppercase">Pre-Flight Grounding Active:</span>
+        <span class="truncate text-[10px] opacity-90">{{ groundingActiveLabel }}</span>
+      </div>
+    </div>
 
     <!-- Unified Composer Card -->
     <div

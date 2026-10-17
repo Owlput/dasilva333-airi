@@ -188,6 +188,7 @@ const latestDirectorScratchpad = computed(() => {
 })
 
 const groundedMemories = ref<any[]>([])
+const isSearchingMemories = ref(false)
 
 watchDebounced(
   messageInput,
@@ -205,6 +206,7 @@ watchDebounced(
     }
 
     try {
+      isSearchingMemories.value = true
       const results = await textJournalStore.searchEntries({
         query,
         limit: 3,
@@ -216,8 +218,11 @@ watchDebounced(
       console.error('[InteractiveArea] Failed to search semantic memory context:', err)
       groundedMemories.value = []
     }
+    finally {
+      isSearchingMemories.value = false
+    }
   },
-  { debounce: 1000 },
+  { debounce: 500 },
 )
 
 watch(
@@ -228,6 +233,7 @@ watch(
     }
     else if (messageInput.value.trim().length > 3) {
       try {
+        isSearchingMemories.value = true
         const results = await textJournalStore.searchEntries({
           query: messageInput.value.trim(),
           limit: 3,
@@ -238,6 +244,9 @@ watch(
       catch (err) {
         console.error('[InteractiveArea] Failed to search semantic memory context:', err)
         groundedMemories.value = []
+      }
+      finally {
+        isSearchingMemories.value = false
       }
     }
   },
@@ -1229,7 +1238,7 @@ defineExpose({
 
     <!-- Ephemeral Grounding Preview Block -->
     <div
-      v-if="activeCard?.extensions?.airi?.groundingEnabled || (activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0) || (activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length) || (activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad)"
+      v-if="activeCard?.extensions?.airi?.groundingEnabled || activeCard?.extensions?.airi?.groundingMemoryEnabled || (activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length) || (activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad)"
       class="grounding-preview-panel relative mx-2 flex flex-col border border-amber-300 rounded-lg bg-amber-50/70 p-1 text-sm text-amber-900 font-mono shadow-[0_0_15px_rgba(245,158,11,0.05)] backdrop-blur-md transition-colors dark:border-amber-500/20 dark:bg-black/40 hover:bg-amber-100/80 dark:text-amber-200 dark:hover:bg-black/60"
     >
       <div class="pointer-events-none absolute inset-0 bg-[length:100%_4px] bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.1)_50%)] opacity-20" />
@@ -1242,7 +1251,9 @@ defineExpose({
 
           <!-- Quick Status Badges (hidden on narrow windows; the toggle buttons on the right cover the same sections) -->
           <span v-if="activeCard?.extensions?.airi?.groundingEnabled" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Sensors Active</span>
-          <span v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Grounded Memories ({{ groundedMemories.length }})</span>
+          <span v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">
+            {{ groundedMemories.length > 0 ? `Grounded Memories (${groundedMemories.length})` : 'Universe RAG Active' }}
+          </span>
           <span v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" class="border border-amber-300 rounded bg-amber-100/50 px-1.5 py-0.2 text-[8px] text-amber-800 font-bold font-mono hidden min-[480px]:inline dark:border-amber-500/25 dark:bg-black/30 dark:text-amber-400">Recent Topics ({{ activeCard.extensions.airi.recentTopics.length }})</span>
           <!-- Phase 6: L9–L11 Δh salience indicator. Shows Salience Standby when armed; lights Salience Vibe Active on hot verdict. -->
           <span
@@ -1269,11 +1280,11 @@ defineExpose({
             <span class="text-amber-600 transition-transform dark:text-amber-500" :class="isGroundingPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
           </button>
           <button
-            v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0"
+            v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled"
             class="flex items-center gap-1 border border-amber-300 rounded bg-amber-100/70 px-2 py-0.5 text-xs text-amber-800 font-bold font-mono transition-colors dark:border-amber-500/25 dark:bg-black/50 hover:bg-amber-200/80 dark:text-amber-400 dark:hover:bg-black/80"
             @click="isMemoriesPreviewExpanded = !isMemoriesPreviewExpanded"
           >
-            <span>Memories</span>
+            <span>Memories{{ groundedMemories.length > 0 ? ` (${groundedMemories.length})` : '' }}</span>
             <span class="text-amber-600 transition-transform dark:text-amber-500" :class="isMemoriesPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
           </button>
           <button
@@ -1308,26 +1319,31 @@ defineExpose({
 
       <!-- Grounded Memories Section -->
       <div
-        v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0"
+        v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled"
         :class="[
           'z-10 animate-fade-in animate-duration-200',
           isMemoriesPreviewExpanded ? 'mt-2 border-t border-amber-200 dark:border-amber-500/10 pt-2' : '',
         ]"
       >
-        <div v-show="isMemoriesPreviewExpanded" class="max-h-36 overflow-y-auto scrollbar-thin space-y-1.5">
-          <div
-            v-for="entry in groundedMemories"
-            :key="entry.id"
-            class="flex flex-col cursor-pointer border border-amber-200 rounded bg-amber-50/50 p-2 text-[10px] leading-normal transition-all dark:border-amber-500/10 hover:border-amber-300 dark:bg-amber-950/10 hover:bg-amber-100/80 dark:hover:border-amber-500/20 dark:hover:bg-amber-950/20"
-            @click="openTextPreview({ title: entry.title || 'Untitled Memory', content: entry.content })"
-          >
-            <div class="mb-0.5 flex items-center justify-between text-amber-800 font-bold dark:text-amber-300">
-              <span class="truncate pr-2">{{ entry.title || 'Untitled Memory' }}</span>
-              <span class="shrink-0 text-[8px] font-normal uppercase opacity-60">{{ entry.kind || 'Journal' }}</span>
+        <div v-show="isMemoriesPreviewExpanded">
+          <div v-if="groundedMemories.length > 0" class="max-h-36 overflow-y-auto scrollbar-thin space-y-1.5">
+            <div
+              v-for="entry in groundedMemories"
+              :key="entry.id"
+              class="flex flex-col cursor-pointer border border-amber-200 rounded bg-amber-50/50 p-2 text-[10px] leading-normal transition-all dark:border-amber-500/10 hover:border-amber-300 dark:bg-amber-950/10 hover:bg-amber-100/80 dark:hover:border-amber-500/20 dark:hover:bg-amber-950/20"
+              @click="openTextPreview({ title: entry.title || 'Untitled Memory', content: entry.content })"
+            >
+              <div class="mb-0.5 flex items-center justify-between text-amber-800 font-bold dark:text-amber-300">
+                <span class="truncate pr-2">{{ entry.title || 'Untitled Memory' }}</span>
+                <span class="shrink-0 text-[8px] font-normal uppercase opacity-60">{{ entry.kind || 'Journal' }}</span>
+              </div>
+              <p class="line-clamp-2 text-amber-900 dark:text-amber-200/80">
+                {{ entry.content }}
+              </p>
             </div>
-            <p class="line-clamp-2 text-amber-900 dark:text-amber-200/80">
-              {{ entry.content }}
-            </p>
+          </div>
+          <div v-else class="rounded bg-amber-100/30 p-2 text-[10px] text-amber-900 leading-normal font-mono dark:bg-amber-950/20 dark:text-amber-300/90">
+            {{ isSearchingMemories ? 'Searching universe memories...' : (messageInput.trim().length > 3 ? 'No matching semantic memories found for current query.' : 'Type a message to retrieve relevant semantic memories in real time...') }}
           </div>
         </div>
       </div>
