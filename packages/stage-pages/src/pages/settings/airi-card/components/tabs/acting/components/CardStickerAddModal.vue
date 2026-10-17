@@ -44,6 +44,24 @@ const idManuallyEdited = ref(false)
 const isSaving = ref(false)
 const isDragging = ref(false)
 
+const isRemovingBg = ref(false)
+const bgProgress = ref<number | null>(null)
+const bgPhase = ref<'idle' | 'loading-model' | 'segmenting'>('idle')
+const originalFileBackup = ref<File | Blob | null>(null)
+let bgAborter: AbortController | null = null
+
+const isBusy = computed(() => isSaving.value || isRemovingBg.value)
+
+const removeBgButtonText = computed(() => {
+  if (bgPhase.value === 'loading-model') {
+    return bgProgress.value != null ? `Loading model… ${bgProgress.value}%` : 'Loading model…'
+  }
+  if (bgPhase.value === 'segmenting') {
+    return 'Removing background…'
+  }
+  return 'Remove Background'
+})
+
 const isEdit = computed(() => !!props.stickerToEdit)
 
 const EMOTION_SUGGESTIONS = [
@@ -75,6 +93,11 @@ function handleFileSelected(file: File) {
     toast.error('Please select an image file (PNG, WebP, GIF, or JPEG).')
     return
   }
+
+  bgAborter?.abort()
+  originalFileBackup.value = null
+  isRemovingBg.value = false
+  bgPhase.value = 'idle'
 
   if (selectedFile.value && previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
@@ -150,6 +173,13 @@ const isValid = computed(() => {
 })
 
 function resetForm() {
+  bgAborter?.abort()
+  bgAborter = null
+  isRemovingBg.value = false
+  bgPhase.value = 'idle'
+  bgProgress.value = null
+  originalFileBackup.value = null
+
   if (selectedFile.value && previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
   }
@@ -167,6 +197,11 @@ function resetForm() {
 }
 
 function handleRemoveNewFile() {
+  bgAborter?.abort()
+  originalFileBackup.value = null
+  isRemovingBg.value = false
+  bgPhase.value = 'idle'
+
   if (selectedFile.value && previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
   }
@@ -182,6 +217,98 @@ function handleRemoveNewFile() {
   else {
     previewUrl.value = ''
   }
+}
+
+async function handleRemoveBackground() {
+  let blobToProcess: Blob | null = selectedFile.value
+  if (!blobToProcess && previewUrl.value) {
+    try {
+      const res = await fetch(previewUrl.value)
+      blobToProcess = await res.blob()
+    }
+    catch (err) {
+      console.error('[CardStickerAddModal] Failed to fetch preview blob:', err)
+    }
+  }
+
+  if (!blobToProcess || isBusy.value)
+    return
+
+  if (!originalFileBackup.value) {
+    originalFileBackup.value = selectedFile.value || blobToProcess
+  }
+
+  bgAborter?.abort()
+  bgAborter = new AbortController()
+  isRemovingBg.value = true
+  bgPhase.value = 'loading-model'
+  bgProgress.value = null
+
+  try {
+    const cutout = await stickersStore.removeImageBackground(blobToProcess, {
+      signal: bgAborter.signal,
+      onProgress: (stage, percent) => {
+        bgPhase.value = stage
+        bgProgress.value = typeof percent === 'number' && percent >= 0 ? Math.round(percent) : null
+      },
+    })
+
+    const originalName = selectedFile.value?.name || (label.value ? `${label.value}.png` : 'sticker.png')
+    const pngName = `${originalName.replace(/\.[^/.]+$/, '')}.png`
+    const newFile = new File([cutout], pngName, { type: 'image/png' })
+
+    if (previewUrl.value && selectedFile.value) {
+      URL.revokeObjectURL(previewUrl.value)
+    }
+
+    selectedFile.value = newFile
+    previewUrl.value = URL.createObjectURL(cutout)
+    toast.success('Background removed successfully!')
+  }
+  catch (err: any) {
+    if (err?.name === 'AbortError' || bgAborter?.signal.aborted)
+      return
+    console.error('[CardStickerAddModal] Background removal failed:', err)
+    toast.error(`Background removal failed: ${err?.message || 'Unknown error'}`)
+  }
+  finally {
+    isRemovingBg.value = false
+    bgPhase.value = 'idle'
+  }
+}
+
+function handleRevert() {
+  if (isBusy.value)
+    return
+  bgAborter?.abort()
+
+  if (originalFileBackup.value) {
+    if (selectedFile.value && previewUrl.value) {
+      URL.revokeObjectURL(previewUrl.value)
+    }
+    const restored = originalFileBackup.value
+    originalFileBackup.value = null
+
+    if (restored instanceof File) {
+      selectedFile.value = restored
+      previewUrl.value = URL.createObjectURL(restored)
+    }
+    else if (isEdit.value && props.stickerToEdit) {
+      selectedFile.value = null
+      stickersStore.getStickerUrl(props.stickerToEdit.id).then((url) => {
+        previewUrl.value = url || ''
+      })
+    }
+    else {
+      const restoredFile = new File([restored], `${stickerId.value || 'sticker'}.png`, { type: (restored as Blob).type || 'image/png' })
+      selectedFile.value = restoredFile
+      previewUrl.value = URL.createObjectURL(restored)
+    }
+    toast.info('Reverted to original artwork.')
+    return
+  }
+
+  handleRemoveNewFile()
 }
 
 watch(
@@ -383,17 +510,32 @@ async function handleSave() {
                 <div class="mt-1 flex items-center gap-2">
                   <button
                     type="button"
-                    class="rounded px-2 py-0.5 text-xs text-primary-600 transition-colors hover:bg-primary-500/10 dark:text-primary-400"
+                    class="rounded px-2 py-0.5 text-xs text-primary-600 transition-colors hover:bg-primary-500/10 dark:text-primary-400 disabled:opacity-50"
+                    :disabled="isBusy"
                     @click="fileInputRef?.click()"
                   >
                     Change Image
                   </button>
-                  <template v-if="selectedFile">
+                  <template v-if="selectedFile || previewUrl">
                     <span class="text-neutral-300 dark:text-neutral-700">|</span>
                     <button
                       type="button"
-                      class="rounded px-2 py-0.5 text-xs text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
-                      @click="handleRemoveNewFile"
+                      class="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-primary-600 transition-colors hover:bg-primary-500/10 dark:text-primary-400 disabled:opacity-50"
+                      :disabled="isBusy"
+                      @click="handleRemoveBackground"
+                    >
+                      <div v-if="isRemovingBg" class="i-ph:spinner-gap-bold size-3 animate-spin" />
+                      <div v-else class="i-ph:sparkle-bold size-3" />
+                      <span>{{ removeBgButtonText }}</span>
+                    </button>
+                  </template>
+                  <template v-if="selectedFile || originalFileBackup">
+                    <span class="text-neutral-300 dark:text-neutral-700">|</span>
+                    <button
+                      type="button"
+                      class="rounded px-2 py-0.5 text-xs text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400 disabled:opacity-50"
+                      :disabled="isBusy"
+                      @click="handleRevert"
                     >
                       Revert
                     </button>

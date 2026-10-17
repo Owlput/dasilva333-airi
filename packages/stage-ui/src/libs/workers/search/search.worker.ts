@@ -16,6 +16,16 @@ import {
 
 // Suppress noisy ONNX Runtime warnings
 env.backends.onnx.logLevel = 'error'
+if (env.backends?.onnx?.wasm) {
+  env.backends.onnx.wasm.proxy = false
+  // NOTICE: threaded jsep build requires SharedArrayBuffer + COOP/COEP.
+  // In Electron/Vite without isolation headers, crossOriginIsolated is false;
+  // forcing numThreads=1 avoids spawning pthreads with invalid Worker URLs.
+  const isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+  env.backends.onnx.wasm.numThreads = isolated ? Math.min(4, (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) || 4) : 1
+  env.backends.onnx.wasm.simd = true
+  env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/'
+}
 
 interface SearchDocument {
   id: string

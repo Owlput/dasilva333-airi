@@ -137,6 +137,19 @@ function handleAddModule(id: DashboardModuleId) {
   dashboard.addModule(id)
 }
 
+function getModuleUnavailableReason(moduleId: DashboardModuleId): string | null {
+  if (moduleId === 'stage' && !(props.embeddedStageSupported ?? true)) {
+    return 'Won\'t be shown in view mode: Stage model is disabled or not set.'
+  }
+  if ((moduleId === 'widgets' || moduleId === 'terminal') && !effectiveSandboxActive.value) {
+    return 'Won\'t be shown in view mode: Sandbox / bash is disabled for this character.'
+  }
+  if (moduleId === 'nan0' && !props.isNan0Active) {
+    return 'Won\'t be shown in view mode: Nan0 Cognition is not active for this character.'
+  }
+  return null
+}
+
 function handleOpenJournal() {
   if (props.interactiveAreaRef) {
     props.interactiveAreaRef.showJournalModal = true
@@ -751,9 +764,18 @@ function handleRestoreDefaults() {
                     :class="[getModuleDef(moduleId)?.icon, getModuleDef(moduleId)?.iconColorClass || 'text-primary-500', 'text-base shrink-0']"
                   />
                   <div class="flex flex-col text-left">
-                    <span class="text-xs text-neutral-800 font-bold leading-tight dark:text-neutral-100">
-                      {{ getModuleDef(moduleId)?.title }}
-                    </span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs text-neutral-800 font-bold leading-tight dark:text-neutral-100">
+                        {{ getModuleDef(moduleId)?.title }}
+                      </span>
+                      <div
+                        v-if="getModuleUnavailableReason(moduleId)"
+                        class="size-3.5 flex cursor-help items-center justify-center rounded-full bg-amber-500/15 text-amber-500 dark:bg-amber-500/25 dark:text-amber-400"
+                        :title="getModuleUnavailableReason(moduleId)!"
+                      >
+                        <div class="i-solar:danger-triangle-bold text-[10px]" />
+                      </div>
+                    </div>
                     <span class="text-[10px] text-neutral-400 leading-tight dark:text-neutral-500">
                       {{ getModuleDef(moduleId)?.subtitle }}
                     </span>
@@ -825,9 +847,18 @@ function handleRestoreDefaults() {
                   />
                 </div>
                 <div class="flex flex-col text-left">
-                  <span class="text-xs text-neutral-800 font-bold leading-tight dark:text-neutral-100">
-                    {{ mod.title }}
-                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-neutral-800 font-bold leading-tight dark:text-neutral-100">
+                      {{ mod.title }}
+                    </span>
+                    <div
+                      v-if="getModuleUnavailableReason(mod.id)"
+                      class="size-3.5 flex cursor-help items-center justify-center rounded-full bg-amber-500/15 text-amber-500 dark:bg-amber-500/25 dark:text-amber-400"
+                      :title="getModuleUnavailableReason(mod.id)!"
+                    >
+                      <div class="i-solar:danger-triangle-bold text-[10px]" />
+                    </div>
+                  </div>
                   <span class="text-[10px] text-neutral-400 leading-tight dark:text-neutral-500">
                     {{ mod.subtitle }}
                   </span>

@@ -63,7 +63,13 @@ defineStreamInvokeHandler(context, backgroundRemovalLoadEvent, toStreamHandler<L
   resolvedDevice = device
 
   env.backends.onnx.logLevel = 'error'
-  env.backends.onnx.wasm!.proxy = false
+  if (env.backends.onnx.wasm) {
+    env.backends.onnx.wasm.proxy = false
+    const isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+    env.backends.onnx.wasm.numThreads = isolated ? Math.min(4, (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) || 4) : 1
+    env.backends.onnx.wasm.simd = true
+    env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/'
+  }
 
   model = await AutoModel.from_pretrained(MODEL_ID, {
     device,
