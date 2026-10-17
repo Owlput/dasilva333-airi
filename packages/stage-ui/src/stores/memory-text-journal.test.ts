@@ -300,6 +300,24 @@ describe('useTextJournalStore', () => {
       expect(result[0].id).toBe('alt-1')
     })
 
+    // ROOT CAUSE:
+    // In the desktop chat window, entityLedgerStore starts with activeLedger = empty.
+    // loadLedger(characterId) was only called when navigating to MindMapExplorer.vue.
+    // Consequently, chat-level searches passed an empty ledger with 0 entities to layeredMemory.
+    //
+    // BEFORE: searchEntries only checked entityLedgerStore.currentLoadedCharacterId, never loading it.
+    // FIXED BY: Eagerly awaiting entityLedgerStore.loadLedger(targetCharacterId) when targetCharacterId !== currentLoadedCharacterId.
+    it('eagerly loads entity ledger for targetCharacterId when not already loaded', async () => {
+      const { useEntityLedgerStore } = await import('./entity-ledger')
+      const ledgerStore = useEntityLedgerStore()
+      const loadSpy = vi.spyOn(ledgerStore, 'loadLedger').mockResolvedValue(undefined)
+
+      const store = useTextJournalStore()
+      await store.searchEntries({ query: 'Theodore', characterId: 'card-theodore-target' })
+
+      expect(loadSpy).toHaveBeenCalledWith('card-theodore-target')
+    })
+
     it('wraps load errors with a text_journal prefix', async () => {
       ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('IDB error'))
 

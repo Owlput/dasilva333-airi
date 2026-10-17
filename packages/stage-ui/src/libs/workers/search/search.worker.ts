@@ -404,13 +404,25 @@ function getTemporalCandidates(
 }
 
 // NOTICE: bound worker RAM — chat history is unbounded but the in-memory
-// embedding + BM25 caches must not be. Evict oldest docs FIFO past the cap.
-const MAX_WORKER_DOCUMENTS = 600
+// embedding + BM25 caches must not be. Evict oldest docs past the cap,
+// protecting high-value memory tiers (LTMM, STMM, lifetime, echo chips).
+const MAX_WORKER_DOCUMENTS = 3000
 function upsertDocument(document: SearchDocument) {
   if (!documents.has(document.id) && documents.size >= MAX_WORKER_DOCUMENTS) {
-    const oldestKey = documents.keys().next().value
-    if (oldestKey !== undefined)
-      documents.delete(oldestKey)
+    // Tier-aware eviction: Prefer evicting oldest raw_turn entries first
+    let evictedKey: string | undefined
+    for (const [key, doc] of documents.entries()) {
+      if (doc.kind === 'raw_turn' || doc.kind === 'raw') {
+        evictedKey = key
+        break
+      }
+    }
+    // If no raw turns found, evict oldest entry FIFO
+    if (evictedKey === undefined) {
+      evictedKey = documents.keys().next().value
+    }
+    if (evictedKey !== undefined)
+      documents.delete(evictedKey)
   }
   documents.set(document.id, document)
 }
@@ -592,14 +604,13 @@ globalThis.addEventListener('message', async (e) => {
       }
 
       case 'persist': {
-        // NOTICE: slim the IndexedDB snapshot — raw chat turns are the largest,
-        // lowest-value embedding set (re-embedded lazily on next index cycle),
-        // and full float64 JSON arrays bloat swap/compressor with MBs of text.
+        // NOTICE: persist documents with 4-decimal-place quantized embeddings
+        // to cut JSON snapshot size in half while preserving vectors across reboots.
         const snapshot: SearchSnapshot = {
           header: buildSnapshotHeader(),
           documents: [...documents.values()].map((doc) => {
             const { tokens, tokenFreqs, embedding, ...persistedDoc } = doc
-            if (doc.kind === 'raw_turn' || !embedding?.length)
+            if (!embedding?.length)
               return persistedDoc
             const quantized = new Array<number>(embedding.length)
             for (let i = 0; i < embedding.length; i++)
@@ -624,10 +635,14 @@ globalThis.addEventListener('message', async (e) => {
     }
   }
   catch (err) {
+    const errorMsg = (typeof err === 'number' || (typeof err === 'string' && /^\d+$/.test(err.trim())))
+      ? `ONNX Runtime WASM exception pointer: ${err} (unsupported ONNX operator or WASM/WebGPU allocation error)`
+      : (err instanceof Error ? (err.stack ? `${err.message}\n${err.stack}` : err.message) : String(err))
+
     globalThis.postMessage({
       id,
       type: 'error',
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMsg,
     })
   }
 })

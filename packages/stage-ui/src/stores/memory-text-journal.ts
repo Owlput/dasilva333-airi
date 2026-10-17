@@ -223,12 +223,10 @@ export const useTextJournalStore = defineStore('text-journal', () => {
           console.error('[TextJournal:Index] Failed to load STMM for indexing:', err)
         }
 
-        // 3. Raw (Deduplicated recent corpus — bounded to protect WebGPU/swap).
-        // NOTICE: indexing the entire lifetime chat corpus forces hundreds of
-        // sequential EmbeddingGemma ONNX embeddings and pins them in worker RAM.
-        // Cap to the most recent sessions/turns; older turns remain in IndexedDB.
-        const MAX_INDEX_SESSIONS = 8
-        const MAX_RAW_DOCS = 250
+        // NOTICE: indexing raw turns is bounded to protect WebGPU/RAM, but
+        // comfortably accommodates lore history across multi-session roleplays.
+        const MAX_INDEX_SESSIONS = 30
+        const MAX_RAW_DOCS = 1500
         const raw: any[] = []
         try {
           const index = await chatSessionsRepo.getIndex(userId)
@@ -324,9 +322,8 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
         console.info(`[TextJournal:Index] Indexing counts for ${cardId} in universe ${currentUniverseId}: LTMM=${ltmm.length}, STMM=${stmm.length}, Raw=${raw.length}, Echoes=${echoes.length}, Lifetime=${lifetime.length}`)
 
-        // NOTICE: hard cap on total indexed docs per cycle so the search worker
-        // Map + embedding cache cannot grow with lifetime history.
-        const MAX_TOTAL_DOCS = 600
+        // NOTICE: cap on total indexed docs per cycle matching worker memory budget.
+        const MAX_TOTAL_DOCS = 3000
         const allDocs = [...ltmm, ...stmm, ...raw, ...echoes, ...lifetime]
           .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
           .slice(0, MAX_TOTAL_DOCS)

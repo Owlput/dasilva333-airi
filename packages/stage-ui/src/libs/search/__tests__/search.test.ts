@@ -283,5 +283,41 @@ describe('semantic Search & Memory Refinements', () => {
       expect(mentionHit?.score).toBe(0.70)
       expect(mentionHit?.isKgClaim).toBe(true)
     })
+
+    // ROOT CAUSE:
+    // When WebGPU or WASM neural embedder crashes (e.g. GatherBlockQuantized operator failure 12198344),
+    // searchWorker.search throws. Previously, this uncaught rejection aborted layeredMemory.search,
+    // causing textJournalStore to drop into local LTMM fallback and discarding all offline Knowledge Graph hits.
+    //
+    // BEFORE: Uncaught error in searchWorker.search rejected layeredMemory.search, discarding kgHits.
+    // FIXED BY: try/catch around searchWorker retrieval in layered-memory.ts, preserving in-memory KG hits.
+    it('preserves Knowledge Graph hits when searchWorker candidate retrieval throws', async () => {
+      const { searchWorker } = await import('../../workers/search')
+      vi.mocked(searchWorker.search).mockRejectedValueOnce(
+        new Error('ONNX Runtime WASM exception pointer: 12198344 (unsupported ONNX operator)'),
+      )
+
+      const ledger = new EntityLedger()
+      ledger.addSource({
+        turnId: 'turn-theodore-fallback-1',
+        text: 'Theodore, a small mouse assistant, clutches a ledger nearby.',
+        speaker: 'Assistant',
+        timestamp: 1720000000000,
+        session: 'session-ch116',
+      })
+      const ent = ledger.getOrCreateEntity('Theodore', 'person')
+      ledger.addMention({ span: 'Theodore', turnId: 'turn-theodore-fallback-1', entityId: ent.entityId })
+
+      const results = await layeredMemory.search('Theodore', 5, 'card-1', {
+        ledger,
+      })
+
+      expect(results.length).toBeGreaterThan(0)
+      const mentionHit = results.find(r => r.id === 'kg-mention:turn-theodore-fallback-1')
+      expect(mentionHit).toBeDefined()
+      expect(mentionHit?.subject).toBe('Theodore')
+      expect(mentionHit?.content).toContain('Theodore, a small mouse assistant')
+      expect(mentionHit?.source).toBe('chat:session-ch116')
+    })
   })
 })
