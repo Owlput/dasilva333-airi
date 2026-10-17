@@ -30,7 +30,7 @@
 - **Desktop Main-Thread Performance Breakthroughs (#3002, #3006)**: Makito shipped two critical desktop optimizations. PR #3002 moves Silero VAD into a dedicated Web Worker (`silero-vad.worker.ts`), slashing 5% CPU overhead and erasing the 589ms ONNX startup freeze from the stage thread. PR #3006 stops redundant 60fps cursor IPC broadcasts when stationary and deduplicates `useElectronScreenCapture` eventa contexts, cutting IPC handling time from 4.1% down to 0.8% and stabilizing 120fps.
 - **Biometric Speaker Recognition (#2989)**: Following CAM++ voiceprint enrollment (#2980), Makito merged continuous real-time speaker evidence collection. The pipeline scores 1-second audio windows (every 250ms) against the owner's enrolled voiceprint in a background worker whenever VAD speech exceeds 50%, enabling Mode 1 owner-only gating.
 - **Voice Pipeline Re-Architecture & Speculative Rewrites (#2995, #2998)**: Upstream introduced `@proj-airi/agents` and `@proj-airi/stream-kit`, refactored `core-agent` voice handling into a rule-based policy engine (`rules.ts`, `engine.ts`), added speculative ASR rewriting (`evals/asr-rewrite`), and implemented live voice text fade-in and rewrite animations (`PoppinText` blur-fade, `rewrite-text.vue`).
-- **Interactive Tool Results in Chat (#2994, #3007)**: Merged PR #2994 (蓝莓🫐) renders rich visual widget cards for tool outputs (interactive weather drawers, web search results, Home Assistant controls, and AUV computer-use command cards). PR #3007 followed up by streaming tool calls and replies directly to secondary/floating chat windows via BroadcastChannel.
+- **Interactive Tool Results in Chat (#2994, #3007)**: Merged PR #2994 (蓝莓🫐) renders rich visual widget cards for tool outputs (interactive weather drawers, web search results, Home Assistant controls, and AUV computer-use command cards). PR #3007 followed up by streaming tool calls and recipes to secondary/floating chat windows. **Fork Decision**: Home Assistant IoT controls are rejected from chat transcripts to prevent UI bloat, while Recipe & Skill DSL widgets are preserved for future native Director loop orchestration (documented in `docs/proposal-tool-call-combo-pill-and-inspection-panels.md`).
 - **Cloud & Mobile Subscriptions (#3003, #3004, #3009)**: Active monetization and subscription infrastructure development with RevenueCat Flux packs (#3009), in-app web subscription switching (#3003), and quota/refill displays (#3004).
 
 ### 💬 Discussion & Community Buzz
@@ -43,7 +43,7 @@
 
 ### 🍒 Cherry-Pick Candidates
 - ⭐ **PR #3006 / Commit `395280a1` (Makito) — `perf(stage-tamagotchi,electron-screen-capture): reduce IPC work`**:
-  - **Status**: **Porting to Fork**.
+  - **Status**: **Ported & Committed (`80428bc736`)**.
   - **Impact**: High. Drops IPC message handling from 4.1% to 0.8% of renderer main thread and guarantees steady 120fps.
   - **Rationale**: Throttles idle cursor IPC broadcasts to only when coordinates change and fixes eventa context listener leaks in screen capture. Clean, decoupled, and directly improves `stage-tamagotchi`.
 - ⚪ **PR #3002 / Commit `e68f64c8` (Makito) — `perf(stage-ui): run Silero VAD in a Worker`**:
@@ -52,8 +52,8 @@
 - ⭐ **PR #2993 / Commit `99dce26f` (Younsang Na) — `fix(core-agent): skip invisible notice replies`**:
   - **Impact**: Medium / High Polish. Checks parsed slices and suppresses storing/rendering empty assistant bubbles when background notices or reasoning tokens produce no visible text, stickers, or tool calls.
 - 🔧 **PR #3008 / Commit `dd6e3ce1` (chiba233) — `fix(core-agent): keep the text before a tool call in front of it`**:
-  - **Status**: **Under Evaluation for Porting**. Merged upstream at commit `dd6e3ce1f1`.
-  - **Impact**: Medium bug fix. Adds `flush()` to the marker parser so the 5 held-back characters settle before a tool call joins reply slices, preventing out-of-order text splitting.
+  - **Status**: **Ported & Tested (#3008)**.
+  - **Impact**: Medium bug fix. Adds `flush()` to the marker parser and wires `pendingToolCalls` into `chat.ts` so the held-back characters settle before a tool call joins reply slices, preventing out-of-order text splitting.
 - ⚪ **PR #2999 (nyueki) — `fix(stage-ui-mmd): avoid double lighting on multiply sphere maps`**:
   - **Status**: **Disregarded**. Our MMD stack with PMX physics, Three.js shaders, and custom animation drivers is highly divergent from upstream.
 - 👁️ **PR #3000 (RUI-debug769) — `feat(memory-eval): add identity-continuity evaluation package`**:
