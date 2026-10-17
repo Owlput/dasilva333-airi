@@ -15,6 +15,7 @@ import { lifetimeMemoryRepo } from '../database/repos/lifetime-memory.repo'
 import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
 import { textJournalRepo } from '../database/repos/text-journal.repo'
 import { layeredMemory } from '../libs/search/layered-memory'
+import { chunkTurnText } from '../libs/search/turn-chunker'
 import { shouldDegradeBackgroundWork } from '../utils/memory-sentinel'
 import { useAuthStore } from './auth'
 import { CHAT_STREAM_CHANNEL_NAME } from './chat/constants'
@@ -225,6 +226,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
         // NOTICE: indexing raw turns is bounded to protect WebGPU/RAM, but
         // comfortably accommodates lore history across multi-session roleplays.
+        // Caps count chunk docs (one mega-turn fans out to hundreds of windows).
         const MAX_INDEX_SESSIONS = 30
         const MAX_RAW_DOCS = 1500
         const raw: any[] = []
@@ -253,17 +255,31 @@ export const useTextJournalStore = defineStore('text-journal', () => {
                     if (text.length > 10) {
                       if (!uniqueRaw.has(text)) {
                         const turnDate = new Date(m.createdAt || Date.now()).toISOString()
-                        uniqueRaw.set(text, {
-                          id: m.id,
-                          characterId: cardId,
-                          // NOTICE: synthetic role+date title disambiguates
-                          // repeat one-liners across sessions (§7 D3).
-                          title: `Chat ${m.role} turn — ${turnDate.slice(0, 10)} ${String(s.sessionId).slice(0, 8)}`,
-                          fact: text,
-                          kind: 'raw_turn',
-                          timestamp: turnDate,
-                          source: `chat:${s.sessionId}`,
-                        })
+                        // NOTICE: mega-turns (novel chapters) fan out into
+                        // overlapping windows so no single forward faces an
+                        // unconstrained attention tensor (§7 D3, §5b ceiling).
+                        // Short turns keep their bare id/title for snapshot
+                        // and worker reuse-by-content stability.
+                        const baseTitle = `Chat ${m.role} turn — ${turnDate.slice(0, 10)} ${String(s.sessionId).slice(0, 8)}`
+                        for (const chunk of chunkTurnText(text)) {
+                          if (uniqueRaw.size >= MAX_RAW_DOCS)
+                            break
+                          const chunkText = chunk.total === 1 ? text : chunk.text
+                          const chunkKey = chunk.total === 1 ? text : `${m.id}:c${chunk.index}:${chunk.text}`
+                          if (uniqueRaw.has(chunkKey))
+                            continue
+                          uniqueRaw.set(chunkKey, {
+                            id: chunk.total === 1 ? m.id : `${m.id}:c${chunk.index}`,
+                            characterId: cardId,
+                            // NOTICE: synthetic role+date title disambiguates
+                            // repeat one-liners across sessions (§7 D3).
+                            title: chunk.total === 1 ? baseTitle : `${baseTitle} [Part ${chunk.index + 1}/${chunk.total}]`,
+                            fact: chunkText,
+                            kind: 'raw_turn',
+                            timestamp: turnDate,
+                            source: `chat:${s.sessionId}`,
+                          })
+                        }
                       }
                     }
                   }
