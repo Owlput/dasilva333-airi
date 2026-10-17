@@ -2684,8 +2684,8 @@ importers:
         specifier: ^0.9.0
         version: 0.9.0(vue@3.5.29(typescript@5.9.3))
       '@huggingface/transformers':
-        specifier: ^3.8.1
-        version: 3.8.1(patch_hash=a8cebdfd7da00a9bd7b3ab1e1851644635c62d88ec81af81b035cb1a89985e2f)
+        specifier: ^4.3.1
+        version: 4.3.1(patch_hash=c2cffba04cb00da809ede9c328e4a17bf3b76266a8a469207ad737cfc1c0466a)(@types/node@24.10.14)
       '@mlc-ai/web-llm':
         specifier: ^0.2.84
         version: 0.2.84
@@ -17661,7 +17661,7 @@ snapshots:
       node-gyp: 11.5.0(patch_hash=08679b8378cb1389c3cd42804e0c2710c122e10e7b0a81da52c8b06728fbdebb)
       ora: 5.4.1
       read-binary-file-arch: 1.0.6
-      semver: 7.7.4
+      semver: 7.8.5
       tar: 7.5.9
       yargs: 17.7.2
     transitivePeerDependencies:
@@ -18297,7 +18297,7 @@ snapshots:
       onnxruntime-web: 1.24.2
       sharp: 0.35.5(@types/node@24.10.14)
     optionalDependencies:
-      onnxruntime-common: 1.24.2
+      onnxruntime-common: 1.30.0
     transitivePeerDependencies:
       - '@types/node'
 
@@ -19273,12 +19273,12 @@ snapshots:
 
   '@npmcli/fs@3.1.1':
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
     optional: true
 
   '@npmcli/fs@4.0.0':
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   '@nuxt/kit@3.20.2(magicast@0.5.2)':
     dependencies:
@@ -21041,7 +21041,7 @@ snapshots:
       '@typescript-eslint/visitor-keys': 8.51.0
       debug: 4.4.3
       minimatch: 9.0.5
-      semver: 7.7.4
+      semver: 7.8.5
       tinyglobby: 0.2.15
       ts-api-utils: 2.4.0(typescript@5.9.3)
       typescript: 5.9.3
@@ -23932,7 +23932,7 @@ snapshots:
   eslint-compat-utils@0.5.1(eslint@9.39.3(jiti@2.6.1)):
     dependencies:
       eslint: 9.39.3(jiti@2.6.1)
-      semver: 7.7.4
+      semver: 7.8.5
 
   eslint-config-flat-gitignore@2.2.1(eslint@9.39.3(jiti@2.6.1)):
     dependencies:
@@ -24828,14 +24828,14 @@ snapshots:
       es6-error: 4.1.1
       matcher: 3.0.0
       roarr: 2.15.4
-      semver: 7.7.4
+      semver: 7.8.5
       serialize-error: 7.0.1
 
   global-agent@4.1.3:
     dependencies:
       globalthis: 1.0.4
       matcher: 4.0.0
-      semver: 7.7.4
+      semver: 7.8.5
       serialize-error: 8.1.0
 
   global-directory@4.0.1:
@@ -25590,7 +25590,7 @@ snapshots:
     dependencies:
       acorn: 8.16.0
       eslint-visitor-keys: 5.0.0
-      semver: 7.7.4
+      semver: 7.8.5
 
   jsonc-parser@3.3.1: {}
 
@@ -25947,7 +25947,7 @@ snapshots:
 
   make-dir@4.0.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   make-error@1.3.6: {}
 
@@ -26637,11 +26637,11 @@ snapshots:
 
   node-abi@3.85.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-abi@4.24.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-addon-api@1.7.2:
     optional: true
@@ -26654,7 +26654,7 @@ snapshots:
 
   node-api-version@0.2.1:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-domexception@1.0.0: {}
 
@@ -26701,7 +26701,7 @@ snapshots:
       make-fetch-happen: 14.0.3
       nopt: 8.1.0
       proc-log: 5.0.0
-      semver: 7.7.4
+      semver: 7.8.5
       tar: 7.5.9
       tinyglobby: 0.2.15
       which: 5.0.0
@@ -26720,7 +26720,7 @@ snapshots:
     dependencies:
       growly: 1.3.0
       is-wsl: 2.2.0
-      semver: 7.7.4
+      semver: 7.8.5
       shellwords: 0.1.1
       uuid: 8.3.2
       which: 2.0.2
@@ -27003,7 +27003,7 @@ snapshots:
       ky: 1.14.2
       registry-auth-token: 5.1.0
       registry-url: 6.0.1
-      semver: 7.7.4
+      semver: 7.8.5
 
   package-manager-detector@1.6.0: {}
 
@@ -29414,7 +29414,7 @@ snapshots:
       is-npm: 6.1.0
       latest-version: 9.0.0
       pupa: 3.3.0
-      semver: 7.7.4
+      semver: 7.8.5
       xdg-basedir: 5.1.0
 
   uri-js@4.4.1:

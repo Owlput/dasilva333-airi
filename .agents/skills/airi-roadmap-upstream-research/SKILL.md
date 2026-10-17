@@ -91,9 +91,13 @@ Maintain an active rolling monitor of high-impact upstream PRs during scheduled 
   - **Focus**: Character card editor overhaul in `stage-pages`. User `@dasilva333` shared dedicated page/route architecture from fork.
   - **Monitoring Objective**: Track dirty-draft browser unload protection and component decoupling.
 - **PR #2980: `feat(stage-ui,stage-pages): add voiceprint enrollment`**
-  - **Author**: `@sumimakito` | **State**: Open
+  - **Author**: `@sumimakito` | **State**: Merged
   - **Focus**: Local speaker diarization via `@sherpaw/speaker-diarization` (0.3.0) and the CAM++ 28 MB ONNX model. Enrolls user voiceprints to enable Mode 1 biometric wake-word gating ("owner only") and opens the path to Mode 2 multi-speaker conversational tagging.
   - **Monitoring Objective**: Track WebAssembly/worker bundling, false-rejection handling, and evaluate for local Mode 1/Mode 2 port per `docs/proposal-speaker-diarization-and-voiceprint-tracker.md`.
+- **PR #3000: `feat(memory-eval): add identity-continuity evaluation package`**
+  - **Author**: `@RUI-debug769` | **State**: Open (68 comments)
+  - **Focus**: Self-contained identity continuity metrics package (`@proj-airi/memory-eval`) using Wasserstein-1 distance, GMM BIC bimodality for split-persona detection, and fixed-point operator convergence.
+  - **Monitoring Objective**: Track maintainer decisions regarding package location (`packages/` vs `evals/`), benchmark harness independence, and evaluate portability for our Eight Pillars memory evaluation.
 
 ## Upstream Radar vs. Cherry-Pick Triage SOP
 

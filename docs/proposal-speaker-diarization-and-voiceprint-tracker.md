@@ -11,6 +11,9 @@
 > - Upstream PR [#2971](https://github.com/moeru-ai/airi/pull/2971): `chore(deps): bump sherpaw to 0.3.0`
 > - Upstream PR [#2975](https://github.com/moeru-ai/airi/pull/2975): `feat(stage-ui): add speaker tracker runtime` *(Merged into upstream/main at commit `d7c9737118`)*
 > - Upstream PR [#2980](https://github.com/moeru-ai/airi/pull/2980): `feat(stage-ui,stage-pages): add voiceprint enrollment` *(Merged into upstream/main at commit `7189b7eade`)*
+> - Upstream PR [#2989](https://github.com/moeru-ai/airi/pull/2989): `feat(stage-ui,stage-pages): add speaker recognition` *(Merged into upstream/main at commit `79792e1613`)* — Real-time speaker evidence collection via CAM++ background worker scoring 1s audio windows every 250ms against enrolled voiceprint when VAD speech ≥ 50%.
+> - Upstream PR [#2995](https://github.com/moeru-ai/airi/pull/2995): `refactor(core-agent,stage-ui,stream-kit): decide voice input with rules and speculate rewrites` *(Merged into upstream/main at commit `b039c917c1`)* — Rule-based voice input policy engine and speculative ASR rewrite pipelines.
+> - Upstream PR [#2998](https://github.com/moeru-ai/airi/pull/2998): `feat(stage-ui,stage-tamagotchi): fade live voice text in and animate rewrites` *(Merged into upstream/main at commit `efa42d2ebd`)* — Animated live voice text fade-in and rewrite animations (`PoppinText` blur-fade, `rewrite-text.vue`).
 > **Related Fork Skills & Specs**:
 > - [`airi-audio-pipeline`](../.agents/skills/airi-audio-pipeline/SKILL.md) & [`airi-speech-runtime`](../.agents/skills/airi-speech-runtime/SKILL.md)
 > - [`airi-acting-cue-act-tokens`](../.agents/skills/airi-acting-cue-act-tokens/SKILL.md) *(Distinct output manifestation boundary)*

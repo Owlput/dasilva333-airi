@@ -3,6 +3,8 @@ import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
 
+import StickerUploadDialog from './sticker-upload-dialog.vue'
+
 import { useStickersStore } from '../../../stores/stickers'
 
 const emit = defineEmits<{
@@ -11,6 +13,11 @@ const emit = defineEmits<{
 const stickersStore = useStickersStore()
 const { currentLibrary, standaloneMode } = storeToRefs(stickersStore)
 const fileInput = ref<HTMLInputElement>()
+
+// Single-file uploads go through the preview dialog (with optional
+// background removal); multi-file drops keep the fast direct path.
+const dialogOpen = ref(false)
+const pendingFile = ref<Blob | null>(null)
 
 // Map to store temporary preview URLs for the library grid
 const previews = ref<Record<string, string>>({})
@@ -30,27 +37,43 @@ onMounted(() => {
   loadPreviews()
 })
 
+async function refreshPreview(id: string) {
+  const url = await stickersStore.getStickerUrl(id)
+  if (url) {
+    previews.value[id] = url
+  }
+}
+
 async function handleFileUpload(e: Event) {
   const files = (e.target as HTMLInputElement).files
   if (!files)
     return
 
-  for (const file of Array.from(files)) {
-    try {
-      const id = await stickersStore.addSticker(file)
-      const url = await stickersStore.getStickerUrl(id)
-      if (url) {
-        previews.value[id] = url
+  const picked = Array.from(files)
+  if (picked.length === 1 && picked[0]) {
+    pendingFile.value = picked[0]
+    dialogOpen.value = true
+  }
+  else {
+    for (const file of picked) {
+      try {
+        const id = await stickersStore.addSticker(file)
+        await refreshPreview(id)
       }
-    }
-    catch (err) {
-      console.error('Failed to upload sticker:', err)
+      catch (err) {
+        console.error('Failed to upload sticker:', err)
+      }
     }
   }
 
   if (fileInput.value) {
     fileInput.value.value = ''
   }
+}
+
+async function handleDialogAdded(id: string) {
+  pendingFile.value = null
+  await refreshPreview(id)
 }
 
 function spawn(id: string) {
@@ -120,6 +143,12 @@ async function remove(id: string) {
         class="hidden"
         @change="handleFileUpload"
       >
+      <StickerUploadDialog
+        v-model="dialogOpen"
+        :file="pendingFile"
+        @added="handleDialogAdded"
+        @close="pendingFile = null"
+      />
     </div>
 
     <!-- Grid -->

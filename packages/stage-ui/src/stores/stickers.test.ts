@@ -16,6 +16,47 @@ vi.mock('./modules/airi-card', () => ({
   }),
 }))
 
+// In-memory localforage so addSticker/updateSticker round-trip Blobs in Node.
+const mockStickerDb = new Map<string, any>()
+vi.mock('localforage', () => ({
+  default: {
+    getItem: vi.fn(async (key: string) => mockStickerDb.get(key) ?? null),
+    setItem: vi.fn(async (key: string, value: any) => {
+      mockStickerDb.set(key, value)
+      return value
+    }),
+    removeItem: vi.fn(async (key: string) => {
+      mockStickerDb.delete(key)
+    }),
+  },
+}))
+
+// Stub the worker adapter: no WebGPU/worker in unit tests.
+const processImageMock = vi.fn(async (image: { width: number, height: number }) => ({
+  data: new Uint8ClampedArray(image.width * image.height * 4),
+  width: image.width,
+  height: image.height,
+}))
+vi.mock('../libs/inference/adapters/background-removal', () => ({
+  createBackgroundRemovalAdapter: vi.fn(() => ({
+    load: vi.fn(async () => {}),
+    processImage: processImageMock,
+    terminate: vi.fn(),
+    state: 'ready' as const,
+    deviceLossCount: 0,
+  })),
+}))
+
+// Stub DOM image conversion (createImageBitmap/canvas unavailable in Node).
+vi.mock('../libs/stickers/image-convert', () => ({
+  blobToImageData: vi.fn(async (_blob: Blob) => ({
+    data: new Uint8ClampedArray([255, 0, 0, 255]),
+    width: 1,
+    height: 1,
+  })),
+  imageDataToPngBlob: vi.fn(async (_image: unknown) => new Blob(['cutout'], { type: 'image/png' })),
+}))
+
 describe('useStickersStore - resolveStickerId', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -140,5 +181,55 @@ describe('useStickersStore - updateSticker', () => {
     const item = store.libraryMetadata.find(m => m.id === 'character-smug')
     expect(item?.label).toBe('Smug Smirk')
     expect(store.activePlacements[0].stickerId).toBe('character-smug')
+  })
+})
+
+describe('useStickersStore - background removal', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    mockStickerDb.clear()
+    processImageMock.mockClear()
+    const store = useStickersStore()
+    store.libraryMetadata = []
+  })
+
+  async function seedSticker() {
+    const store = useStickersStore()
+    const id = await store.addSticker(new Blob(['opaque'], { type: 'image/jpeg' }), 'mug')
+    return { store, id }
+  }
+
+  it('replaces the stored blob with a transparent PNG and keeps a revert backup', async () => {
+    const { store, id } = await seedSticker()
+    expect(store.hasTransparencyBackup(id)).toBe(false)
+
+    await store.makeTransparent(id)
+
+    expect(processImageMock).toHaveBeenCalledTimes(1)
+    expect(store.hasTransparencyBackup(id)).toBe(true)
+    const meta = store.libraryMetadata.find(m => m.id === id)
+    expect(meta?.mimeType).toBe('image/png')
+  })
+
+  it('reverts to the original blob and clears the backup', async () => {
+    const { store, id } = await seedSticker()
+    await store.makeTransparent(id)
+    expect(await store.revertTransparency(id)).toBe(true)
+    expect(store.hasTransparencyBackup(id)).toBe(false)
+    expect(await store.revertTransparency(id)).toBe(false)
+  })
+
+  it('throws when no sticker data is stored', async () => {
+    const store = useStickersStore()
+    await expect(store.makeTransparent('missing')).rejects.toThrow('No sticker data')
+  })
+
+  it('removeImageBackground returns a PNG blob without touching the library', async () => {
+    const store = useStickersStore()
+    const out = await store.removeImageBackground(new Blob(['raw'], { type: 'image/jpeg' }))
+    expect(out).toBeInstanceOf(Blob)
+    expect(out.type).toBe('image/png')
+    expect(store.libraryMetadata).toHaveLength(0)
+    expect(processImageMock).toHaveBeenCalledTimes(1)
   })
 })

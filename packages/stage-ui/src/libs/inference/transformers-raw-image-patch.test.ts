@@ -261,8 +261,11 @@ describe('@huggingface/transformers RawImage memory-leak & dimension invariants'
       expect(afterClose).not.toContain('img.height')
     })
 
-    it('keeps patches/@huggingface__transformers.patch free of post-close img.width/height reads', () => {
-      const patchPath = path.join(repoRoot, 'patches/@huggingface__transformers.patch')
+    it.each([
+      'patches/@huggingface__transformers.patch',
+      'patches/@huggingface__transformers@4.3.1.patch',
+    ])('keeps %s free of post-close img.width/height reads', (relativePatchPath) => {
+      const patchPath = path.join(repoRoot, relativePatchPath)
       const patchContent = fs.readFileSync(patchPath, 'utf8')
 
       expect(patchContent).toContain('+            const width = img.width;')

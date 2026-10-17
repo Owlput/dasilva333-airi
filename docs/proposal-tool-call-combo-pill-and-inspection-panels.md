@@ -9,6 +9,7 @@
 >   - Upstream PR [#2990](https://github.com/moeru-ai/airi/pull/2990): `feat(stage-ui): show tool calls as a combo pill with tool icons` by 蓝莓🫐 (`@chiba233`)
 >   - Upstream PR [#2992](https://github.com/moeru-ai/airi/pull/2992): `feat(stage-ui): polish the unfolded tool call panel` by 蓝莓🫐 (`@chiba233`)
 >   - Upstream PR [#2994](https://github.com/moeru-ai/airi/pull/2994): `feat(stage-ui): add rich result widgets for tools` by 蓝莓🫐 (`@chiba233`)
+>   - Upstream PR [#3007](https://github.com/moeru-ai/airi/pull/3007): `feat(stage-ui,core-agent): show recipes in the combo pill and stream tool calls to other windows` by 蓝莓🫐 (`@chiba233`)
 > * **Target Systems:**
 >   - `packages/stage-ui/src/components/scenarios/chat/components/` (`tool-call-*`)
 >   - `packages/stage-ui/src/tools/icons.ts` & `metadata.ts` (Icon and friendly label resolution)
@@ -239,6 +240,9 @@ When a tool item in the inspection drawer is unfolded, raw JSON outputs are repl
 - Formatted entry preview (title, body, sentiment).
 - Universe tag badge (`universeId` or `global`).
 - Immutable inscription confirmation checkmark (`#sacred-journal-rule`).
+
+### 5.5 🚫 Architectural Exclusions (Anti-Patterns for Fork)
+- **Home Assistant IoT Widgets (Upstream PR #2994)**: Upstream built interactive IoT device toggles directly into the chat transcript (`tool-call-home-assistant-widget.vue`). In `dasilva333/airi`, home automation controls are strictly excluded from transcript bloat; external IoT devices belong in background daemons or dedicated dashboards, not cluttering conversational flow. (Note: Recipe & Skill DSL widgets from PR #3007 are preserved as valid future orchestration candidates when aligned with our native in-process Director loop).
 
 ---
 

@@ -83,6 +83,11 @@ const WATCHED_PRS = [
     title: 'add bilingual subtitles',
     focus: 'Bilingual subtitle rendering in stage overlays; monitor for closure/merge to evaluate for fork adoption',
   },
+  {
+    number: 3000,
+    title: 'feat(memory-eval): add identity-continuity evaluation package',
+    focus: 'Mathematical metrics (Wasserstein-1, GMM BIC bimodality, fixed-point operator) for persona continuity during long-turn memory compression; monitor maintainer triage and package boundary placement',
+  },
 ]
 
 // 2. Subsystem Definitions & Selective-Sync Classification

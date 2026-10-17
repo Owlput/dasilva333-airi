@@ -1,3 +1,5 @@
+import type { BackgroundRemovalAdapter } from '../libs/inference/adapters/background-removal'
+
 import localforage from 'localforage'
 
 import { useIntervalFn, useLocalStorage } from '@vueuse/core'
@@ -7,6 +9,8 @@ import { computed, ref } from 'vue'
 import * as Pinia from 'pinia'
 
 import { chatStickers } from '../assets/stickers'
+import { createBackgroundRemovalAdapter } from '../libs/inference/adapters/background-removal'
+import { blobToImageData, imageDataToPngBlob } from '../libs/stickers/image-convert'
 import { useAiriCardStore } from './modules/airi-card'
 
 export { chatStickers }
@@ -241,6 +245,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     label?: string
     file?: File | Blob
     characterId?: string
+    mimeType?: string
   }): Promise<string> {
     const targetId = updates.id ? updates.id.trim() : oldId
 
@@ -275,7 +280,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
             id: targetId,
             label: updates.label !== undefined ? updates.label : oldEntry.label,
             originalName: updates.file ? ((updates.file as File).name || `${targetId}.png`) : oldEntry.originalName,
-            mimeType: updates.file ? (updates.file.type || 'image/png') : oldEntry.mimeType,
+            mimeType: updates.mimeType ?? (updates.file ? (updates.file.type || 'image/png') : oldEntry.mimeType),
             characterId: updates.characterId || oldEntry.characterId,
           })
         }
@@ -304,7 +309,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
             ...prev,
             label: updates.label !== undefined ? updates.label : prev.label,
             originalName: updates.file ? ((updates.file as File).name || `${targetId}.png`) : prev.originalName,
-            mimeType: updates.file ? (updates.file.type || 'image/png') : prev.mimeType,
+            mimeType: updates.mimeType ?? (updates.file ? (updates.file.type || 'image/png') : prev.mimeType),
             characterId: updates.characterId || prev.characterId,
           }
         }
@@ -423,6 +428,100 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     }
   }
 
+  // Background removal (lazy singleton; worker lifecycle owned by the adapter).
+  let bgAdapter: BackgroundRemovalAdapter | null = null
+  let bgAdapterLoading: Promise<BackgroundRemovalAdapter> | null = null
+
+  /**
+   * Pre-cutout blobs, keyed by sticker id. Session-only and never persisted —
+   * the source of truth for `revertTransparency`.
+   */
+  const transparencyOriginals = new Map<string, Blob>()
+
+  async function ensureBgAdapter(
+    onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void,
+    signal?: AbortSignal,
+  ): Promise<BackgroundRemovalAdapter> {
+    if (bgAdapter)
+      return bgAdapter
+    if (!bgAdapterLoading) {
+      bgAdapterLoading = (async () => {
+        const adapter = createBackgroundRemovalAdapter()
+        try {
+          await adapter.load(
+            p => onProgress?.('loading-model', typeof p?.percent === 'number' ? p.percent : undefined),
+            signal ? { signal } : undefined,
+          )
+        }
+        catch (err) {
+          bgAdapterLoading = null
+          adapter.terminate()
+          throw err
+        }
+        bgAdapter = adapter
+        return adapter
+      })()
+    }
+    return bgAdapterLoading
+  }
+
+  /**
+   * Run a raw image blob through MODNet and return a transparent PNG cutout.
+   * Blob-in/Blob-out building block shared by the upload dialog (pre-save)
+   * and `makeTransparent` (stored stickers).
+   */
+  async function removeImageBackground(
+    blob: Blob,
+    options?: { signal?: AbortSignal, onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void },
+  ): Promise<Blob> {
+    const adapter = await ensureBgAdapter(options?.onProgress, options?.signal)
+    options?.signal?.throwIfAborted()
+
+    const imageData = await blobToImageData(blob)
+    options?.onProgress?.('segmenting')
+    const cutout = await adapter.processImage(imageData, options?.signal ? { signal: options.signal } : undefined)
+    return imageDataToPngBlob(cutout)
+  }
+
+  /**
+   * Strip the background of a stored sticker via MODNet and replace its binary
+   * with a transparent PNG. The pre-cutout blob is retained in memory so the
+   * operation can be reverted within the session.
+   */
+  async function makeTransparent(
+    id: string,
+    options?: { signal?: AbortSignal, onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void },
+  ): Promise<void> {
+    const blob = await localforage.getItem<Blob>(`sticker-data-${id}`)
+    if (!blob)
+      throw new Error(`No sticker data for ${id}`)
+
+    options?.signal?.throwIfAborted()
+
+    if (!transparencyOriginals.has(id))
+      transparencyOriginals.set(id, blob)
+
+    const outBlob = await removeImageBackground(blob, options)
+    await updateSticker(id, { file: outBlob, mimeType: 'image/png' })
+  }
+
+  function hasTransparencyBackup(id: string): boolean {
+    return transparencyOriginals.has(id)
+  }
+
+  /**
+   * Restore the pre-cutout blob kept by `makeTransparent`. Returns false when
+   * there is nothing to revert.
+   */
+  async function revertTransparency(id: string): Promise<boolean> {
+    const original = transparencyOriginals.get(id)
+    if (!original)
+      return false
+    await updateSticker(id, { file: original })
+    transparencyOriginals.delete(id)
+    return true
+  }
+
   // --- Internals ---
 
   // Automatic cleanup of expired stickers
@@ -482,6 +581,10 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     updatePlacement,
     clearPlacements,
     clearLibrary,
+    removeImageBackground,
+    makeTransparent,
+    revertTransparency,
+    hasTransparencyBackup,
     chatStickers,
   }
 })
