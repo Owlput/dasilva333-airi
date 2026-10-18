@@ -30,6 +30,7 @@ import { useSettingsAudioDevice } from '../../../stores/settings/audio-device'
 import { useSettingsControlStrip } from '../../../stores/settings/control-strip'
 import { useSettingsControlsIsland } from '../../../stores/settings/controls-island'
 import { useSettingsStageModel } from '../../../stores/settings/stage-model'
+import { useSyncEngineStore } from '../../../stores/sync-engine'
 
 const props = withDefaults(defineProps<{
   mode?: 'desktop' | 'mobile'
@@ -394,6 +395,19 @@ const scopedCastVoices = computed(() => {
 })
 
 // ── Characters Popover — state & helpers ───────────────────────────────────
+const syncEngineStore = useSyncEngineStore()
+const { selectiveSyncEnabled } = storeToRefs(syncEngineStore)
+const cardSyncFilter = ref<'all' | 'synced'>(selectiveSyncEnabled.value ? 'synced' : 'all')
+
+watch(selectiveSyncEnabled, (enabled) => {
+  cardSyncFilter.value = enabled ? 'synced' : 'all'
+})
+
+function getCardSyncStatus(cardId: string): 'synced' | 'cloud-only' | 'partial' {
+  const displayModelId = cardStore.getCardDisplayModelId(cardId)
+  return syncEngineStore.getCardSyncStatus(cardId, displayModelId)
+}
+
 const characterSearch = ref('')
 const characterViewMode = useLocalStorage<'list' | 'grid'>(
   'settings/control-strip/character-view-mode',
@@ -408,12 +422,23 @@ const charFavIds = useLocalStorage<string[]>(
 const charFavEntries = computed(() =>
   charFavIds.value
     .map(id => [id, cards.value.get(id)] as [string, typeof cards.value extends Map<string, infer V> ? V : never])
-    .filter(([, card]) => !!card),
+    .filter(([id, card]) => {
+      if (!card)
+        return false
+      if (selectiveSyncEnabled.value && cardSyncFilter.value === 'synced')
+        return getCardSyncStatus(id) === 'synced'
+      return true
+    }),
 )
 
 const sortedCharacters = computed(() => {
   const query = normalizeSearchText(characterSearch.value)
-  const entries = [...cards.value.entries()].map(([id, card], idx) => ({ id, card, idx }))
+  let entries = [...cards.value.entries()].map(([id, card], idx) => ({ id, card, idx }))
+
+  if (selectiveSyncEnabled.value && cardSyncFilter.value === 'synced') {
+    entries = entries.filter(({ id }) => getCardSyncStatus(id) === 'synced')
+  }
+
   const filtered = entries.filter(({ id, card }) => {
     if (!query)
       return true
@@ -2421,9 +2446,25 @@ function getShortLabel(btnId: string): string {
         <div v-if="activePopover === 'actor-characters'" class="flex flex-col gap-2">
           <!-- HEADER -->
           <div class="flex items-center justify-between border-b border-neutral-200/80 pb-2 dark:border-neutral-800">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-neutral-800 font-bold tracking-wider uppercase dark:text-neutral-200">Characters</span>
-              <span class="rounded-full bg-neutral-200/60 px-1.5 py-0.2 text-[10px] text-neutral-600 font-semibold dark:bg-neutral-800 dark:text-neutral-400">{{ cards.size }}</span>
+            <div class="min-w-0 flex items-center gap-1.5">
+              <span class="shrink-0 text-xs text-neutral-800 font-bold tracking-wider uppercase dark:text-neutral-200">Characters</span>
+              <span class="shrink-0 rounded-full bg-neutral-200/60 px-1.5 py-0.2 text-[10px] text-neutral-600 font-semibold dark:bg-neutral-800 dark:text-neutral-400">{{ sortedCharacters.length !== cards.size ? `${sortedCharacters.length}/${cards.size}` : cards.size }}</span>
+              <!-- Selective Sync Filter Toggle (Only visible when selective sync is enabled) -->
+              <button
+                v-if="selectiveSyncEnabled"
+                type="button"
+                :class="[
+                  'flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0',
+                  cardSyncFilter === 'synced'
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 ring-1 ring-emerald-500/30 font-bold'
+                    : 'bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+                ]"
+                :title="cardSyncFilter === 'synced' ? 'Showing synced characters only. Tap to show all' : 'Showing all characters. Tap to show synced only'"
+                @click="cardSyncFilter = cardSyncFilter === 'synced' ? 'all' : 'synced'"
+              >
+                <div v-if="cardSyncFilter === 'synced'" class="i-solar:bolt-bold text-[10px] text-emerald-500" />
+                <span>{{ cardSyncFilter === 'synced' ? 'Synced' : 'All' }}</span>
+              </button>
             </div>
             <div class="flex items-center gap-1">
               <button
@@ -2462,7 +2503,7 @@ function getShortLabel(btnId: string): string {
           </div>
 
           <!-- FAVORITES SECTION (GRID - THUMBNAILS ONLY) -->
-          <div v-if="charFavIds.length > 0" class="grid grid-cols-3 gap-1">
+          <div v-if="charFavEntries.length > 0" class="grid grid-cols-3 gap-1">
             <div
               v-for="[id, card] in charFavEntries"
               :key="id"
@@ -2542,7 +2583,7 @@ function getShortLabel(btnId: string): string {
             </div>
             <div v-if="sortedCharacters.length === 0" class="flex flex-col items-center justify-center py-6 text-center text-neutral-400 dark:text-neutral-500">
               <span class="i-solar:user-bold-duotone text-2xl" />
-              <span class="mt-1 text-[10px]">No characters found</span>
+              <span class="mt-1 text-[10px]">{{ selectiveSyncEnabled && cardSyncFilter === 'synced' ? 'No synced characters found' : 'No characters found' }}</span>
             </div>
           </div>
 
@@ -2586,7 +2627,7 @@ function getShortLabel(btnId: string): string {
             </div>
             <div v-if="sortedCharacters.length === 0" class="flex flex-col items-center justify-center py-6 text-center text-neutral-400 dark:text-neutral-500">
               <span class="i-solar:user-bold-duotone text-2xl" />
-              <span class="mt-1 text-[10px]">No characters found</span>
+              <span class="mt-1 text-[10px]">{{ selectiveSyncEnabled && cardSyncFilter === 'synced' ? 'No synced characters found' : 'No characters found' }}</span>
             </div>
           </div>
 
