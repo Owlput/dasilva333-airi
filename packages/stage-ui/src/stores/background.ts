@@ -266,7 +266,7 @@ export const useBackgroundStore = defineStore('background', () => {
   }
 
   // Persistent global fallback for active atmosphere id
-  const globalActiveAtmosphereId = useLocalStorage<StageAtmosphere>('airi:stage-active-atmosphere-id', 'hearts')
+  const globalActiveAtmosphereId = useLocalStorage<StageAtmosphere>('airi:stage-active-atmosphere-id', 'none')
 
   const activeAtmosphereId = computed<StageAtmosphere>({
     get: () => {
@@ -277,7 +277,7 @@ export const useBackgroundStore = defineStore('background', () => {
       if (cardAtmosphere) {
         return cardAtmosphere
       }
-      return (globalActiveAtmosphereId.value as StageAtmosphere) || 'hearts'
+      return (globalActiveAtmosphereId.value as StageAtmosphere) || 'none'
     },
     set: (val: StageAtmosphere) => {
       globalActiveAtmosphereId.value = val
