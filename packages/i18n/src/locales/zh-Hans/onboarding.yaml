@@ -890,6 +890,9 @@ steps:
         note: 社区角色中心，支持标准 PNG（V2）角色卡格式。
       jannyai:
         note: 大型动漫和游戏角色库，提供直接下载链接。
+      character-tavern:
+        badge: 界面清爽
+        note: 界面清晰直观的角色库，收录超 1.9 万张社区卡片，支持直接下载卡片。
     tropeTemplates:
       desktop-companion:
         label: 桌面伴侣

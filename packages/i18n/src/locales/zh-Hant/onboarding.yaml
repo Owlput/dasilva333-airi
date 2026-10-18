@@ -960,6 +960,10 @@ steps:
         note: Great community character hub supporting standard PNG (V2) card format.
       jannyai:
         note: Large repository of anime & game characters with direct download links.
+      character-tavern:
+        badge: Clean UI
+        note: Clean and intuitive character library featuring 19K+ community cards
+          and direct card downloads.
     tropeTemplates:
       desktop-companion:
         label: Desktop Companion

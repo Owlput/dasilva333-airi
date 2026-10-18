@@ -164,6 +164,15 @@ const hubSources = [
     url: 'https://datacat.run/fresh',
   },
   {
+    name: 'Character Tavern',
+    rating: '5 / 5 ⭐',
+    badge: 'Clean UI',
+    badgeKey: 'onboarding.steps.persona.hubSources.character-tavern.badge',
+    note: 'Clean and intuitive character library featuring 19K+ community cards and direct card downloads.',
+    noteKey: 'onboarding.steps.persona.hubSources.character-tavern.note',
+    url: 'https://character-tavern.com',
+  },
+  {
     name: 'Chub AI',
     rating: '4 / 5 ⭐',
     badge: 'Popular',

@@ -32,6 +32,15 @@ const cardHubs = [
     tagBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
   },
   {
+    name: 'Character Tavern',
+    tag: 'CLEAN UI · 19K+',
+    desc: 'Fast and clean character platform with thousands of unique AI companions, intuitive navigation, and direct SillyTavern card downloads.',
+    url: 'https://character-tavern.com',
+    icon: 'i-solar:cup-star-bold-duotone',
+    accent: 'text-emerald-500 dark:text-emerald-400',
+    tagBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  },
+  {
     name: 'DataCat',
     tag: 'RECOMMENDED · CLEAN ST',
     desc: 'Fast discovery and database search tool tailored for clean SillyTavern JSON and PNG exports.',

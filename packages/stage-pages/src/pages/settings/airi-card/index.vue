@@ -346,6 +346,11 @@ const cardSourceLinks = [
     url: 'https://realm.risuai.net',
   },
   {
+    name: 'Character Tavern',
+    description: 'Clean and intuitive character library featuring 19K+ community cards, easy navigation, and direct SillyTavern card exports.',
+    url: 'https://character-tavern.com',
+  },
+  {
     name: 'DataCat',
     description: 'A popular database and scraping tool used to search, browse, and export character definitions as SillyTavern JSON.',
     url: 'https://datacat.run/fresh',
