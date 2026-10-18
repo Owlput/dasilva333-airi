@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
-import { layeredMemory } from '../libs/search/layered-memory'
+import { LAST_INDEXED_TURN_KEY, layeredMemory } from '../libs/search/layered-memory'
 import { useTextJournalStore } from './memory-text-journal'
 
 // Mock the database repo so tests don't touch IndexedDB
@@ -561,6 +561,182 @@ describe('useTextJournalStore', () => {
 
       expect(store.isRebuildingVectorIndex).toBe(false)
       expect(store.vectorIndexProgress?.phase).toBe('cancelled')
+    })
+  })
+
+  // ————————————————— backgroundIndexAll watermark gating ——————————————————————————
+
+  describe('backgroundIndexAll watermark gating', () => {
+    it('skips indexing entirely when watermark > 0 and no documents are newer than watermark', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'init').mockResolvedValue({ stale: false, lastIndexedTurnAt: 5000 })
+      layeredMemory.lastIndexState = { stale: false, lastIndexedTurnAt: 5000 }
+
+      ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'j-old',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'Old Entry',
+          content: 'Old content',
+          source: 'tool',
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          last_review: 0,
+          createdAt: 3000,
+          updatedAt: 3000,
+        },
+      ])
+
+      const store = useTextJournalStore()
+      await store.load(true)
+      // NOTICE: load() fires an unawaited backgroundIndexAll — flush it out
+      // and clear the spy so assertions below cover only the explicit call.
+      // Without this the suite races the fire-and-forget cycle and flakes.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      indexDocsSpy.mockClear()
+      await store.backgroundIndexAll()
+
+      expect(indexDocsSpy).not.toHaveBeenCalled()
+    })
+
+    it('indexes only delta documents when watermark > 0 and newer documents exist', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'init').mockResolvedValue({ stale: false, lastIndexedTurnAt: 5000 })
+      layeredMemory.lastIndexState = { stale: false, lastIndexedTurnAt: 5000 }
+
+      ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'j-old',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'Old Entry',
+          content: 'Old content',
+          source: 'tool',
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          last_review: 0,
+          createdAt: 3000,
+          updatedAt: 3000,
+        },
+        {
+          id: 'j-new',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'New Entry',
+          content: 'New content',
+          source: 'tool',
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          last_review: 0,
+          createdAt: 8000,
+          updatedAt: 8000,
+        },
+      ])
+
+      const store = useTextJournalStore()
+      await store.load(true)
+      // NOTICE: load() fires an unawaited backgroundIndexAll — flush it out
+      // and clear the spy so assertions below cover only the explicit call.
+      // Without this the suite races the fire-and-forget cycle and flakes.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      indexDocsSpy.mockClear()
+      await store.backgroundIndexAll()
+
+      expect(indexDocsSpy).toHaveBeenCalledTimes(1)
+      const indexedDocs = indexDocsSpy.mock.calls[0][0]
+      expect(indexedDocs.length).toBe(1)
+      expect(indexedDocs[0].id).toBe('j-new')
+    })
+
+    it('indexes all documents when watermark is 0 or absent', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'init').mockResolvedValue({ stale: false, lastIndexedTurnAt: 0 })
+      layeredMemory.lastIndexState = { stale: false, lastIndexedTurnAt: 0 }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(LAST_INDEXED_TURN_KEY)
+      }
+
+      ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'j-1',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'Entry 1',
+          content: 'Content 1',
+          source: 'tool',
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          last_review: 0,
+          createdAt: 3000,
+          updatedAt: 3000,
+        },
+      ])
+
+      const store = useTextJournalStore()
+      await store.load(true)
+      // NOTICE: load() fires an unawaited backgroundIndexAll — flush it out
+      // and clear the spy so assertions below cover only the explicit call.
+      // Without this the suite races the fire-and-forget cycle and flakes.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      indexDocsSpy.mockClear()
+      await store.backgroundIndexAll()
+
+      expect(indexDocsSpy).toHaveBeenCalledTimes(1)
+      const indexedDocs = indexDocsSpy.mock.calls[0][0]
+      expect(indexedDocs.length).toBe(1)
+      expect(indexedDocs[0].id).toBe('j-1')
+    })
+
+    it('indexes all documents when index is marked stale even if watermark > 0', async () => {
+      const indexDocsSpy = vi.spyOn(layeredMemory, 'indexDocuments').mockResolvedValue(undefined)
+      vi.spyOn(layeredMemory, 'init').mockResolvedValue({ stale: true, reason: 'migration', lastIndexedTurnAt: 5000 })
+      layeredMemory.lastIndexState = { stale: true, reason: 'migration', lastIndexedTurnAt: 5000 }
+
+      ;(textJournalRepo.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'j-1',
+          userId: 'local',
+          characterId: 'card-1',
+          characterName: 'TestChar',
+          title: 'Entry 1',
+          content: 'Content 1',
+          source: 'tool',
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          last_review: 0,
+          createdAt: 3000,
+          updatedAt: 3000,
+        },
+      ])
+
+      const store = useTextJournalStore()
+      await store.load(true)
+      // NOTICE: load() fires an unawaited backgroundIndexAll — flush it out
+      // and clear the spy so assertions below cover only the explicit call.
+      // Without this the suite races the fire-and-forget cycle and flakes.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      indexDocsSpy.mockClear()
+      await store.backgroundIndexAll()
+
+      expect(indexDocsSpy).toHaveBeenCalledTimes(1)
+      const indexedDocs = indexDocsSpy.mock.calls[0][0]
+      expect(indexedDocs.length).toBe(1)
+      expect(indexedDocs[0].id).toBe('j-1')
     })
   })
 })

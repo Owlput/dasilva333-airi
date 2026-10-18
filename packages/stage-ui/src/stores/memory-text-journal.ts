@@ -14,7 +14,7 @@ import { echoChipsRepo } from '../database/repos/echo-chips.repo'
 import { lifetimeMemoryRepo } from '../database/repos/lifetime-memory.repo'
 import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
 import { textJournalRepo } from '../database/repos/text-journal.repo'
-import { layeredMemory } from '../libs/search/layered-memory'
+import { LAST_INDEXED_TURN_KEY, layeredMemory } from '../libs/search/layered-memory'
 import { chunkTurnText } from '../libs/search/turn-chunker'
 import { shouldDegradeBackgroundWork } from '../utils/memory-sentinel'
 import { useAuthStore } from './auth'
@@ -68,6 +68,24 @@ function normalizeEntry(entry: TextJournalEntry): TextJournalEntry {
 
 function normalizeEntries(entries: TextJournalEntry[]) {
   return entries.map(normalizeEntry)
+}
+
+function toDocTime(value: unknown): number {
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : 0
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
+}
+
+// NOTICE: single time base for index ordering AND watermark deltas. `timestamp`
+// stays creation-anchored (temporal scoring depends on it); `createdAt` is the
+// wider index-recency key (max of creation/update), so edited or backfilled
+// docs re-index instead of hiding below the watermark forever.
+function docIndexTime(d: { createdAt?: unknown, timestamp?: unknown }): number {
+  return Math.max(toDocTime(d.createdAt), toDocTime(d.timestamp))
 }
 
 function isMainWindow(): boolean {
@@ -204,6 +222,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
         title: chunk.total === 1 ? baseTitle : `${baseTitle} [Part ${chunk.index + 1}/${chunk.total}]`,
         fact: chunkText,
         kind: 'raw_turn',
+        createdAt: toDocTime(input.turnDate),
         timestamp: input.turnDate,
         source: `chat:${input.sessionId}`,
       })
@@ -265,6 +284,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
             : e.content.slice(0, 40),
           fact: e.content,
           kind: 'ltmm_entry',
+          createdAt: Math.max(toDocTime(e.createdAt), toDocTime(e.updatedAt)),
           timestamp: new Date(e.createdAt).toISOString(),
           source: e.source,
           embedding: e.embedding,
@@ -282,6 +302,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
             title: b.characterName ? `Daily recap ${b.date} — ${b.characterName}` : `Daily recap ${b.date}`,
             fact: b.summary,
             kind: 'stmm_block',
+            createdAt: Math.max(toDocTime(b.createdAt), toDocTime(b.updatedAt), toDocTime(b.date)),
             timestamp: b.date,
             source: b.source || 'stmm',
           }))
@@ -352,6 +373,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
             title: `${c.type} chip ${c.date}`,
             fact: c.content,
             kind: 'echo_chip',
+            createdAt: c.createdAt,
             timestamp: new Date(c.createdAt || Date.now()).toISOString(),
             source: `echo:${c.type}`,
           }))
@@ -374,6 +396,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
               title: consumedDay ? `Eternal thread through ${consumedDay}` : 'Eternal thread',
               fact: lifetimeRaw.distilledContent,
               kind: 'lifetime_entry',
+              createdAt: lifetimeRaw.updatedAt || lifetimeRaw.createdAt,
               timestamp: new Date(lifetimeRaw.updatedAt || Date.now()).toISOString(),
               source: 'lifetime',
             })
@@ -388,9 +411,29 @@ export const useTextJournalStore = defineStore('text-journal', () => {
         // NOTICE: cap on total indexed docs per cycle matching worker memory budget.
         const MAX_TOTAL_DOCS = 3000
         const allDocs = [...ltmm, ...stmm, ...raw, ...echoes, ...lifetime]
-          .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .sort((a: any, b: any) => docIndexTime(b) - docIndexTime(a))
           .slice(0, MAX_TOTAL_DOCS)
-        await layeredMemory.indexDocuments(allDocs)
+
+        const watermark = layeredMemory.lastIndexState?.lastIndexedTurnAt
+          ?? (typeof localStorage !== 'undefined' ? Number(localStorage.getItem(LAST_INDEXED_TURN_KEY) || 0) : 0)
+
+        if (watermark > 0 && !layeredMemory.lastIndexState?.stale) {
+          // NOTICE: fail open — a doc with no parseable time (0) is indexed,
+          // never silently dropped. Only strictly-older docs skip.
+          const deltaDocs = allDocs.filter((d: any) => {
+            const time = docIndexTime(d)
+            return time === 0 || time > watermark
+          })
+          if (deltaDocs.length === 0) {
+            console.info(`[TextJournal:Index] Index is up-to-date with watermark ${watermark}; skipping indexing.`)
+            return
+          }
+          console.info(`[TextJournal:Index] Watermark ${watermark}: indexing ${deltaDocs.length} new/updated document(s).`)
+          await layeredMemory.indexDocuments(deltaDocs)
+        }
+        else {
+          await layeredMemory.indexDocuments(allDocs)
+        }
       }
       finally {
         indexingInProgress = null

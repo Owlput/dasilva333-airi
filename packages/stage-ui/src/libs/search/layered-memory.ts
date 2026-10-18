@@ -20,6 +20,26 @@ const indexStorage = createStorage({
   driver: typeof indexedDB !== 'undefined' ? indexedDbDriver({ base: 'airi-search-index' }) : memoryDriver(),
 })
 
+// Synchronous fast-path mirror of the index high-watermark so caller stores
+// can delta-check without awaiting IndexedDB or the worker.
+export const LAST_INDEXED_TURN_KEY = 'airi:search:last-indexed-turn'
+
+function asWatermark(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function mirrorLastIndexedTurnAt(value: unknown): void {
+  const watermark = asWatermark(value)
+  if (watermark === undefined)
+    return
+  if (typeof localStorage === 'undefined')
+    return
+  try {
+    localStorage.setItem(LAST_INDEXED_TURN_KEY, String(watermark))
+  }
+  catch {}
+}
+
 export interface LayeredSearchResult extends HybridSearchResult {
   title?: string
   subject?: string
@@ -106,6 +126,7 @@ function resolveMemoryLayer(kind: string): MemoryLayer {
 export interface SearchIndexState {
   stale: boolean
   reason?: string
+  lastIndexedTurnAt?: number
 }
 
 export const layeredMemory = {
@@ -129,7 +150,12 @@ export const layeredMemory = {
     // scores then drop to 0 and BM25 serves queries while the background
     // backfill (memory-text-journal backgroundIndexAll) re-embeds through
     // indexDocuments — chat turns never block on migration.
-    this.lastIndexState = { stale: res?.stale === true, reason: res?.reason }
+    this.lastIndexState = {
+      stale: res?.stale === true,
+      reason: res?.reason,
+      lastIndexedTurnAt: asWatermark(res?.lastIndexedTurnAt),
+    }
+    mirrorLastIndexedTurnAt(this.lastIndexState.lastIndexedTurnAt)
     return this.lastIndexState
   },
 
@@ -153,6 +179,12 @@ export const layeredMemory = {
         const snapshot = await searchWorker.persist()
         await indexStorage.setItem('snapshot', snapshot)
         lastPersistAt = Date.now()
+        // Keep the exposed watermark current with what was just written so
+        // delta checks observe persisted (not merely indexed) progress.
+        const watermark = asWatermark((snapshot as { header?: { lastIndexedTurnAt?: unknown } } | null)?.header?.lastIndexedTurnAt)
+        if (this.lastIndexState)
+          this.lastIndexState.lastIndexedTurnAt = watermark
+        mirrorLastIndexedTurnAt(watermark)
       }
       finally {
         isPersisting = false
@@ -867,6 +899,9 @@ export const layeredMemory = {
   },
 
   async indexDocuments(documents: any[]) {
+    if (!documents || documents.length === 0)
+      return
+
     const run = async () => {
       isIndexing = true
       try {

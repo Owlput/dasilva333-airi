@@ -62,8 +62,36 @@ interface SearchSnapshot {
 let embedderModel: any = null
 let embedderTokenizer: any = null
 let documents = new Map<string, SearchDocument>()
+// High-watermark of indexed turn time. Restored from the snapshot header on
+// init, advanced on every index batch, stamped into the header on persist.
+let lastIndexedTurnAt: number | undefined
 let averageDocumentLength = 0
 let documentFrequency = new Map<string, number>()
+
+/**
+ * Coerce heterogeneous doc timestamps (`createdAt` epoch ms or ISO `timestamp`
+ * strings) to epoch ms. Unparseable values yield 0 so they can never NaN-poison
+ * the `Math.max` watermark.
+ */
+function toDocTimeMs(value: unknown): number {
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : 0
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
+}
+
+function trackIndexedTurnTime(docs: Array<{ createdAt?: unknown, timestamp?: unknown }>): void {
+  let watermark = lastIndexedTurnAt ?? 0
+  for (const doc of docs) {
+    const time = Math.max(toDocTimeMs(doc.createdAt), toDocTimeMs(doc.timestamp))
+    if (time > watermark)
+      watermark = time
+  }
+  lastIndexedTurnAt = watermark
+}
 
 const STOPWORDS = new Set([
   'a',
@@ -164,6 +192,14 @@ async function loadEmbedderStack(device: 'webgpu' | 'wasm') {
     AutoModel.from_pretrained(EMBEDDING_MODEL_ID, modelOptions as any),
     AutoTokenizer.from_pretrained(EMBEDDING_MODEL_ID),
   ])
+  // NOTICE: winning device/dtype visibility — a silent WebGPU→WASM fallback
+  // loads >1 GB of fp32 weights instead of the 175 MB q4 backbone. This line
+  // is the only in-app signal of which path actually stuck.
+  console.info('[Telemetry:SearchWorker:embedder-loaded]', {
+    modelId: EMBEDDING_MODEL_ID,
+    device,
+    dtype,
+  })
   return { model, tokenizer }
 }
 
@@ -501,17 +537,25 @@ globalThis.addEventListener('message', async (e) => {
         // cosine math never mixes geometries; the backfill re-embeds through
         // the index handler below.
         hydrateDocuments(normalizedSnapshot?.documents, { stripEmbeddings: !compatible })
+        // Restore the persisted high-watermark (absent on pre-watermark
+        // snapshots) so delta checks stay correct across worker restarts.
+        const restoredWatermark = normalizedSnapshot?.header?.lastIndexedTurnAt
+        lastIndexedTurnAt = typeof restoredWatermark === 'number' && Number.isFinite(restoredWatermark)
+          ? restoredWatermark
+          : undefined
         console.log('[Telemetry:SearchWorker:init]', {
           hasSnapshot: !!payload?.snapshot,
           snapshotDocCount: normalizedSnapshot?.documents?.length ?? 0,
           compatible,
           workerDocumentsCount: documents.size,
+          lastIndexedTurnAt,
         })
         globalThis.postMessage({
           id,
           type: 'ready',
           stale: !compatible,
           reason: compatible ? undefined : 'incompatible-or-missing snapshot header',
+          lastIndexedTurnAt,
         })
         break
       }
@@ -559,9 +603,11 @@ globalThis.addEventListener('message', async (e) => {
         }
 
         rebuildKeywordStats()
+        trackIndexedTurnTime(nextDocuments as SearchDocument[])
         console.log('[Telemetry:SearchWorker:index:Complete]', {
           indexedCount,
           totalDocumentsInWorker: documents.size,
+          lastIndexedTurnAt,
         })
         globalThis.postMessage({ id, type: 'indexed', count: indexedCount })
         break
@@ -634,7 +680,7 @@ globalThis.addEventListener('message', async (e) => {
         // NOTICE: persist documents with 4-decimal-place quantized embeddings
         // to cut JSON snapshot size in half while preserving vectors across reboots.
         const snapshot: SearchSnapshot = {
-          header: buildSnapshotHeader(),
+          header: buildSnapshotHeader(lastIndexedTurnAt),
           documents: [...documents.values()].map((doc) => {
             const { tokens, tokenFreqs, embedding, ...persistedDoc } = doc
             if (!embedding?.length)
@@ -657,6 +703,26 @@ globalThis.addEventListener('message', async (e) => {
           rebuildKeywordStats()
         }
         globalThis.postMessage({ id, type: 'removed', existed })
+        break
+      }
+
+      case 'unload': {
+        // NOTICE: idle-TTL eviction path (see GpuWorkerHost in the leader).
+        // Drops the embedder sessions/tensors but KEEPS the in-memory document
+        // index, so the next query only reloads model weights — never
+        // re-indexes. Snapshot persistence stays main-side via 'persist'.
+        if (embedderModel) {
+          try {
+            await embedderModel.dispose?.()
+          }
+          catch {}
+          embedderModel = null
+        }
+        embedderTokenizer = null
+        console.info('[Telemetry:SearchWorker:unload]', {
+          workerDocumentsCount: documents.size,
+        })
+        globalThis.postMessage({ id, type: 'unloaded' })
         break
       }
     }

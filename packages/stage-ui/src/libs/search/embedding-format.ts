@@ -35,9 +35,15 @@ export interface SearchIndexSnapshotHeader {
   dtype: 'q4' | 'q8' | 'fp32'
   taskPrefixVersion: number
   indexedAt: number
+  /**
+   * High-watermark of indexed turn time (max `createdAt`/`timestamp` seen at
+   * persist). Optional so pre-watermark snapshots stay compatible — absent
+   * means "unknown", and callers must treat it as 0 (re-index everything).
+   */
+  lastIndexedTurnAt?: number
 }
 
-export function buildSnapshotHeader(): SearchIndexSnapshotHeader {
+export function buildSnapshotHeader(lastIndexedTurnAt?: number): SearchIndexSnapshotHeader {
   return {
     schemaVersion: SEARCH_INDEX_SCHEMA_VERSION,
     embeddingModel: EMBEDDING_MODEL_ID,
@@ -45,6 +51,7 @@ export function buildSnapshotHeader(): SearchIndexSnapshotHeader {
     dtype: EMBEDDING_DTYPE,
     taskPrefixVersion: TASK_PREFIX_VERSION,
     indexedAt: Date.now(),
+    lastIndexedTurnAt: lastIndexedTurnAt ?? 0,
   }
 }
 

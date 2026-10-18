@@ -12,7 +12,7 @@ vi.mock('../workers/search', () => ({
 }))
 
 const { searchWorker } = await import('../workers/search')
-const { layeredMemory } = await import('./layered-memory')
+const { LAST_INDEXED_TURN_KEY, layeredMemory } = await import('./layered-memory')
 
 describe('layeredMemory', () => {
   beforeEach(() => {
@@ -57,6 +57,65 @@ describe('layeredMemory', () => {
 
       expect(searchWorker.index).toHaveBeenCalledTimes(2)
       expect(order).toEqual([1, 2])
+    })
+
+    it('returns immediately without calling searchWorker.index or persist when documents is empty or null', async () => {
+      await layeredMemory.indexDocuments([])
+      await layeredMemory.indexDocuments(null as any)
+      await layeredMemory.indexDocuments(undefined as any)
+
+      expect(searchWorker.index).not.toHaveBeenCalled()
+      expect(searchWorker.persist).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('lastIndexedTurnAt watermark', () => {
+    const store: Record<string, string> = {}
+    const setItem = vi.fn((key: string, value: string) => {
+      store[key] = value
+    })
+
+    beforeEach(() => {
+      for (const key of Object.keys(store))
+        delete store[key]
+      setItem.mockClear()
+      vi.stubGlobal('localStorage', { setItem })
+    })
+
+    it('exposes the worker watermark on init and mirrors it for sync delta checks', async () => {
+      ;(searchWorker.init as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ stale: false, lastIndexedTurnAt: 777 })
+
+      const state = await layeredMemory.init()
+
+      expect(state.lastIndexedTurnAt).toBe(777)
+      expect(layeredMemory.lastIndexState?.lastIndexedTurnAt).toBe(777)
+      expect(setItem).toHaveBeenCalledWith(LAST_INDEXED_TURN_KEY, '777')
+    })
+
+    it('leaves the watermark absent for legacy worker replies without mirroring', async () => {
+      ;(searchWorker.init as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ stale: false })
+
+      const state = await layeredMemory.init()
+
+      expect(state.lastIndexedTurnAt).toBeUndefined()
+      expect(setItem).not.toHaveBeenCalled()
+    })
+
+    it('mirrors the persisted snapshot header watermark on persist', async () => {
+      ;(searchWorker.persist as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ header: { lastIndexedTurnAt: 888 }, documents: [] })
+
+      await layeredMemory.persist(true)
+
+      expect(setItem).toHaveBeenCalledWith(LAST_INDEXED_TURN_KEY, '888')
+    })
+
+    it('survives environments without localStorage', async () => {
+      vi.unstubAllGlobals()
+      ;(searchWorker.init as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ stale: false, lastIndexedTurnAt: 555 })
+
+      const state = await layeredMemory.init()
+
+      expect(state.lastIndexedTurnAt).toBe(555)
     })
   })
 })
