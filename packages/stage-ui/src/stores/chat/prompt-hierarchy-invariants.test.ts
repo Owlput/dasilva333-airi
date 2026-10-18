@@ -135,20 +135,12 @@ const mockVrmStore = {
   activeExpressions: null as Record<string, number> | null,
 }
 
-const mockStickersStore = {
-  currentLibrary: [] as Array<{ label: string }>,
-}
-
 vi.mock('@proj-airi/stage-ui-live2d', () => ({
   useLive2d: () => mockLive2dStore,
 }))
 
 vi.mock('@proj-airi/stage-ui-three', () => ({
   useModelStore: () => mockVrmStore,
-}))
-
-vi.mock('../stickers', () => ({
-  useStickersStore: () => mockStickersStore,
 }))
 
 function extractUserText(content: any): string {
@@ -171,7 +163,6 @@ describe('chat prompt hierarchy and message ordering invariants', () => {
 
     mockLive2dStore.activeExpressions = null
     mockVrmStore.activeExpressions = null
-    mockStickersStore.currentLibrary = []
     mockBackgroundStore.entries.clear()
 
     activeCardRef.value = {
@@ -422,9 +413,6 @@ describe('chat prompt hierarchy and message ordering invariants', () => {
         prompt: 'Neon lights and rain',
       })
 
-      // 4. Stickers
-      mockStickersStore.currentLibrary = [{ label: 'sparkle' }, { label: 'heart' }]
-
       // 5. Staged Dream state
       activeCardRef.value.extensions.airi.dreamState = {
         injectDreamContext: true,
@@ -481,7 +469,7 @@ describe('chat prompt hierarchy and message ordering invariants', () => {
       expect(capturedMessages[0].role).toBe('system')
       expect(capturedMessages[0].content).toBe('You are Airi, a cheerful companion with strict persona rules.')
 
-      // Invariant 2: messages[1] is the Module Context block containing datetime, expressions, scene, and stickers
+      // Invariant 2: messages[1] is the Module Context block containing datetime, expressions, and scenes
       expect(capturedMessages[1].role).toBe('system')
       expect(capturedMessages[1].content).toContain('These are the contextual information retrieved or on-demand updated from other modules:')
       expect(capturedMessages[1].content).toContain('Module datetime:')
@@ -489,8 +477,6 @@ describe('chat prompt hierarchy and message ordering invariants', () => {
       expect(capturedMessages[1].content).toContain('blush')
       expect(capturedMessages[1].content).toContain('Module scenes:')
       expect(capturedMessages[1].content).toContain('Cyber Cafe')
-      expect(capturedMessages[1].content).toContain('Module stickers:')
-      expect(capturedMessages[1].content).toContain('sparkle, heart')
 
       // Invariant 3: Introspection blocks (Dream, Journal, Artistry)
       expect(capturedMessages[1].content).toContain('[INSPECTIVE DREAM STATE]')
