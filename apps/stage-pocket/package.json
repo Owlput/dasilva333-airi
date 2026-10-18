@@ -1,7 +1,7 @@
 {
   "name": "@proj-airi/stage-pocket",
   "type": "module",
-  "version": "0.9.39-stable.20261015",
+  "version": "0.9.40-stable.20261018",
   "private": true,
   "description": "LLM powered virtual character",
   "author": {
