@@ -23,6 +23,207 @@
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-18] Upstream Delta: `395280a1..461d34ac` (10 commits, 74 files, 21 PR update(s))
+
+### 🎯 Executive Highlights
+#### Key Milestones & Upstream Velocity
+- **Desktop Main-Thread & Audio Pipeline Performance (#3010)**: Makito shipped another high-value desktop optimization. PR #3010 replaces `requestAnimationFrame` polling in `useAudioAnalyzer` with a 50ms interval (20 Hz) to align with the voice host rate, avoiding 60-120fps reactive cascades. In addition, `hearing-status.vue` audio meter bars were refactored from layout-triggering `height` transitions to compositor-only CSS transforms (`translateY` and `scaleY`), eliminating per-frame layout recalculations.
+- **Speech Text Sanitization (#3014)**: Neko merged `toSpeechText` in `packages/core-agent`, which leverages `remark-parse` / `unified` to strip unspeakable markdown artifacts (bold/italic asterisks, links, code blocks, HTML tags) from TTS audio synthesis, preserves math operators (`2*3`, `x**2`), and inserts line breaks for natural chunk pausing.
+- **MCP Discovery Error Propagation (#2946)**: Codada fixed Issue #2779. Instead of swallowing errors into empty strings or exposing dummy proxies when MCP is unavailable, `createMcpTools` now returns an explicit message asking the model to cease discovery attempts during that turn, returns structured MCP error objects on transport failure, and `mcp()` returns an empty array when no transport exists.
+- **Desktop DevTools & Render Error Resilience (#3001, #3015)**: Weathercold added `shouldOpenDevTools()` to allow disabling DevTools via `APP_DEBUG=0` / `MAIN_APP_DEBUG=0` (enabling clean NixOS builds), and updated `Stage.vue` to emit `@error` and `@reset` so the loading spinner does not trap the UI during render errors.
+- **Gallery Redesign & Notifications Panel Prototyping (#3012, #3020, #3022)**: Lead maintainer @luoling8192 opened PR #3012 to redesign character cards into a full visual gallery (14 comments), PR #3020 to introduce native glass/vibrancy chat backgrounds in desktop, and PR #3022 prototyping a system notifications panel with i18n support.
+- **Godot Kirie Sidecar Expansion (#3016, #3018)**: Upstream upgraded Kirie and added widget calling over Godot C#. (Reminder: our fork uses Unity C# `apps/stage-mate`).
+
+### 💬 Discussion & Community Buzz
+- **#3000: `feat(memory-eval): add identity-continuity evaluation package`** by @RUI-debug769 (**🚨 +51 comments, 119 total!**): Intense community and maintainer discussion spike surrounding mathematical persona-drift metrics (Wasserstein-1 barycenter migration, GMM BIC bimodality for split-persona detection, fixed-point operator convergence). Heated debate on whether this belongs in `packages/memory-eval` or an `evals/` test runner, calibration against real LLMs vs synthetic benchmarks, and token compaction thresholds.
+- **#3012: `refactor(stage-pages): redesign character cards as a gallery`** by @luoling8192 (**+14 comments, 14 total**): High initial interest from the community regarding the character card UI overhaul, gallery grid presentation, and responsive cards layout.
+- **#2512: `fix: fix security issue in artistry.ts`** (**+8 comments, 27 total**): Ongoing technical audit and debate around workflow sanitization and remote execution parameters in ComfyUI / artistry pipelines.
+- **#3015: `feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools`** (**7 comments**): NixOS packaging feedback regarding debug flags and packaging environments.
+- **#2552: `add bilingual subtitles`** (**+1 comment, 36 total**): Ongoing tracking for bilingual stage subtitle overlays.
+- **#2937: `fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache`** (**+2 comments, 25 total**).
+
+### 🍒 Cherry-Pick Candidates
+- ⭐ **PR #2946 / Commit `8672e9cd76` (Codada) — `fix(stage-ui,stage-tamagotchi): propagate MCP discovery failures`**:
+  - **Status**: **Recommended for Porting**.
+  - **Impact**: High / Reliability.
+  - **Rationale**: Prevents empty-string swallowing when MCP servers fail; gives the LLM explicit instructions to stop discovery when no tools are present; ensures `mcp()` returns `[]` without throwing on dummy transports.
+- ⭐ **PR #3010 / Commit `266e8d9467` (Makito) — `perf(stage-ui): update audio meters at 20 Hz`**:
+  - **Status**: **Ported & Tested (#3010)**.
+  - **Impact**: High / Main-Thread Performance.
+  - **Rationale**: Replaces `requestAnimationFrame` in `useAudioAnalyzer` with 20 Hz interval (`ANALYZE_INTERVAL_MS = 50`), reducing reactive thrashing. Moves `hearing-status.vue` bars to CSS transforms (`translateY` / `scaleY`) to avoid reflows.
+- ⭐ **PR #3014 / Commit `5c51c4a92c` (Neko) — `feat(core-agent): remove markdown from speech text`**:
+  - **Status**: **Recommended for Porting**.
+  - **Impact**: Medium-High / Audio Quality.
+  - **Rationale**: Strips markdown formatting (`**`, `[]()`, ``` ```, HTML) prior to sending text to TTS synthesizers via `toSpeechText()`, avoiding verbalized syntax artifacts while preserving math notation and inserting natural line-break pauses.
+- 🔧 **PR #3015 / Commit `6715768aba` (Weathercold) — `feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools`**:
+  - **Status**: **Recommended for Porting**.
+  - **Impact**: Low-Medium / Electron DX.
+  - **Rationale**: Clean utility (`shouldOpenDevTools()`) respecting `APP_DEBUG=0` / `MAIN_APP_DEBUG=0` to suppress DevTools in unpackaged/dev desktop instances.
+- 🔧 **PR #3001 / Commit `3526722358` (Weathercold) — `fix(stage-tamagotchi): hide loading label on render error`**:
+  - **Status**: **Recommended for Selective Porting**.
+  - **Impact**: Low-Medium / UX Polish.
+  - **Rationale**: `Stage.vue` emits `@error` and `@reset` so the loading state does not permanently mask render failure messages. Adaptable for `RendererStage.vue`.
+- ⚪ **PR #2879 / Commit `461d34ac1f` (Penluna) — `feat(core-agent): support per-request output token limits`**:
+  - **Status**: **Disregard**. Our fork has its own custom LLM dispatch and prompt budget management.
+- ⚪ **PR #3013 / Commit `4598554fa6` (Rishabh Balabomma) — `fix(stage-ui): open Hearing settings from Sherpaw and Apple Speech cards`**:
+  - **Status**: **Disregard**. Apple Speech is not wired in our fork.
+- 🚫 **PR #3018, #3016 (Godot Kirie client commits `01696022bb`, `59db7905a4`)**:
+  - **Status**: **Permanent Auto-Reject**. Godot Kirie changes do not apply to our fork, which uses Unity C# (`apps/stage-mate`).
+
+### ⚠️ Divergence / Collision Warnings
+- 🚨 **Monolithic Stage vs. Decoupled Control Strip (`apps/stage-tamagotchi/src/renderer/pages/index.vue`)**:
+  - Upstream's PR #3001 modifies `apps/stage-tamagotchi/src/renderer/pages/index.vue`. In our fork, this monolithic surface was deleted in favor of decoupled `windows/stage/RendererStage.vue` (Actor Stage) and `windows/main/ControlStrip.vue` (floating ribbon). Any loading or error-handling logic must be ported directly to `RendererStage.vue`.
+- 🚨 **Speech Pipeline & Runtime Architecture (`packages/core-agent/src/voice/output/`)**:
+  - Upstream PR #3014 places `toSpeechText` inside `packages/core-agent/src/voice/output/response.ts`. In our fork, speech synthesis is governed by `packages/stage-ui/src/stores/modules/speech.ts` and `airi-speech-runtime`. Adapt `toSpeechText` as a shared utility rather than adopting upstream's core-agent voice output pipeline.
+- 🚨 **MCP Discovery & Tool Registry (`packages/stage-ui/src/tools/mcp.ts`)**:
+  - Upstream PR #2946 changes `createMcpTools` and `mcp()`. Our fork has custom tool registration and security rules (`airi-mcp-integration`, `airi-tool-registry-builtin-tools`). Ensure error propagation changes preserve our local tool filtering and allowed-tools policies.
+- 🚫 **Godot Kirie Client (`apps/stage-tamagotchi-kirie`)**:
+  - Upstream commits `01696022bb` and `59db7905a4` modify Godot C# Kirie architecture. Our fork standardizes on Unity C# (`apps/stage-mate`) with `StageMateBridge.cs` and `MateSidecar.cs`. All Kirie commits remain auto-rejects.
+
+### 📋 Upstream Commits
+- `461d34ac1f` feat(core-agent): support per-request output token limits (#2879) [#2879](https://github.com/moeru-ai/airi/pull/2879) _(Penluna, 2026-10-18)_
+- `4598554fa6` fix(stage-ui): open the Hearing settings from the Sherpaw and Apple Speech cards (#3013) [#3013](https://github.com/moeru-ai/airi/pull/3013) _(Rishabh Balabomma, 2026-10-18)_
+- `01696022bb` chore(tamagotchi-kirie): upgrade kirie (#3018) [#3018](https://github.com/moeru-ai/airi/pull/3018) _(Doji, 2026-10-18)_
+- `5c51c4a92c` feat(core-agent): remove markdown from speech text (#3014) [#3014](https://github.com/moeru-ai/airi/pull/3014) _(Neko, 2026-10-18)_
+- `59db7905a4` feat(tamagotchi-kirie): widget calling (#3016) [#3016](https://github.com/moeru-ai/airi/pull/3016) _(LemonNeko, 2026-10-18)_
+- `8672e9cd76` fix(stage-ui,stage-tamagotchi): propagate MCP discovery failures (#2946) [#2946](https://github.com/moeru-ai/airi/pull/2946) _(Codada, 2026-10-18)_
+- `3526722358` fix(stage-tamagotchi): hide loading label on render error (#3001) [#3001](https://github.com/moeru-ai/airi/pull/3001) _(Weathercold, 2026-10-18)_
+- `6715768aba` feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools, disable for nix package (#3015) [#3015](https://github.com/moeru-ai/airi/pull/3015) _(Weathercold, 2026-10-18)_
+- `266e8d9467` perf(stage-ui): update audio meters at 20 Hz (#3010) [#3010](https://github.com/moeru-ai/airi/pull/3010) _(Makito, 2026-10-18)_
+- `dd6e3ce1f1` fix(core-agent): keep the text before a tool call in front of it (#3008) [#3008](https://github.com/moeru-ai/airi/pull/3008) _(蓝莓🫐, 2026-10-17)_
+
+### 🔬 Subsystem Breakdown
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 42 file(s) (+923/-728)
+- `apps/stage-tamagotchi-kirie/.gitignore` *(+1/-0)*
+- `apps/stage-tamagotchi-kirie/MIGRATION.md` *(+0/-214)*
+- `apps/stage-tamagotchi-kirie/README.md` *(+45/-60)*
+- `apps/stage-tamagotchi-kirie/StageTamagotchiKirie.csproj` *(+3/-2)*
+- `apps/stage-tamagotchi-kirie/docs/ablation-review.md` *(+0/-154)*
+- `apps/stage-tamagotchi-kirie/docs/host-architecture.md` *(+34/-55)*
+- `apps/stage-tamagotchi-kirie/docs/verification.md` *(+0/-146)*
+- `apps/stage-tamagotchi-kirie/kirie.config.ts` *(+2/-1)*
+- `apps/stage-tamagotchi-kirie/package.json` *(+5/-4)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/DeveloperWindow.cs` *(+5/-1)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/Main.cs` *(+17/-4)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/SettingsWindow.cs` *(+5/-1)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/SettingsWindowManager.cs` *(+6/-2)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/SpotlightWindow.cs` *(+4/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/developer-tools-service.cs` *(+6/-2)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-contracts.cs` *(+71/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-contracts.cs.uid` *(+1/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-window-manager.cs` *(+244/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-window-manager.cs.uid` *(+1/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-window.cs` *(+87/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/scripts/widget-window.cs.uid` *(+1/-0)*
+- `apps/stage-tamagotchi-kirie/src-godot/widget-window.tscn` *(+22/-0)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue` *(+1/-1)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/host-context/owner.ts` *(+7/-4)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/host-context/spotlight.test.ts` *(+17/-13)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/host-context/spotlight.ts` *(+5/-4)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/pages/devtools/widgets-calling.vue` *(+1/-1)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/pages/widgets.vue` *(+11/-6)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/stores/tools/builtin/weather.ts` *(+1/-1)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/stores/tools/builtin/widgets.test.ts` *(+17/-1)*
+- `apps/stage-tamagotchi-kirie/src-web/src/renderer/stores/tools/builtin/widgets.ts` *(+15/-11)*
+- `apps/stage-tamagotchi-kirie/src-web/src/shared/eventa/index.ts` *(+7/-4)*
+- `apps/stage-tamagotchi-kirie/tests/StageTamagotchiKirie.Tests/Program.cs` *(+30/-0)*
+- `apps/stage-tamagotchi-kirie/vitest.config.ts` *(+8/-0)*
+- `apps/stage-tamagotchi/src/main/libs/electron/devtools.test.ts` *(+45/-0)*
+- `apps/stage-tamagotchi/src/main/libs/electron/devtools.ts` *(+18/-0)*
+- `apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.test.ts` *(+122/-4)*
+- `apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.ts` *(+38/-19)*
+- `apps/stage-tamagotchi/src/main/tray/index.ts` *(+2/-4)*
+- `apps/stage-tamagotchi/src/main/windows/dashboard/index.ts` *(+2/-4)*
+- `apps/stage-tamagotchi/src/main/windows/main/index.ts` *(+2/-4)*
+- `apps/stage-tamagotchi/src/renderer/pages/index.vue` *(+14/-1)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 16 file(s) (+253/-65)
+- `eslint.config.ts` *(+3/-0)*
+- `flake.lock` *(+3/-3)*
+- `nix/package.nix` *(+6/-2)*
+- `packages/stage-ui/src/components/scenarios/status/hearing-status.vue` *(+26/-6)*
+- `packages/stage-ui/src/composables/audio/audio-analyzer.browser.test.ts` *(+38/-0)*
+- `packages/stage-ui/src/composables/audio/audio-analyzer.ts` *(+10/-9)*
+- `packages/stage-ui/src/libs/providers/metadata.test.ts` *(+20/-0)*
+- `packages/stage-ui/src/libs/providers/metadata.ts` *(+2/-1)*
+- `packages/stage-ui/src/libs/providers/providers/apple-speech/index.ts` *(+2/-0)*
+- `packages/stage-ui/src/libs/providers/providers/sherpaw/index.ts` *(+2/-0)*
+- `packages/stage-ui/src/libs/providers/types.ts` *(+7/-0)*
+- `packages/stage-ui/src/stores/ai/chat-llm/tool-resolver.test.ts` *(+16/-0)*
+- `packages/stage-ui/src/stores/character.test.ts` *(+2/-0)*
+- `packages/stage-ui/src/stores/modules/speech.test.ts` *(+8/-3)*
+- `packages/stage-ui/src/tools/mcp.test.ts` *(+86/-4)*
+- `packages/stage-ui/src/tools/mcp.ts` *(+22/-37)*
+
+#### Core Agent Runtime (`🔍 inspect`) — 14 file(s) (+551/-36)
+- `packages/core-agent/README.md` *(+10/-0)*
+- `packages/core-agent/package.json` *(+2/-0)*
+- `packages/core-agent/src/runtime/chat-completions.ts` *(+2/-0)*
+- `packages/core-agent/src/runtime/chat-orchestrator-runtime.test.ts` *(+102/-0)*
+- `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` *(+26/-7)*
+- `packages/core-agent/src/runtime/generation-token-limit.test.ts` *(+99/-0)*
+- `packages/core-agent/src/runtime/llm-marker-parser.test.ts` *(+18/-0)*
+- `packages/core-agent/src/runtime/llm-marker-parser.ts` *(+35/-10)*
+- `packages/core-agent/src/runtime/responses.ts` *(+2/-0)*
+- `packages/core-agent/src/types/llm.ts` *(+11/-0)*
+- `packages/core-agent/src/voice/output/response.test.ts` *(+30/-8)*
+- `packages/core-agent/src/voice/output/response.ts` *(+60/-11)*
+- `packages/core-agent/src/voice/output/speech-text.test.ts` *(+41/-0)*
+- `packages/core-agent/src/voice/output/speech-text.ts` *(+113/-0)*
+
+#### 3D, Live2D & Motion (`🔍 inspect`) — 1 file(s) (+11/-2)
+- `packages/stage-ui/src/components/scenes/Stage.vue` *(+11/-2)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 1 file(s) (+62/-26)
+- `pnpm-lock.yaml` *(+62/-26)*
+
+### 📬 Upstream PR Radar
+#### 🆕 New PRs Opened (11)
+- [#3022](https://github.com/moeru-ai/airi/pull/3022) `feat(stage-ui,i18n): add the notifications panel prototype` by **@luoling8192** *(3 comments)*
+- [#3021](https://github.com/moeru-ai/airi/pull/3021) `feat(stage-ui,agents): make cards for tool calls without a widget` by **@chiba233** *(Draft)* *(1 comments)*
+- [#3012](https://github.com/moeru-ai/airi/pull/3012) `refactor(stage-pages): redesign character cards as a gallery` by **@luoling8192** *(14 comments)*
+- [#3020](https://github.com/moeru-ai/airi/pull/3020) `feat(stage-tamagotchi): add native glass chat backgrounds` by **@luoling8192** *(3 comments)*
+- [#3019](https://github.com/moeru-ai/airi/pull/3019) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(3 comments)*
+- [#3013](https://github.com/moeru-ai/airi/pull/3013) `fix(stage-ui): open the Hearing settings from the Sherpaw and Apple Speech cards` by **@balabommablock-cpu** *(2 comments)*
+- [#3018](https://github.com/moeru-ai/airi/pull/3018) `chore(tamagotchi-kirie): upgrade kirie` by **@BeanDz** *(3 comments)*
+- [#3014](https://github.com/moeru-ai/airi/pull/3014) `feat(core-agent): remove markdown from speech text` by **@nekomeowww** *(3 comments)*
+- [#3016](https://github.com/moeru-ai/airi/pull/3016) `feat(tamagotchi-kirie): widget calling` by **@LemonNekoGH** *(5 comments)*
+- [#3015](https://github.com/moeru-ai/airi/pull/3015) `feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools, disable for nix package` by **@Weathercold** *(7 comments)*
+- [#3010](https://github.com/moeru-ai/airi/pull/3010) `perf(stage-ui): update audio meters at 20 Hz` by **@sumimakito** *(3 comments)*
+
+#### 🔄 PR Status & Lifecycle Changes (5)
+- [#2879](https://github.com/moeru-ai/airi/pull/2879) `feat(core-agent): support per-request output token limits` — `OPEN` ➔ `MERGED`
+- [#2946](https://github.com/moeru-ai/airi/pull/2946) `fix(stage-ui,stage-tamagotchi): propagate MCP discovery failures` — `OPEN` ➔ `MERGED`
+- [#2978](https://github.com/moeru-ai/airi/pull/2978) `chore(nix): update assets hash` — `OPEN` ➔ `CLOSED`
+- [#3001](https://github.com/moeru-ai/airi/pull/3001) `fix(stage-tamagotchi): hide loading label on render error` — `OPEN` ➔ `MERGED`
+- [#3008](https://github.com/moeru-ai/airi/pull/3008) `fix(core-agent): keep the text before a tool call in front of it` — `OPEN` ➔ `MERGED`
+
+#### 💬 Discussion Activity (5)
+- [#2552](https://github.com/moeru-ai/airi/pull/2552) ` add bilingual subtitles` — *+1 comments (35 ➔ 36 total)*
+- [#2512](https://github.com/moeru-ai/airi/pull/2512) `fix: fix security issue in artistry.ts` — *+8 comments (19 ➔ 27 total)*
+- [#2937](https://github.com/moeru-ai/airi/pull/2937) `fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache` — *+2 comments (23 ➔ 25 total)*
+- [#2999](https://github.com/moeru-ai/airi/pull/2999) `fix(stage-ui-mmd): avoid double lighting on multiply sphere maps` — *+1 comments (1 ➔ 2 total)*
+- [#3000](https://github.com/moeru-ai/airi/pull/3000) `feat(memory-eval): add identity-continuity evaluation package` — *+51 comments (68 ➔ 119 total)*
+
+### 👁️ Watched PRs Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+- [#2980](https://github.com/moeru-ai/airi/pull/2980) `feat(stage-ui,stage-pages): add voiceprint enrollment` [MERGED] — *(15 comments)*
+  - *Focus*: Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port
+- [#2552](https://github.com/moeru-ai/airi/pull/2552) ` add bilingual subtitles` [OPEN] — 🚨 **+1 comments** (36 total)
+  - *Focus*: Bilingual subtitle rendering in stage overlays; monitor for closure/merge to evaluate for fork adoption
+- [#3000](https://github.com/moeru-ai/airi/pull/3000) `feat(memory-eval): add identity-continuity evaluation package` [OPEN] — 🚨 **+51 comments** (119 total)
+  - *Focus*: Mathematical metrics (Wasserstein-1, GMM BIC bimodality, fixed-point operator) for persona continuity during long-turn memory compression; monitor maintainer triage and package boundary placement
+
+---
 ## [2026-10-17] Upstream Delta: `bceda51e..395280a1` (13 commits, 349 files, 24 PR update(s))
 
 ### 🎯 Executive Highlights
