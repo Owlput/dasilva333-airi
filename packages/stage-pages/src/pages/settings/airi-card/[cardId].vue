@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
-import { CharacterAvatar, MarkdownRenderer } from '@proj-airi/stage-ui/components'
+import { CharacterAvatar, MarkdownRenderer, StageBackgroundPicker } from '@proj-airi/stage-ui/components'
 import { formatActorName } from '@proj-airi/stage-ui/components/markdown/actor-colors'
 import {
   DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT,
@@ -13,7 +13,6 @@ import {
   useDisplayModelsStore,
   useSpeechStore,
 } from '@proj-airi/stage-ui/stores'
-import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -41,7 +40,6 @@ const displayModelsStore = useDisplayModelsStore()
 const consciousnessStore = useConsciousnessStore()
 const speechStore = useSpeechStore()
 const artistryStore = useArtistryStore()
-const backgroundStore = useBackgroundStore()
 
 const { activeCardId } = storeToRefs(cardStore)
 const { activeProvider: consciousnessProvider, activeModel: defaultConsciousnessModel } = storeToRefs(consciousnessStore)
@@ -123,6 +121,13 @@ function handleBack() {
   }
 }
 
+function scrollToGallery() {
+  const el = document.getElementById('scene-gallery')
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
 function handleDeleteConfirm() {
   if (cardId.value) {
     cardStore.removeCard(cardId.value)
@@ -189,10 +194,10 @@ const moduleGroups = computed(() => {
     },
     {
       title: 'Voice',
-      icon: 'i-solar:microphone-3-bold-duotone',
+      icon: 'i-solar:soundwave-bold-duotone',
       isCustom: Boolean(modules?.speech?.voice_id || modules?.speech?.provider),
       items: [
-        { label: 'Voice', value: modules?.speech?.voice_id || defaultVoiceId.value || 'Default Voice' },
+        { label: 'Profile', value: modules?.speech?.voice_id || defaultVoiceId.value || 'Default Voice' },
         { label: 'Engine', value: modules?.speech?.provider || speechProvider.value || 'Default Engine' },
       ],
     },
@@ -202,15 +207,10 @@ const moduleGroups = computed(() => {
       isCustom: Boolean(modelId),
       items: [
         { label: 'Model', value: matchedModel?.name || modelId || 'None' },
-        { label: 'Format', value: matchedModel?.format ? matchedModel.format.toUpperCase() : (modelId ? 'Live2D / VRM' : 'None') },
+        { label: 'Type', value: matchedModel?.format ? matchedModel.format.toUpperCase() : (modelId ? 'Live2D / VRM' : 'None') },
       ],
     },
   ]
-})
-
-// Gallery / Stage Background for this card
-const activeBackgroundUrl = computed(() => {
-  return backgroundStore.activeBackgroundUrl
 })
 
 // Collapsible prompt directives preview
@@ -228,11 +228,20 @@ const showDirectives = ref(false)
           @click="handleBack"
         >
           <div class="i-solar:arrow-left-linear text-base" />
-          <span>{{ t('settings.pages.card.title', 'AIRI Card') }}</span>
+          <span>{{ t('settings.pages.card.title', 'AIRI Card Editor') }}</span>
         </button>
         <span>/</span>
         <span class="truncate text-neutral-900 font-medium dark:text-neutral-100">{{ characterDisplayName }}</span>
       </div>
+
+      <button
+        type="button"
+        class="flex cursor-pointer items-center gap-1 text-xs text-cyan-600 font-medium transition-colors dark:text-cyan-400 hover:text-cyan-500 dark:hover:text-cyan-300"
+        @click="scrollToGallery"
+      >
+        <span>Scene gallery</span>
+        <div class="i-solar:alt-arrow-down-linear text-sm" />
+      </button>
     </div>
 
     <!-- Empty State if card not found -->
@@ -259,33 +268,32 @@ const showDirectives = ref(false)
 
         <!-- Top Content (Display Name, Identifier Slug, Badges, Tagline) -->
         <div class="z-10 max-w-xl">
-          <div class="flex flex-wrap items-center gap-3">
-            <h1 class="text-2xl text-white font-bold tracking-tight drop-shadow-sm md:text-4xl sm:text-3xl">
-              {{ characterDisplayName }}
-            </h1>
-            <!-- Status badges -->
-            <div class="flex items-center gap-2">
-              <span
-                v-if="isActive"
-                class="inline-flex items-center gap-1.5 border border-teal-400/30 rounded-full bg-teal-500/20 px-3 py-0.5 text-xs text-teal-200 font-medium backdrop-blur-sm"
-              >
-                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-300" />
-                Currently Active
-              </span>
-              <span
-                v-else
-                class="inline-flex items-center border border-white/10 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/70 font-medium backdrop-blur-sm"
-              >
-                Inactive
-              </span>
-              <span class="inline-flex items-center border border-white/10 rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-white/60 font-medium backdrop-blur-sm">
-                v{{ card.version || '1.0.0' }}
-              </span>
-            </div>
+          <h1 class="text-2xl text-white font-bold tracking-tight drop-shadow-sm md:text-4xl sm:text-3xl">
+            {{ characterDisplayName }}
+          </h1>
+
+          <!-- Status badges on their own line -->
+          <div class="mt-2.5 flex items-center gap-2">
+            <span
+              v-if="isActive"
+              class="inline-flex items-center gap-1.5 border border-teal-400/30 rounded-full bg-teal-500/20 px-3 py-0.5 text-xs text-teal-200 font-medium backdrop-blur-sm"
+            >
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-300" />
+              Currently Active
+            </span>
+            <span
+              v-else
+              class="inline-flex items-center border border-white/10 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/70 font-medium backdrop-blur-sm"
+            >
+              Inactive
+            </span>
+            <span class="inline-flex items-center border border-white/10 rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-white/60 font-medium backdrop-blur-sm">
+              v{{ card.version || '1.0.0' }}
+            </span>
           </div>
 
-          <!-- Muted Identifier Slug below title when nickname is displayed -->
-          <div v-if="hasDistinctIdentifier" class="mt-1 flex items-center gap-1.5 text-xs text-teal-200/70 font-mono">
+          <!-- Muted Identifier Slug below badges -->
+          <div v-if="hasDistinctIdentifier" class="mt-2 flex items-center gap-1.5 text-xs text-teal-200/70 font-mono">
             <span>{{ card.name }}</span>
             <button
               type="button"
@@ -409,14 +417,14 @@ const showDirectives = ref(false)
         </div>
       </div>
 
-      <!-- DETAILS GRID -->
+      <!-- UPPER SPLIT: Left (About & Lore) + Right (Modules) -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <!-- LEFT 2 COLUMNS: Description, Character Lore, Gallery -->
-        <div class="lg:col-span-2 space-y-8">
-          <!-- Description Section -->
+        <!-- LEFT 2 COLUMNS: About & Character Lore -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- About Section -->
           <div>
             <h2 class="mb-2 text-base text-neutral-900 font-bold dark:text-white">
-              Description
+              About {{ characterDisplayName }}
             </h2>
             <div v-if="card.description" class="text-sm text-neutral-600 leading-relaxed dark:text-neutral-300">
               <MarkdownRenderer :content="formattedDescription" />
@@ -456,89 +464,6 @@ const showDirectives = ref(false)
               </div>
             </div>
           </div>
-
-          <!-- Gallery / Scenery Section -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-base text-neutral-900 font-bold dark:text-white">
-                  Gallery
-                </h2>
-                <p class="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
-                  Select the image to show when this character is active.
-                </p>
-              </div>
-              <span class="border border-neutral-200 rounded-lg bg-neutral-100 px-3 py-1 text-xs text-neutral-600 font-medium dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300">
-                {{ activeBackgroundUrl ? 'Active' : 'Default' }}
-              </span>
-            </div>
-
-            <!-- Mini Gallery Preview Slot -->
-            <div class="border border-neutral-200 rounded-2xl bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/40">
-              <div class="flex items-center gap-3">
-                <div class="h-20 w-32 flex items-center justify-center overflow-hidden border border-neutral-300/40 rounded-xl bg-neutral-200 dark:border-neutral-700/40 dark:bg-neutral-800">
-                  <img
-                    v-if="activeBackgroundUrl"
-                    :src="activeBackgroundUrl"
-                    alt="Active Stage Background"
-                    class="h-full w-full object-cover"
-                  >
-                  <div v-else class="i-solar:gallery-wide-bold-duotone text-2xl text-neutral-400" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm text-neutral-800 font-medium dark:text-neutral-200">
-                    Stage Scenery
-                  </div>
-                  <div class="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
-                    Stage background is synchronized across desktop and mobile companion windows.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Directives & Prompts Section (Collapsible) -->
-          <div class="border border-neutral-200 rounded-2xl bg-neutral-50/50 p-5 space-y-4 dark:border-neutral-800 dark:bg-neutral-900/30">
-            <div class="flex cursor-pointer items-center justify-between" @click="showDirectives = !showDirectives">
-              <div class="flex items-center gap-2">
-                <div class="i-solar:code-file-bold-duotone text-lg text-primary-500" />
-                <h3 class="text-sm text-neutral-900 font-semibold dark:text-white">
-                  System Prompts & Generation Directives
-                </h3>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                :icon="showDirectives ? 'i-solar:alt-arrow-up-linear' : 'i-solar:alt-arrow-down-linear'"
-              />
-            </div>
-
-            <div v-if="showDirectives" class="border-t border-neutral-200 pt-2 space-y-4 dark:border-neutral-800">
-              <!-- System Prompt -->
-              <div>
-                <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
-                  Core System Prompt
-                </div>
-                <pre class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ card.systemPrompt || 'None specified' }}</pre>
-              </div>
-
-              <!-- Post History -->
-              <div>
-                <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
-                  Post-History Directive
-                </div>
-                <pre class="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ card.postHistoryInstructions || DEFAULT_POST_HISTORY_INSTRUCTIONS }}</pre>
-              </div>
-
-              <!-- Acting Expressions -->
-              <div>
-                <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
-                  Model Expression & Motion Cues
-                </div>
-                <pre class="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ airiExt?.acting?.modelExpressionPrompt || DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT }}</pre>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- RIGHT 1 COLUMN: Modules Section Grouped by Purpose -->
@@ -550,33 +475,90 @@ const showDirectives = ref(false)
           <div
             v-for="group in moduleGroups"
             :key="group.title"
-            class="border border-neutral-200/80 rounded-xl bg-neutral-50/60 p-3.5 space-y-2 dark:border-neutral-800/80 dark:bg-neutral-900/40"
+            class="border border-neutral-200/80 rounded-2xl bg-neutral-50/80 p-4 space-y-2.5 dark:border-neutral-800/80 dark:bg-neutral-900/60"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <div :class="group.icon" class="text-sm text-primary-500" />
-                <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-200">{{ group.title }}</span>
+                <div :class="group.icon" class="text-base text-cyan-600 dark:text-cyan-400" />
+                <span class="text-xs text-neutral-900 font-bold dark:text-neutral-100">{{ group.title }}</span>
               </div>
               <span
-                class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                class="rounded-md px-2 py-0.5 text-[10px] font-semibold"
                 :class="group.isCustom
-                  ? 'border border-primary-500/30 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                  ? 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-300'
                   : 'border border-neutral-200 bg-neutral-100 text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400'"
               >
                 {{ group.isCustom ? 'Card' : 'Global' }}
               </span>
             </div>
 
-            <div class="pt-1 space-y-1.5">
+            <div class="pt-1 space-y-2">
               <div
                 v-for="item in group.items"
                 :key="item.label"
                 class="flex items-center justify-between text-xs"
               >
                 <span class="text-neutral-400 dark:text-neutral-500">{{ item.label }}</span>
-                <span class="max-w-[150px] truncate text-right text-neutral-700 font-medium dark:text-neutral-300">{{ item.value }}</span>
+                <span class="max-w-[170px] truncate text-right text-neutral-800 font-medium font-mono dark:text-neutral-200">{{ item.value }}</span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FULL WIDTH: Scene Gallery Section -->
+      <div id="scene-gallery" class="pt-4">
+        <StageBackgroundPicker
+          :card-id="cardId"
+          title="Scene gallery"
+          subtitle="Choose the image shown when this character is active, or upload a scene."
+          grid-max-height-class="max-h-[600px]"
+          allow-inherit
+          :auto-apply="true"
+        />
+      </div>
+
+      <!-- FULL WIDTH: Directives & Prompts Section (Collapsible) -->
+      <div class="border border-neutral-200/80 rounded-2xl bg-neutral-50/60 p-4 space-y-4 dark:border-neutral-800/80 dark:bg-neutral-900/40">
+        <div class="flex cursor-pointer items-center justify-between" @click="showDirectives = !showDirectives">
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 flex items-center justify-center rounded-lg bg-teal-500/10 text-teal-600 dark:bg-teal-400/10 dark:text-teal-300">
+              <div class="i-solar:code-file-bold-duotone text-lg" />
+            </div>
+            <h3 class="text-sm text-neutral-900 font-bold dark:text-white">
+              System Prompts & Generation Directives
+            </h3>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            :icon="showDirectives ? 'i-solar:alt-arrow-up-linear' : 'i-solar:alt-arrow-down-linear'"
+          />
+        </div>
+
+        <div v-if="showDirectives" class="border-t border-neutral-200 pt-3 space-y-4 dark:border-neutral-800">
+          <!-- System Prompt -->
+          <div>
+            <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
+              Core System Prompt
+            </div>
+            <pre class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ card.systemPrompt || 'None specified' }}</pre>
+          </div>
+
+          <!-- Post History -->
+          <div>
+            <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
+              Post-History Directive
+            </div>
+            <pre class="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ card.postHistoryInstructions || DEFAULT_POST_HISTORY_INSTRUCTIONS }}</pre>
+          </div>
+
+          <!-- Acting Expressions -->
+          <div>
+            <div class="mb-1 text-xs text-neutral-500 font-semibold dark:text-neutral-400">
+              Model Expression & Motion Cues
+            </div>
+            <pre class="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-100 p-3 text-xs text-neutral-700 font-mono dark:bg-neutral-950 dark:text-neutral-300">{{ airiExt?.acting?.modelExpressionPrompt || DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT }}</pre>
           </div>
         </div>
       </div>
