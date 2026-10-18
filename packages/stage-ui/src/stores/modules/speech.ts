@@ -251,6 +251,51 @@ export const useSpeechStore = defineStore('speech', () => {
     // Strip markdown image embeds (e.g., ![caption](url)) so they are not sent to the TTS
     let transformed = text.replace(/!\[.*?\]\(.*?\)/g, '')
 
+    // 0. Markdown & Speech Sanitization (UST V2 / #3014)
+    // Strip multiline and inline fenced code blocks (e.g., ```ts ... ```) if enabled (default true)
+    if (profile.ust.stripCodeBlocks !== false) {
+      transformed = transformed.replace(/```[\s\S]*?```/g, '')
+    }
+
+    // Strip raw HTML tags (e.g., <div>, <br/>) if enabled (default true)
+    if (profile.ust.stripHtml !== false) {
+      transformed = transformed.replace(/<\/?[a-z][^>]*>/gi, '')
+    }
+
+    // Process markdown links [label](url) according to preserveMarkdownLinks setting (default 'extract_text')
+    const preserveMarkdownLinks = profile.ust.preserveMarkdownLinks ?? 'extract_text'
+    if (preserveMarkdownLinks === 'extract_text') {
+      transformed = transformed.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    }
+    else if (preserveMarkdownLinks === 'mute') {
+      transformed = transformed.replace(/\[([^\]]+)\]\([^)]+\)/g, '')
+    }
+
+    // Normalize markdown block boundaries (headers, quotes, lists) into natural line pauses (default true)
+    if (profile.ust.normalizeBlockPauses !== false) {
+      transformed = transformed.replace(/^#{1,6}\s+/gm, '')
+      transformed = transformed.replace(/^>\s+/gm, '')
+      transformed = transformed.replace(/^[-*+]\s+/gm, '')
+      transformed = transformed.replace(/^\d+\.\s+/gm, '')
+    }
+
+    // Protect arithmetic operators (e.g., 2 * 3, 2**10, x**2) from bracket muting/flattening
+    const mathPlaceholders: string[] = []
+    if (profile.ust.preserveMathOperators !== false) {
+      // Exponentiation operator ** between numbers, or with spaces on both sides, or single variable/digit (e.g. 2**10, x ** y, x**2)
+      transformed = transformed.replace(/(?<=\d)\s*\*{2}\s*(?=\d)|(?<=\b\w+)\s+\*{2}\s+(?=\w+\b)|(?<=\b[a-z]\b)\*{2}(?=\d+\b)/gi, (match) => {
+        const id = `__UST_MATH_EXP_${mathPlaceholders.length}__`
+        mathPlaceholders.push(match)
+        return id
+      })
+      // Multiplication operator * between numbers, or with spaces on both sides (e.g. 2 * 3, 2*3, a * b)
+      transformed = transformed.replace(/(?<=\d)\s*\*\s*(?=\d)|(?<=\b\w+)\s+\*\s+(?=\w+\b)/g, (match) => {
+        const id = `__UST_MATH_MUL_${mathPlaceholders.length}__`
+        mathPlaceholders.push(match)
+        return id
+      })
+    }
+
     // 1. Resolve bracket action behaviors (supporting fallback/auto-migration of older profiles)
     let asterisks = profile.ust.asterisks
     let squareBrackets = profile.ust.squareBrackets
@@ -284,6 +329,7 @@ export const useSpeechStore = defineStore('speech', () => {
     }
 
     // Helper to process a bracket type
+    const tokenPlaceholders: string[] = []
     const processBracket = (input: string, start: string, end: string, action: BracketAction): string => {
       if (action === 'ignore' || !start || !end) {
         return input
@@ -305,7 +351,11 @@ export const useSpeechStore = defineStore('speech', () => {
       }
       else if (action === 'token') {
         const regex = new RegExp(`${escStart}(.*?)${escEnd}`, 'g')
-        return input.replace(regex, '<|$1|>')
+        return input.replace(regex, (_, content) => {
+          const id = `__UST_TOKEN_${tokenPlaceholders.length}__`
+          tokenPlaceholders.push(`<|${content}|>`)
+          return id
+        })
       }
 
       return input
@@ -340,6 +390,20 @@ export const useSpeechStore = defineStore('speech', () => {
     // 4. Strip Symbols & Kaomoji (Extreme Cleaning)
     if (profile.ust.stripSymbols) {
       transformed = transformed.replace(/[^\p{L}\p{N}\s.,!?;:"'-]/gu, '')
+    }
+
+    // Restore protected arithmetic operators after bracket and symbol filtering
+    if (mathPlaceholders.length > 0) {
+      for (let i = 0; i < mathPlaceholders.length; i++) {
+        transformed = transformed.replace(new RegExp(`__UST_MATH_(?:EXP|MUL)_${i}__`, 'g'), mathPlaceholders[i])
+      }
+    }
+
+    // Restore protected tokens
+    if (tokenPlaceholders.length > 0) {
+      for (let i = 0; i < tokenPlaceholders.length; i++) {
+        transformed = transformed.replace(new RegExp(`__UST_TOKEN_${i}__`, 'g'), tokenPlaceholders[i])
+      }
     }
 
     // 5. Tilde substitution
@@ -384,7 +448,12 @@ export const useSpeechStore = defineStore('speech', () => {
       }
     }
 
-    return transformed.replace(/\s+/g, ' ').trim()
+    return transformed
+      .split('\n')
+      .map(line => line.replace(/[^\S\r\n]+/g, ' ').trim())
+      .filter((line, i, arr) => line.length > 0 || (i > 0 && arr[i - 1].length > 0))
+      .join('\n')
+      .trim()
   }
 
   /**

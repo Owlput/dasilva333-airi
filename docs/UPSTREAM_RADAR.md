@@ -52,9 +52,9 @@
   - **Impact**: High / Main-Thread Performance.
   - **Rationale**: Replaces `requestAnimationFrame` in `useAudioAnalyzer` with 20 Hz interval (`ANALYZE_INTERVAL_MS = 50`), reducing reactive thrashing. Moves `hearing-status.vue` bars to CSS transforms (`translateY` / `scaleY`) to avoid reflows.
 - ⭐ **PR #3014 / Commit `5c51c4a92c` (Neko) — `feat(core-agent): remove markdown from speech text`**:
-  - **Status**: **Recommended for Porting**.
+  - **Status**: **Ported & Tested (#3014)**.
   - **Impact**: Medium-High / Audio Quality.
-  - **Rationale**: Strips markdown formatting (`**`, `[]()`, ``` ```, HTML) prior to sending text to TTS synthesizers via `toSpeechText()`, avoiding verbalized syntax artifacts while preserving math notation and inserting natural line-break pauses.
+  - **Rationale**: Strips markdown formatting (`**`, `[]()`, ``` ```, HTML) prior to sending text to TTS synthesizers via UST speech transformer in `speech.ts`, avoiding verbalized syntax artifacts while preserving math notation and inserting natural line-break pauses. Integrated as configurable UST V2 rules into `VoiceProfile['ust']`.
 - 🔧 **PR #3015 / Commit `6715768aba` (Weathercold) — `feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools`**:
   - **Status**: **Recommended for Porting**.
   - **Impact**: Low-Medium / Electron DX.

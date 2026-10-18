@@ -213,6 +213,13 @@ export interface VoiceProfile {
     tildeReplacement: string
     customReplacements: CustomReplacementRule[]
 
+    // Markdown & Speech Sanitization (UST V2)
+    stripCodeBlocks?: boolean
+    stripHtml?: boolean
+    preserveMarkdownLinks?: 'extract_text' | 'mute' | 'raw'
+    preserveMathOperators?: boolean
+    normalizeBlockPauses?: boolean
+
     // Legacy fields kept for backward compatibility / auto-migration
     mode?: 'mute' | 'flatten' | 'custom'
     customStripChars?: string
