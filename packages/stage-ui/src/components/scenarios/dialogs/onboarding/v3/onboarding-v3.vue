@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OnboardingV3Step, OnboardingV3StepDef } from './types'
 
+import { isStageWeb } from '@proj-airi/stage-shared'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -56,6 +57,12 @@ const onboardingStore = useOnboardingStore()
 const draftStore = useOnboardingV3Draft()
 const isQuickStartMode = ref(false)
 const currentStepId = ref<OnboardingV3Step>('welcome')
+
+// NOTICE: stage-web (browser) ships in a wide window with its own chrome, so
+// keep horizontal gutters tight to avoid a cramped centered column. Capacitor
+// (stage-pocket iOS) and Electron render edge-to-edge under the notch / home
+// indicator, so they keep roomier gutters plus safe-area insets (see template).
+const isWebStage = computed(() => isStageWeb())
 
 const activeSteps = computed<OnboardingV3StepDef[]>(() => {
   const modules = draftStore.state.modules
@@ -142,9 +149,11 @@ function handleClose() {
     <header
       data-tauri-drag-region
       :class="[
-        'h-14 px-4 sm:pl-22 sm:pr-6 pt-2 pb-1 flex items-center justify-between select-none flex-shrink-0',
+        'h-14 px-4 sm:pr-6 pt-2 pb-1 flex items-center justify-between select-none flex-shrink-0',
+        isWebStage ? 'sm:px-4' : 'sm:px-6 sm:pl-22',
         'border-b border-[#D8E6EF] dark:border-white/10 bg-white dark:bg-black/20',
       ]"
+      style="padding-top: max(0.5rem, env(safe-area-inset-top)); padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right));"
     >
       <!-- Left: Brand Title -->
       <div :class="['flex items-center space-x-2 text-xs font-semibold tracking-wider text-[#007FA3] select-none pointer-events-none whitespace-nowrap shrink-0']">
@@ -179,7 +188,10 @@ function handleClose() {
     </header>
 
     <!-- Main Edgeless Workspace (Centered & Clean) -->
-    <main :class="['flex-1 min-h-0 overflow-y-auto px-6 py-6 flex flex-col items-center justify-center bg-[#F6F9FC] dark:bg-neutral-950']">
+    <main
+      :class="['flex-1 min-h-0 overflow-y-auto py-6 flex flex-col items-center justify-center bg-[#F6F9FC] dark:bg-neutral-950', isWebStage ? 'px-3 sm:px-4' : 'px-4 sm:px-6']"
+      :style="{ paddingLeft: isWebStage ? 'max(0.75rem, env(safe-area-inset-left))' : 'max(1rem, env(safe-area-inset-left))', paddingRight: isWebStage ? 'max(0.75rem, env(safe-area-inset-right))' : 'max(1rem, env(safe-area-inset-right))', paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }"
+    >
       <!-- Alternate Fast Track: Quick Start 1-Page Cockpit -->
       <QuickStart
         v-if="isQuickStartMode"

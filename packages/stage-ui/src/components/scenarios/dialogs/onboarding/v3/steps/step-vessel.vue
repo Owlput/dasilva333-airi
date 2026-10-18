@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UnifiedVesselItem } from '../components/vessel-coverflow.vue'
 
+import { isStageWeb } from '@proj-airi/stage-shared'
 import { SPOTLIGHT_MODELS } from '@proj-airi/stage-ui/constants'
 import { Button } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
@@ -22,6 +23,10 @@ const props = defineProps<{
 const { t } = useI18n()
 const draft = useOnboardingV3Draft()
 const displayModelsStore = useDisplayModelsStore()
+
+// NOTICE: keep in sync with onboarding-v3.vue — web gets tighter gutters,
+// Capacitor/Electron keeps roomier gutters + safe-area insets.
+const isWebStage = computed(() => isStageWeb())
 
 // Real local assets
 const presetLive2dPreview = new URL('../../../../../../assets/live2d/models/hiyori/preview.png', import.meta.url).href
@@ -299,7 +304,10 @@ function handleDrop(e: DragEvent) {
 <template>
   <div :class="['w-full h-full flex flex-col justify-between select-none animate-fadeIn']">
     <!-- Scrollable Content Body -->
-    <div :class="['flex-1 min-h-0 min-w-0 overflow-y-auto px-4 sm:px-6 pt-2 pb-5 flex flex-col gap-4']">
+    <div
+      :class="['flex-1 min-h-0 min-w-0 overflow-y-auto pt-2 pb-5 flex flex-col gap-4', isWebStage ? 'px-3 sm:px-4' : 'px-4 sm:px-6']"
+      :style="{ paddingLeft: isWebStage ? 'max(0.75rem, env(safe-area-inset-left))' : 'max(1rem, env(safe-area-inset-left))', paddingRight: isWebStage ? 'max(0.75rem, env(safe-area-inset-right))' : 'max(1rem, env(safe-area-inset-right))' }"
+    >
       <!-- Shared centered header -->
       <div :class="['flex flex-col items-center text-center gap-3']">
         <div
@@ -636,8 +644,10 @@ function handleDrop(e: DragEvent) {
     <!-- Shared navigation footer -->
     <div
       :class="[
-        'flex-shrink-0 pt-4 px-4 sm:px-6 flex items-center justify-between border-t border-neutral-200/80 dark:border-neutral-800/80',
+        'flex-shrink-0 pt-4 flex items-center justify-between border-t border-neutral-200/80 dark:border-neutral-800/80',
+        isWebStage ? 'px-3 sm:px-4' : 'px-4 sm:px-6',
       ]"
+      :style="{ paddingLeft: isWebStage ? 'max(0.75rem, env(safe-area-inset-left))' : 'max(1rem, env(safe-area-inset-left))', paddingRight: isWebStage ? 'max(0.75rem, env(safe-area-inset-right))' : 'max(1rem, env(safe-area-inset-right))', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }"
     >
       <button
         type="button"
