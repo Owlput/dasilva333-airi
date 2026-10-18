@@ -453,8 +453,21 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
     onProgress?: (phase: 'loading-model' | 'segmenting', percent?: number) => void,
     signal?: AbortSignal,
   ): Promise<BackgroundRemovalAdapter> {
-    if (bgAdapter)
-      return bgAdapter
+    if (bgAdapter) {
+      const state = bgAdapter.state
+      if (state === 'ready' || state === 'processing' || state === 'loading')
+        return bgAdapter
+      // NOTICE: a previous load failed, or the host restarted/tore down the
+      // worker without a model (phase 'idle'/'error'/'terminated'). The old
+      // code returned the dead adapter here, bricking the feature until app
+      // restart with "Model not loaded". Rebuild instead so retry just works.
+      try {
+        bgAdapter.terminate()
+      }
+      catch {}
+      bgAdapter = null
+      bgAdapterLoading = null
+    }
     if (!bgAdapterLoading) {
       bgAdapterLoading = (async () => {
         const adapter = createBackgroundRemovalAdapter()
@@ -477,7 +490,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
   }
 
   /**
-   * Run a raw image blob through MODNet and return a transparent PNG cutout.
+   * Run a raw image blob through IS-Net anime and return a transparent PNG cutout.
    * Blob-in/Blob-out building block shared by the upload dialog (pre-save)
    * and `makeTransparent` (stored stickers).
    */
@@ -514,7 +527,7 @@ export const useStickersStore = Pinia.defineStore('stickers', () => {
   }
 
   /**
-   * Strip the background of a stored sticker via MODNet and replace its binary
+   * Strip the background of a stored sticker via IS-Net anime and replace its binary
    * with a transparent PNG. The pre-cutout blob is retained in memory so the
    * operation can be reverted within the session.
    */

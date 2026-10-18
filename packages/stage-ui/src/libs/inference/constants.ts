@@ -13,7 +13,7 @@
 export const MODEL_IDS = {
   KOKORO: 'onnx-community/Kokoro-82M-v1.0-ONNX',
   WHISPER: 'onnx-community/whisper-large-v3-turbo',
-  BG_REMOVAL: 'Xenova/modnet',
+  BG_REMOVAL: 'jellybox/isnet-anime',
   WD14: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
 } as const
 
@@ -21,7 +21,7 @@ export const MODEL_IDS = {
 export const MODEL_NAMES = {
   KOKORO: 'kokoro-82m',
   WHISPER: 'whisper-large-v3-turbo',
-  BG_REMOVAL: 'modnet',
+  BG_REMOVAL: 'isnet-anime',
   WEB_RWKV: 'web-rwkv',
   WEB_LLM: 'web-llm',
   BLIP: 'blip',
@@ -377,9 +377,9 @@ export const TIMEOUTS = {
   WHISPER_TRANSCRIBE_IDLE: 10_000,
 
   /** Background removal model load timeout (absolute) */
-  BG_REMOVAL_LOAD: 120_000,
+  BG_REMOVAL_LOAD: 300_000,
   /** Background removal per-image processing timeout (absolute; unary op) */
-  BG_REMOVAL_PROCESS: 60_000,
+  BG_REMOVAL_PROCESS: 180_000,
 
   /** web-rwkv model load timeout (absolute; download + bf16→f16 + shader compile) */
   WEB_RWKV_LOAD: 900_000,

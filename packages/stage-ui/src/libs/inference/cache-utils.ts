@@ -11,6 +11,7 @@ const MOSS_OPFS_DIR_NAME = 'nano-reader-browser-model-store'
 const WEBLLM_CACHE_NAMES = ['webllm/model', 'webllm/wasm', 'webllm/config'] as const
 export const NEEDLE_CACHE_NAME = 'needle-cache'
 export const LAYA_CACHE_NAME = 'laya-cache'
+export const BG_REMOVAL_CACHE_NAME = 'bg-removal-cache'
 
 async function getDirectorySizeRecursive(dirHandle: FileSystemDirectoryHandle): Promise<number> {
   let size = 0
@@ -296,6 +297,10 @@ export async function clearSingleModelCache(modelId: string): Promise<void> {
   }
   if (modelId.includes('laya')) {
     await clearLayaCache()
+    return
+  }
+  if (modelId.includes('isnet') || modelId.includes('jellybox')) {
+    await clearBgRemovalCache()
     return
   }
   if (modelId === 'web-rwkv') {
@@ -680,6 +685,69 @@ export async function isLayaModelCached(): Promise<boolean> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Background removal / IS-Net anime (Cache Storage API, `bg-removal-cache` scope)
+// ---------------------------------------------------------------------------
+
+export async function getBgRemovalCacheSize(): Promise<number> {
+  if (typeof caches === 'undefined')
+    return 0
+
+  try {
+    const has = await caches.has(BG_REMOVAL_CACHE_NAME)
+    if (!has)
+      return 0
+    const cache = await caches.open(BG_REMOVAL_CACHE_NAME)
+    const keys = await cache.keys()
+    let totalSize = 0
+    for (const request of keys) {
+      const response = await cache.match(request)
+      if (response) {
+        const cl = response.headers.get('content-length')
+        if (cl) {
+          totalSize += Number.parseInt(cl, 10)
+        }
+        else {
+          const blob = await response.blob()
+          totalSize += blob.size
+        }
+      }
+    }
+    return totalSize
+  }
+  catch (error) {
+    console.warn('[cache-utils] failed to get BG removal cache size', error)
+    return 0
+  }
+}
+
+export async function clearBgRemovalCache(): Promise<void> {
+  if (typeof caches === 'undefined')
+    return
+  try {
+    await caches.delete(BG_REMOVAL_CACHE_NAME)
+  }
+  catch (error) {
+    console.warn('[cache-utils] failed to clear BG removal cache', error)
+  }
+}
+
+export async function isBgRemovalModelCached(): Promise<boolean> {
+  if (typeof caches === 'undefined')
+    return false
+  try {
+    const has = await caches.has(BG_REMOVAL_CACHE_NAME)
+    if (!has)
+      return false
+    const cache = await caches.open(BG_REMOVAL_CACHE_NAME)
+    const keys = await cache.keys()
+    return keys.length > 0
+  }
+  catch {
+    return false
+  }
+}
+
 /**
  * Check whether a specific model has cached files.
  * Matches by looking for cache entries whose URL contains the model ID.
@@ -816,6 +884,16 @@ export async function getDetailedModelCacheMap(): Promise<ModelCacheStatusMap> {
   }
   catch {
     result['tozp/laya-onnx'] = { cached: false, sizeBytes: 0 }
+  }
+
+  // 8. Background removal / IS-Net anime (Cache Storage API)
+  try {
+    const bgCached = await isBgRemovalModelCached()
+    const bgSize = bgCached ? await getBgRemovalCacheSize() : 0
+    result['jellybox/isnet-anime'] = { cached: bgCached, sizeBytes: bgSize }
+  }
+  catch {
+    result['jellybox/isnet-anime'] = { cached: false, sizeBytes: 0 }
   }
 
   // 7. Transformers Cache (transformers-cache)

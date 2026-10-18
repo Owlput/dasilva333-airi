@@ -1,7 +1,7 @@
 /**
  * Background removal inference adapter.
  *
- * Talks to the Xenova/modnet worker over the Eventa inference contract
+ * Talks to the IS-Net anime background-removal worker over the Eventa inference contract
  * (`libs/inference/contract.ts`): load is a server-streaming invoke (progress
  * then a terminal `ready`); process is a unary invoke whose mask buffer is
  * transferred back zero-copy. Worker lifecycle and device-loss resilience are

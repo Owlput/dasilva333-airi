@@ -182,6 +182,12 @@ export default defineConfig({
         // the original ESM so the `?url` wasm asset resolves correctly.
         '@cryscan/web-rwkv-wasm',
 
+        // onnxruntime-web: serve the original ESM bundles (including the
+        // `./webgpu` asyncify subpath required for IS-Net anime's ceil-mode
+        // MaxPool) without esbuild dep pre-bundling.
+        'onnxruntime-web',
+        'onnxruntime-web/webgpu',
+
         // Static Assets: Models, Images, etc.
         'src/renderer/public/assets/*',
 

@@ -184,8 +184,13 @@ The catalog contains 73 discoverable skills. Desktop chatbox and interaction pip
 
 #### 2.15 `airi-rwkv-webgpu-engine`
 - **Target Domain**: RWKV-7 G1 RNN model execution, `@cryscan/web-rwkv-wasm` runtime, `.prefab` CBOR quantization pipeline, offline weight conversion, OPFS caching, and cleanroom verification harness.
-- **Key Paths**: `packages/stage-ui/src/workers/web-rwkv/`, `packages/stage-ui/src/libs/inference/adapters/web-rwkv.ts`, `packages/stage-pages/src/pages/settings/providers/chat/web-rwkv.vue`, `scripts/tests/rwkv-harness/`, `docs/design-web-rwkv-quantization-architecture.md`, `docs/design-rwkv-persona-foundry-and-state-cartridges.md`, `docs/project-rwkv-cleanroom-harness-plan.md`.
+- **Key Paths**: `packages/stage-ui/src/workers/web-rwkv/`, `packages/stage-ui/src/libs/inference/adapters/web-rwkv.ts`, `packages/stage-ui/src/pages/settings/providers/chat/web-rwkv.vue`, `scripts/tests/rwkv-harness/`, `docs/design-web-rwkv-quantization-architecture.md`, `docs/design-rwkv-persona-foundry-and-state-cartridges.md`, `docs/project-rwkv-cleanroom-harness-plan.md`.
 - **Content**: RWKV-7 G1 architecture, `Session.from_prefab` instant boot and zero-degradation offline CBOR quantization, single-slot OPFS model cache, Hugging Face prefab distribution (`dasilva333/rwkv7-g1-webgpu-prefabs`), maintenance tools (`convert_safetensors.py`, `bake-prefab.sh`, `verify-prefab.mjs`), and the RWKV Persona Foundry state distillation architecture.
+
+#### 2.16 `airi-background-removal`
+- **Target Domain**: Anime background removal (IS-Net), raw-ORT session worker, mask compositing with sensitivity curve, sticker/card cutout flows, model cache entries.
+- **Key Paths**: `packages/stage-ui/src/workers/background-removal/worker.ts`, `packages/stage-ui/src/libs/inference/adapters/background-removal.ts`, `packages/stage-ui/src/libs/stickers/image-convert.ts`, `docs/design-background-removal-isnet.md`.
+- **Content**: IS-Net anime single-model policy, `img`-in/`mask`-out raw session contract, `bg-removal-cache` weights lifecycle, anchored-normalization sensitivity curve, sticker upload dialog and card editor integration. MODNet history uses airi-local-inference-engines.
 
 ---
 

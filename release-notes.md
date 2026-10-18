@@ -1,70 +1,63 @@
-# 🚀 AIRI v0.9.39-stable.20261015 — Release Notes
+# 🚀 AIRI v0.9.40-stable.20261018 — Release Notes
 
-This release brings a monumental expansion to AIRI's agency, intelligence, and visual workspace: introducing **On-Demand Agent Screenshots**—enabling companions to visually inspect your desktop, individual monitors, or specific application windows whenever they need to—alongside **Project Amadeus Live2D Micro-App Bridges & Tactile HitArea Introspection**, a **Modernized 4-Tile Desktop Startup Splash**, **Intelligent Tool Step Budgeting**, **Hierarchical Chat Staging Controls**, the **Winnow System-1 Memory Compaction Engine**, **Modular Chat Dashboard Cards**, a **Shared Generative Micro-App Catalog**, and **Multi-Instance Model Favorites**.
+This release introduces an extraordinary leap in companion expressiveness, cognitive transparency, and workspace ergonomics: debuting **Desktop Screen Sticker Slappers**—allowing companions to slap expressive, animated stickers directly onto your desktop timed to their voice and emotional reactions—alongside **On-Device Anime Background Removal (IS-Net)**, **Dual-Channel Pre-Flight Grounding**, **Guided Auto Suggestions & Unified Director Lite**, a cinematic **Character Card View & Widescreen Scene Gallery**, direct **Character Tavern Community Hub** integration, **Speech Synthesis Markdown/Math Sanitization**, and substantial **Screen Capture IPC Performance Optimizations**.
 
-Companions can now gracefully handle complex multi-step tool loops without abrupt cutoffs, capture and discuss what's on your monitors with inline full-resolution previews, control Live2D avatars via virtual terminal commands or interactive glassmorphic micro-apps, trigger tactile hit reactions on creator-scripted models, intelligently compact lifetime memories with emotional salience preservation, and greet you with a calm, theme-reactive pastel splash screen upon launching.
+Companions can now punctuate conversations with playful on-screen stickers, let you create transparent mascot stickers from any artwork using zero-erosion on-device neural segmentation, offer proactive quick-reply suggestions via an in-composer magic wand unified across desktop and web, transparently reveal memory snippets before generation, and discover community character cards directly within onboarding and import menus.
 
 ---
 
 ## ✨ Key Highlights
 
-### 👁️ On-Demand Agent Screenshots & Visual Perception
-* **Autonomous Visual Inspection (`take_screenshot`)**: Companions can now capture screenshots of your entire desktop, specific monitors, or target application windows on demand when answering visual questions or investigating problems.
-* **Inline Multimodal Chat Previews**: Screenshots captured by your companion render directly inside chat message bubbles as rich visual tiles, allowing you to click and inspect captured images in full-resolution view.
-* **Multi-Monitor & Window Title Targeting**: Companions can intelligently select specific displays (e.g. primary vs secondary monitor) or capture background windows by exact title match.
-* **Card-Level Security & Onboarding Discovery**: Agent screenshot capabilities are securely gated via `allowedTools` in the character editor, controllable in real-time from the chat options menu, and discoverable as an optional tool pack during Onboarding V3.
-* **Previewing Attached User Images**: Clicking on any image attached to user messages now opens an expanded high-resolution image preview modal.
+### 🌟 Desktop Sticker Slappers & Parametric Reaction Engine
+* **Desktop Screen Sticker Slappers**: Companions can now slap cute, animated sticker reactions directly onto your desktop screen in real-time, dynamically coordinated with active speech synthesis and emotional tone.
+* **Lightweight Desktop Slapper Window**: Powered by a dedicated, lightweight desktop overlay that renders floating sticker animations with smooth entrance physics, auto-dismiss timers, and speech lifecycle synchronization.
+* **Fuzzy Mascot Sticker Matching**: Automatically resolves companion sticker triggers across custom naming conventions, ID prefixes, and format extensions.
+* **In-Place Sticker Editing & Re-Keying**: Edit, re-label, and manage your companion's sticker deck directly from the character customizer with instant localforage blob re-keying.
 
-### 🎭 Project Amadeus: Live2D Micro-App Bridge & Tactile Introspection
-* **Universal Live2D Controller Micro-App**: Inducted a bundled generative micro-app (`Live2D Controller (Generic)`) into the starter catalog, providing an interactive, glassmorphic control surface to trigger motions, expressions, and parameter sliders in real time with two-way stage reactivity.
-* **Virtual Terminal Live2D CLI & Runtime Shim**: Companions and users can now issue `live2d` terminal commands (`live2d motion`, `live2d expression`, `live2d set`, `live2d status`) or write custom scripts using `require('live2d')` with full execution telemetry.
-* **Tactile HitArea Introspection & Gimmick Deck**: Unlocked creator-scripted Live2D packages (such as Steins;Gate Makise Kurisu / Project Amadeus) by parsing `hit_areas` and `open_url` DSL opcodes, enabling interactive tap zones, safe URL launching, and sound-only reaction lines without animation interrupts.
-* **Ambient VFS State Mirror**: Projected live avatar posture, active motions, and blend parameters into the virtual workstation at `/airi/ambient/live2d.json` for zero-overhead background inspection.
-* **Motion Loop Elimination**: Fixed an issue where Live2D models executing custom DSL scripts would unintentionally loop their start motions indefinitely.
+### ✂️ On-Device Anime Background Removal (IS-Net)
+* **Zero-Erosion Neural Background Removal**: Create transparent character stickers instantly from any anime illustration or artwork without sending images to external clouds or paying third-party APIs.
+* **WebGPU IS-Net Architecture**: Swapped to the specialized `jellybox/isnet-anime` neural model running directly on WebGPU via raw ONNX Runtime Web (`isnet-anime_1024.onnx`), achieving 0% character line erosion (down from 11% on general-purpose models).
+* **Interactive Edge Sensitivity & Alpha Compositing**: Fine-tune cutout boundaries with a real-time edge sensitivity slider, calibrated gamma curve, and cached alpha mask re-compositing before saving stickers to your deck.
+* **Dedicated Cache Storage Management**: Neural weights cache reliably in Cache Storage (`bg-removal-cache`) with progress reporting and automatic recovery.
 
-### ⏱️ Intelligent Tool Budgets & Graceful Loop Termination
-* **Graceful Synthesis at Step Limits**: When a companion exhausts their per-reply tool turns budget (`maxToolSteps`), pending tool executions halt gracefully and the model is given extra turns to synthesize a complete, thoughtful reply rather than abruptly cutting off mid-execution.
-* **Unconditional Step Limit Enforcement**: The per-character tool step limit now applies universally across all tools without requiring global sampling parameter overrides to be toggled on.
-* **Dedicated Tool Execution Card**: Tool turn limits and history preservation settings have been elevated into an always-visible card at the top of the character editor's Tools & Plugins tab.
-* **Collapsible Multi-Tool Blocks**: Consecutive tool executions (such as automated web browsing or file inspections) now collapse into a tidy, expandable summary card ("N tool calls") with individual execution statuses, summaries, and error reporting.
+### 🧠 Dual-Channel Pre-Flight Grounding & Scalable Semantic Memory
+* **Pre-Flight Grounding & WYSIWYG Dispatch**: Transparently inspect the exact memory snippets, Knowledge Graph entities, and sensory context that will be injected into the prompt before the model begins generating a response.
+* **Active Amber Grounding Bar**: Added an interactive amber status bar above the chat composer that illuminates whenever Universe Memory RAG retrieval is actively participating in a turn.
+* **Single-Owner Embedding Worker & Watermark-Gated Deltas**: Overhauled vector memory indexing to use a single-owner background worker with watermark gates, preventing duplicate computations, thread contention, and UI stutter during extended chats.
+* **Overlapping Turn Chunking & Quantized Vector Cache**: Chunks conversation history into overlapping semantic windows with quantized vector caching, drastically improving recall for subtle callbacks and long-term references.
+* **One-Click Vector Corpus Rebuild**: Added an explicit "Rebuild Vector Index" tool in Memory Settings to regenerate all semantic embeddings cleanly after migrations or model updates.
 
-### 🎨 Modular Chat Options Popover & Hierarchical Staging
-* **Hierarchical Drill-Down Navigation**: Completely redesigned the monolithic chat options popover into a clean, hierarchical drill-down menu featuring dedicated Appearance, Voice & Audio, Staging, and Model views.
-* **Integrated Voice & Audio Controls**: Adjust desktop speech volume, toggle TTS voice generation on/off, and configure multi-actor voice overrides directly from the chat options popover.
-* **Appearance & Theme Quick-Picker**: Live-switch between Dark, Light, and System themes, customize chromatic accent palettes, and select ambient stage backgrounds from an integrated wallpaper grid.
-* **Jank-Free Atmospheric Canvas**: Re-engineered background particle and atmosphere canvases to eliminate redundant texture allocations, rAF loop stacking, and layout thrashing, ensuring smooth 60fps transitions.
-* **Inline Reasoning Lens**: Added an inline focus lens for inspecting Chain-of-Thought (CoT) reasoning traces without cluttering conversation history.
+### 🪄 Auto Suggestions & Director Lite Magic Wand
+* **Interactive Guided Responses**: Companions can now provide contextual quick-reply chips above the message composer, giving you instant prompts to steer the scene, answer queries, or advance roleplay.
+* **Unified Across All 3 Chat Surfaces**: The Director Lite magic wand button and proactive suggestion chips are now uniformly supported across Desktop Chatbox, Portrait Web, and Landscape Web (bringing Landscape Web into full parity with the other two).
+* **Speech Lifecycle Synchronization**: Suggestion generation coordinates with TTS audio playback and automatically deduplicates options to avoid stale recommendations.
 
-### 🧠 Winnow System-1 Memory Compaction & Lifetime Thread Hardening
-* **Winnow Salience-Preserving Compaction**: Introduced the `winnow` compaction strategy using System-1 Jev coprocessors: high-salience turns, emotional anchors, and `<|ACT:*|>` cues are preserved verbatim while routine conversational filler is pruned, capped strictly at 75% of context width to eliminate infinite compaction loops.
-* **Surgical Section Locking**: Enhanced Pillar 5 lifetime memory with surgical section locks, preventing re-synthesized memory summaries from overwriting established character lore.
-* **Modernized Provisioning Modal**: Redesigned the Eternal Thread provisioning interface with active-universe isolation, manual "Sync Thread Now" controls, sealed watermarks, and live context injection diagnostics.
-* **Comprehensive Memory Test Suite**: Validated lifetime artifact synthesis and retention with an exhaustive 70-test suite covering edge cases F-01 through F-08.
+### 🎭 Character Card View Hero Redesign & Widescreen Scene Gallery
+* **Cinematic Hero Banner & Dedicated Route Navigation**: Completely redesigned the Character Card inspector with a widescreen cinematic hero banner, dedicated `/cards/:id` route navigation, and rich markdown rendering for backstory and lore.
+* **Identity vs. Identifier Separation**: Cleanly decoupled companion display names and personas from internal storage identifiers, allowing companions to be renamed without breaking bindings or model paths.
+* **Hero Banner Tagline Sanitization**: Automatically strips raw markdown headings from the card's top hero banner for clean, readable subtitles.
+* **Widescreen Scene Gallery**: Overhauled the stage backgrounds gallery into an expansive, responsive widescreen grid with enhanced visual framing and scene metadata tags.
 
-### 🖥️ In-Memory Virtual Terminal & Starter Micro-App Catalog
-* **Shared Micro-App Catalog**: Bundled interactive generative widgets into a unified 3×2 starter grid featuring Haven Weather, Daily Checklist, and System Monitor presets.
-* **In-Place Reactive State Synchronization**: Generative widgets can now mutate and synchronize state bidirectionally with companion chat memory while inheriting dynamic application themes.
-* **Standalone Breakout Windows with DevTools**: Pop out generative widgets into standalone desktop windows with dedicated developer tools shortcuts (`F12`, `Cmd+Option+I`) and context menus.
-* **Universal MCP Tool Dispatcher**: Decomposed universal Model Context Protocol (MCP) tool execution and wired TypeSafe Jev System-1 decisions natively into MCP calls.
-* **CloudSync Deletion Tombstones**: Added deletion tombstones for generative micro-apps to eliminate zombie widget resurrection across multi-device cloud synchronization.
+### 🏰 Character Tavern Community Hub Integration
+* **Integrated Community Card Hub**: Browse, preview, and download community character cards directly inside AIRI through the new Character Tavern hub integration, available from the card import modal and Onboarding V3.
 
-### 🛠️ Desktop Experience & Navigation Polish
-* **Modernized MPA Splash Loader**: Completely revamped the desktop startup window with a pastel companion aesthetic, calm animated 4-tile loading indicator, and dynamic initialization milestone cards.
-* **Dynamic Startup Theme Synchronization**: The desktop splash window now detects and applies your preferred Light or Dark theme immediately upon launch before the stage window mounts.
-* **Full Model Roster in Card Export**: Exporting character cards in CCv2 format now automatically bundles the entire multi-model roster (VRM, Live2D, Spine, MMD) and associated on-set assets, preserving your companion's complete wardrobe.
-* **Speaker-Owned Actor Transitions**: Resolved model synchronization gates to allow seamless actor handoffs when switching speakers in multi-character scenarios.
-* **Modular Chat Dashboard Cards**: Added customizable header controls and flexible layout configurations to the embedded chat dashboard panel, with stage window visibility decoupled from the desktop companion.
-* **Model Favorites Manager (`BrainModelFavoriteModal`)**: Added a full-featured model favorites manager supporting multi-instance cloud providers, custom parameters, and adaptive Light/Dark styling.
-* **Intelligent Avatar Search**: Expanded model selector search to query tags, franchise groups, and multi-word terms.
-* **Responsive Grounding Header**: Grounding status indicators now gracefully scale down on compact window widths (<456px), and empty journal strips automatically collapse.
-* **Fuzzy Mascot Sticker Matching**: Mascot sticker resolution now fuzzy-matches IDs across format extensions, casing, and prefixes.
-* **V3-Only Onboarding Gate**: Permanently pruned legacy V1 and V2 onboarding flags, standardizing all first-run setups on the streamlined 18-step Onboarding V3 flow.
-* **Audio Playback Wiring**: Properly wired speaker volume controls and TTS mute switches directly into active desktop audio playback.
+### 🎨 Workspace Ergonomics, Layout Polish & Platform-Aware Stage
+* **Platform-Aware Atmospheric Canvas**: Desktop PC stages now default to clean, zero-overhead background rendering (`none`), while web and mobile stages retain whimsical ambient particles (`hearts`).
+* **Summer Sky Meadow Scene**: Added a gorgeous new built-in scenic wallpaper to the stage background gallery.
+* **Selective Sync Filter Toggle**: Added a selective sync filter to the Control Strip character switcher, letting you easily filter companions by local vs cloud-synced status.
+* **Timeline Switcher in Chat Header**: Switch between branching story timelines and alternative conversation paths directly from the interactive chat header bar.
+* **Dedicated "Memories" Popover Subview**: Consolidated short-term memory, long-term text journal, and lifetime grounding controls into a unified "Memories" view inside the Chat Options menu.
+* **Frosted Glassmorphism Refinements**: Added 70% opacity frosted glass blur backgrounds and subtle borders to quick-settings popovers and model pickers for enhanced legibility.
+* **Rotating Startup Discovery Tips**: Enhanced the desktop splash screen to rotate helpful interaction shortcuts, navigation breadcrumbs, and Audio Studio discovery tips during launch.
+* **Advanced Vision Request Parameters**: Added an advanced request parameters JSON editor for vision/VLM backends with proper override precedence handling.
+* **Consolidated Model Cache Management**: Added "Installed" filter toggles, slot oversight telemetry, and single-click disk reclamation to local model settings.
+* **Mobile Safe-Area Insets**: Fixed iOS notch, dynamic island, and home-bar padding in Pocket, paired with tighter responsive gutters on web.
+* **Onboarding V3 Robustness**: Restored manual callback URL input with an inline guidance card for custom Cloudflare relays, and ensured the persona step is preserved for the "Quiet Observer" archetype.
 
----
-
-## 🤝 Community Pull Requests
-
-* **PR [#22](https://github.com/dasilva333/airi/pull/22): feat: add screenshot support to the agent** — Contributed by **@meckbaig**, adding on-demand agent screenshots (`take_screenshot`), multi-display/window targeting, inline multimodal chat rendering, and onboarding tool integration.
-* **PR [#24](https://github.com/dasilva333/airi/pull/24): feat(stage-ui,stage-pages): graceful stop + per-character limit actually applied** — Contributed by **@meckbaig**, implementing graceful tool loop termination at step limits, making character tool step limits unconditionally active, and consolidating tool controls.
-* **PR [#26](https://github.com/dasilva333/airi/pull/26): fix(stage-tamagotchi): collapse hidden journal strip and make grounding header responsive** — Contributed by **@meckbaig**, refining compact desktop window responsiveness and collapsing idle journal strips.
+### ⚡ Performance & Audio Pipeline Hardening
+* **Speech Synthesis Markdown & Math Sanitization**: Extended the Universal Speech Transformer (UST) to strip out markdown markup and LaTeX math formatting prior to TTS audio synthesis, ensuring voice models don't speak raw markdown tokens or KaTeX syntax aloud *(forward-ported from upstream PR [#3014](https://github.com/moeru-ai/airi/pull/3014) by **@starvingarc**)*.
+* **20 Hz Audio Level Metering**: Throttled microphone and speech visualizer audio level metering to 20 Hz, eliminating unnecessary 60fps Vue reactivity churn and layout recalculations while recording *(forward-ported from upstream PR [#3010](https://github.com/moeru-ai/airi/pull/3010) by **@starvingarc**)*.
+* **Screen Capture IPC Optimization**: Optimized screen capture event listeners and throttled stationary cursor IPC broadcasts, slashing renderer IPC handling time from 4.1% to 0.8% and stabilizing silky 120fps stage rendering *(forward-ported from upstream PR [#3006](https://github.com/moeru-ai/airi/pull/3006) by **@Makito**)*.
+* **Text-Before-Tool Parser Flushing**: Fixed stream parser buffer flushing so conversational text output generated immediately before a tool execution stays positioned at the front of the chat bubble *(forward-ported from upstream PR [#3008](https://github.com/moeru-ai/airi/pull/3008) by **@chiba233**)*.
+* **Explicit Terminal Directive on Empty MCP Discovery**: Cleanly returns an explicit directive when an MCP server exposes zero tools instead of leaving the discovery state ambiguous *(forward-ported from upstream PR [#2946](https://github.com/moeru-ai/airi/pull/2946) by **@clansty**)*.
+* **Chat Message Storage Hygiene**: Added automatic stripping of oversized inline `data:` image payloads (>32KB) before writing session messages to IndexedDB, keeping local database footprints compact and preventing heap memory bloat across restarts.

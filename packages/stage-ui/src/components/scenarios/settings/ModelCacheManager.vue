@@ -115,12 +115,12 @@ const knownModels: KnownModelItem[] = [
     description: 'Compact 1.6B visual language model',
   },
   {
-    id: 'Xenova/modnet',
-    name: 'Background Removal (MODNet)',
+    id: 'jellybox/isnet-anime',
+    name: 'Background Removal (IS-Net Anime)',
     category: 'vision',
     runtime: 'ONNX Web',
     icon: 'i-solar:magic-stick-bold-duotone',
-    description: 'Real-time video and image portrait matting',
+    description: 'Anime-native foreground segmentation for stickers and artwork',
   },
 
   // 4. Miscellaneous & System 1 (Motion, Decisions, Embeddings)

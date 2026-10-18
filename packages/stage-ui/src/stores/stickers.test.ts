@@ -37,14 +37,21 @@ const processImageMock = vi.fn(async (image: { width: number, height: number }) 
   width: image.width,
   height: image.height,
 }))
+type AdapterState = 'idle' | 'loading' | 'ready' | 'processing' | 'error' | 'terminated'
+const createdAdapters: Array<{ terminate: ReturnType<typeof vi.fn>, state: AdapterState }> = []
+let mockAdapterState: AdapterState = 'ready'
 vi.mock('../libs/inference/adapters/background-removal', () => ({
-  createBackgroundRemovalAdapter: vi.fn(() => ({
-    load: vi.fn(async () => {}),
-    processImage: processImageMock,
-    terminate: vi.fn(),
-    state: 'ready' as const,
-    deviceLossCount: 0,
-  })),
+  createBackgroundRemovalAdapter: vi.fn(() => {
+    const adapter = {
+      load: vi.fn(async () => {}),
+      processImage: processImageMock,
+      terminate: vi.fn(),
+      get state(): AdapterState { return mockAdapterState },
+      deviceLossCount: 0,
+    }
+    createdAdapters.push(adapter)
+    return adapter
+  }),
 }))
 
 // Stub DOM image conversion (createImageBitmap/canvas unavailable in Node).
@@ -190,6 +197,8 @@ describe('useStickersStore - background removal', () => {
     setActivePinia(createPinia())
     mockStickerDb.clear()
     processImageMock.mockClear()
+    createdAdapters.length = 0
+    mockAdapterState = 'ready'
     const store = useStickersStore()
     store.libraryMetadata = []
   })
@@ -232,5 +241,27 @@ describe('useStickersStore - background removal', () => {
     expect(out.type).toBe('image/png')
     expect(store.libraryMetadata).toHaveLength(0)
     expect(processImageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rebuilds the adapter when the previous one died without a model', async () => {
+    const { store, id } = await seedSticker()
+    await store.makeTransparent(id)
+    expect(createdAdapters).toHaveLength(1)
+
+    // Simulate host restart/teardown: fresh worker, no model loaded.
+    mockAdapterState = 'idle'
+    await store.makeTransparent(id)
+
+    // Dead adapter terminated and replaced; original backup preserved.
+    expect(createdAdapters).toHaveLength(2)
+    expect(createdAdapters[0]!.terminate).toHaveBeenCalled()
+    expect(store.hasTransparencyBackup(id)).toBe(true)
+  })
+
+  it('reuses the ready adapter across calls', async () => {
+    const { store, id } = await seedSticker()
+    await store.makeTransparent(id)
+    await store.makeTransparent(id)
+    expect(createdAdapters).toHaveLength(1)
   })
 })
