@@ -2,6 +2,7 @@
 import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
 import { CharacterAvatar, MarkdownRenderer } from '@proj-airi/stage-ui/components'
+import { formatActorName } from '@proj-airi/stage-ui/components/markdown/actor-colors'
 import {
   DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT,
   DEFAULT_POST_HISTORY_INSTRUCTIONS,
@@ -16,6 +17,13 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -37,7 +45,7 @@ const backgroundStore = useBackgroundStore()
 
 const { activeCardId } = storeToRefs(cardStore)
 const { activeProvider: consciousnessProvider, activeModel: defaultConsciousnessModel } = storeToRefs(consciousnessStore)
-const { activeSpeechProvider: speechProvider, activeSpeechModel: defaultSpeechModel, activeSpeechVoiceId: defaultVoiceId } = storeToRefs(speechStore)
+const { activeSpeechProvider: speechProvider, activeSpeechVoiceId: defaultVoiceId } = storeToRefs(speechStore)
 const { activeProvider: defaultArtistryProvider } = storeToRefs(artistryStore)
 
 const cardId = computed(() => (route.params.cardId as string) || '')
@@ -54,6 +62,28 @@ const displayModelId = computed(() => airiExt.value?.modules?.displayModelId)
 const isActive = computed(() => cardId.value === activeCardId.value)
 const isActivating = ref(false)
 
+// 1. Character Identity vs Identifier Slug
+const characterDisplayName = computed(() => {
+  return card.value?.nickname?.trim() || card.value?.name || 'Character'
+})
+
+const hasDistinctIdentifier = computed(() => {
+  const nick = card.value?.nickname?.trim()
+  return Boolean(nick && card.value?.name && nick !== card.value.name)
+})
+
+async function handleCopyIdentifier() {
+  if (!card.value?.name)
+    return
+  try {
+    await navigator.clipboard.writeText(card.value.name)
+    toast.success('Copied character identifier')
+  }
+  catch {
+    toast.error('Failed to copy identifier')
+  }
+}
+
 async function handleActivate() {
   if (!cardId.value || isActive.value)
     return
@@ -61,7 +91,7 @@ async function handleActivate() {
   try {
     await cardStore.activateCard(cardId.value)
     artistryStore.resetState()
-    toast.success(`${card.value?.name || 'Character'} activated`)
+    toast.success(`${characterDisplayName.value} activated`)
   }
   catch (err) {
     console.error('[CardDetailRoute] Failed to activate card:', err)
@@ -102,34 +132,10 @@ function handleDeleteConfirm() {
   isDeleteOpen.value = false
 }
 
-// Module Settings Resolution
-const moduleSettings = computed(() => {
-  const modules = airiExt.value?.modules
-  const modelId = modules?.displayModelId
-  const matchedModel = modelId ? displayModelsStore.displayModels.find(m => m.id === modelId) : null
-
-  return {
-    consciousnessProvider: modules?.consciousness?.provider || consciousnessProvider.value || 'Inherit global settings',
-    consciousnessModel: modules?.consciousness?.model || defaultConsciousnessModel.value || 'Inherit global settings',
-    visionProvider: defaultArtistryProvider.value || 'Inherit global settings',
-    visionModel: 'Inherit global settings',
-    speechProvider: modules?.speech?.provider || speechProvider.value || 'Inherit global settings',
-    speechModel: modules?.speech?.model || defaultSpeechModel.value || 'Inherit global settings',
-    speechVoice: modules?.speech?.voice_id || defaultVoiceId.value || 'Inherit global settings',
-    displayModelName: matchedModel?.name || modelId || 'None',
-  }
-})
-
-// Gallery / Stage Background for this card
-const activeBackgroundUrl = computed(() => {
-  return backgroundStore.activeBackgroundUrl
-})
-
-// Collapsible prompt directives preview
-const showDirectives = ref(false)
-
-// Clean banner tagline: strips leading markdown headers (#, ##, ###) and actor cue tags for an uncluttered hero teaser
-const bannerTagline = computed(() => {
+// 2. Hero Introduction / Tagline
+const heroIntroduction = computed(() => {
+  if (card.value?.notes?.trim())
+    return card.value.notes.trim()
   if (!card.value?.description)
     return 'An experimental virtual AI companion.'
 
@@ -140,12 +146,81 @@ const bannerTagline = computed(() => {
 
   return cleaned || card.value.description
 })
+
+// 3. View Mode Markdown Actor Marker Transformation
+function renderViewMarkdown(raw?: string): string {
+  if (!raw)
+    return ''
+  return raw.replace(/<\|ACTOR:\s*([^|>]+)\s*\|?>/gi, (_match, actorId) => {
+    const cleanActor = actorId.trim()
+    const formatted = formatActorName(cleanActor)
+    return ` <span class="actor-chip border border-teal-500/30 bg-teal-500/10 text-teal-600 dark:border-teal-400/30 dark:bg-teal-400/10 dark:text-teal-300 font-sans text-xs px-2 py-0.5 rounded-full inline-flex items-center font-semibold">${formatted}</span> `
+  })
+}
+
+const formattedDescription = computed(() => renderViewMarkdown(card.value?.description))
+const formattedPersonality = computed(() => renderViewMarkdown(card.value?.personality))
+const formattedScenario = computed(() => renderViewMarkdown(card.value?.scenario))
+
+// 4. Module Settings Grouped by Purpose
+const moduleGroups = computed(() => {
+  const modules = airiExt.value?.modules
+  const modelId = modules?.displayModelId
+  const matchedModel = modelId ? displayModelsStore.displayModels.find(m => m.id === modelId) : null
+
+  return [
+    {
+      title: 'Conversation',
+      icon: 'i-solar:chat-round-dots-bold-duotone',
+      isCustom: Boolean(modules?.consciousness?.provider || modules?.consciousness?.model),
+      items: [
+        { label: 'Provider', value: modules?.consciousness?.provider || consciousnessProvider.value || 'Default' },
+        { label: 'Model', value: modules?.consciousness?.model || defaultConsciousnessModel.value || 'Default' },
+      ],
+    },
+    {
+      title: 'Vision',
+      icon: 'i-solar:eye-bold-duotone',
+      isCustom: false,
+      items: [
+        { label: 'Provider', value: defaultArtistryProvider.value || 'Default' },
+        { label: 'Model', value: 'Default' },
+      ],
+    },
+    {
+      title: 'Voice',
+      icon: 'i-solar:microphone-3-bold-duotone',
+      isCustom: Boolean(modules?.speech?.voice_id || modules?.speech?.provider),
+      items: [
+        { label: 'Voice', value: modules?.speech?.voice_id || defaultVoiceId.value || 'Default Voice' },
+        { label: 'Engine', value: modules?.speech?.provider || speechProvider.value || 'Default Engine' },
+      ],
+    },
+    {
+      title: 'Avatar',
+      icon: 'i-solar:user-bold-duotone',
+      isCustom: Boolean(modelId),
+      items: [
+        { label: 'Model', value: matchedModel?.name || modelId || 'None' },
+        { label: 'Format', value: matchedModel?.format ? matchedModel.format.toUpperCase() : (modelId ? 'Live2D / VRM' : 'None') },
+      ],
+    },
+  ]
+})
+
+// Gallery / Stage Background for this card
+const activeBackgroundUrl = computed(() => {
+  return backgroundStore.activeBackgroundUrl
+})
+
+// Collapsible prompt directives preview
+const showDirectives = ref(false)
 </script>
 
 <template>
   <div class="mx-auto max-w-6xl w-full px-4 pb-20 pt-2 sm:px-6">
     <!-- Breadcrumb navigation -->
-    <div class="mb-5 flex items-center justify-between">
+    <div class="mb-4 flex items-center justify-between">
       <div class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
         <button
           type="button"
@@ -156,17 +231,7 @@ const bannerTagline = computed(() => {
           <span>{{ t('settings.pages.card.title', 'AIRI Card') }}</span>
         </button>
         <span>/</span>
-        <span class="truncate text-neutral-900 font-medium dark:text-neutral-100">{{ card?.name || cardId }}</span>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="i-solar:trash-bin-trash-bold-duotone"
-          class="text-red-500 hover:bg-red-500/10 hover:text-red-600"
-          @click="isDeleteOpen = true"
-        />
+        <span class="truncate text-neutral-900 font-medium dark:text-neutral-100">{{ characterDisplayName }}</span>
       </div>
     </div>
 
@@ -183,20 +248,20 @@ const bannerTagline = computed(() => {
     </div>
 
     <!-- Main Content -->
-    <div v-else class="space-y-8">
+    <div v-else class="space-y-6">
       <!-- HERO BANNER -->
       <div
-        class="relative min-h-[220px] w-full flex flex-col justify-between overflow-hidden border border-teal-800/40 rounded-2xl from-teal-950 via-teal-900 to-cyan-950 bg-gradient-to-r p-6 shadow-teal-950/20 shadow-xl md:min-h-[280px] sm:min-h-[260px] md:rounded-3xl md:p-10 sm:p-8"
+        class="relative min-h-[170px] w-full flex flex-col justify-between overflow-hidden border border-teal-800/40 rounded-2xl from-teal-950 via-teal-900 to-cyan-950 bg-gradient-to-r p-5 shadow-teal-950/20 shadow-xl md:min-h-[210px] sm:min-h-[190px] md:rounded-3xl md:p-8 sm:p-6"
       >
         <!-- Background subtle glow -->
         <div class="pointer-events-none absolute h-72 w-72 rounded-full bg-teal-500/10 blur-3xl -left-20 -top-20" />
         <div class="pointer-events-none absolute right-10 top-0 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
 
-        <!-- Top Content (Name, Badges, Tagline) -->
+        <!-- Top Content (Display Name, Identifier Slug, Badges, Tagline) -->
         <div class="z-10 max-w-xl">
           <div class="flex flex-wrap items-center gap-3">
-            <h1 class="text-3xl text-white font-bold tracking-tight drop-shadow-sm md:text-5xl sm:text-4xl">
-              {{ card.name }}
+            <h1 class="text-2xl text-white font-bold tracking-tight drop-shadow-sm md:text-4xl sm:text-3xl">
+              {{ characterDisplayName }}
             </h1>
             <!-- Status badges -->
             <div class="flex items-center gap-2">
@@ -219,18 +284,31 @@ const bannerTagline = computed(() => {
             </div>
           </div>
 
+          <!-- Muted Identifier Slug below title when nickname is displayed -->
+          <div v-if="hasDistinctIdentifier" class="mt-1 flex items-center gap-1.5 text-xs text-teal-200/70 font-mono">
+            <span>{{ card.name }}</span>
+            <button
+              type="button"
+              title="Copy identifier"
+              class="inline-flex items-center rounded p-0.5 transition-colors hover:bg-white/10 hover:text-white"
+              @click="handleCopyIdentifier"
+            >
+              <div class="i-solar:copy-linear text-xs" />
+            </button>
+          </div>
+
           <!-- Description / Tagline in Banner -->
-          <p class="line-clamp-3 mt-3 text-sm text-teal-100/80 font-normal leading-relaxed sm:text-base">
-            {{ bannerTagline }}
+          <p class="line-clamp-2 mt-2 max-w-lg text-xs text-teal-100/80 font-normal leading-relaxed sm:text-sm">
+            {{ heroIntroduction }}
           </p>
         </div>
 
         <!-- Action Buttons (Bottom Left) -->
-        <div class="z-10 mt-6 flex flex-wrap items-center gap-3">
+        <div class="z-10 mt-5 flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             :disabled="isActive || isActivating"
-            class="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium shadow-md transition-all"
+            class="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-medium shadow-md transition-all sm:px-5 sm:py-2.5 sm:text-sm"
             :class="[
               isActive
                 ? 'bg-teal-600 text-white cursor-default shadow-teal-900/30'
@@ -245,7 +323,7 @@ const bannerTagline = computed(() => {
 
           <button
             type="button"
-            class="flex cursor-pointer items-center gap-2 border border-white/15 rounded-xl bg-white/10 px-4 py-2.5 text-sm text-white font-medium backdrop-blur-sm transition-all hover:bg-white/20"
+            class="flex cursor-pointer items-center gap-2 border border-white/15 rounded-xl bg-white/10 px-3.5 py-2 text-xs text-white font-medium backdrop-blur-sm transition-all hover:bg-white/20 sm:px-4 sm:py-2.5 sm:text-sm"
             @click="handleEdit"
           >
             <div class="i-solar:pen-bold-duotone text-base" />
@@ -254,23 +332,77 @@ const bannerTagline = computed(() => {
 
           <button
             type="button"
-            class="flex cursor-pointer items-center gap-2 border border-white/15 rounded-xl bg-white/10 px-4 py-2.5 text-sm text-white font-medium backdrop-blur-sm transition-all hover:bg-white/20"
+            class="flex cursor-pointer items-center gap-2 border border-white/15 rounded-xl bg-white/10 px-3.5 py-2 text-xs text-white font-medium backdrop-blur-sm transition-all hover:bg-white/20 sm:px-4 sm:py-2.5 sm:text-sm"
             @click="isExportOpen = true"
           >
             <div class="i-solar:export-bold-duotone text-base" />
             <span>Export</span>
           </button>
+
+          <!-- Overflow Options Menu -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child aria-label="More options">
+              <button
+                type="button"
+                class="flex cursor-pointer items-center justify-center border border-white/15 rounded-xl bg-white/10 p-2 text-white backdrop-blur-sm transition-all hover:bg-white/20 sm:p-2.5"
+              >
+                <div class="i-solar:menu-dots-bold text-base" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                :class="[
+                  'z-50 min-w-44 rounded-xl p-1 outline-none',
+                  'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
+                  'shadow-xl backdrop-blur-md',
+                  'will-change-[opacity,transform]',
+                  'data-[side=bottom]:animate-slideUpAndFade data-[side=top]:animate-slideDownAndFade',
+                ]"
+                :side-offset="8"
+                align="end"
+              >
+                <DropdownMenuItem
+                  v-if="card?.name"
+                  :class="[
+                    'relative flex cursor-pointer select-none items-center gap-2',
+                    'rounded-lg px-3 py-2 text-xs leading-none outline-none',
+                    'text-neutral-700 dark:text-neutral-200',
+                    'data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800',
+                    'transition-colors duration-150',
+                  ]"
+                  @click="handleCopyIdentifier"
+                >
+                  <div class="i-solar:copy-linear text-sm" />
+                  <span>Copy Identifier</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  :class="[
+                    'relative flex cursor-pointer select-none items-center gap-2',
+                    'rounded-lg px-3 py-2 text-xs leading-none outline-none',
+                    'text-red-600 dark:text-red-400',
+                    'data-[highlighted]:bg-red-500/10 dark:data-[highlighted]:bg-red-500/20',
+                    'transition-colors duration-150',
+                  ]"
+                  @click="isDeleteOpen = true"
+                >
+                  <div class="i-solar:trash-bin-trash-bold-duotone text-sm" />
+                  <span>Delete Character</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
 
         <!-- Character Artwork Bust (Bottom Right Hero Placement) -->
-        <div class="pointer-events-none absolute right-2 z-1 h-52 w-52 flex select-none items-end justify-center -bottom-4 md:right-12 sm:right-6 md:h-72 md:w-72 sm:h-64 sm:w-64">
+        <div class="pointer-events-none absolute right-4 z-1 h-44 w-44 flex select-none items-end justify-center -bottom-2 md:right-8 sm:right-6 md:h-60 md:w-60 sm:h-52 sm:w-52">
           <CharacterAvatar
             :card-id="cardId"
-            :name="card.name"
+            :name="characterDisplayName"
             :display-model-id="displayModelId"
             shape="square"
             size-class="h-full w-full"
-            avatar-class="h-full w-full object-contain object-bottom drop-shadow-[0_20px_35px_rgba(0,0,0,0.7)]"
+            avatar-class="h-full w-full object-contain object-bottom drop-shadow-[0_15px_30px_rgba(0,0,0,0.6)]"
             :use-dynamic-background="false"
             transparent
           />
@@ -287,7 +419,7 @@ const bannerTagline = computed(() => {
               Description
             </h2>
             <div v-if="card.description" class="text-sm text-neutral-600 leading-relaxed dark:text-neutral-300">
-              <MarkdownRenderer :content="card.description" />
+              <MarkdownRenderer :content="formattedDescription" />
             </div>
             <div v-else class="text-sm text-neutral-400 italic">
               No description provided.
@@ -306,7 +438,7 @@ const bannerTagline = computed(() => {
                 Personality
               </div>
               <div class="text-sm text-neutral-700 dark:text-neutral-200">
-                <MarkdownRenderer v-if="card.personality" :content="card.personality" />
+                <MarkdownRenderer v-if="card.personality" :content="formattedPersonality" />
                 <span v-else>Curious, direct, and patient.</span>
               </div>
             </div>
@@ -319,7 +451,7 @@ const bannerTagline = computed(() => {
                 Scenario
               </div>
               <div class="text-sm text-neutral-700 dark:text-neutral-200">
-                <MarkdownRenderer v-if="card.scenario" :content="card.scenario" />
+                <MarkdownRenderer v-if="card.scenario" :content="formattedScenario" />
                 <span v-else>A quiet evening in the computer lab.</span>
               </div>
             </div>
@@ -409,52 +541,40 @@ const bannerTagline = computed(() => {
           </div>
         </div>
 
-        <!-- RIGHT 1 COLUMN: Modules Section -->
-        <div class="lg:col-span-1 space-y-4">
-          <div class="border border-neutral-200 rounded-2xl bg-neutral-50/50 p-6 space-y-4 dark:border-neutral-800 dark:bg-neutral-900/40">
-            <h2 class="mb-2 text-base text-neutral-900 font-bold dark:text-white">
-              Modules
-            </h2>
+        <!-- RIGHT 1 COLUMN: Modules Section Grouped by Purpose -->
+        <div class="lg:col-span-1 space-y-3">
+          <h2 class="text-base text-neutral-900 font-bold dark:text-white">
+            Modules
+          </h2>
 
-            <div class="divide-y divide-neutral-200/60 dark:divide-neutral-800/60">
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Chat / Provider</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.consciousnessProvider }}</span>
+          <div
+            v-for="group in moduleGroups"
+            :key="group.title"
+            class="border border-neutral-200/80 rounded-xl bg-neutral-50/60 p-3.5 space-y-2 dark:border-neutral-800/80 dark:bg-neutral-900/40"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div :class="group.icon" class="text-sm text-primary-500" />
+                <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-200">{{ group.title }}</span>
               </div>
+              <span
+                class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                :class="group.isCustom
+                  ? 'border border-primary-500/30 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                  : 'border border-neutral-200 bg-neutral-100 text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400'"
+              >
+                {{ group.isCustom ? 'Card' : 'Global' }}
+              </span>
+            </div>
 
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Consciousness / Model</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.consciousnessModel }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Vision / Provider</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.visionProvider }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Vision / Model</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.visionModel }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Speech / Provider</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.speechProvider }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Speech / Model</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.speechModel }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Speech / Voice</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-neutral-800 font-medium dark:text-neutral-200">{{ moduleSettings.speechVoice }}</span>
-              </div>
-
-              <div class="flex items-center justify-between py-2.5">
-                <span class="text-xs text-neutral-500 dark:text-neutral-400">Body / Display Model</span>
-                <span class="max-w-[170px] truncate text-right text-xs text-primary-600 font-medium font-semibold dark:text-primary-400">{{ moduleSettings.displayModelName }}</span>
+            <div class="pt-1 space-y-1.5">
+              <div
+                v-for="item in group.items"
+                :key="item.label"
+                class="flex items-center justify-between text-xs"
+              >
+                <span class="text-neutral-400 dark:text-neutral-500">{{ item.label }}</span>
+                <span class="max-w-[150px] truncate text-right text-neutral-700 font-medium dark:text-neutral-300">{{ item.value }}</span>
               </div>
             </div>
           </div>
@@ -485,7 +605,7 @@ const bannerTagline = computed(() => {
 meta:
   layout: settings
   titleKey: settings.pages.card.title
-  subtitleKey: settings.pages.card.title
+  subtitleKey: settings.title
   descriptionKey: settings.pages.card.description
   icon: i-solar:user-bold-duotone
   settingsEntry: false
