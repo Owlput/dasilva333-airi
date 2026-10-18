@@ -9,6 +9,7 @@ import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
+import { FieldTextArea } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -56,6 +57,44 @@ const tempAutoFailover = ref(true)
 const tempTriggers = ref<FailoverTrigger[]>([])
 const tempNotificationStyle = ref<'toast' | 'badge' | 'silent'>('toast')
 const tempRecoveryInterval = ref(15)
+
+const tempPrimaryAdvancedJson = ref('')
+const tempFallbackAdvancedJson = ref('')
+const showAdvancedPrimary = ref(false)
+const showAdvancedFallback = ref(false)
+
+const hasPrimaryAdvancedJson = computed(() => !!tempPrimaryAdvancedJson.value?.trim())
+const hasFallbackAdvancedJson = computed(() => !!tempFallbackAdvancedJson.value?.trim())
+
+const primaryJsonError = computed(() => {
+  const text = tempPrimaryAdvancedJson.value?.trim()
+  if (!text)
+    return null
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+      return 'JSON must be a valid object (e.g. { "max_tokens": 1000 })'
+    return null
+  }
+  catch (e: any) {
+    return e.message
+  }
+})
+
+const fallbackJsonError = computed(() => {
+  const text = tempFallbackAdvancedJson.value?.trim()
+  if (!text)
+    return null
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+      return 'JSON must be a valid object (e.g. { "max_tokens": 1000 })'
+    return null
+  }
+  catch (e: any) {
+    return e.message
+  }
+})
 
 const showSimulatedToast = ref(false)
 
@@ -651,6 +690,23 @@ function openDrawer(faculty: FacultyName) {
   tempNotificationStyle.value = conf.notificationStyle
   tempRecoveryInterval.value = conf.recoveryIntervalMinutes
 
+  if (faculty === 'vision') {
+    tempPrimaryAdvancedJson.value = conf.primaryAdvanced
+      ? JSON.stringify(conf.primaryAdvanced, null, 2)
+      : ''
+    tempFallbackAdvancedJson.value = conf.fallbackAdvanced
+      ? JSON.stringify(conf.fallbackAdvanced, null, 2)
+      : ''
+    showAdvancedPrimary.value = Boolean(conf.primaryAdvanced && Object.keys(conf.primaryAdvanced).length > 0)
+    showAdvancedFallback.value = Boolean(conf.fallbackAdvanced && Object.keys(conf.fallbackAdvanced).length > 0)
+  }
+  else {
+    tempPrimaryAdvancedJson.value = ''
+    tempFallbackAdvancedJson.value = ''
+    showAdvancedPrimary.value = false
+    showAdvancedFallback.value = false
+  }
+
   if (faculty === 'consciousness' || faculty === 'vision' || faculty === 'hearing') {
     if (primaryProv)
       providersStore.fetchModelsForProvider(primaryProv)
@@ -683,17 +739,53 @@ function saveDrawer() {
     return
 
   const f = activeDrawerFaculty.value
+
+  if (f === 'vision') {
+    if (primaryJsonError.value) {
+      toast.error(`Primary Advanced JSON error: ${primaryJsonError.value}`)
+      return
+    }
+    if (fallbackJsonError.value) {
+      toast.error(`Fallback Advanced JSON error: ${fallbackJsonError.value}`)
+      return
+    }
+  }
+
+  let primaryAdvanced: Record<string, unknown> | undefined
+  if (f === 'vision' && tempPrimaryAdvancedJson.value.trim()) {
+    try {
+      primaryAdvanced = JSON.parse(tempPrimaryAdvancedJson.value)
+    }
+    catch (e: any) {
+      toast.error(`Primary Advanced JSON error: ${e.message}`)
+      return
+    }
+  }
+
+  let fallbackAdvanced: Record<string, unknown> | undefined
+  if (f === 'vision' && tempFallbackAdvancedJson.value.trim()) {
+    try {
+      fallbackAdvanced = JSON.parse(tempFallbackAdvancedJson.value)
+    }
+    catch (e: any) {
+      toast.error(`Fallback Advanced JSON error: ${e.message}`)
+      return
+    }
+  }
+
   facultyDefaultsStore.setPrimary(
     f,
     tempPrimaryProvider.value,
     tempPrimaryModel.value,
     f === 'speech' ? tempPrimaryVoiceId.value : undefined,
+    primaryAdvanced,
   )
   facultyDefaultsStore.setFallback(
     f,
     tempFallbackProvider.value,
     tempFallbackModel.value,
     f === 'speech' ? tempFallbackVoiceId.value : undefined,
+    fallbackAdvanced,
   )
   facultyDefaultsStore.setCircuitBreaker(f, tempAutoFailover.value, tempTriggers.value)
   facultyDefaultsStore.setNotificationStyle(f, tempNotificationStyle.value)
@@ -1017,6 +1109,39 @@ function simulateFailover() {
               >
             </div>
           </div>
+
+          <!-- Vision Only: Advanced JSON parameters toggle (Primary) -->
+          <div v-if="activeDrawerFaculty === 'vision'" class="border-t border-neutral-200/60 pt-2 space-y-2 dark:border-neutral-800/60">
+            <button
+              type="button"
+              class="flex items-center gap-1.5 text-[11px] text-neutral-500 font-medium transition-colors dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+              @click="showAdvancedPrimary = !showAdvancedPrimary"
+            >
+              <div class="i-solar:pen-new-square-linear text-xs" />
+              <span>Adjust Advanced Parameters (JSON)</span>
+              <span v-if="hasPrimaryAdvancedJson" class="size-1.5 rounded-full bg-cyan-500" />
+            </button>
+
+            <div v-if="showAdvancedPrimary" class="space-y-1">
+              <FieldTextArea
+                v-model="tempPrimaryAdvancedJson"
+                :required="false"
+                placeholder="{&#10;  &quot;max_tokens&quot;: 1000&#10;}"
+                :rows="3"
+                textarea-class="font-mono text-xs"
+              >
+                <template #label>
+                  <span class="text-[10px] text-neutral-500 font-semibold uppercase dark:text-neutral-400">Advanced Parameters (JSON)</span>
+                </template>
+                <template #description>
+                  <span class="text-[10px] text-neutral-400">Merged into outbound HTTP requests (e.g. max_tokens, temperature, thinking).</span>
+                </template>
+              </FieldTextArea>
+              <p v-if="primaryJsonError" class="text-[10px] text-red-500">
+                {{ primaryJsonError }}
+              </p>
+            </div>
+          </div>
         </div>
 
         <!-- 2. Automated Safety Fallback Engine Pair / Streamlined Single Selector -->
@@ -1136,6 +1261,39 @@ function simulateFailover() {
                 placeholder="Model ID (or default)"
                 class="w-full border border-cyan-500/40 rounded-lg bg-white px-2.5 py-1.5 text-xs text-neutral-900 dark:border-cyan-500/40 focus:border-cyan-500 dark:bg-neutral-900 dark:text-neutral-100 focus:outline-none"
               >
+            </div>
+          </div>
+
+          <!-- Vision Only: Advanced JSON parameters toggle (Fallback) -->
+          <div v-if="activeDrawerFaculty === 'vision'" class="border-t border-cyan-500/20 pt-2 space-y-2 dark:border-cyan-400/20">
+            <button
+              type="button"
+              class="flex items-center gap-1.5 text-[11px] text-cyan-700/80 font-medium transition-colors dark:text-cyan-300/80 hover:text-cyan-800 dark:hover:text-cyan-200"
+              @click="showAdvancedFallback = !showAdvancedFallback"
+            >
+              <div class="i-solar:pen-new-square-linear text-xs" />
+              <span>Adjust Advanced Parameters (JSON)</span>
+              <span v-if="hasFallbackAdvancedJson" class="size-1.5 rounded-full bg-cyan-500" />
+            </button>
+
+            <div v-if="showAdvancedFallback" class="space-y-1">
+              <FieldTextArea
+                v-model="tempFallbackAdvancedJson"
+                :required="false"
+                placeholder="{&#10;  &quot;max_tokens&quot;: 1000&#10;}"
+                :rows="3"
+                textarea-class="font-mono text-xs"
+              >
+                <template #label>
+                  <span class="text-[10px] text-cyan-800 font-semibold uppercase dark:text-cyan-200">Advanced Parameters (JSON)</span>
+                </template>
+                <template #description>
+                  <span class="text-[10px] text-neutral-400">Merged into outbound HTTP requests for fallback engine.</span>
+                </template>
+              </FieldTextArea>
+              <p v-if="fallbackJsonError" class="text-[10px] text-red-500">
+                {{ fallbackJsonError }}
+              </p>
             </div>
           </div>
         </div>

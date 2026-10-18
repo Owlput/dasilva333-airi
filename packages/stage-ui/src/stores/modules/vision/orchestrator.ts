@@ -25,6 +25,7 @@ import { createAttentionGuardAdapter } from '../../../libs/inference/adapters/at
 import { shouldDegradeBackgroundWork } from '../../../utils/memory-sentinel'
 import { useChatOrchestratorStore } from '../../chat'
 import { useEntityLedgerStore } from '../../entity-ledger'
+import { useFacultyDefaultsStore } from '../../faculty-defaults'
 import { useLLM } from '../../llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useProvidersStore } from '../../providers'
@@ -482,6 +483,8 @@ export const useVisionOrchestratorStore = defineStore('vision-orchestrator', () 
               const visionStore = useVisionStore()
               const providersStore = useProvidersStore()
               const llmStore = useLLM()
+              const facultyDefaultsStore = useFacultyDefaultsStore()
+              const visionConf = facultyDefaultsStore.defaults.vision
 
               if (visionStore.activeProvider && visionStore.activeModel) {
                 const vlmProvider = await providersStore.getProviderInstance(visionStore.activeProvider) as any
@@ -504,12 +507,36 @@ export const useVisionOrchestratorStore = defineStore('vision-orchestrator', () 
                 ]
 
                 console.log(`[Vision Orchestrator] Requesting external VLM (${visionStore.activeProvider}/${visionStore.activeModel}) caption for promoted event...`)
-                const vlmResponse = await llmStore.generate(
-                  visionStore.activeModel,
-                  vlmProvider,
-                  vlmMessages as any,
-                  { vision: true },
-                )
+                let vlmResponse: any
+                try {
+                  vlmResponse = await llmStore.generate(
+                    visionStore.activeModel,
+                    vlmProvider,
+                    vlmMessages as any,
+                    {
+                      vision: true,
+                      requestOverrides: visionConf?.primaryAdvanced || visionStore.activeAdvanced,
+                    },
+                  )
+                }
+                catch (primaryErr: any) {
+                  if (visionConf?.autoFailover && visionConf?.fallbackProvider && visionConf?.fallbackModel) {
+                    console.warn(`[Vision Orchestrator] Primary VLM failed (${primaryErr?.message || primaryErr}), attempting automated fallback (${visionConf.fallbackProvider}/${visionConf.fallbackModel})...`)
+                    const fallbackProvider = await providersStore.getProviderInstance(visionConf.fallbackProvider) as any
+                    vlmResponse = await llmStore.generate(
+                      visionConf.fallbackModel,
+                      fallbackProvider,
+                      vlmMessages as any,
+                      {
+                        vision: true,
+                        requestOverrides: visionConf.fallbackAdvanced,
+                      },
+                    )
+                  }
+                  else {
+                    throw primaryErr
+                  }
+                }
 
                 const caption = vlmResponse.text?.trim().replace(/^["']|["']$/g, '').replace(/\r?\n+/g, ' ').trim()
                 if (caption) {

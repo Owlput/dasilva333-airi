@@ -10,9 +10,11 @@ export interface FacultyConfig {
   primaryProvider: string
   primaryModel: string
   primaryVoiceId?: string
+  primaryAdvanced?: Record<string, unknown>
   fallbackProvider: string
   fallbackModel: string
   fallbackVoiceId?: string
+  fallbackAdvanced?: Record<string, unknown>
   autoFailover: boolean
   failoverTriggers: FailoverTrigger[]
   notificationStyle: 'toast' | 'badge' | 'silent'
@@ -186,7 +188,7 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
       || defaults.value.artistry.autoFailover
   })
 
-  function syncLegacyKeys(faculty: FacultyName, provider: string, model: string, voiceId?: string) {
+  function syncLegacyKeys(faculty: FacultyName, provider: string, model: string, voiceId?: string, advanced?: Record<string, unknown>) {
     if (typeof window === 'undefined')
       return
 
@@ -212,12 +214,16 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
       else if (faculty === 'vision') {
         window.localStorage.setItem('settings/vision/active-provider', provider)
         window.localStorage.setItem('settings/vision/active-model', model)
+        if (advanced)
+          window.localStorage.setItem('settings/vision/active-advanced', JSON.stringify(advanced))
+        else
+          window.localStorage.removeItem('settings/vision/active-advanced')
       }
     }
     catch {}
   }
 
-  function setPrimary(faculty: FacultyName, provider: string, model: string, voiceId?: string) {
+  function setPrimary(faculty: FacultyName, provider: string, model: string, voiceId?: string, advanced?: Record<string, unknown>) {
     if (!defaults.value[faculty])
       return
 
@@ -228,12 +234,13 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
         primaryProvider: provider,
         primaryModel: model,
         ...(voiceId !== undefined ? { primaryVoiceId: voiceId } : {}),
+        primaryAdvanced: advanced,
       },
     }
-    syncLegacyKeys(faculty, provider, model, voiceId)
+    syncLegacyKeys(faculty, provider, model, voiceId, advanced)
   }
 
-  function setFallback(faculty: FacultyName, provider: string, model: string, voiceId?: string) {
+  function setFallback(faculty: FacultyName, provider: string, model: string, voiceId?: string, advanced?: Record<string, unknown>) {
     if (!defaults.value[faculty])
       return
 
@@ -244,6 +251,7 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
         fallbackProvider: provider,
         fallbackModel: model,
         ...(voiceId !== undefined ? { fallbackVoiceId: voiceId } : {}),
+        fallbackAdvanced: advanced,
       },
     }
   }
@@ -321,7 +329,7 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
   function resolveFaculty(
     faculty: FacultyName,
     cardOverride?: { provider?: string, model?: string, voiceId?: string },
-  ): { provider: string, model: string, voiceId?: string, isFallback: boolean } {
+  ): { provider: string, model: string, voiceId?: string, advanced?: Record<string, unknown>, isFallback: boolean } {
     const cardProvider = cardOverride?.provider?.trim()
     const cardModel = cardOverride?.model?.trim()
     const cardVoiceId = cardOverride?.voiceId?.trim()
@@ -340,6 +348,7 @@ export const useFacultyDefaultsStore = defineStore('faculty-defaults', () => {
       provider: conf.primaryProvider,
       model: conf.primaryModel,
       voiceId: conf.primaryVoiceId,
+      advanced: conf.primaryAdvanced,
       isFallback: false,
     }
   }

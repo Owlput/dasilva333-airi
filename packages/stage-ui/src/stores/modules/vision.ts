@@ -20,6 +20,7 @@ export const useVisionStore = defineStore('vision', () => {
   const strategy = useLocalStorageManualReset<'direct' | 'forward'>('settings/vision/strategy', 'direct')
   const activeProvider = useLocalStorageManualReset<string>('settings/vision/active-provider', '')
   const activeModel = useLocalStorageManualReset<string>('settings/vision/active-model', '')
+  const activeAdvanced = useLocalStorageManualReset<Record<string, unknown>>('settings/vision/active-advanced', {})
   const contextWindow = useLocalStorageManualReset<number>('settings/vision/context-window', 1) // Number of images to include in context
   const promptShimDirect = useLocalStorageManualReset<string>(
     'settings/vision/prompt-shim',
@@ -341,6 +342,7 @@ export const useVisionStore = defineStore('vision', () => {
     strategy,
     activeProvider,
     activeModel,
+    activeAdvanced,
     contextWindow,
     promptShimDirect,
     promptShimForward,

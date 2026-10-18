@@ -360,6 +360,9 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
     try {
       const result = streamText({
         ...chatConfig,
+        ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
+        ...(options?.top_p !== undefined ? { top_p: options.top_p } : {}),
+        ...(options?.max_tokens !== undefined ? { max_tokens: options.max_tokens } : {}),
         ...requestOverrides,
         streamOptions: {
           includeUsage: true,
@@ -371,9 +374,6 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
           ...(chatConfig.headers as Record<string, string> | undefined),
           ...headers,
         },
-        temperature: options?.temperature,
-        top_p: options?.top_p,
-        max_tokens: options?.max_tokens,
         ...(options?.contextWidth ? { num_ctx: options.contextWidth } : {}),
         // TODO: we need Automatic tools discovery
         ...(tools && tools.length > 0 ? { tools } : {}),
@@ -473,6 +473,9 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
 
   return await generateText({
     ...chatConfig,
+    ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options?.top_p !== undefined ? { top_p: options.top_p } : {}),
+    ...(options?.max_tokens !== undefined ? { max_tokens: options.max_tokens } : {}),
     ...requestOverrides,
     maxSteps,
     fetch: withToolResultImageSupport(chatConfig.fetch),
@@ -481,9 +484,6 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
       ...(chatConfig.headers as Record<string, string> | undefined),
       ...headers,
     },
-    temperature: options?.temperature,
-    top_p: options?.top_p,
-    max_tokens: options?.max_tokens,
     ...(options?.contextWidth ? { num_ctx: options.contextWidth } : {}),
     model,
     ...(tools && tools.length > 0 ? { tools } : {}),

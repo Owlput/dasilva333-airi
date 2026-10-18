@@ -566,7 +566,10 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           visionStore.activeModel,
           vlmProvider,
           vlmMessages as any,
-          { vision: true },
+          {
+            vision: true,
+            requestOverrides: visionStore.activeAdvanced,
+          },
         )
 
         vlmImageAnalysis = vlmResponse.text || null
@@ -1797,7 +1800,10 @@ Format your output as a raw thought log.`
           // NOTICE: maxToolSteps is edited on the Tools tab, not with the sampling override,
           // so it is read even when `generation.enabled` is off (like allowedTools).
           maxSteps: generationConfig?.known?.maxToolSteps,
-          requestOverrides: generationConfig?.enabled ? generationConfig.advanced : undefined,
+          requestOverrides: {
+            ...(isVlmTurn ? visionStore.activeAdvanced : {}),
+            ...(generationConfig?.enabled ? generationConfig.advanced : {}),
+          },
           abortSignal: abortController.signal,
           waitForTools: true,
           onStreamEvent: async (event: StreamEvent) => {
