@@ -44,7 +44,7 @@
 
 ### 🍒 Cherry-Pick Candidates
 - ⭐ **PR #2946 / Commit `8672e9cd76` (Codada) — `fix(stage-ui,stage-tamagotchi): propagate MCP discovery failures`**:
-  - **Status**: **Recommended for Porting**.
+  - **Status**: **Ported & Tested (#2946)**.
   - **Impact**: High / Reliability.
   - **Rationale**: Prevents empty-string swallowing when MCP servers fail; gives the LLM explicit instructions to stop discovery when no tools are present; ensures `mcp()` returns `[]` without throwing on dummy transports.
 - ⭐ **PR #3010 / Commit `266e8d9467` (Makito) — `perf(stage-ui): update audio meters at 20 Hz`**:

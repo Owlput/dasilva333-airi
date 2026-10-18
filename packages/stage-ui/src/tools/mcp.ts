@@ -69,6 +69,10 @@ const tools = [
           })
         }
 
+        if (tools.length === 0) {
+          return 'No MCP tools are available. Do not retry discovery during this assistant turn.'
+        }
+
         const names = tools.map(t => t.name)
         const servers = [...new Set(tools.map(t => t.serverName))]
 
