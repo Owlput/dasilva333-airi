@@ -1,6 +1,6 @@
 import localforage from 'localforage'
 
-import { debug } from '@proj-airi/stage-shared'
+import { debug, isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
 import { useBroadcastChannel, useLocalStorage } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -265,8 +265,11 @@ export const useBackgroundStore = defineStore('background', () => {
     activeBackgroundId.value = id
   }
 
+  // Default to 'hearts' on Web Stage and Pocket Stage (mobile), and 'none' on PC (Tamagotchi / Electron)
+  const defaultAtmosphere: StageAtmosphere = (isStageWeb() || isStageCapacitor()) ? 'hearts' : 'none'
+
   // Persistent global fallback for active atmosphere id
-  const globalActiveAtmosphereId = useLocalStorage<StageAtmosphere>('airi:stage-active-atmosphere-id', 'none')
+  const globalActiveAtmosphereId = useLocalStorage<StageAtmosphere>('airi:stage-active-atmosphere-id', defaultAtmosphere)
 
   const activeAtmosphereId = computed<StageAtmosphere>({
     get: () => {
@@ -277,7 +280,7 @@ export const useBackgroundStore = defineStore('background', () => {
       if (cardAtmosphere) {
         return cardAtmosphere
       }
-      return (globalActiveAtmosphereId.value as StageAtmosphere) || 'none'
+      return (globalActiveAtmosphereId.value as StageAtmosphere) || defaultAtmosphere
     },
     set: (val: StageAtmosphere) => {
       globalActiveAtmosphereId.value = val
