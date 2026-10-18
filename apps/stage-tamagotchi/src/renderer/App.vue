@@ -69,6 +69,7 @@ import {
 import { useServerChannelSettingsStore } from './stores/settings/server-channel'
 import { useStageWindowLifecycleStore } from './stores/stage-window-lifecycle'
 import { builtinTools } from './stores/tools/builtin'
+import { seedTextJournalEntryFromWindow } from './utils/debug-journal'
 
 const { isDark: dark } = useTheme()
 const i18n = useI18n()
@@ -98,13 +99,6 @@ const proactivityStore = useProactivityStore()
 const screenWatcherStore = useScreenWatcherStore()
 const stageWindowLifecycleStore = useStageWindowLifecycleStore()
 void stageWindowLifecycleStore.initializeWindowLifecycleBridge()
-
-async function seedTextJournalEntryFromWindow() {
-  await textJournalStore.load()
-  const entry = await textJournalStore.seedActiveCharacterEntry()
-  console.info('[TextJournal] Seeded entry via window.seedTextJournalEntry()', entry)
-  return entry
-}
 
 async function ensureYesterdayShortTermBlockForActiveCharacter() {
   const targetCardId = cardStore.activeCardId
@@ -143,9 +137,14 @@ async function ensureYesterdayShortTermBlockForActiveCharacter() {
   }
 }
 
-Object.assign(window as Window & typeof globalThis, {
-  seedTextJournalEntry: seedTextJournalEntryFromWindow,
-})
+// NOTICE: DevTools-only debug escape hatch. The helper is module-scoped (see
+// utils/debug-journal.ts) so `window` never retains the App setup scope and its
+// stores. Exposed only in dev and removed on unmount to avoid a permanent GC root.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  Object.assign(window as Window & typeof globalThis, {
+    seedTextJournalEntry: seedTextJournalEntryFromWindow,
+  })
+}
 
 const context = useElectronEventaContext()
 const getServerChannelConfig = useElectronEventaInvoke(electronGetServerChannelConfig)
@@ -688,6 +687,10 @@ onUnmounted(() => {
   contextBridgeStore.dispose()
   clearMcpToolBridge()
   proactivityStore.stopHeartbeatLoop()
+  // NOTICE: Release the dev-only debug handle so `window` drops its last
+  // reference to the journal seeder (and anything it touched).
+  if (import.meta.env.DEV && typeof window !== 'undefined')
+    delete (window as Window & typeof globalThis & { seedTextJournalEntry?: unknown }).seedTextJournalEntry
 })
 </script>
 

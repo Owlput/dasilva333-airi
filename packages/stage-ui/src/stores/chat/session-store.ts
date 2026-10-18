@@ -26,6 +26,7 @@ import { useTextJournalStore } from '../memory-text-journal'
 import { useAiriCardStore } from '../modules/airi-card'
 import { useSettingsGeneral } from '../settings'
 import { CHAT_STREAM_CHANNEL_NAME } from './constants'
+import { stripLargeInlineImagesForPersistence } from './message-sanitizer'
 import { updateRecentTopics } from './recent-topics'
 import { mergeLoadedSessionMessages } from './session-message-merge'
 
@@ -407,7 +408,10 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     const meta = sessionMetas.value[sessionId]
     if (!meta)
       return
-    const messages = snapshotMessages(ensureSessionMessageIds(sessionId))
+    // NOTICE: Strip oversized inline `data:` images before snapshotting so the
+    // multi-megabyte base64 payloads never reach IndexedDB, the outbox sync, or
+    // the JSON serialization itself (see message-sanitizer).
+    const messages = snapshotMessages(stripLargeInlineImagesForPersistence(ensureSessionMessageIds(sessionId)))
     const now = Date.now()
     const updatedMeta: ChatSessionMeta = {
       ...meta,
@@ -499,7 +503,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
           isUpdated,
           contentPreview: typeof msg.content === 'string' ? msg.content.slice(0, 60) : '[Complex Content]',
         })
-        broadcastStreamEvent({ type: 'session-updated', sessionId, message: JSON.parse(JSON.stringify(msg)) })
+        // NOTICE: Broadcast the lean copy — full `data:` image payloads must not
+        // ride every BroadcastChannel turn (structured-clone + JSON cost per window).
+        broadcastStreamEvent({ type: 'session-updated', sessionId, message: JSON.parse(JSON.stringify(stripLargeInlineImagesForPersistence([msg])[0])) })
       }
     }
 
@@ -509,7 +515,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     // 5. Broadcast session-refreshed if any previous messages were removed
     const removedAny = prev.some(m => m.id && !nextWithIds.some(n => n.id === m.id))
     if (removedAny) {
-      broadcastStreamEvent({ type: 'session-refreshed', sessionId, messages: JSON.parse(JSON.stringify(nextWithIds)) })
+      broadcastStreamEvent({ type: 'session-refreshed', sessionId, messages: JSON.parse(JSON.stringify(stripLargeInlineImagesForPersistence(nextWithIds))) })
     }
   }
 
@@ -531,7 +537,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
     // NOTICE: Broadcast the actual message payload so other windows can apply it directly
     // without waiting for the DB write to complete (avoids race condition).
-    broadcastStreamEvent({ type: 'session-updated', sessionId, message: JSON.parse(JSON.stringify(message)) })
+    // Sanitized first — `data:` image payloads stay out of cross-window traffic.
+    broadcastStreamEvent({ type: 'session-updated', sessionId, message: JSON.parse(JSON.stringify(stripLargeInlineImagesForPersistence([message])[0])) })
   }
 
   async function loadSession(sessionId: string, force = false) {
@@ -573,9 +580,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         ? stored.messages
         : mergeLoadedSessionMessages(stored.messages, currentMessages)
 
+      // NOTICE: One-time migration for pre-sanitizer records — strip oversized
+      // inline `data:` images left over in IndexedDB so neither memory nor the
+      // re-persist below keeps the multi-megabyte base64 payloads.
+      const leanMessages = stripLargeInlineImagesForPersistence(mergedMessages)
+
       // Ensure the meta messageCount is correct and up to date
-      const actualCount = mergedMessages.length
-      let needsPersist = mergedMessages !== stored.messages
+      const actualCount = leanMessages.length
+      let needsPersist = mergedMessages !== stored.messages || leanMessages !== mergedMessages
 
       if (stored.meta.messageCount !== actualCount) {
         stored.meta.messageCount = actualCount
@@ -583,7 +595,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       }
 
       sessionMetas.value[sessionId] = stored.meta
-      sessionMessages.value[sessionId] = mergedMessages
+      sessionMessages.value[sessionId] = leanMessages
       ensureGeneration(sessionId)
 
       if (needsPersist)
