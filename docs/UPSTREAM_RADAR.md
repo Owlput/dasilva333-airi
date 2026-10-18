@@ -55,6 +55,10 @@
   - **Status**: **Ported & Tested (#3014)**.
   - **Impact**: Medium-High / Audio Quality.
   - **Rationale**: Strips markdown formatting (`**`, `[]()`, ``` ```, HTML) prior to sending text to TTS synthesizers via UST speech transformer in `speech.ts`, avoiding verbalized syntax artifacts while preserving math notation and inserting natural line-break pauses. Integrated as configurable UST V2 rules into `VoiceProfile['ust']`.
+- ⭐ **PR #3012 (luoling8192) — `refactor(stage-pages): redesign character cards as a gallery`**:
+  - **Status**: **Ported & Adapted (#3012)**.
+  - **Impact**: High / Card Management UX.
+  - **Rationale**: Decoupled character card viewing from inline modal into dedicated route `/settings/airi-card/[cardId]` (matching the `edit.vue` decoupled route architecture). Introduced high-fidelity Hero Header Banner with character avatar bust, active indicators, quick action buttons, and responsive 2-column layout.
 - 🔧 **PR #3015 / Commit `6715768aba` (Weathercold) — `feat(stage-tamagotchi, nix/stage-tamagotchi): allow disabling DevTools`**:
   - **Status**: **Recommended for Porting**.
   - **Impact**: Low-Medium / Electron DX.

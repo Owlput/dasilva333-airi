@@ -14,7 +14,7 @@ import { Button, InputFile } from '@proj-airi/ui'
 import { Select } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
 import { safeParse } from 'valibot'
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -220,22 +220,19 @@ async function processOpenIntent() {
   }
 
   if (cardStore.pendingViewCardId) {
-    const { cardId: targetId, initialTab: tab } = cardStore.pendingViewCardId
+    const { cardId: targetId } = cardStore.pendingViewCardId
     cardStore.pendingViewCardId = null
 
     if (!cards.value.has(targetId) && typeof cardStore.initialize === 'function') {
       await cardStore.initialize()
     }
 
-    selectedCardId.value = targetId
-    initialTab.value = tab || undefined
-    isCardDialogOpen.value = true
+    void router.push(`/settings/airi-card/${encodeURIComponent(targetId)}`)
     return
   }
 
   // 2. Fallback to deep-linking route query parameters
   const cardId = route.query.cardId as string
-  const tab = route.query.tab as string
   const edit = route.query.edit as string
 
   if (!cardId)
@@ -248,18 +245,9 @@ async function processOpenIntent() {
   if (cards.value.has(cardId)) {
     if (edit === 'true') {
       void router.replace({ path: '/settings/airi-card/edit', query: { id: cardId } })
-      return
     }
     else {
-      selectedCardId.value = cardId
-      initialTab.value = tab || undefined
-      isCardDialogOpen.value = true
-    }
-
-    // Await nextTick to ensure the dialog state has mounted before clearing query parameters
-    await nextTick()
-    if (route.query.cardId || route.query.edit || route.query.tab) {
-      void router.replace({ query: {} })
+      void router.replace({ path: `/settings/airi-card/${encodeURIComponent(cardId)}` })
     }
   }
 }
@@ -829,13 +817,12 @@ function confirmDelete(id: string) {
 }
 
 function handleSelectCard(cardId: string) {
-  // Verify card exists before opening dialog
+  // Verify card exists before navigating to detail route
   if (!cards.value.has(cardId)) {
     console.error(`Card with id ${cardId} not found`)
     return
   }
-  selectedCardId.value = cardId
-  isCardDialogOpen.value = true
+  router.push(`/settings/airi-card/${encodeURIComponent(cardId)}`)
 }
 
 function handleEditCard(cardId: string) {
