@@ -1133,7 +1133,7 @@ async function generateStoryIdeas() {
 const vesselName = computed(() => {
   const id = draft.state.vesselDisplayModelId
   if (!id)
-    return 'Hiyori (Live2D)'
+    return draft.state.experienceArchetype === 'quiet' ? 'None (Text Only)' : 'Hiyori (Live2D)'
   if (id === 'preset-live2d-2')
     return 'Hiyori (Live2D)'
   if (id === 'preset-vrm-2')
@@ -1151,7 +1151,9 @@ const vesselName = computed(() => {
 
 const vesselPreviewUrl = computed(() => {
   const id = draft.state.vesselDisplayModelId
-  if (!id || id === 'preset-live2d-2')
+  if (!id)
+    return ''
+  if (id === 'preset-live2d-2')
     return presetLive2dPreview
   if (id === 'preset-vrm-2')
     return presetVrmAvatarBPreview
@@ -1202,7 +1204,9 @@ const nextButtonText = computed(() => {
   if (activeTab.value === 'presets') {
     return t('onboarding.shell.next')
   }
-  return t('onboarding.steps.persona.messages.nextHearingStt')
+  return draft.state.modules?.hearing
+    ? t('onboarding.steps.persona.messages.nextHearingStt')
+    : t('onboarding.shell.next')
 })
 
 function handleNextStep() {
@@ -2266,9 +2270,11 @@ onBeforeUnmount(() => {
       <div v-else :class="['text-[11px] text-neutral-400 font-medium truncate max-w-sm hidden sm:block text-center']">
         <span>{{ t('onboarding.steps.persona.soul') }} </span>
         <span :class="['text-neutral-800 dark:text-neutral-200 font-bold']">{{ activePersonaLabel }}</span>
-        <span :class="['mx-1.5 text-neutral-300 dark:text-neutral-600']">•</span>
-        <span>{{ t('onboarding.steps.persona.body') }} </span>
-        <span :class="['text-neutral-800 dark:text-neutral-200 font-bold']">{{ vesselName }}</span>
+        <template v-if="vesselName && !['None', 'None (Text Only)'].includes(vesselName)">
+          <span :class="['mx-1.5 text-neutral-300 dark:text-neutral-600']">•</span>
+          <span>{{ t('onboarding.steps.persona.body') }} </span>
+          <span :class="['text-neutral-800 dark:text-neutral-200 font-bold']">{{ vesselName }}</span>
+        </template>
       </div>
 
       <Button

@@ -71,8 +71,6 @@ const activeSteps = computed<OnboardingV3StepDef[]>(() => {
     .filter((step) => {
       if (step.id === 'vessel')
         return !isNoModel
-      if (draftStore.state.experienceArchetype === 'quiet' && step.id === 'persona')
-        return false
       if (!step.moduleKey)
         return true
       return Boolean(modules[step.moduleKey])

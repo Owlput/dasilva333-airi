@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest'
 
 import ProviderPickerGrid from './components/provider-picker-grid.vue'
 
+import { ARCHETYPE_MODULE_PRESETS } from './stores/useOnboardingV3Draft'
+import { ONBOARDING_V3_STEPS } from './types'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ROOT CAUSE:
@@ -127,5 +130,36 @@ describe('onboarding V3 Component Integrity & Regression Protection', () => {
     }
 
     expect(violations).toEqual([])
+  })
+
+  it('guarantees persona step is a core foundational step and is never omitted for quiet observer', () => {
+    // 1. Static check: persona step must NOT be guarded by any moduleKey
+    const personaStep = ONBOARDING_V3_STEPS.find(s => s.id === 'persona')
+    expect(personaStep).toBeDefined()
+    expect(personaStep?.moduleKey).toBeUndefined()
+
+    // 2. Static source code check: onboarding-v3.vue and step-experience.vue must not filter out persona for quiet
+    const orchestratorCode = fs.readFileSync(path.join(__dirname, 'onboarding-v3.vue'), 'utf-8')
+    expect(orchestratorCode).not.toMatch(/step\.id\s*===\s*['"]persona['"]\s*&&\s*(?:[^\s,][^,\n]*)?['"]quiet['"]/)
+    expect(orchestratorCode).not.toMatch(/['"]quiet['"]\s*&&\s*step\.id\s*===\s*['"]persona['"]/)
+
+    const experienceCode = fs.readFileSync(path.join(__dirname, 'steps', 'step-experience.vue'), 'utf-8')
+    expect(experienceCode).not.toMatch(/step\.id\s*===\s*['"]persona['"]\s*&&\s*(?:[^\s,][^,\n]*)?['"]quiet['"]/)
+    expect(experienceCode).not.toMatch(/['"]quiet['"]\s*&&\s*step\.id\s*===\s*['"]persona['"]/)
+
+    // 3. Simulated step filtering logic across all archetypes
+    for (const [archetypeId, modules] of Object.entries(ARCHETYPE_MODULE_PRESETS)) {
+      const isNoModel = archetypeId === 'quiet' || !modules?.emotions
+      const activeSteps = ONBOARDING_V3_STEPS.filter((step) => {
+        if (step.id === 'vessel')
+          return !isNoModel
+        if (!step.moduleKey)
+          return true
+        return Boolean(modules[step.moduleKey])
+      })
+
+      const hasPersona = activeSteps.some(s => s.id === 'persona')
+      expect(hasPersona, `Archetype '${archetypeId}' must include 'persona' step`).toBe(true)
+    }
   })
 })
