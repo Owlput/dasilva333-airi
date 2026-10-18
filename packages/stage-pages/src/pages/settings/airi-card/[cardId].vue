@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
-import { CharacterAvatar } from '@proj-airi/stage-ui/components'
+import { CharacterAvatar, MarkdownRenderer } from '@proj-airi/stage-ui/components'
 import {
   DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT,
   DEFAULT_POST_HISTORY_INSTRUCTIONS,
@@ -127,6 +127,19 @@ const activeBackgroundUrl = computed(() => {
 
 // Collapsible prompt directives preview
 const showDirectives = ref(false)
+
+// Clean banner tagline: strips leading markdown headers (#, ##, ###) and actor cue tags for an uncluttered hero teaser
+const bannerTagline = computed(() => {
+  if (!card.value?.description)
+    return 'An experimental virtual AI companion.'
+
+  const cleaned = card.value.description
+    .replace(/^#{1,6}\s+(?:<\|ACTOR:[^>]*\|>\s*)?(?:Appearance\s*)?/gm, '')
+    .replace(/<\|ACTOR:[^>]*\|>\s*/g, '')
+    .trim()
+
+  return cleaned || card.value.description
+})
 </script>
 
 <template>
@@ -208,7 +221,7 @@ const showDirectives = ref(false)
 
           <!-- Description / Tagline in Banner -->
           <p class="line-clamp-3 mt-3 text-sm text-teal-100/80 font-normal leading-relaxed sm:text-base">
-            {{ card.description || 'An experimental virtual AI companion.' }}
+            {{ bannerTagline }}
           </p>
         </div>
 
@@ -273,8 +286,11 @@ const showDirectives = ref(false)
             <h2 class="mb-2 text-base text-neutral-900 font-bold dark:text-white">
               Description
             </h2>
-            <div class="whitespace-pre-line text-sm text-neutral-600 leading-relaxed dark:text-neutral-300">
-              {{ card.description || 'No description provided.' }}
+            <div v-if="card.description" class="text-sm text-neutral-600 leading-relaxed dark:text-neutral-300">
+              <MarkdownRenderer :content="card.description" />
+            </div>
+            <div v-else class="text-sm text-neutral-400 italic">
+              No description provided.
             </div>
           </div>
 
@@ -290,7 +306,8 @@ const showDirectives = ref(false)
                 Personality
               </div>
               <div class="text-sm text-neutral-700 dark:text-neutral-200">
-                {{ card.personality || 'Curious, direct, and patient.' }}
+                <MarkdownRenderer v-if="card.personality" :content="card.personality" />
+                <span v-else>Curious, direct, and patient.</span>
               </div>
             </div>
 
@@ -302,7 +319,8 @@ const showDirectives = ref(false)
                 Scenario
               </div>
               <div class="text-sm text-neutral-700 dark:text-neutral-200">
-                {{ card.scenario || 'A quiet evening in the computer lab.' }}
+                <MarkdownRenderer v-if="card.scenario" :content="card.scenario" />
+                <span v-else>A quiet evening in the computer lab.</span>
               </div>
             </div>
           </div>
@@ -466,7 +484,7 @@ const showDirectives = ref(false)
 <route lang="yaml">
 meta:
   layout: settings
-  titleKey: settings.pages.card.detail_title
+  titleKey: settings.pages.card.title
   subtitleKey: settings.pages.card.title
   descriptionKey: settings.pages.card.description
   icon: i-solar:user-bold-duotone
