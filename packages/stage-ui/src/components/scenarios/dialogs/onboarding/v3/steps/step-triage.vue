@@ -48,6 +48,9 @@ const viewMode = ref<'cards' | 'restore'>('cards')
 const isTokenMode = ref(false)
 const tokenInput = ref('')
 const isValidatingToken = ref(false)
+const isManualCodeMode = ref(false)
+const manualCodeInput = ref('')
+const isExchangingCode = ref(false)
 const isLoadingCatalog = ref(false)
 const hasCheckedRemote = ref(false)
 const remoteCardsCount = ref(0)
@@ -241,17 +244,22 @@ function chooseLocal() {
 
 // Start 1-Click OAuth PKCE
 async function handleStartOAuth() {
+  isManualCodeMode.value = true
   try {
     await cloudflareStore.authenticateWithCloudflare()
-    selectedPath.value = 'cloud'
-    toast.success(t('onboarding.steps.triage.successfullyConnectedToCloudflare'))
-    await restoreVaultCredentials()
-    await probeRemoteCatalog()
-    if (remoteCardsCount.value === 0) {
-      props.onNext()
-    }
-    else {
-      viewMode.value = 'restore'
+    if (cloudflareStore.isAuthenticated) {
+      selectedPath.value = 'cloud'
+      isManualCodeMode.value = false
+      manualCodeInput.value = ''
+      toast.success(t('onboarding.steps.triage.successfullyConnectedToCloudflare'))
+      await restoreVaultCredentials()
+      await probeRemoteCatalog()
+      if (remoteCardsCount.value === 0) {
+        props.onNext()
+      }
+      else {
+        viewMode.value = 'restore'
+      }
     }
   }
   catch (err: any) {
@@ -261,6 +269,57 @@ async function handleStartOAuth() {
 
 function handleCancelAuth() {
   cloudflareStore.isAuthenticating = false
+  isManualCodeMode.value = false
+  manualCodeInput.value = ''
+}
+
+// Paste from clipboard helper
+async function handlePasteFromClipboard() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      const text = await navigator.clipboard.readText()
+      if (text && text.trim()) {
+        manualCodeInput.value = text.trim()
+        toast.info(t('onboarding.steps.triage.auth.pastedFromClipboard', 'Pasted URL from clipboard!'))
+      }
+    }
+  }
+  catch {
+    // Clipboard permission denied or not supported
+  }
+}
+
+// Manual Redirect / Authorization Code Submit
+async function handleManualCodeSubmit() {
+  const clean = manualCodeInput.value.trim()
+  if (!clean) {
+    toast.error(t('onboarding.steps.triage.auth.pasteCodeError', 'Please enter the authorization code or redirect URL.'))
+    return
+  }
+  isExchangingCode.value = true
+  try {
+    await cloudflareStore.handleManualCallbackInput(clean)
+    if (cloudflareStore.isAuthenticated) {
+      selectedPath.value = 'cloud'
+      isManualCodeMode.value = false
+      manualCodeInput.value = ''
+      toast.success(t('onboarding.steps.triage.successfullyConnectedToCloudflare'))
+      await restoreVaultCredentials()
+      await probeRemoteCatalog()
+      if (remoteCardsCount.value === 0) {
+        props.onNext()
+      }
+      else {
+        viewMode.value = 'restore'
+      }
+    }
+  }
+  catch (err: any) {
+    toast.error(err?.message || t('onboarding.steps.triage.cloudflareAuthenticationFailed'))
+  }
+  finally {
+    isExchangingCode.value = false
+  }
 }
 
 // Connect via API Token
@@ -664,7 +723,7 @@ async function handleRestoreAndBuildAnother() {
           <!-- Bottom Action CTA / Dynamic States -->
           <div :class="['pt-5 mt-4 border-t border-neutral-100 dark:border-neutral-800/80']">
             <!-- State 01: Signed Out (Default) -->
-            <div v-if="!isAuthenticated && !isAuthenticating && !isTokenMode" :class="['space-y-2']">
+            <div v-if="!isAuthenticated && !isAuthenticating && !isTokenMode && !isManualCodeMode" :class="['space-y-2']">
               <button
                 type="button"
                 :class="[
@@ -678,13 +737,23 @@ async function handleRestoreAndBuildAnother() {
               <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400 text-center']">
                 {{ t('onboarding.steps.triage.cloud.signInHelp') }}
               </div>
-              <button
-                type="button"
-                :class="['text-[11px] text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer block mx-auto font-medium']"
-                @click="isTokenMode = true"
-              >
-                {{ t('onboarding.steps.triage.cloud.useApiToken') }}
-              </button>
+              <div :class="['flex items-center justify-center gap-3 text-[11px] font-medium']">
+                <button
+                  type="button"
+                  :class="['text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer']"
+                  @click="isTokenMode = true"
+                >
+                  {{ t('onboarding.steps.triage.cloud.useApiToken') }}
+                </button>
+                <span :class="['text-neutral-300 dark:text-neutral-700']">·</span>
+                <button
+                  type="button"
+                  :class="['text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer']"
+                  @click="isManualCodeMode = true"
+                >
+                  {{ t('onboarding.steps.triage.cloud.pasteCallbackLink', 'Paste callback URL') }}
+                </button>
+              </div>
             </div>
 
             <!-- State 01b: Inline API Token Mode -->
@@ -722,25 +791,73 @@ async function handleRestoreAndBuildAnother() {
               </div>
             </div>
 
-            <!-- State 02: Signing In (in progress) -->
-            <div v-else-if="!isAuthenticated && isAuthenticating" :class="['space-y-2']">
-              <div
-                :class="[
-                  'w-full py-2.5 rounded-xl border-2 border-neutral-300 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 font-bold text-xs sm:text-sm tracking-wide cursor-not-allowed text-center flex items-center justify-center gap-2 bg-neutral-50 dark:bg-neutral-900/50',
-                ]"
-              >
-                <div :class="['i-solar:refresh-line-duotone text-base animate-spin text-[#46A758] dark:text-emerald-400']" />
-                <span>{{ t('onboarding.steps.triage.cloud.waitingForSignIn') }}</span>
+            <!-- State 02: Signing In (in progress or manual callback input) -->
+            <div v-else-if="!isAuthenticated && (isAuthenticating || isManualCodeMode) && !isTokenMode" :class="['space-y-2.5']">
+              <!-- Mobile / Redirect Fallback Box -->
+              <div :class="['border border-neutral-200/80 dark:border-neutral-800 rounded-xl bg-neutral-50/80 dark:bg-neutral-900/60 p-2.5 space-y-2 text-xs']">
+                <div :class="['text-[10px] text-neutral-500 dark:text-neutral-400 leading-tight']">
+                  {{ t('onboarding.steps.triage.cloud.pasteCallbackHelp', 'If your browser redirect shows "localhost refused to connect", copy the browser URL or code and paste here:') }}
+                </div>
+                <div :class="['flex items-center gap-1.5']">
+                  <input
+                    v-model="manualCodeInput"
+                    type="text"
+                    placeholder="http://localhost:8976/oauth/callback?code=..."
+                    :class="[
+                      'flex-1 px-3 py-1.5 rounded-xl border text-xs bg-white dark:bg-neutral-950 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:border-emerald-500 font-mono',
+                    ]"
+                    @keydown.enter="handleManualCodeSubmit"
+                  >
+                  <button
+                    type="button"
+                    :class="['px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-200 flex items-center gap-1 transition-colors cursor-pointer shrink-0']"
+                    :title="t('onboarding.steps.triage.cloud.pasteButton', 'Paste from clipboard')"
+                    @click="handlePasteFromClipboard"
+                  >
+                    <div :class="['i-solar:clipboard-text-bold text-sm text-[#46A758] dark:text-emerald-400']" />
+                    <span>{{ t('onboarding.steps.triage.cloud.pasteButton', 'Paste') }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="isExchangingCode || !manualCodeInput.trim()"
+                    :class="[
+                      'px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50 transition-colors cursor-pointer shrink-0 flex items-center gap-1.5',
+                    ]"
+                    @click="handleManualCodeSubmit"
+                  >
+                    <div v-if="isExchangingCode" :class="['i-solar:refresh-line-duotone text-xs animate-spin']" />
+                    <span>{{ isExchangingCode ? t('onboarding.steps.triage.auth.verifying', 'Verifying...') : t('onboarding.steps.triage.auth.submitCode', 'Submit') }}</span>
+                  </button>
+                </div>
+
+                <!-- Friendly warning / guide box for normal users -->
+                <div :class="['rounded-xl p-2.5 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/25 text-[11px] leading-relaxed space-y-1.5 text-amber-900 dark:text-amber-200 mt-2']">
+                  <div :class="['flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-xs']">
+                    <div :class="['i-solar:danger-triangle-bold text-sm shrink-0 text-amber-600 dark:text-amber-400']" />
+                    <span>{{ t('onboarding.steps.triage.cloud.warningTitle', 'Seeing "ERR_CONNECTION_REFUSED" or "Can\'t reach page"?') }}</span>
+                  </div>
+                  <p :class="['text-[10.5px] text-neutral-700 dark:text-neutral-300 leading-normal']">
+                    <strong>That is completely normal!</strong> Cloudflare finished authorizing and redirected to <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-800 font-mono dark:bg-amber-400/15 dark:text-amber-200">localhost:8976</code>.
+                  </p>
+                  <p :class="['text-[10.5px] text-neutral-700 dark:text-neutral-300 leading-normal']">
+                    👉 In your browser, tap or hold the address bar to <strong>Copy</strong> the entire link, then come back here, tap <strong>Paste</strong>, and click <strong>Submit</strong>.
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                :class="['text-[11px] text-[#46A758] dark:text-emerald-400 hover:underline cursor-pointer block mx-auto font-medium']"
-                @click="handleCancelAuth"
-              >
-                {{ t('onboarding.steps.triage.cloud.cancelSignIn') }}
-              </button>
-              <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400 text-center']">
-                {{ t('onboarding.steps.triage.cloud.finishInBrowser') }}
+
+              <div :class="['flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400']">
+                <span v-if="isAuthenticating" :class="['flex items-center gap-1.5']">
+                  <div :class="['i-solar:refresh-line-duotone text-xs animate-spin text-[#46A758] dark:text-emerald-400']" />
+                  <span>{{ t('onboarding.steps.triage.cloud.waitingForSignIn', 'Waiting for sign-in...') }}</span>
+                </span>
+                <span v-else />
+                <button
+                  type="button"
+                  :class="['text-neutral-500 hover:text-neutral-800 dark:hover:text-white underline cursor-pointer']"
+                  @click="handleCancelAuth"
+                >
+                  {{ t('onboarding.steps.triage.auth.cancel', 'Cancel') }}
+                </button>
               </div>
             </div>
 
