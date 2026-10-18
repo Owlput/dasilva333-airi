@@ -181,7 +181,11 @@ defineInvokeHandler(context, backgroundRemovalProcessEvent, async ({ imageData, 
   const u8 = new Uint8ClampedArray(maskData.length)
   for (let i = 0; i < maskData.length; i++)
     u8[i] = Math.max(0, Math.min(255, Math.round(maskData[i]! * 255)))
+  // Raw ORT outputs keep the batch dim ([1,1,1024,1024]); transformers'
+  // Tensor requires exactly [C,H,W], so squeeze leading singletons first.
   const maskDims = (maskTensor.dims as number[]).slice()
+  while (maskDims.length > 3 && maskDims[0] === 1)
+    maskDims.shift()
   const mask = await RawImage.fromTensor(
     new Tensor('uint8', u8, maskDims),
   ).resize(width, height)

@@ -27,7 +27,7 @@ The single-model background-removal pipeline behind sticker uploads and card art
 
 ## Load-Bearing Invariants
 
-- **Raw session, fixed IO names**: input `img` float32 `[1,3,1024,1024]`, plain RGB in [0,1] — no mean/std, no BGR swap. Output `mask` float32 already in [0,1] (no sigmoid). Read names from `session.inputNames/outputNames` with `img`/`mask` fallback.
+- **Raw session, fixed IO names**: input `img` float32 `[1,3,1024,1024]`, plain RGB in [0,1] — no mean/std, no BGR swap. Output `mask` float32 already in [0,1] (no sigmoid). Read names from `session.inputNames/outputNames` with `img`/`mask` fallback. Squeeze leading batch singletons (`[1,1,H,W]` → `[1,H,W]`) before constructing the transformers `Tensor`, which requires exactly 3 dims.
 - **Preprocessing must match validation exactly**: RawImage resize to 1024 → CHW float32 ÷ 255. Any normalization change invalidates the 0.998/0.994 ground-truth numbers in the design doc — re-run the madoka cutout check first.
 - **Weights via Cache Storage** (`bg-removal-cache`), laya-worker pattern: fetch-once with progress emissions, 50 MB truncation guard with evict-and-retry. Never bundle the 176 MB weights.
 - **Mask tail is model-agnostic**: `mul(255)` → `fromTensor` → `resize(w,h)` → single-channel `maskData` transfer. The adapter composites; it never sees model internals.
