@@ -40,7 +40,7 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
   const {
     messageInput,
     activeCardId,
-    debounceMs = 400,
+    debounceMs = 2000,
     evidenceLimit = 6,
   } = options
 
@@ -51,6 +51,7 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
   const kgFacts = ref<PreFlightKgFact[]>([])
   const rawResults = ref<any[]>([])
   const isSearching = ref(false)
+  let activeAbortController: AbortController | null = null
 
   const isMemoryEnabled = computed(() => {
     const card = unref(airiCardStore.activeCard)
@@ -64,12 +65,18 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
 
   async function executeSearch(query: string) {
     const trimmed = query.trim()
+    activeAbortController?.abort()
+    activeAbortController = null
+
     if (!isMemoryEnabled.value || trimmed.length <= 3) {
       memories.value = []
       kgFacts.value = []
       rawResults.value = []
       return
     }
+
+    const controller = new AbortController()
+    activeAbortController = controller
 
     const charId = unref(activeCardId) ?? unref(airiCardStore.activeCardId)
     isSearching.value = true
@@ -78,7 +85,11 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
         query: trimmed,
         limit: Math.max(12, evidenceLimit * 2),
         characterId: charId,
+        signal: controller.signal,
       })
+
+      if (controller.signal.aborted)
+        return
 
       const nextMemories: PreFlightMemoryItem[] = []
       const nextKgFacts: PreFlightKgFact[] = []
@@ -122,13 +133,17 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
       kgFacts.value = nextKgFacts
     }
     catch (err) {
+      if ((err as Error)?.name === 'AbortError')
+        return
       console.error('[usePreFlightGrounding] Search failed:', err)
       memories.value = []
       kgFacts.value = []
       rawResults.value = []
     }
     finally {
-      isSearching.value = false
+      if (activeAbortController === controller) {
+        isSearching.value = false
+      }
     }
   }
 
@@ -153,6 +168,8 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
   )
 
   function clear() {
+    activeAbortController?.abort()
+    activeAbortController = null
     memories.value = []
     kgFacts.value = []
     rawResults.value = []

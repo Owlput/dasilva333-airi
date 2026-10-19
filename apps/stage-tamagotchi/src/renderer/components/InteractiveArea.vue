@@ -198,6 +198,7 @@ const {
 } = usePreFlightGrounding({
   messageInput,
   activeCardId,
+  debounceMs: 2000,
 })
 
 const journalPreviewStore = useJournalPreviewStore()

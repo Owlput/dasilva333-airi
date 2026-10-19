@@ -277,6 +277,20 @@ interface ChatHistoryItem {
   tool_results?: any[]
   categorization?: string
   createdAt: number
+  grounding?: {
+    queries?: string[]
+    entities?: string[]
+    hits?: Array<{
+      id: string
+      subject?: string
+      predicate?: string
+      object?: string
+      title?: string
+      content?: string
+      score?: number
+      source?: string
+    }>
+  }
 }
 ```
 

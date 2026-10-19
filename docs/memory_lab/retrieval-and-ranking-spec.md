@@ -191,6 +191,10 @@ The intended rules are:
 - temporal questions must receive temporal plans
 - open-domain questions must be allowed to retrieve summaries
 - multi-hop questions should receive broader candidate union than single-hop questions
+- bridge questions (`bridge_relational` or `c1_multihop` with low noun salience) execute `bridge_focus`:
+  1. Inspect Turn N-1 context (assistant reply + Turn N-1 grounded facts/claims from durable chat session).
+  2. Perform fast cognitive referent resolution (System-1 Jev choice/noul) to bind anaphoras (e.g. "that item" -> "crystal").
+  3. Formulate a targeted Hop-2 focus query incorporating the bound referent before executing the primary memory candidate retrieval.
 - room and taxonomy signals may bias plans, but should not hard-filter the search universe by default
 
 ## Candidate Fusion
