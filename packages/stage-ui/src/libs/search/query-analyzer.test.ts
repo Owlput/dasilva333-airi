@@ -122,6 +122,22 @@ describe('query-analyzer', () => {
       expect(result.temporalHooks.length).toBe(1)
       expect(result.temporalHooks[0].isoDateHint).toBe('2026-09-15')
       expect(result.expandedQuery).toContain('concert')
+      expect(result.extractedKeywords).toContain('concert')
+    })
+
+    it('extracts keywords from previous grounding entities when follow-up anaphora is resolved', () => {
+      const query = 'and where did you get that item from?'
+      const prevGrounding = {
+        entities: ['crystal', 'lens', 'infirmary'],
+        hits: [],
+      }
+
+      const result = analyzeQuery(query, { previousGrounding: prevGrounding })
+      expect(result.anaphoraResolved).toBe(true)
+      expect(result.expandedQuery).toContain('crystal')
+      expect(result.extractedKeywords).toContain('crystal')
+      expect(result.extractedKeywords).toContain('lens')
+      expect(result.extractedKeywords).toContain('infirmary')
     })
   })
 

@@ -60,7 +60,7 @@ const MONTH_ABBRS = [
   'dec',
 ]
 
-const PRONOUN_REGEX = /\b(that|this|it|he|him|she|her|they|them|there|that place|that thing|that topic|that job|that person)\b/
+const PRONOUN_REGEX = /\b(that|this|it|he|him|she|her|they|them|there|that place|that thing|that topic|that job|that person|that item|this item|those items|these items)\b/
 
 const CASUAL_SYNONYMS: { pattern: RegExp, expansion: string }[] = [
   {
@@ -396,12 +396,16 @@ export function analyzeQuery(
   const temporalHooks = extractTemporalHooks(cleanQuery)
   const hasTemporalIntent = temporalHooks.length > 0
 
-  // Extract non-stopword keywords
-  const extractedKeywords = cleanQuery
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 2 && !STOPWORDS.has(t))
+  // Extract non-stopword keywords from resolved query if anaphora was resolved,
+  // otherwise from clean query.
+  const keywordSource = anaphoraResolved ? resolvedQuery : cleanQuery
+  const extractedKeywords = Array.from(new Set(
+    keywordSource
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length > 2 && !STOPWORDS.has(t)),
+  ))
 
   return {
     originalQuery: query,

@@ -4,7 +4,7 @@ import type { TriageDecision } from './query-analyzer'
 import { describe, expect, it, vi } from 'vitest'
 
 import { formatEvidenceContextBlock, layeredMemory } from './layered-memory'
-import { decomposeQuery } from './query-analyzer'
+import { analyzeQuery, decomposeQuery } from './query-analyzer'
 
 vi.mock('../workers/search', () => ({
   searchWorker: {
@@ -129,5 +129,76 @@ describe('layeredMemory', () => {
     }
     const out = await layeredMemory.search('hello', 10, undefined, { systemOneStore: store as unknown as NonNullable<Parameters<typeof layeredMemory.search>[3]>['systemOneStore'] })
     expect(Array.isArray(out)).toBe(true)
+  })
+
+  it('bridges previous grounding entities into triage, ledger matching, and reranker', async () => {
+    vi.mocked(analyzeQuery).mockReturnValueOnce({
+      originalQuery: 'and where did you get that item from?',
+      cleanQuery: 'and where did you get that item from?',
+      expandedQuery: 'and where did you get that item from? (crystal lens Taro)',
+      hasTemporalIntent: false,
+      temporalHooks: [],
+      anaphoraResolved: true,
+      pronounsDetected: ['that'],
+      extractedKeywords: ['get', 'item', 'crystal', 'lens', 'taro'],
+    })
+
+    const store = {
+      configured: true,
+      runTriage: vi.fn(async (_triageQ: string) => ({
+        choice: 'c4_literal',
+        category: 4,
+        confidence: 0.9,
+        conjunctionStructure: 'bridge_relational',
+        conjunctionConfidence: 0.7,
+      })),
+      runRerank: vi.fn(async (_rerankQ: string, pool: any[]) => ({
+        rankedCandidates: pool.map(p => ({ id: p.id, finalScore: 0.95 })),
+      })),
+    }
+
+    const testEntity = { entityId: 'ent-lens-1', label: 'crystal lens', type: 'item', mentions: new Set() }
+    const ledger = {
+      entities: new Map([['ent-lens-1', testEntity]]),
+      byAlias: new Map(),
+      claims: new Map(),
+      sources: new Map(),
+      mentions: new Map(),
+      bySubjectPredicate: new Map(),
+      byObjectPredicate: new Map(),
+      queryClaims: () => [],
+    } as unknown as NonNullable<Parameters<typeof layeredMemory.search>[3]>['ledger']
+
+    const prevGrounding = {
+      entities: ['crystal lens', 'Taro'],
+      hits: [],
+    }
+
+    const out = await layeredMemory.search(
+      'and where did you get that item from?',
+      10,
+      undefined,
+      {
+        previousGrounding: prevGrounding,
+        ledger,
+        systemOneStore: store as unknown as NonNullable<Parameters<typeof layeredMemory.search>[3]>['systemOneStore'],
+      },
+    )
+
+    expect(Array.isArray(out)).toBe(true)
+    // 1. Assert runTriage received the resolved query with previous context
+    expect(store.runTriage).toHaveBeenCalledWith(
+      expect.stringContaining('crystal lens'),
+      expect.anything(),
+    )
+    // 2. Assert triage choice was reconciled from c4_literal to c1_multihop due to bridge_relational
+    expect(layeredMemory.lastTriage?.choice).toBe('c1_multihop')
+    expect(layeredMemory.lastTriage?.category).toBe(1)
+    // 3. Assert runRerank received scoringQuery with antecedent context
+    expect(store.runRerank).toHaveBeenCalledWith(
+      expect.stringContaining('[Context:'),
+      expect.anything(),
+      expect.anything(),
+    )
   })
 })

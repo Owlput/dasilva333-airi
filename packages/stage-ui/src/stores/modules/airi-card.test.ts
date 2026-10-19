@@ -165,6 +165,72 @@ describe('airi-card coverage', () => {
     await store.removeCard(id)
   })
 
+  it('preserves and persists extension toggles on CCv3 cards with data container', async () => {
+    const store = useAiriCardStore()
+    await store.loadCards()
+
+    // Card in CCv3 format with nested data.extensions.airi container
+    const ccv3Card = {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        name: 'CCv3 Test Character',
+        character_version: '1.0.0',
+        description: 'Testing CCv3 extension persistence',
+        creator: 'AIRI',
+        personality: 'test',
+        scenario: 'test',
+        first_mes: 'hello',
+        system_prompt: 'test prompt',
+        post_history_instructions: '',
+        mes_example: '',
+        tags: ['test'],
+        extensions: {
+          airi: {
+            groundingMemoryEnabled: false,
+            groundingEnabled: false,
+            groundingDirectorScratchpadEnabled: false,
+          },
+        },
+      },
+    }
+
+    const id = await store.addCard(ccv3Card as unknown as AiriCard)
+    expect(typeof id).toBe('string')
+
+    // Initial state: Universe RAG should be false
+    const initialCard = store.getCard(id)
+    expect(initialCard?.extensions?.airi?.groundingMemoryEnabled).toBe(false)
+
+    // Turn 1: Toggle Universe Memory (RAG) ON
+    await store.toggleGroundingMemory(id)
+    const cardTurn1 = store.getCard(id)
+    expect(cardTurn1?.extensions?.airi?.groundingMemoryEnabled).toBe(true)
+    if ((cardTurn1 as any)?.data?.extensions?.airi) {
+      expect((cardTurn1 as any).data.extensions.airi.groundingMemoryEnabled).toBe(true)
+    }
+
+    // Turn 2: Toggle Universe Memory (RAG) OFF
+    await store.toggleGroundingMemory(id)
+    const cardTurn2 = store.getCard(id)
+    expect(cardTurn2?.extensions?.airi?.groundingMemoryEnabled).toBe(false)
+    if ((cardTurn2 as any)?.data?.extensions?.airi) {
+      expect((cardTurn2 as any).data.extensions.airi.groundingMemoryEnabled).toBe(false)
+    }
+
+    // Turn 3: Toggle System Sensors (groundingEnabled) ON
+    await store.toggleGrounding(id)
+    const cardTurn3 = store.getCard(id)
+    expect(cardTurn3?.extensions?.airi?.groundingEnabled).toBe(true)
+
+    // Turn 4: Toggle Director Scratchpad ON
+    await store.toggleGroundingDirectorScratchpad(id)
+    const cardTurn4 = store.getCard(id)
+    expect(cardTurn4?.extensions?.airi?.groundingDirectorScratchpadEnabled).toBe(true)
+
+    await store.removeCard(id)
+  })
+
   it('toggles all including missing', async () => {
     const store = useAiriCardStore()
     await store.loadCards()

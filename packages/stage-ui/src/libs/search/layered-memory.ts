@@ -213,7 +213,24 @@ export const layeredMemory = {
       hasSystemOneStore: !!options?.systemOneStore?.configured,
     })
 
-    // 1. Triage Decision (System 1 Zero-Shot vs Fallback Heuristic)
+    // 1. Query Analysis & Turn-1 Anaphora Resolution
+    const analysis = analyzeQuery(query, {
+      previousTurn: options?.previousTurn,
+      previousGrounding: options?.previousGrounding,
+      anaphoraEnabled: options?.anaphoraEnabled ?? true,
+    })
+
+    // If anaphora was resolved or expandedQuery is richer than raw query,
+    // use expandedQuery as the triage anchor so System-1 has the referent context.
+    const triageQuery = analysis.anaphoraResolved ? analysis.expandedQuery : query
+    const scoringContext = analysis.anaphoraResolved
+      ? analysis.expandedQuery.replace(query, '').trim().replace(/^\(|\)$/g, '')
+      : ''
+    const scoringQuery = scoringContext
+      ? `${query} [Context: ${scoringContext}]`
+      : query
+
+    // 2. Triage Decision (System 1 Zero-Shot vs Fallback Heuristic)
     let triage: TriageDecision
     let mode: 'pass11' | 'baseline' = 'baseline'
 
@@ -228,13 +245,13 @@ export const layeredMemory = {
         // NOTICE: under memory pressure skip the Jev triage call entirely —
         // heuristic triage is the safe degraded path and saves a classifier run.
         if (shouldDegradeBackgroundWork()) {
-          triage = heuristicTriage(query)
+          triage = heuristicTriage(triageQuery)
           mode = 'baseline'
         }
         else {
           options?.signal?.throwIfAborted?.()
           triage = await withTimeout(
-            options.systemOneStore.runTriage(query, { signal: options?.signal }),
+            options.systemOneStore.runTriage(triageQuery, { signal: options?.signal }),
             TRIAGE_TIMEOUT_MS,
             'System-1 triage',
           )
@@ -245,33 +262,34 @@ export const layeredMemory = {
         if ((err as Error)?.name === 'AbortError')
           throw err
         console.warn('[LayeredMemory] System 1 triage failed, falling back to heuristic:', err)
-        triage = heuristicTriage(query)
+        triage = heuristicTriage(triageQuery)
         mode = 'baseline'
       }
     }
     else {
-      triage = heuristicTriage(query)
+      triage = heuristicTriage(triageQuery)
       mode = 'baseline'
     }
 
-    this.lastTriage = triage
-    this.lastSearchMode = mode
-
-    // 2. Query Analysis & Turn-1 Anaphora Resolution
-    const analysis = analyzeQuery(query, {
-      previousTurn: options?.previousTurn,
-      previousGrounding: options?.previousGrounding,
-      anaphoraEnabled: options?.anaphoraEnabled ?? true,
-    })
-
     // 3. Category Strategy Adaptation (Pass 11)
-    const isLiteral = triage.choice === 'c4_literal' || triage.category === 4
-    const isMultiHop = triage.choice === 'c1_multihop'
+    const isMultiHopRaw = triage.choice === 'c1_multihop'
       || triage.category === 1
       || triage.searchScope === 'multi_session'
       || triage.conjunctionStructure === 'bridge_relational'
       || triage.conjunctionStructure === 'multi_entity_plural'
       || (triage.requiresDecomposition !== undefined && triage.requiresDecomposition >= 0.5)
+
+    // Reconcile triage categorization when a bridge or multi-entity structure is detected
+    if (isMultiHopRaw && triage.choice === 'c4_literal') {
+      triage.choice = 'c1_multihop'
+      triage.category = 1
+    }
+
+    this.lastTriage = triage
+    this.lastSearchMode = mode
+
+    const isLiteral = triage.choice === 'c4_literal' || triage.category === 4
+    const isMultiHop = triage.choice === 'c1_multihop' || triage.category === 1 || isMultiHopRaw
 
     const isTemporal = triage.choice === 'c2_temporal'
       || triage.category === 2
@@ -293,7 +311,8 @@ export const layeredMemory = {
     const kgHits: LayeredSearchResult[] = []
     if (options?.ledger) {
       const ledger = options.ledger
-      const qLower = query.toLowerCase()
+      const matchQuery = analysis.anaphoraResolved ? analysis.expandedQuery : query
+      const qLower = matchQuery.toLowerCase()
       const searchTokens = analysis.extractedKeywords.map(k => k.toLowerCase())
 
       // Find matching claims
@@ -307,9 +326,18 @@ export const layeredMemory = {
         if (CONVERSATIONAL_STOPWORDS.has(norm) || LEADING_GRAMMATICAL_WORDS.has(norm) || norm.length < 3)
           return false
 
-        // Exact whole-word match in query
-        if (matchesWordBoundary(query, targetLabel))
+        // Exact whole-word match in query or resolved query
+        if (matchesWordBoundary(query, targetLabel) || (analysis.anaphoraResolved && matchesWordBoundary(analysis.expandedQuery, targetLabel)))
           return true
+
+        // Cross-match with previous grounding entities if anaphora is resolved or multi-hop
+        if ((analysis.anaphoraResolved || isMultiHop) && options?.previousGrounding?.entities) {
+          for (const prevEnt of options.previousGrounding.entities) {
+            const prevNorm = prevEnt.trim().toLowerCase()
+            if (prevNorm.length >= 3 && (matchesWordBoundary(prevNorm, norm) || matchesWordBoundary(norm, prevNorm)))
+              return true
+          }
+        }
 
         // Significant constituent words from multi-word entity
         // Filter out stopwords, leading conjunctions/prepositions, and short tokens
@@ -480,7 +508,7 @@ export const layeredMemory = {
 
             options?.signal?.throwIfAborted?.()
             focalEntityId = await withTimeout(
-              options.systemOneStore.identifyFocusEntity(query, candidateList, { signal: options?.signal }),
+              options.systemOneStore.identifyFocusEntity(scoringQuery, candidateList, { signal: options?.signal }),
               TRIAGE_TIMEOUT_MS,
               'System-1 focus entity classification',
             )
@@ -502,10 +530,10 @@ export const layeredMemory = {
           continue
 
         // Skip single-mention concept or unknown junk to prevent graph clutter
-        if ((ent.type === 'concept' || ent.type === 'unknown') && ent.mentions.size < 2)
+        if ((ent.type === 'concept' || ent.type === 'unknown') && (ent.mentions?.size ?? 0) < 2)
           continue
 
-        for (const mId of ent.mentions) {
+        for (const mId of (ent.mentions || [])) {
           let src = ledger.sources.get(mId)
           if (!src) {
             const mention = ledger.mentions.get(mId)
@@ -985,7 +1013,7 @@ export const layeredMemory = {
           score: h.score,
         }))
         const rerankRes = await withTimeout(
-          options.systemOneStore.runRerank(query, poolToRerank, { signal: options?.signal }),
+          options.systemOneStore.runRerank(scoringQuery, poolToRerank, { signal: options?.signal }),
           RERANK_TIMEOUT_MS,
           'System-1 rerank',
         )
