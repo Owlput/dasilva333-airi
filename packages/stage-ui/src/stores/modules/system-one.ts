@@ -245,6 +245,7 @@ export interface RankedCandidateItem extends CandidateItem {
   jevScore: number
   normJevScore: number
   finalScore: number
+  isIrrelevant?: boolean
 }
 
 export interface EntityClassificationAudit {
@@ -391,7 +392,92 @@ export const useSystemOneStore = defineStore('system-one', () => {
   }
 
   async function runTriage(query: string, options?: { signal?: AbortSignal }) {
-    const res = await execute(`Query to classify: ${query}`, JEV_TRIAGE_SCHEMA, undefined, options)
+    // 1. Extract candidate content words from query for unified anchor salience evaluation
+    const STOPWORDS = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'nor',
+      'but',
+      'so',
+      'yet',
+      'in',
+      'on',
+      'at',
+      'by',
+      'for',
+      'with',
+      'from',
+      'to',
+      'of',
+      'this',
+      'that',
+      'these',
+      'those',
+      'what',
+      'which',
+      'who',
+      'whom',
+      'when',
+      'where',
+      'why',
+      'how',
+      'did',
+      'does',
+      'do',
+      'was',
+      'were',
+      'is',
+      'are',
+      'am',
+      'been',
+      'being',
+      'have',
+      'has',
+      'had',
+      'can',
+      'could',
+      'would',
+      'should',
+      'will',
+      'shall',
+      'may',
+      'might',
+      'you',
+      'your',
+      'yours',
+      'youre',
+      'you\'re',
+      'she',
+      'her',
+      'hers',
+      'he',
+      'him',
+      'his',
+      'they',
+      'them',
+      'their',
+      'theirs',
+      'we',
+      'us',
+      'our',
+    ])
+
+    const candidateTokens = [...new Set(query.replace(/[^\w\s]/g, ' ').split(/\s+/))]
+      .filter(w => w.length > 2 && !STOPWORDS.has(w.toLowerCase()))
+      .slice(0, 24)
+
+    const triageQuestions: Record<string, any> = { ...JEV_TRIAGE_SCHEMA }
+    for (const token of candidateTokens) {
+      triageQuestions[`word_${token}`] = {
+        type: 'noul',
+        instructions: `Is "${token}" a core concrete entity, character name, or distinctive topical search keyword for retrieving this event (as opposed to generic conversational commentary)?`,
+      }
+    }
+
+    const res = await execute(`Query to classify: ${query}`, triageQuestions, undefined, options)
     const ansCat = res.answers?.category || {}
     const ansTemp = res.answers?.temporal_subtype || {}
     const ansScope = res.answers?.search_scope || {}
@@ -406,6 +492,28 @@ export const useSystemOneStore = defineStore('system-one', () => {
       c4_literal: 4,
     }
 
+    // Extract high-salience focus keywords and word scores from answers
+    const wordScores: Record<string, number> = {}
+    const scoredWords: Array<{ word: string, score: number }> = []
+
+    for (const [k, v] of Object.entries(res.answers || {})) {
+      if (k.startsWith('word_')) {
+        const word = k.replace(/^word_/, '')
+        const score = typeof (v as any)?.noul === 'number' ? (v as any).noul : 0
+        wordScores[word] = score
+        scoredWords.push({ word, score })
+      }
+    }
+
+    scoredWords.sort((a, b) => b.score - a.score)
+    let focusKeywords = scoredWords.filter(w => w.score >= 0.60).map(w => w.word)
+    // If no word reached 0.60, fallback to the top 3-4 scored words (or all candidates if short)
+    if (focusKeywords.length === 0 && scoredWords.length > 0) {
+      focusKeywords = scoredWords.slice(0, Math.min(4, scoredWords.length)).map(w => w.word)
+    }
+
+    const focusQuery = focusKeywords.length > 0 ? focusKeywords.join(' ') : query
+
     return {
       category: map[choice] || 4,
       choice,
@@ -416,6 +524,9 @@ export const useSystemOneStore = defineStore('system-one', () => {
       conjunctionStructure: ansConj.choice || 'single_atomic',
       conjunctionConfidence: ansConj.confidence ?? 0.8,
       requiresDecomposition: ansDecomp.noul ?? 0.0,
+      focusKeywords,
+      focusQuery,
+      wordScores,
       latencyMs: lastLatencyMs.value,
     }
   }
@@ -436,8 +547,9 @@ export const useSystemOneStore = defineStore('system-one', () => {
 
   async function runRerank(query: string, candidates: CandidateItem[], options?: { signal?: AbortSignal }) {
     // NOTICE: cap the rerank pool — each candidate becomes a Jev question in
-    // one request; 10-way reranks on every chat turn stall local Laya.
-    const pool = candidates.slice(0, 6)
+    // one request; 10-way reranks on every chat turn stall local Laya, but cloud decisions can easily evaluate 10.
+    const maxPoolSize = activeProvider.value === 'laya-local' ? 6 : 10
+    const pool = candidates.slice(0, maxPoolSize)
     if (pool.length === 0)
       return { rankedCandidates: [], latencyMs: 0 }
     if (options?.signal?.aborted)
@@ -460,9 +572,15 @@ export const useSystemOneStore = defineStore('system-one', () => {
     const ranked: RankedCandidateItem[] = pool.map((cand, idx) => {
       const ans = answers[`cand_${idx}`] || {}
       const rawScore = typeof ans.score === 'number' ? ans.score : 1.0 // 0..3 scale
-      const normJevScore = Math.max(0, Math.min(1, rawScore / 3.0))
+      const probs = ans.probabilities as Record<string, number> | undefined
+      const irrelevantProb = probs ? Number(probs['0'] ?? 0) : 0
+      // If Jev explicitly flags it as completely irrelevant:
+      // rawScore < 0.5 (on 0..3 scale) or probability of '0' (completely irrelevant) >= 0.75
+      const isIrrelevant = rawScore < 0.5 || irrelevantProb >= 0.75
+
+      const normJevScore = isIrrelevant ? 0 : Math.max(0, Math.min(1, rawScore / 3.0))
       const originalScore = cand.score ?? 0.5
-      const finalScore = (normJevScore * 0.7) + (originalScore * 0.3)
+      const finalScore = isIrrelevant ? 0 : (normJevScore * 0.7) + (originalScore * 0.3)
 
       return {
         ...cand,
@@ -470,6 +588,7 @@ export const useSystemOneStore = defineStore('system-one', () => {
         jevScore: rawScore,
         normJevScore,
         finalScore,
+        isIrrelevant,
       }
     })
 
@@ -491,8 +610,8 @@ export const useSystemOneStore = defineStore('system-one', () => {
     if (candidates.length === 1)
       return candidates[0].id
 
-    // Cap to 8 candidates to keep Jev single forward pass well inside ~100ms
-    const pool = candidates.slice(0, 8)
+    // Cap to 20 candidates to keep high-salience entities visible while preserving ~100ms execution
+    const pool = candidates.slice(0, 20)
     const criteria: Record<string, string> = {}
     for (const c of pool) {
       criteria[c.id] = `${c.label}${c.type ? ` (${c.type})` : ''}${c.detail ? `: ${c.detail}` : ''}`

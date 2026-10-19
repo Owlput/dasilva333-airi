@@ -1,4 +1,4 @@
-import type { ClaimRecord, EntityLedger, EntityRecord, SourceRecord } from './entity-ledger'
+import type { ClaimRecord, EntityLedger, SourceRecord } from './entity-ledger'
 import type { HybridSearchResult, MemoryLayer, SearchDocumentMeta } from './hybrid-scorer'
 import type { TriageDecision } from './query-analyzer'
 
@@ -308,14 +308,19 @@ export const layeredMemory = {
         if (matchesWordBoundary(query, targetLabel))
           return true
 
-        // Significant constituent words from multi-word entity (e.g. query has "Sirius", entity is "Sirius Starweaver" or "Uncle Sirius")
-        // Filter out stopwords, leading conjunctions/prepositions, and short tokens so "And Lynn" only matches if query mentions "Lynn"
+        // Significant constituent words from multi-word entity
+        // Filter out stopwords, leading conjunctions/prepositions, and short tokens
+        // Use high-salience focus keywords from Jev triage if available; otherwise fallback to searchTokens
+        const anchorTokens = (triage?.focusKeywords && triage.focusKeywords.length > 0)
+          ? triage.focusKeywords.map(k => k.toLowerCase())
+          : searchTokens
+
         const words = norm.split(/\s+/).filter(w => w.length >= 3 && !CONVERSATIONAL_STOPWORDS.has(w) && !LEADING_GRAMMATICAL_WORDS.has(w))
-        if (words.some(w => matchesWordBoundary(query, w)))
+        if (words.some(w => anchorTokens.some(at => matchesWordBoundary(at, w) || matchesWordBoundary(w, at))))
           return true
 
-        // Exact match with searchTokens
-        return searchTokens.some(t => t.length > 2 && !CONVERSATIONAL_STOPWORDS.has(t) && !LEADING_GRAMMATICAL_WORDS.has(t) && (matchesWordBoundary(targetLabel, t) || matchesWordBoundary(t, targetLabel)))
+        // Exact match with anchorTokens
+        return anchorTokens.some(t => t.length > 2 && (matchesWordBoundary(targetLabel, t) || matchesWordBoundary(t, targetLabel)))
       }
 
       for (const ent of ledger.entities.values()) {
@@ -361,6 +366,12 @@ export const layeredMemory = {
       const MAX_UNINDEXED_CLAIMS_TO_SCAN = 100
       let scannedCount = 0
       const allClaims = Array.from(ledger.claims.values())
+      const claimMatchTokens = (triage?.focusKeywords && triage.focusKeywords.length > 0)
+        ? triage.focusKeywords.map(k => k.toLowerCase())
+        : searchTokens.filter(t => t.length > 2 && !CONVERSATIONAL_STOPWORDS.has(t))
+
+      const matchedClaimsWithScores = new Map<string, { claim: ClaimRecord, score: number }>()
+
       // Scan newest claims first
       for (let i = allClaims.length - 1; i >= 0; i--) {
         if (scannedCount >= MAX_UNINDEXED_CLAIMS_TO_SCAN)
@@ -371,13 +382,40 @@ export const layeredMemory = {
         const pred = c.predicate.toLowerCase()
         const obj = c.object.toLowerCase()
 
-        if (qLower.includes(sub) || qLower.includes(obj) || (searchTokens.some(t => t.length > 2 && (sub.includes(t) || obj.includes(t) || pred.includes(t))))) {
-          matchedClaims.set(c.claimId, c)
+        let matchCount = 0
+        let hasFocalKeywordMatch = false
+        if (qLower.includes(sub))
+          matchCount += 2
+        if (qLower.includes(obj))
+          matchCount += 2
+
+        for (const t of claimMatchTokens) {
+          if (sub.includes(t) || obj.includes(t) || pred.includes(t)) {
+            matchCount++
+            const sc = triage?.wordScores?.[t]
+              ?? (triage?.wordScores ? Object.entries(triage.wordScores).find(([k]) => k.toLowerCase() === t)?.[1] : undefined)
+            if (typeof sc === 'number' && sc >= 0.65 && t !== 'ren' && t !== 'season') {
+              hasFocalKeywordMatch = true
+            }
+          }
+        }
+
+        if (matchCount > 0) {
+          // If a claim matches both subject/object or high-salience focal keywords, it gets 0.85 - 0.95.
+          // Generic background matches (e.g. 'season' or common character names) score <= 0.55 to prevent crowding out direct answers.
+          const claimScore = hasFocalKeywordMatch && matchCount >= 3
+            ? 0.95
+            : hasFocalKeywordMatch
+              ? 0.80
+              : matchCount >= 2
+                ? 0.55
+                : 0.40
+          matchedClaimsWithScores.set(c.claimId, { claim: c, score: claimScore })
         }
       }
 
       // C. Format into LayeredSearchResults
-      for (const c of matchedClaims.values()) {
+      for (const { claim: c, score: claimScore } of matchedClaimsWithScores.values()) {
         const dateStr = c.dateInfo?.formatted_label ? ` (${c.dateInfo.formatted_label})` : ''
         const content = `[Knowledge Graph] ${c.subject} ${c.predicate} ${c.object}${dateStr}`
         kgHits.push({
@@ -386,9 +424,9 @@ export const layeredMemory = {
           kind: 'ltmm',
           timestamp: c.dateInfo?.iso_date || new Date().toISOString(),
           source: `kg:${c.claimId}`,
-          score: 0.95,
-          vectorScore: 0.90,
-          keywordScore: 0.95,
+          score: claimScore,
+          vectorScore: claimScore - 0.05,
+          keywordScore: claimScore,
           temporalScore: c.dateInfo ? 0.90 : 0.50,
           layerBoost: 0.15,
           profile: 'default',
@@ -427,6 +465,16 @@ export const layeredMemory = {
             .filter((c): c is { id: string, label: string, type: any } => !!c)
 
           if (candidateList.length > 1) {
+            // Sort candidateList by relevance to focusKeywords (if available) so top matches enter the 20-candidate pool
+            if (triage?.focusKeywords && triage.focusKeywords.length > 0) {
+              const anchors = triage.focusKeywords.map(k => k.toLowerCase())
+              candidateList.sort((a, b) => {
+                const aHits = anchors.filter(k => matchesWordBoundary(a.label.toLowerCase(), k) || matchesWordBoundary(k, a.label.toLowerCase())).length
+                const bHits = anchors.filter(k => matchesWordBoundary(b.label.toLowerCase(), k) || matchesWordBoundary(k, b.label.toLowerCase())).length
+                return bHits - aHits
+              })
+            }
+
             options?.signal?.throwIfAborted?.()
             focalEntityId = await withTimeout(
               options.systemOneStore.identifyFocusEntity(query, candidateList, { signal: options?.signal }),
@@ -442,8 +490,8 @@ export const layeredMemory = {
         }
       }
 
-      // 2. Group candidate sources by distinct entity
-      const entitySourcesMap = new Map<string, { entity: EntityRecord, sources: SourceRecord[] }>()
+      // 2. Discover all candidate sources mentioning any of the matched entities
+      const candidateSourceMap = new Map<string, { src: SourceRecord, entities: Set<string> }>()
 
       for (const entId of matchedEntityIds) {
         const ent = ledger.entities.get(entId)
@@ -454,101 +502,176 @@ export const layeredMemory = {
         if ((ent.type === 'concept' || ent.type === 'unknown') && ent.mentions.size < 2)
           continue
 
-        const entSources: SourceRecord[] = []
-        const seenTurnIds = new Set<string>()
-
         for (const mId of ent.mentions) {
           let src = ledger.sources.get(mId)
           if (!src) {
             const mention = ledger.mentions.get(mId)
-            if (mention?.turnId) {
+            if (mention?.turnId)
               src = ledger.sources.get(mention.turnId)
+          }
+          if (src) {
+            let entry = candidateSourceMap.get(src.turnId)
+            if (!entry) {
+              entry = { src, entities: new Set() }
+              candidateSourceMap.set(src.turnId, entry)
             }
+            entry.entities.add(ent.label)
           }
-          if (src && !seenTurnIds.has(src.turnId)) {
-            seenTurnIds.add(src.turnId)
-            entSources.push(src)
-          }
-        }
-
-        // Sort newest first
-        entSources.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-        if (entSources.length > 0) {
-          entitySourcesMap.set(ent.entityId, { entity: ent, sources: entSources })
         }
       }
 
-      // 3. Fair-Share Allocation across distinct entities
-      const matchedSources = new Map<string, { src: SourceRecord, entityLabel: string }>()
-      const distinctEntityIds = Array.from(entitySourcesMap.keys())
+      // 3. Score candidate sources by multi-entity co-occurrence & proximity
+      const focusTerms = (triage?.focusKeywords && triage.focusKeywords.length > 0)
+        ? triage.focusKeywords
+        : searchTokens
 
-      if (distinctEntityIds.length > 0) {
-        // Sort so that if System-1 identified a focal entity, it comes first
-        if (focalEntityId && entitySourcesMap.has(focalEntityId)) {
-          distinctEntityIds.sort((a, b) => (a === focalEntityId ? -1 : b === focalEntityId ? 1 : 0))
-        }
-
-        // Focal entity gets up to 50% quota; remaining quota is divided equally across other distinct entities
-        const focalQuota = (focalEntityId && entitySourcesMap.has(focalEntityId))
-          ? Math.min(Math.ceil(MAX_FALLBACK_MENTION_HITS / 2), entitySourcesMap.get(focalEntityId)!.sources.length)
-          : 0
-        const remainingQuota = MAX_FALLBACK_MENTION_HITS - focalQuota
-        const otherCount = distinctEntityIds.filter(id => id !== focalEntityId).length
-        const quotaPerOther = otherCount > 0 ? Math.max(1, Math.floor(remainingQuota / otherCount)) : 0
-
-        // Round 1: Allocated quotas per entity
-        for (const entId of distinctEntityIds) {
-          const { entity, sources } = entitySourcesMap.get(entId)!
-          const quota = entId === focalEntityId ? focalQuota : quotaPerOther
-          for (const src of sources.slice(0, quota)) {
-            if (!matchedSources.has(src.turnId) && matchedSources.size < MAX_FALLBACK_MENTION_HITS) {
-              matchedSources.set(src.turnId, { src, entityLabel: entity.label })
-            }
+      const salientWordsFromTriage: string[] = []
+      if (triage?.wordScores) {
+        for (const [w, sc] of Object.entries(triage.wordScores)) {
+          if (typeof sc === 'number' && sc >= 0.20 && w.length >= 3 && !CONVERSATIONAL_STOPWORDS.has(w.toLowerCase())) {
+            salientWordsFromTriage.push(w)
           }
         }
+      }
 
-        // Round 2: Fill any remaining unfilled slots round-robin from remaining sources
-        let addedMore = true
-        let roundIdx = 0
-        while (matchedSources.size < MAX_FALLBACK_MENTION_HITS && addedMore) {
-          addedMore = false
-          for (const entId of distinctEntityIds) {
-            if (matchedSources.size >= MAX_FALLBACK_MENTION_HITS)
-              break
-            const { entity, sources } = entitySourcesMap.get(entId)!
-            for (const src of sources) {
-              if (!matchedSources.has(src.turnId)) {
-                matchedSources.set(src.turnId, { src, entityLabel: entity.label })
-                addedMore = true
+      const allTargetTerms = Array.from(new Set([
+        ...Array.from(matchedEntityIds).map(id => ledger.entities.get(id)?.label).filter((l): l is string => !!l),
+        ...focusTerms,
+        ...salientWordsFromTriage,
+      ])).filter(t => t.length >= 3 && !CONVERSATIONAL_STOPWORDS.has(t.toLowerCase()))
+
+      const termWeights = new Map<string, number>()
+      for (const term of allTargetTerms) {
+        const tLower = term.toLowerCase()
+        let weight = 0.5
+        if (triage?.wordScores) {
+          if (typeof triage.wordScores[term] === 'number') {
+            weight = triage.wordScores[term]
+          }
+          else {
+            for (const [w, sc] of Object.entries(triage.wordScores)) {
+              if (w.toLowerCase() === tLower && typeof sc === 'number') {
+                weight = sc
                 break
               }
             }
           }
-          roundIdx++
-          if (roundIdx > 10)
-            break
         }
+        else if (focusTerms.some(ft => ft.toLowerCase() === tLower)) {
+          weight = 0.8
+        }
+        termWeights.set(tLower, weight)
       }
 
-      for (const { src, entityLabel } of matchedSources.values()) {
-        const isoDate = src.timestamp ? new Date(src.timestamp).toISOString() : new Date().toISOString()
-        let textContent = src.text
-        if (textContent.length > 2000) {
-          const matchIdx = textContent.toLowerCase().indexOf(entityLabel.toLowerCase())
-          if (matchIdx !== -1) {
-            const start = Math.max(0, matchIdx - 200)
-            const end = Math.min(textContent.length, matchIdx + 800)
-            textContent = `${start > 0 ? '... ' : ''}${textContent.slice(start, end).trim()}${end < textContent.length ? ' ...' : ''}`
-          }
-          else {
-            textContent = `${textContent.slice(0, 1000)} ...`
+      interface ScoredSourceCandidate {
+        src: SourceRecord
+        entities: string[]
+        distinctMatchCount: number
+        maxSalienceInWindow: number
+        snippet: string
+        score: number
+      }
+
+      const scoredSources: ScoredSourceCandidate[] = []
+
+      for (const { src, entities } of candidateSourceMap.values()) {
+        const text = src.text
+        const textLower = text.toLowerCase()
+
+        // Find match positions for all target terms with word boundaries
+        const matches: Array<{ term: string, index: number }> = []
+        for (const term of allTargetTerms) {
+          const tLower = term.toLowerCase()
+          let pos = 0
+          while ((pos = textLower.indexOf(tLower, pos)) !== -1) {
+            const before = pos === 0 ? ' ' : textLower[pos - 1]
+            const after = pos + tLower.length >= textLower.length ? ' ' : textLower[pos + tLower.length]
+            if (!/\w/.test(before) && !/\w/.test(after)) {
+              matches.push({ term: tLower, index: pos })
+            }
+            pos += tLower.length
           }
         }
 
-        const speakerPrefix = src.speaker && src.speaker !== 'Unknown' ? `${src.speaker}: ` : ''
-        const content = `${speakerPrefix}${textContent}`
+        if (matches.length === 0)
+          continue
 
-        // Mod 5: Carry session ID for jumpToMessage / isSameSession
+        const distinctMatchedTerms = new Set(matches.map(m => m.term))
+        const distinctMatchCount = distinctMatchedTerms.size
+
+        // Find best cluster window of ~1200 chars containing the highest cumulative salience of distinct terms
+        let bestSnippet = text
+        let maxSalienceInWindow = 0
+        if (text.length > 1500) {
+          let bestStart = 0
+          let bestEnd = Math.min(text.length, 1200)
+
+          for (const m of matches) {
+            const wStart = Math.max(0, m.index - 250)
+            const wEnd = Math.min(text.length, wStart + 1200)
+            const windowText = textLower.slice(wStart, wEnd)
+            let salienceInWindow = 0
+            for (const t of distinctMatchedTerms) {
+              if (windowText.includes(t))
+                salienceInWindow += (termWeights.get(t) ?? 0.5)
+            }
+            if (salienceInWindow > maxSalienceInWindow) {
+              maxSalienceInWindow = salienceInWindow
+              bestStart = wStart
+              bestEnd = wEnd
+            }
+          }
+
+          const prefix = bestStart > 0 ? '... ' : ''
+          const suffix = bestEnd < text.length ? ' ...' : ''
+          bestSnippet = `${prefix}${text.slice(bestStart, bestEnd).trim()}${suffix}`
+        }
+        else {
+          for (const t of distinctMatchedTerms) {
+            maxSalienceInWindow += (termWeights.get(t) ?? 0.5)
+          }
+        }
+
+        // Multi-entity co-occurrence scoring
+        // Base score for 1 match: 0.70.
+        // Each additional distinct entity/keyword adds +0.06 up to max 0.96.
+        // Bonus if focalEntityId is among the matched entities: +0.03.
+        let coScore = 0.70 + Math.min(0.24, Math.max(0, distinctMatchCount - 1) * 0.06)
+        if (focalEntityId && entities.has(ledger.entities.get(focalEntityId)?.label ?? '')) {
+          coScore = Math.min(0.97, coScore + 0.03)
+        }
+        if (maxSalienceInWindow >= 2.5) {
+          coScore = Math.max(coScore, 0.95)
+        }
+
+        scoredSources.push({
+          src,
+          entities: Array.from(entities),
+          distinctMatchCount,
+          maxSalienceInWindow,
+          snippet: bestSnippet,
+          score: coScore,
+        })
+      }
+
+      // Sort candidate sources: highest window salience and match count first, then newest
+      scoredSources.sort((a, b) => {
+        if (Math.abs(b.maxSalienceInWindow - a.maxSalienceInWindow) > 0.1)
+          return b.maxSalienceInWindow - a.maxSalienceInWindow
+        if (b.distinctMatchCount !== a.distinctMatchCount)
+          return b.distinctMatchCount - a.distinctMatchCount
+        if (b.score !== a.score)
+          return b.score - a.score
+        return (b.src.timestamp || 0) - (a.src.timestamp || 0)
+      })
+
+      // Take top hits up to MAX_FALLBACK_MENTION_HITS
+      for (const cand of scoredSources.slice(0, MAX_FALLBACK_MENTION_HITS)) {
+        const src = cand.src
+        const isoDate = src.timestamp ? new Date(src.timestamp).toISOString() : new Date().toISOString()
+        const speakerPrefix = src.speaker && src.speaker !== 'Unknown' ? `${src.speaker}: ` : ''
+        const content = `${speakerPrefix}${cand.snippet}`
+
         let sessionSource = `kg:source:${src.turnId}`
         if (src.session) {
           sessionSource = `chat:${src.session}`
@@ -560,21 +683,23 @@ export const layeredMemory = {
           }
         }
 
+        const labelSummary = cand.entities.slice(0, 3).join(' & ') || 'Entity'
+
         kgHits.push({
           id: `kg-mention:${src.turnId}`,
-          title: `[Knowledge Graph] ${entityLabel} (Mention)`,
+          title: `[Knowledge Graph] ${labelSummary} (Mention)`,
           content,
           kind: 'raw',
           characterId: characterId || undefined,
           timestamp: isoDate,
           source: sessionSource,
-          score: 0.70, // Mod 1: Below S-P-O claims (0.95) so verified claims take priority
-          vectorScore: 0.65,
-          keywordScore: 0.70,
+          score: cand.score,
+          vectorScore: cand.score,
+          keywordScore: cand.score,
           temporalScore: 0.50,
           layerBoost: 0.05,
           profile: 'default',
-          subject: entityLabel,
+          subject: labelSummary,
           predicate: 'mentioned in',
           object: `${src.speaker || 'dialogue'}'s turn`,
           evidence: [src.turnId],
@@ -588,8 +713,8 @@ export const layeredMemory = {
         hasLedger: true,
         matchedEntityIdsCount: matchedEntityIds.size,
         matchedEntities: [...matchedEntityIds].map(id => ledger.entities.get(id)?.label),
-        matchedClaimsCount: matchedClaims.size,
-        matchedSourcesCount: matchedSources.size,
+        matchedClaimsCount: matchedClaimsWithScores.size,
+        matchedSourcesCount: candidateSourceMap.size,
         kgHitsCount: kgHits.length,
         kgHits: kgHits.map(h => ({
           id: h.id,
@@ -793,10 +918,8 @@ export const layeredMemory = {
     const mergedHits: LayeredSearchResult[] = []
     const seen = new Set<string>()
 
-    // Prioritize true S-P-O claims first, followed by entity dialogue mentions
-    const trueKgClaims = kgHits.filter(h => h.predicate !== 'mentioned in')
-    const kgMentions = kgHits.filter(h => h.predicate === 'mentioned in')
-    const orderedKgHits = [...trueKgClaims, ...kgMentions]
+    // Order Knowledge Graph hits by relevance score descending so high-relevance co-occurrence mentions compete fairly with S-P-O claims
+    const orderedKgHits = [...kgHits].sort((a, b) => b.score - a.score)
 
     // 1. Guaranteed slots for Knowledge Graph hits (up to half the quota, min 1 if hits exist)
     const kgQuota = Math.min(Math.max(1, Math.floor(returnLimit / 2)), orderedKgHits.length)
@@ -853,7 +976,7 @@ export const layeredMemory = {
     if (options?.systemOneStore?.configured && mergedHits.length > 0 && !shouldDegradeBackgroundWork()) {
       try {
         options?.signal?.throwIfAborted?.()
-        const poolToRerank = mergedHits.slice(0, 6).map(h => ({
+        const poolToRerank = mergedHits.slice(0, 10).map(h => ({
           id: h.id,
           text: h.content,
           score: h.score,
@@ -865,10 +988,28 @@ export const layeredMemory = {
         )
         if (rerankRes.rankedCandidates && rerankRes.rankedCandidates.length > 0) {
           const scoreMap = new Map<string, number>(rerankRes.rankedCandidates.map((r: any) => [r.id, Number(r.finalScore ?? r.score ?? 0)]))
-          finalHits = mergedHits.map(h => ({
-            ...h,
-            score: scoreMap.has(h.id) ? (scoreMap.get(h.id) ?? h.score) : h.score,
-          })).sort((a, b) => b.score - a.score)
+          const irrelevantIds = new Set<string>(
+            rerankRes.rankedCandidates
+              .filter((r: any) => r.isIrrelevant || (r.finalScore !== undefined && r.finalScore <= 0))
+              .map((r: any) => r.id),
+          )
+          finalHits = mergedHits
+            .filter(h => !irrelevantIds.has(h.id))
+            .map((h) => {
+              if (scoreMap.has(h.id)) {
+                return {
+                  ...h,
+                  score: scoreMap.get(h.id)!,
+                }
+              }
+              // If an item was outside the rerank pool, cap its score so unverified background items
+              // cannot jump ahead of verified answers
+              return {
+                ...h,
+                score: Math.min(h.score, 0.45),
+              }
+            })
+            .sort((a, b) => b.score - a.score)
         }
       }
       catch (err) {

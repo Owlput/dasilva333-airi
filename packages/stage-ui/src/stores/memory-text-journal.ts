@@ -314,8 +314,8 @@ export const useTextJournalStore = defineStore('text-journal', () => {
         // NOTICE: indexing raw turns is bounded to protect WebGPU/RAM, but
         // comfortably accommodates lore history across multi-session roleplays.
         // Caps count chunk docs (one mega-turn fans out to hundreds of windows).
-        const MAX_INDEX_SESSIONS = 30
-        const MAX_RAW_DOCS = 1500
+        // Uses watermark tracking for delta updates, scanning all universe sessions once.
+        const MAX_RAW_DOCS = 10000
         const raw: any[] = []
         try {
           const index = await chatSessionsRepo.getIndex(userId)
@@ -324,7 +324,6 @@ export const useTextJournalStore = defineStore('text-journal', () => {
             const sessions = Object.values(characterSessions.sessions)
               .filter(s => (s.universeId || 'global') === currentUniverseId)
               .sort((a: any, b: any) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
-              .slice(0, MAX_INDEX_SESSIONS)
 
             const uniqueRaw = new Map<string, any>()
 
@@ -409,7 +408,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
         console.info(`[TextJournal:Index] Indexing counts for ${cardId} in universe ${currentUniverseId}: LTMM=${ltmm.length}, STMM=${stmm.length}, Raw=${raw.length}, Echoes=${echoes.length}, Lifetime=${lifetime.length}`)
 
         // NOTICE: cap on total indexed docs per cycle matching worker memory budget.
-        const MAX_TOTAL_DOCS = 3000
+        const MAX_TOTAL_DOCS = 12000
         const allDocs = [...ltmm, ...stmm, ...raw, ...echoes, ...lifetime]
           .sort((a: any, b: any) => docIndexTime(b) - docIndexTime(a))
           .slice(0, MAX_TOTAL_DOCS)

@@ -382,6 +382,9 @@ export interface TriageDecision {
   conjunctionStructure?: string
   conjunctionConfidence?: number
   requiresDecomposition?: number
+  focusKeywords?: string[]
+  focusQuery?: string
+  wordScores?: Record<string, number>
   method?: string
   latencyMs?: number | null
 }
@@ -414,6 +417,12 @@ export function heuristicTriage(query: string): TriageDecision {
     requiresDecomposition = 0.70
   }
 
+  const extractedKeywords = norm
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 2 && !STOPWORDS.has(t))
+  const focusQuery = extractedKeywords.join(' ')
+
   // 1. Temporal cues (C2)
   if (
     /\b(when|what date|which day|what time|how long|how many (?:days|weeks|months|years) ago|how long ago|start|finish|schedule|appointment|timeline)\b/i.test(norm)
@@ -429,6 +438,8 @@ export function heuristicTriage(query: string): TriageDecision {
       searchScope: 'single_session',
       conjunctionStructure,
       requiresDecomposition,
+      focusKeywords: extractedKeywords,
+      focusQuery,
       method: 'heuristic_regex_temporal',
     }
   }
@@ -448,6 +459,8 @@ export function heuristicTriage(query: string): TriageDecision {
       searchScope: 'multi_session',
       conjunctionStructure,
       requiresDecomposition: Math.max(requiresDecomposition, 0.8),
+      focusKeywords: extractedKeywords,
+      focusQuery,
       method: 'heuristic_regex_multihop',
     }
   }
@@ -464,6 +477,8 @@ export function heuristicTriage(query: string): TriageDecision {
       searchScope: 'single_session',
       conjunctionStructure,
       requiresDecomposition,
+      focusKeywords: extractedKeywords,
+      focusQuery,
       method: 'heuristic_regex_detective',
     }
   }
@@ -477,6 +492,8 @@ export function heuristicTriage(query: string): TriageDecision {
     searchScope: 'single_session',
     conjunctionStructure,
     requiresDecomposition,
+    focusKeywords: extractedKeywords,
+    focusQuery,
     method: 'heuristic_literal_default',
   }
 }
@@ -492,6 +509,11 @@ export function decomposeQuery(query: string, triage?: TriageDecision): string[]
 
   // Always keep the original query as one anchor
   subQueries.add(norm)
+
+  // If focusQuery is available from triage and distinct from raw query, add it as a distilled sub-query
+  if (triage?.focusQuery && triage.focusQuery.trim().length > 0 && triage.focusQuery.trim().toLowerCase() !== norm.toLowerCase()) {
+    subQueries.add(triage.focusQuery.trim())
+  }
 
   // If Jev or heuristic triage indicates this is a pure single atomic query without decomposition:
   if (triage && triage.conjunctionStructure === 'single_atomic' && (triage.requiresDecomposition ?? 0) < 0.25) {
