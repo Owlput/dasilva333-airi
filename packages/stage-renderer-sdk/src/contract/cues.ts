@@ -5,12 +5,12 @@
  * implements a sink and reports whether it handled each one.
  *
  * Which channel a host signal travels on is decided by its shape, never by convenience:
- *   - a **prop** (`renderer-mount.ts`) carries a value the host can restate on every render:
- *     what it samples every frame (`mouth`), and the live host decisions about one mount
- *     (`paused`, `visible`, `reducedMotion`, `qualityHint`);
+ *   - a **prop** (`renderer-mount.ts`) carries the live host decisions about one mount
+ *     (`paused`, `visible`, `reducedMotion`, `qualityHint`) and what the host assigns to it;
  *   - a **service** (`host-services.ts`) carries what a renderer pulls when it wants it, plus
  *     the facts that cannot change while it is alive, plus the streams it subscribes to
- *     (`pointer`, because an event carries edges and identity a value cannot);
+ *     (`pointer`, and the audio it taps — an event carries edges and identity a value cannot,
+ *     and a signal a renderer can measure itself must not be sent to it as a number);
  *   - a **cue** (this file) carries a discrete, ackable, rejectable intent.
  *
  * A per-frame stream MUST NOT become a cue: `send` answers with an ack whose `reason` array is
@@ -23,9 +23,11 @@
  *   - the renderer owns its own state and its own settings UI, so a cue states an *intent*,
  *     never a mechanism;
  *   - a cue AIRI cannot decompose into others (a profile whose composition only the renderer
- *     knows) is addressed by id instead of being translated or forwarded.
+ *     knows) is addressed by id instead of being translated or forwarded;
+ *   - **appearance is one of those.** Which parts are visible, which outfit composes them and
+ *     how two outfits interact are the renderer's, so AIRI names a profile and never sets a part
+ *     or a raw parameter. There is deliberately no cue for either.
  */
-import type { ModelCapabilityKind } from './capabilities'
 import type { ModelId, ModelProfileId } from './model'
 import type {
   ContractResult,
@@ -44,9 +46,6 @@ export enum CueKind {
   EXPRESSION = 'expression',
   MOTION = 'motion',
   VFX = 'vfx',
-  /** Raw mesh/material visibility. */
-  MESH = 'mesh',
-  SELECTION = 'selection',
   /** Apply a renderer-managed profile, addressed by id. */
   PROFILE = 'profile',
   GAZE = 'gaze',
@@ -56,15 +55,22 @@ export enum CueKind {
 }
 
 /** Where a cue came from. Renderers may treat agent and user cues differently. */
-export type CueSource = 'user' | 'agent' | 'card' | 'renderer' | 'host' | 'external'
+export enum CueSource {
+  USER = 'user',
+  AGENT = 'agent',
+  CARD = 'card',
+  RENDERER = 'renderer',
+  HOST = 'host',
+  EXTERNAL = 'external',
+}
 
 export interface CueEnvelope<C extends Cue = Cue> {
   /**
    * One transaction; a single cue is the length-1 case.
    *
    * Members are applied together, never in sequence — sequencing is deliberately not
-   * expressible. Grouping matters because a multi-part change (trying on an outfit = meshes +
-   * expressions) must not be half-applied, and because `nonce`, `persistent` and `target` then
+   * expressible. Grouping matters because a multi-part change (a profile and an expression
+   * together) must not be half-applied, and because `nonce`, `persistent` and `target` then
    * describe the whole change rather than three unrelated ones.
    *
    * Ordering belongs to the renderer, and this contract asks for exactly one order — as a
@@ -142,15 +148,16 @@ export type CueEnvelopeInput<C extends Cue = Cue>
  * (`CueSendOptions.dropIfNotReady`) and a superseded one all look the same from the caller's
  * side: a successful send, `handled: false`, and a reason per slot.
  */
-export type CueRejection
-  = | 'unsupported-cue'
-  /** The renderer has no such expression, motion, mesh, parameter or profile. */
-    | 'unknown-key'
-  /** Still loading, or no model is mounted. */
-    | 'renderer-not-ready'
-    | 'no-model'
+export enum CueRejection {
+  UNSUPPORTED_CUE = 'unsupported-cue',
+  /** The renderer has no such expression, motion, point of interest or profile. */
+  UNKNOWN_KEY = 'unknown-key',
+  /** Still loading. */
+  RENDERER_NOT_READY = 'renderer-not-ready',
+  /** No model is mounted. */
+  NO_MODEL = 'no-model',
   /** Ignored by policy: paused, hidden, reduced motion, or a preview mode. */
-    | 'suppressed-by-mode'
+  SUPPRESSED_BY_MODE = 'suppressed-by-mode',
   /**
    * A newer transaction for the same mount made this one moot.
    *
@@ -158,12 +165,13 @@ export type CueRejection
    * reported as not applied. A renderer that applies a newer motion while an older one is still
    * being applied says so here instead of pretending it played.
    *
-   * Deliberately not `ContractFailureCode.aborted`, which is the abnormal side of a
+   * Deliberately not `ContractFailureCode.ABORTED`, which is the abnormal side of a
    * similar-looking event — the work was dropped because the mount went away or the caller
    * cancelled it, with nothing newer replacing it. A renderer MUST NOT report one as the other.
    */
-    | 'superseded'
-    | 'busy'
+  SUPERSEDED = 'superseded',
+  BUSY = 'busy',
+}
 
 export interface CueAck {
   /** Echo of the envelope's `nonce`, so a caller with several transactions in flight can match an answer to its own. */
@@ -307,7 +315,14 @@ export interface ActCue {
   meta?: Record<string, unknown>
 }
 
-/** Direct addressing of one renderer-native expression/morph. */
+/**
+ * Direct addressing of one expression unit, by the id the renderer listed as
+ * `ModelCapabilityKind.EXPRESSION`.
+ *
+ * `key` is that one id, whatever addressing the format uses underneath: the cue never names a
+ * blend shape, a vertex morph or a parameter, so a format that stores an expression as several
+ * of those still offers exactly one id per expression.
+ */
 export interface ExpressionCue {
   kind: CueKind.EXPRESSION
   key: string
@@ -350,33 +365,6 @@ export interface VfxCue {
 }
 
 /**
- * Raw mesh/material visibility.
- *
- * The cues the host's own editing surfaces send while a mapping is being authored.
- */
-export interface MeshCue {
-  kind: CueKind.MESH
-  key: string
-  value: boolean
-}
-
-/**
- * Kind-agnostic state assignment, addressed by capability key.
- *
- * Several mechanisms hide behind one user intent — Live2D `change_cos`, VRM mesh visibility,
- * Spine variant+skin selection, MMD morph swaps, and the card-level outfit system — so the
- * renderer's own vocabulary (`altModel` / `outfitGroup` / `outfitStyle` / `mesh`) is addressed
- * in one place instead of one renderer's mechanism being hardcoded.
- *
- * `value` is what makes a *set* expressible, including its "off" side: an additive list cannot
- * express an explicit boolean.
- */
-export interface SelectionCue {
-  kind: CueKind.SELECTION
-  select: Array<{ capabilityKind: ModelCapabilityKind, key: string, value?: number | boolean }>
-}
-
-/**
  * Switch to, or try on, a renderer-managed model profile.
  *
  * A profile is a named configuration the renderer stores and knows how to compose — an outfit,
@@ -384,7 +372,8 @@ export interface SelectionCue {
  * parts interact. AIRI only names the result and MUST NOT decompose it.
  *
  * `persistent: false` on the envelope is what a try-on is: applied transiently, never saved,
- * never bumping the renderer's snapshot.
+ * never bumping the renderer's snapshot. `ResetCue` with `scope: ResetScope.PROFILE` takes it
+ * back off again.
  */
 export interface ProfileCue {
   kind: CueKind.PROFILE
@@ -392,25 +381,34 @@ export interface ProfileCue {
 }
 
 /**
+ * Which target replaces the live pointer.
+ *
+ * All four answer the same question, with `POINTER` being the answer that ends the override — so
+ * this stays one override rather than a gaze configuration.
+ */
+export enum GazeMode {
+  NONE = 'none',
+  POINTER = 'pointer',
+  CAMERA = 'camera',
+  TARGET = 'target',
+}
+
+/**
  * Temporarily override the live pointer the renderer follows by default.
  *
  * Suitable for a scripted look-at, a one-off glance at a UI element, or looking at the viewer.
- * The override holds until a `GazeCue` with `mode: 'pointer'` or `'none'`, or a `ResetCue` with
- * `scope: 'gaze'`.
+ * The override holds until a `GazeCue` with `mode: GazeMode.POINTER` or `GazeMode.NONE`, or a
+ * `ResetCue` with `scope: ResetScope.GAZE`.
  *
  * Difference from `ViewCue`: `GazeCue` moves the model's eyes, `ViewCue` moves the camera.
  */
 export interface GazeCue {
   kind: CueKind.GAZE
   /**
-   * `pointer` = follow the live pointer again (the default), `target` = use `point`,
-   * `camera` = look at the viewer, `none` = rest.
-   *
-   * All four answer the same question — which target replaces the pointer, with `'pointer'`
-   * being the answer that ends the override — so this stays one override rather than a gaze
-   * configuration.
+   * `POINTER` = follow the live pointer again (the default), `TARGET` = use `point`,
+   * `CAMERA` = look at the viewer, `NONE` = rest.
    */
-  mode: 'none' | 'pointer' | 'camera' | 'target'
+  mode: GazeMode
   point?: RendererMountPoint
 }
 
@@ -495,18 +493,37 @@ export interface CaptionSegment {
   durationMs?: number
 }
 
+/** What a `ResetCue` hands back to the renderer's saved state. */
+export enum ResetScope {
+  EXPRESSION = 'expression',
+  MOTION = 'motion',
+  PROFILE = 'profile',
+  GAZE = 'gaze',
+  VIEW = 'view',
+  /**
+   * Put the model back where the renderer keeps it: position, scale and rotation.
+   *
+   * The renderer owns its transform, so the host cannot reset it by writing a value back; this is
+   * how "reset this model's placement" stays a host action without a second copy of the numbers.
+   */
+  TRANSFORM = 'transform',
+  CAPTION = 'caption',
+  ALL = 'all',
+}
+
 /**
  * Hand an expression/pose back to the renderer's saved state.
  *
- * `selection` is what a previewed outfit or alt model reverts through, since a transient
- * (`persistent: false`) selection has no duration of its own; `gaze` releases a `GazeCue`
- * override back to the live pointer; `view` gives the camera back to the renderer's own default
- * framing; `caption` takes down text a `CaptionCue` put up, because an utterance has no duration
- * of its own either.
+ * `PROFILE` is what a previewed outfit or alt model reverts through, since a transient
+ * (`persistent: false`) `ProfileCue` has no duration of its own; `GAZE` releases a `GazeCue`
+ * override back to the live pointer; `VIEW` gives the camera back to the renderer's own default
+ * framing; `TRANSFORM` does the same for the model's placement, which the renderer also owns;
+ * `CAPTION` takes down text a `CaptionCue` put up, because an utterance has no duration of its own
+ * either.
  */
 export interface ResetCue {
   kind: CueKind.RESET
-  scope: 'expression' | 'motion' | 'selection' | 'gaze' | 'view' | 'caption' | 'all'
+  scope: ResetScope
 }
 
 export type Cue
@@ -515,8 +532,6 @@ export type Cue
     | ExpressionCue
     | MotionCue
     | VfxCue
-    | MeshCue
-    | SelectionCue
     | ProfileCue
     | GazeCue
     | ViewCue

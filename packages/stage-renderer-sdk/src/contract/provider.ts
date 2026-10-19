@@ -18,11 +18,11 @@
  */
 import type { ModelCapabilityDescriptor } from './capabilities'
 import type { ModelId, ModelProfileId } from './model'
-import type { ModelPreview } from './references'
 import type {
   ContractResult,
   MaybePromise,
   ModelDriverId,
+  ModelPreview,
 } from './shared'
 
 export interface ModelProvider {
@@ -71,7 +71,7 @@ export interface ModelProvider {
   /**
    * Generate or refresh a thumbnail.
    *
-   * The result is in the shape AIRI stores (`ModelPreview`, `references.ts`). A descriptor may
+   * The result is in the shape AIRI stores (`ModelPreview`, `shared.ts`). A descriptor may
    * already carry a preview of its own (`ModelDescriptor.preview`); this member is how one is
    * produced for a model that has none yet, or refreshed.
    *
@@ -92,7 +92,7 @@ export interface ModelProvider {
    * This is `ModelDriverRuntime.rendererCapabilities()`' question at model scope, and for the same
    * reason: what a model can do is not fixed by its files, because the renderer may have to
    * withhold a texture-heavy outfit, a motion that needs more memory than is left, or a parameter
-   * set that needs a licence. It probes the live model rather than replaying a stored catalogue.
+   * set this device cannot drive. It probes the live model rather than replaying a stored catalogue.
    *
    * Named `modelCapabilities` and not `capabilities` so it cannot be confused with
    * `rendererCapabilities` elsewhere: that one says what the *renderer* supports, this one lists
@@ -322,11 +322,12 @@ export interface ModelProfileDescriptor {
   meta?: unknown
 }
 
-export type ModelProfileSaveMode
+export enum ModelProfileSaveMode {
   /** Create it, or replace an existing profile's content with the current state. */
-  = | 'upsert'
+  UPSERT = 'upsert',
   /** Create it only when absent; an existing profile is returned untouched. */
-    | 'create-if-not-exists'
+  CREATE_IF_NOT_EXISTS = 'create-if-not-exists',
+}
 
 export interface ModelProfileSaveOptions {
   /**

@@ -110,7 +110,7 @@ export interface ModelScopedState {
  *     negotiation: patching and migrating are the renderer's own business, because only it knows the
  *     shape of what it stored.
  *   - `values` stays opaque to AIRI, so the renderer may put its per-model transform, selection and
- *     morph overrides in there under its own keys.
+ *     expression overrides in there under its own keys.
  *   - `vocabulary` and `profileId` are the two parts AIRI reads. For those, AIRI reads a **shared**
  *     scope — the live stage's first — and never a single-mount one: otherwise a draft the user is
  *     still trying in a preview would become what a prompt believes the model looks like. This is a

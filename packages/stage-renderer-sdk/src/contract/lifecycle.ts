@@ -9,6 +9,8 @@ import type { ModelDriverCapabilities, ModelDriverManifest } from './manifest'
 import type { ModelProvider } from './provider'
 import type {
   ModelDriverImportReport,
+  ModelDriverMigrationInput,
+  ModelDriverMigrationReport,
   ModelDriverPanelDeclaration,
   ModelDriverTransferBundle,
 } from './renderer'
@@ -56,7 +58,7 @@ export interface ModelDriverRuntime {
    * Called once when the host enables this driver.
    *
    * MUST NOT mount anything on stage; activation only wires services, checks requirements
-   * (globals, WASM, OPFS, license) and reports degradations.
+   * (globals, WASM, OPFS) and reports degradations.
    */
   activate: (services: ModelDriverHostServices) => Promise<ContractResult<ModelDriverActivationReport>>
 
@@ -120,6 +122,23 @@ export interface ModelDriverRuntime {
    * with `list()` when the import reports success.
    */
   import?: (bundle: ModelDriverTransferBundle) => MaybePromise<ContractResult<ModelDriverImportReport>>
+
+  /**
+   * Inherit the settings AIRI kept for this driver before this contract existed.
+   *
+   * Called once per legacy bag: after `activate` has succeeded, before the first mount of a model that
+   * bag describes, and only while the host still holds the corresponding keys. The host deletes an
+   * entry only when the driver's report does not list it as `unused`, so a partial migration is safe
+   * and a failed one keeps the data.
+   *
+   * MUST be idempotent: the host may call it again with an identical bag after a crash between the
+   * driver's write and the host's own marker.
+   *
+   * Advertise it as `ModelDriverCapabilities.migration`. A driver that never existed outside this
+   * contract has nothing to inherit and answers `false`, and the host then drops the bag rather than
+   * keeping it forever.
+   */
+  migrate?: (hostState: ModelDriverMigrationInput) => MaybePromise<ContractResult<ModelDriverMigrationReport>>
 }
 
 /**

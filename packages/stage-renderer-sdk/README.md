@@ -53,7 +53,7 @@ through, and is described by the file map and the RFC.
 
 | File | Implements | Purpose |
 | :--- | :--- | :--- |
-| `src/contract/shared.ts` | both | ids, result envelope, failure codes, readiness, geometry |
+| `src/contract/shared.ts` | both | ids, result envelope, failure codes, readiness, geometry, the stored preview shape |
 | `src/contract/manifest.ts` | driver | what a model driver declares: id, the capability hint (`ModelDriverCapabilities`), requirements, entry points |
 | `src/contract/host-services.ts` | AIRI | the service container injected at activation (log, storage primitives, the per-model state channel, cues, audio, the pointer stream, theme, runtime facts, bridge) |
 | `src/contract/provider.ts` | driver | model provider: probe + confirmImport / list / remove / preview / modelCapabilities / profiles / model transfer (the host holds the one instance as `ModelDriverRuntime.provider`) |
@@ -62,7 +62,7 @@ through, and is described by the file map and the RFC.
 | `src/contract/cues.ts` | both | one transactional cue vocabulary and one ack shape for everything the avatar is asked to do |
 | `src/contract/persistence.ts` | both | the one model-scoped state channel AIRI holds, partitioned by `stateScope`, and the full-state rule it works by; no storage declarations |
 | `src/contract/lifecycle.ts` | both | activation, the runtime object (the `rendererCapabilities()` probe, panels, whole-driver transfer), the requirements report, host registry |
-| `src/contract/references.ts` | AIRI | every record AIRI itself keeps — the named model, its profiles and the stored preview they share — on one annotation shape |
+| `src/contract/references.ts` | AIRI | every record AIRI itself keeps — the named model and its profiles — on one annotation shape |
 | `src/contract/renderer.ts` | driver | driver-level concepts: settings panels, and the opaque bundle that moves a whole driver |
 | `src/contract/model.ts` | AIRI | the two identities AIRI mints: the model reference and its profile |
 
@@ -75,9 +75,10 @@ through, and is described by the file map and the RFC.
 - No decision about *where* renderer state is physically stored, and no declaration of
   *what* it contains: AIRI provides the primitives and the medium, the model driver owns the
   layout, the versioning and every migration.
-- No runtime value that is not a vocabulary a renderer must produce. There are exactly
-  two: `MODEL_DRIVER_CONTRACT_VERSION` and the `RendererMountReadinessState` enum. Everything
-  else is a type. There is also no `./types` subpath, because `.` is already the whole contract.
+- No runtime value that is not a closed vocabulary a renderer must produce, plus the contract
+  revision. Every closed vocabulary is an `enum`, so its members are named, documented and
+  exhaustively checkable where a consumer switches on one. Everything else is a type. There is also
+  no `./types` subpath, because `.` is already the whole contract.
 
 ## Validation
 

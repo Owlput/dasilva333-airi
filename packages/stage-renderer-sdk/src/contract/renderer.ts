@@ -126,3 +126,54 @@ export interface ModelDriverImportReport {
   /** Parts the driver could not restore. Non-fatal; everything else was restored. */
   warnings?: string[]
 }
+
+/**
+ * The settings AIRI kept for a driver **before this contract existed**, handed over once so they are
+ * not lost when the driver starts keeping its own.
+ *
+ * This is not a transfer bundle. A bundle is the driver's own format, produced by the driver, and
+ * restoring one must not depend on AIRI's old key names. This is the opposite direction: AIRI's legacy
+ * data, in AIRI's vocabulary, which only a one-time migration knows how to read.
+ *
+ * The bag is deliberately untyped. Which keys exist is a fact about the host's history rather than
+ * about the driver, so it is named by the host and read by the driver on the single occasion it is
+ * offered.
+ */
+export interface ModelDriverMigrationInput {
+  /**
+   * The legacy values, keyed by the host's own names, gathered from the settings namespaces that used
+   * to belong to this driver.
+   *
+   * Opaque: a driver reads the entries it recognises and reports the rest in `unused`. The keys are
+   * NOT part of this contract and never will be — they disappear together with the host code that
+   * writes them, which is why a driver MUST NOT treat them as its storage layout.
+   */
+  entries: Record<string, unknown>
+  /**
+   * The model the user had selected when the bag was written, when the host still knows it.
+   *
+   * Some legacy values are **window-global** rather than per-model: one parameter override map and one
+   * expression-alias table applied to whichever model happened to be on screen. Without this, a driver
+   * cannot tell which model those values described, and inventing an attribution would attach them to
+   * the wrong one.
+   */
+  selectedModelId?: ModelId
+}
+
+/**
+ * What a migration did.
+ *
+ * A driver absorbs what it recognises and names the rest: the host deletes only the entries the driver
+ * did not report as `unused`, so a partial migration never destroys data.
+ */
+export interface ModelDriverMigrationReport {
+  /**
+   * Legacy keys the driver did not use, by their `entries` names.
+   *
+   * The host keeps those keys alive and can tell the user once which settings did not survive, instead
+   * of deleting something the driver never read.
+   */
+  unused?: string[]
+  /** Non-fatal problems worth surfacing; everything not named here was restored. */
+  warnings?: string[]
+}

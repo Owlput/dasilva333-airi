@@ -3,11 +3,12 @@
  *
  * Owner: AIRI implements these; the driver consumes them and MUST NOT reach around them.
  *
- * This container is the **pull** channel: a renderer reads what it needs when it needs it, and
+ * This container is the **pull** side: a renderer reads what it needs when it needs it, and
  * everything here is either an app-global fact or a capability the renderer may decline. A **value**
  * the host samples every frame, and the live host decisions about one mount, are props on that mount
  * instead (`renderer-mount.ts`); a **stream of events** is a subscription here (`pointer`);
- * discrete intents travel as cues (`cues.ts`).
+ * discrete intents travel as cues (`cues.ts`). The one push member is `prompt`, and it is push
+ * because the renderer is the only thing that knows what the model currently has on.
  */
 import type { CueChannel } from './cues'
 import type { HostStateTransferPort } from './persistence'
@@ -44,15 +45,78 @@ export interface HostStorageInterface {
   keys: () => MaybePromise<string[]>
 }
 
+/**
+ * The host's audio graph, for a renderer that needs to listen to it.
+ *
+ * The host owns playback and the graph. A renderer only taps a node to analyse it: it MUST NOT
+ * connect one to the destination, and MUST NOT start or stop anything through one, because another
+ * mount or the host itself may be listening to the same node.
+ *
+ * **One stream, and it has its own method.** The only audio a renderer may tap is the speech the host
+ * is playing, so this interface names it instead of taking a `kind` with a single legal value. Audio
+ * captured from outside the app is deliberately absent: it is captured in its own window, and an
+ * `AudioNode` cannot cross a realm, so a `CAPTURE` stream would have been a promise no host could
+ * keep. Beats stay a host feature, not a contract member (`cues.ts` has no beat cue either).
+ *
+ * **Absence is not silence.** `undefined` (from `getSpeechStream`) and `null` (from
+ * `onSpeechStreamChange`) mean there is no speech right now; a node currently producing zeros means
+ * speech is running and the signal is quiet. A renderer that conflates the two either closes the
+ * mouth through a pause mid-sentence or keeps a stale node alive past the utterance that owned it.
+ */
 export interface HostAudioInterface {
   /** The host's shared `AudioContext`, or `undefined` when audio is unavailable. */
   getContext: () => AudioContext | undefined
-  /** Monotonic audio clock in seconds, for beat-aligned motion. */
+  /** Monotonic audio clock in seconds, for speech-aligned motion. */
   now: () => number
+  /**
+   * The node carrying the speech the host is playing, **one stream per utterance**, or `undefined`
+   * when nothing is being said.
+   *
+   * Each utterance is its own node: it appears when speech starts and is followed by `null` on
+   * `onSpeechStreamChange` when that utterance ends. A renderer attaches on every start rather than
+   * caching a node, and closes its mouth on the `null` rather than holding the last shape — an
+   * utterance that ended and an utterance that is quiet are different facts.
+   *
+   * The stream starting *is* the cue that speech began: a renderer derives lip movement from the
+   * signal itself, which is why mouth openness is not a prop. The node lives in `getContext()`'s
+   * graph, so a renderer attaches its own analyser to it and derives whatever it needs — envelope,
+   * pitch, vowel — without the host sending a scalar.
+   */
+  getSpeechStream: () => AudioNode | undefined
+  /**
+   * Notified when speech begins (`node`) or stops (`null`).
+   *
+   * The end matters as much as the start. A renderer that mounts mid-utterance calls
+   * `getSpeechStream` first and then subscribes.
+   */
+  onSpeechStreamChange: (handler: (node: AudioNode | null) => void) => Unsubscribe
 }
 
 /** Which kind of pointer event this is. */
-export type RendererPointerPhase = 'enter' | 'move' | 'leave' | 'down' | 'up' | 'cancel' | 'wheel'
+export enum RendererPointerPhase {
+  ENTER = 'enter',
+  MOVE = 'move',
+  LEAVE = 'leave',
+  DOWN = 'down',
+  UP = 'up',
+  CANCEL = 'cancel',
+  WHEEL = 'wheel',
+}
+
+/** What produced a pointer event. */
+export enum RendererPointerType {
+  MOUSE = 'mouse',
+  TOUCH = 'touch',
+  PEN = 'pen',
+  UNKNOWN = 'unknown',
+}
+
+/** How the deltas of a `RendererPointerPhase.WHEEL` event are measured. */
+export enum RendererWheelMode {
+  PIXEL = 'pixel',
+  LINE = 'line',
+  PAGE = 'page',
+}
 
 /**
  * One pointer event, inside the drawing box of the mount it is addressed to.
@@ -70,8 +134,8 @@ export interface RendererPointerEvent {
    * touch point, so a renderer can tell two fingers apart instead of guessing.
    */
   pointerId: number
-  /** What produced the event; `'unknown'` when the platform does not say. */
-  pointerType: 'mouse' | 'touch' | 'pen' | 'unknown'
+  /** What produced the event; `RendererPointerType.UNKNOWN` when the platform does not say. */
+  pointerType: RendererPointerType
   /** Where, inside this mount's drawing box. */
   point: RendererMountPoint
   /**
@@ -84,12 +148,12 @@ export interface RendererPointerEvent {
    * button, so a `0` on an event that has no button would be a value with no meaning.
    */
   button?: number
-  /** Wheel motion, for `phase: 'wheel'` only. */
+  /** Wheel motion, for `phase: RendererPointerPhase.WHEEL` only. */
   wheel?: {
     deltaX: number
     deltaY: number
     deltaZ: number
-    mode: 'pixel' | 'line' | 'page'
+    mode: RendererWheelMode
   }
   /**
    * Modifier state at the moment of the event.
@@ -148,10 +212,21 @@ export interface HostThemeService {
   onChange: (handler: () => void) => Unsubscribe
 }
 
+/** Severity of a transient message shown to the user. */
+export enum HostToastLevel {
+  INFO = 'info',
+  SUCCESS = 'success',
+  WARNING = 'warning',
+  ERROR = 'error',
+}
+
 export interface HostUiService {
   /** Transient message for the user. */
-  toast: (level: 'info' | 'success' | 'warning' | 'error', message: string) => void
-  /** Ask the user to confirm a destructive or licensed action. */
+  toast: (level: HostToastLevel, message: string) => void
+  /**
+   * Ask the user to confirm something destructive, or to answer a question only the driver can put
+   * to them. The answer is the driver's to keep.
+   */
   confirm?: (request: { title: string, body?: string, confirmLabel?: string }) => MaybePromise<boolean>
 }
 
@@ -159,6 +234,16 @@ export interface HostI18nService {
   /** Resolve a key from the plugin's own bundle; `params` are interpolated. */
   t: (key: string, params?: Record<string, unknown>) => string
   locale: string
+}
+
+/** Which window or pane hosts this renderer instance. */
+export enum HostWindowKind {
+  MAIN = 'main',
+  STAGE = 'stage',
+  ACTOR = 'actor',
+  SETTINGS = 'settings',
+  PREVIEW = 'preview',
+  UNKNOWN = 'unknown',
 }
 
 /**
@@ -175,7 +260,7 @@ export interface HostRuntimeInfo {
    * `RendererMountSurfaceKind`: that one describes the surface being rendered, this one the window or
    * pane hosting it.
    */
-  windowKind: 'main' | 'stage' | 'actor' | 'settings' | 'preview' | 'unknown'
+  windowKind: HostWindowKind
   /** Debug switches surfaced by the host (e.g. caption tracing). */
   debug: Record<string, boolean>
 }
@@ -194,6 +279,60 @@ export interface HostBridge {
 export interface HostDiagnosticsSink {
   trace: (label: string, payload: Record<string, unknown>) => void
   enabled: boolean
+}
+
+/**
+ * What one mounted model has active right now, said in the vocabulary AIRI already holds.
+ *
+ * **Push, not pull.** The renderer reports; AIRI decides what a prompt does with it. There is
+ * deliberately no read path back into renderer state — `ModelScopedState.values` stays opaque — so
+ * this publication is the only way a prompt can describe what the character currently looks like.
+ *
+ * **State, never prose.** `activeKeys` are `CapabilityVocabularyItem.key` values from this driver's
+ * own vocabulary; the host renders them with the `label` it already stores, in wording it owns, in
+ * the tail of the prompt. A driver that could submit text could also submit instructions, and a
+ * contribution that changes every turn must not enter the cached prefix (`capabilities.ts` states
+ * the same stability rule for `vocabulary`).
+ */
+export interface ModelDriverPromptState {
+  /**
+   * The state scope the publishing mount belongs to.
+   *
+   * The same key as the snapshot's, and the same rule: AIRI reads the **shared** scope's
+   * publication — the live stage's first — so a preview's draft never becomes what a prompt
+   * believes the model looks like. A scope that belongs to a single mount is not read at all.
+   */
+  stateScope: string
+  /**
+   * The capability keys active right now, as this driver's vocabulary lists them.
+   *
+   * A key the current vocabulary does not list is dropped by the host: the vocabulary is what a
+   * prompt may name, so an unlisted key would be a name with no label behind it. An empty array is
+   * how a renderer says that nothing is on.
+   */
+  activeKeys: string[]
+}
+
+/**
+ * The host's prompt channel: what the model mounted in this process is doing right now.
+ *
+ * A service rather than a prop because the publication outlives any single cue, and because the
+ * renderer is the only writer — AIRI never asks. It replaces the host reading renderer stores to
+ * build a prompt, which could only ever describe whichever renderer happened to be mounted in the
+ * same window.
+ */
+export interface HostPromptService {
+  /**
+   * Replace this scope's contribution, or clear it with an empty `activeKeys`.
+   *
+   * Only a **mounted** instance may publish, and only for its own `stateScope`; the host ignores a
+   * publication naming a scope it did not mint for a live mount, and the last writer per scope wins.
+   *
+   * Publish what the model *is*, not what the user is still trying: an unconfirmed change travels on
+   * a `persistent: false` cue and MUST NOT reach here, for the same reason it must not reach the
+   * snapshot.
+   */
+  publish: (state: ModelDriverPromptState) => void
 }
 
 /**
@@ -233,6 +372,14 @@ export interface ModelDriverHostServices {
    * false` on a cue expresses.
    */
   state: HostStateTransferPort
+  /**
+   * The prompt channel: publish what this model has active right now.
+   *
+   * It sits next to `state` because it shares that port's scope rules, and apart from it because
+   * the snapshot is persist-shaped — revision-guarded, complete, and deliberately opaque in
+   * `values` — while a prompt needs one volatile line that AIRI can word itself.
+   */
+  prompt: HostPromptService
   /** Cue bus shared by the host, all windows, and this renderer. */
   cues: CueChannel
   audio: HostAudioInterface

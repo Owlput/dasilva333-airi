@@ -11,43 +11,56 @@
  *     reference (`HostModelProfileRecord`).
  */
 
-export type ModelCapabilityKind
-  /** Blend-shape / expression-preset-like unit (VRM expressions, Live2D exp3). */
-  = | 'expression'
-    /** Geometry-level morph target (MMD morphs, VRM blend shapes). */
-    | 'morph'
-    /** Playable motion/animation. */
-    | 'motion'
-    /** A defined alternative style of the same outfit. e.g. difference in color and accessories. */
-    | 'outfitStyle'
-    /** A defined alternative outfit. e.g. a shirt instead of a coat. */
-    | 'outfitGroup'
-    /** Selectable models shipped in one package. */
-    | 'altModel'
-    /** Raw numeric parameter a renderer can drive. */
-    | 'parameter'
-    /** Addressable mesh or material, used by the wardrobe editor. */
-    | 'mesh'
-    /** Visual effect family. */
-    | 'vfx'
-    /**
-     * A place the renderer can put its camera on (`ViewCue.pointOfInterestId`), enumerated at
-     * runtime by `ModelProvider.modelCapabilities()`.
-     *
-     * Deliberately NOT part of `CapabilityVocabularySnapshot`: that snapshot is the text AIRI
-     * injects into prompts, and a camera target is not a token family (`ActTokenKind`), so a
-     * point of interest never belongs in a prompt.
-     *
-     * A renderer that declares the `'view'` cue MUST NOT declare `capabilityDiscovery: 'none'`:
-     * this is the only way a camera target is ever named, so the two contradict each other.
-     */
-    | 'pointOfInterest'
+export enum ModelCapabilityKind {
+  /**
+   * One expression unit, in the format's own vocabulary.
+   *
+   * What backs it — a blend shape, a vertex morph, a parameter preset, a compiled clip — is the
+   * driver's business, and so is resolving its own token onto it. One unit is one descriptor:
+   * there is deliberately no second kind for the same unit under a geometry name, because that
+   * asks a driver to enumerate it twice while one cue addresses all of them.
+   */
+  EXPRESSION = 'expression',
+  /** Playable motion/animation. */
+  MOTION = 'motion',
+  /** A defined alternative style of the same outfit. e.g. difference in color and accessories. */
+  OUTFIT_STYLE = 'outfitStyle',
+  /** A defined alternative outfit. e.g. a shirt instead of a coat. */
+  OUTFIT_GROUP = 'outfitGroup',
+  /** Selectable models shipped in one package. */
+  ALT_MODEL = 'altModel',
+  /** Raw numeric parameter a renderer can drive. */
+  PARAMETER = 'parameter',
+  /**
+   * Addressable mesh or material.
+   *
+   * Inventory the renderer's own wardrobe UI addresses; AIRI toggles appearance through a
+   * `ProfileCue`, so no cue names one of these.
+   */
+  MESH = 'mesh',
+  /** Visual effect family. */
+  VFX = 'vfx',
+  /**
+   * A place the renderer can put its camera on (`ViewCue.pointOfInterestId`), enumerated at
+   * runtime by `ModelProvider.modelCapabilities()`.
+   *
+   * Deliberately NOT part of `CapabilityVocabularySnapshot`: that snapshot is the text AIRI
+   * injects into prompts, and a camera target is not a token family (`ActTokenKind`), so a
+   * point of interest never belongs in a prompt.
+   *
+   * A renderer that declares the `'view'` cue MUST NOT declare
+   * `capabilityDiscovery: CapabilityDiscoveryMode.NONE`: this is the only way a camera target is
+   * ever named, so the two contradict each other.
+   */
+  POINT_OF_INTEREST = 'pointOfInterest',
+}
 
 /**
  * One renderer-native addressable thing.
  *
- * `key` is opaque to AIRI but MUST stay stable across sessions, because AIRI persists mappings
- * that point at it. `label` and `group` are contained in the renderer's own record, so what
+ * `key` is opaque to AIRI but MUST stay stable across sessions: the renderer's own records —
+ * labels, toggles, ACT mappings, saved profiles — point at it, and AIRI replays it as the token,
+ * so renaming one orphans both. `label` and `group` live in that same record, which is why what
  * the user renamed a capability to is not what a cue addresses it by.
  */
 export interface ModelCapabilityDescriptor {
@@ -68,10 +81,19 @@ export interface ModelCapabilityDescriptor {
  * (`CapabilityVocabularySnapshot`); these three families are the compile-time half, and
  * `stage-ui/src/constants/emotions.ts` declares the same three values.
  */
-export type ActTokenKind = 'emotion' | 'motion' | 'vfx'
+export enum ActTokenKind {
+  EMOTION = 'emotion',
+  MOTION = 'motion',
+  VFX = 'vfx',
+}
 
 export interface CapabilityVocabularyItem {
-  /** Renderer-native key, exactly as it must appear inside the token. */
+  /**
+   * Renderer-native key, exactly as it must appear inside the token.
+   *
+   * A driver whose token differs from its own native name keeps that alias table itself, on its
+   * side of the boundary: AIRI stores and replays the token, never the name behind it.
+   */
   key: string
   /** Which ACT token family may carry this key. */
   tokenKind: ActTokenKind

@@ -1,11 +1,14 @@
 /**
  * `@proj-airi/stage-renderer-sdk` — the contract between AIRI and a model driver.
  *
- * Status: **contract only, not integrated**. Two values are exported
- * (`MODEL_DRIVER_CONTRACT_VERSION` and the `RendererMountReadinessState` enum) and nothing else here
- * executes. Nothing in this workspace imports this package yet; it exists so the boundary can be
- * reviewed before any code moves behind it. See `README.md` for the ownership rules and the file map,
- * and `docs/rfcs/0001-stage-renderer-plugin-contract.md` for why the contract has this shape.
+ * Status: **contract only, not integrated**. Nothing in this workspace imports this package yet; it
+ * exists so the boundary can be reviewed before any code moves behind it. See `README.md` for the
+ * ownership rules and the file map, and `docs/rfcs/0001-stage-renderer-plugin-contract.md` for why
+ * the contract has this shape.
+ *
+ * Every closed vocabulary is an `enum`, so its members are named, documented and exhaustively
+ * checkable where a consumer switches on one; `MODEL_DRIVER_CONTRACT_VERSION` is the only other
+ * value. Everything else is a type.
  *
  * AIRI owns the **named model** and its **profiles** as records: the id a character card points at, the
  * user's annotations, and a stored preview. The model driver owns the **raw model** (the bytes, its

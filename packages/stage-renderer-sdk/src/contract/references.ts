@@ -2,7 +2,8 @@
  * The records AIRI keeps about the models and profiles it references.
  *
  * Owner: AIRI. Renderers never see these types, except that they receive a `modelId` and a
- * `profileId` and treat both as opaque keys.
+ * `profileId` and treat both as opaque keys — and that the thumbnail they produce is the shared
+ * `ModelPreview` shape (`shared.ts`).
  *
  * Nothing here is renderer-derived: no renderer reads or writes these fields, and none of
  * them mirrors a renderer's own storage layout. Everything AIRI stores about a model and its
@@ -10,25 +11,7 @@
  * the two cannot drift apart.
  */
 import type { ModelId, ModelProfileId } from './model'
-import type { ModelDriverId } from './shared'
-
-/**
- * A model's stored thumbnail.
- *
- * Owned by AIRI: a renderer *produces* one (`ModelProvider.preview`) and does not keep it,
- * while the catalog has to render with nothing mounted and with the owning driver unavailable
- * or uninstalled.
- *
- * Stored as a data URL rather than a `Blob`, because this value is persisted inside a reactive
- * record.
- */
-export interface ModelPreview {
-  /** The encoded image. Required: a preview AIRI holds is an image. */
-  dataUrl: string
-  /** Intrinsic pixel size, so a catalog can lay a row out before the image decodes. */
-  width?: number
-  height?: number
-}
+import type { ModelDriverId, ModelPreview } from './shared'
 
 /**
  * The user-facing annotation AIRI owns about anything it references.

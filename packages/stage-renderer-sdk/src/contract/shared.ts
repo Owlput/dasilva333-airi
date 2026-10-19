@@ -29,8 +29,7 @@ export interface ModelDriverContractVersion {
 /**
  * Version of the contract defined by this package.
  *
- * One of exactly two runtime values this package exports; everything else is a type. It
- * exists so the compatibility check does not require AIRI to restate the number.
+ * Exists so the compatibility check does not require AIRI to restate the number.
  */
 export const MODEL_DRIVER_CONTRACT_VERSION: ModelDriverContractVersion = { major: 0, minor: 1 }
 
@@ -59,7 +58,7 @@ export enum RendererMountReadinessState {
   MOUNT_ERROR = 'mount-error',
 }
 
-export type ContractFailureCode
+export enum ContractFailureCode {
   /**
    * The renderer cannot read this input at all: it has no path for the payload (unreadable,
    * truncated, a container it cannot open).
@@ -68,32 +67,34 @@ export type ContractFailureCode
    * (`ModelDriverCapabilities.probe`); declining a single input is a successful probe whose
    * `confidence` is low and whose `blockingFindings` say why.
    */
-  = | 'unsupported-input'
+  UNSUPPORTED_INPUT = 'unsupported-input',
   /** The package is structurally invalid; `details` should carry the findings. */
-    | 'invalid-package'
+  INVALID_PACKAGE = 'invalid-package',
   /** The referenced asset is gone from the renderer's own storage. */
-    | 'asset-missing'
+  ASSET_MISSING = 'asset-missing',
   /** The asset exists but failed to load or parse (moc3, glTF, skel, pmx...). */
-    | 'asset-corrupt'
+  ASSET_CORRUPT = 'asset-corrupt',
   /**
    * The model driver is disabled, uninstalled, or failed to activate.
    *
    * Reported by the host, which is the side that knows a driver is absent — an instance
    * cannot report its own absence.
    */
-    | 'renderer-unavailable'
+  RENDERER_UNAVAILABLE = 'renderer-unavailable',
   /** A host service the renderer requires was not provided at activation. */
-    | 'host-service-missing'
+  HOST_SERVICE_MISSING = 'host-service-missing',
   /**
    * The work was abandoned, and nothing took its place: the mount was disposed or the
    * renderer disabled while the operation was in flight, or the caller cancelled it.
    *
-   * Deliberately not `CueRejection.superseded`, which is the normal case — a newer
+   * Deliberately not `CueRejection.SUPERSEDED`, which is the normal case — a newer
    * transaction for the same mount made this one moot, the send still succeeds, and only
    * that slot goes unapplied. A renderer MUST NOT report one as the other.
    */
-    | 'aborted'
-    | 'internal'
+  ABORTED = 'aborted',
+  /** An unexpected failure inside the renderer, with nothing more specific to report. */
+  INTERNAL = 'internal',
+}
 
 export interface ContractFailure {
   code: ContractFailureCode
@@ -131,7 +132,12 @@ export type ContractResult<T>
  * Cues target a surface too: the host routes a cue only to the matching mount, so a settings
  * preview never animates the live stage.
  */
-export type RendererMountSurfaceKind = 'stage' | 'preview' | 'actor' | 'rehearsal'
+export enum RendererMountSurfaceKind {
+  STAGE = 'stage',
+  PREVIEW = 'preview',
+  ACTOR = 'actor',
+  REHEARSAL = 'rehearsal',
+}
 
 /**
  * A point inside a mount's **drawing box**, in CSS pixels measured from that box's top-left
@@ -208,4 +214,26 @@ export interface HeadPose {
    * rather than invent a fraction of the viewport.
    */
   modelHeightPx: number | null
+}
+
+/**
+ * A model's stored thumbnail.
+ *
+ * **Both sides** handle this shape: a renderer *produces* one (`ModelProvider.preview`, or
+ * `ModelDescriptor.preview` when it already has it) and keeps none, while the catalog has to
+ * render with nothing mounted and with the owning driver unavailable or uninstalled — so AIRI
+ * stores its own copy.
+ *
+ * It lives here rather than among AIRI's own records (`references.ts`) for exactly that reason:
+ * a renderer has to construct one, so it is a value both sides share.
+ *
+ * Stored as a data URL rather than a `Blob`, because this value is persisted inside a reactive
+ * record.
+ */
+export interface ModelPreview {
+  /** The encoded image. Required: a preview AIRI holds is an image. */
+  dataUrl: string
+  /** Intrinsic pixel size, so a catalog can lay a row out before the image decodes. */
+  width?: number
+  height?: number
 }

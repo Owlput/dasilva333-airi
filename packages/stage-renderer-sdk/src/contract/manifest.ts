@@ -46,9 +46,9 @@ export interface ModelDriverManifest {
  *     driver, so a loader or a picker can use it, and so the host has something before
  *     activation.
  *   - `ModelDriverRuntime.rendererCapabilities()` — the **truth**, probed under the resource
- *     limits actually in effect. A missing OPFS grant, a GPU that cannot hold the model, a
- *     licence the user declined or memory pressure can each take a surface away, so the claim
- *     is only a hint and the probe is what a running host acts on.
+ *     limits actually in effect. A missing OPFS grant, a GPU that cannot hold the model or memory
+ *     pressure can each take a surface away, so the claim is only a hint and the probe is what a
+ *     running host acts on.
  *
  * Required and complete rather than `Partial`, deliberately: a missing field would have to be
  * read as `false` at every use site, which turns "I did not say" into a silent denial. A
@@ -82,6 +82,15 @@ export interface ModelDriverCapabilities {
   panels: boolean
   /** Has something to release when the host disables it (`ModelDriverRuntime.deactivate`). */
   deactivate: boolean
+  /**
+   * Can inherit the settings AIRI kept for it before this contract existed
+   * (`ModelDriverRuntime.migrate`).
+   *
+   * `false` means pre-contract settings have nowhere to go: the host may say so once and then drop
+   * them. `true` means the host hands over its legacy bag on the first activation and deletes the
+   * entries the driver reports as used.
+   */
+  migration: boolean
   /**
    * The optional cue kinds the renderer understands.
    *
@@ -121,22 +130,36 @@ export interface ModelDriverCapabilities {
    * Can release a mount's resources on request (`RendererMountExposed.dispose`).
    *
    * The host unmounts the component either way; this says whether the renderer has more to do
-   * than that, such as keeping parsed resources alive for a `shallow` re-mount.
+   * than that, such as keeping parsed resources alive for a
+   * `RendererMountDisposeStrategy.SHALLOW` re-mount.
    */
   dispose: boolean
 }
 
 /**
- * `static`: enumerate from the package without loading it.
- * `runtime`: only after a model is mounted.
- * `none`: the renderer has no capability model at all.
+ * When a model's capabilities can be enumerated.
  *
- * `'none'` and declaring the `'view'` cue contradict each other: points of interest exist only
- * as capability descriptors, so a renderer with no capability model has no camera target to
- * name.
+ * `NONE` and declaring the `'view'` cue contradict each other: points of interest exist only as
+ * capability descriptors, so a renderer with no capability model has no camera target to name.
  */
-export type CapabilityDiscoveryMode = 'static' | 'runtime' | 'none'
+export enum CapabilityDiscoveryMode {
+  /** Enumerate from the package without loading it. */
+  STATIC = 'static',
+  /** Only after a model is mounted. */
+  RUNTIME = 'runtime',
+  /** The renderer has no capability model at all. */
+  NONE = 'none',
+}
 
+/** Whether the renderer needs a DOM canvas of its own. */
+export enum ModelDriverDomRequirement {
+  CANVAS = 'canvas',
+  NONE = 'none',
+}
+
+/**
+ * What must exist in the runtime before the plugin can activate.
+ */
 export interface ModelDriverRequirements {
   /** Needs a WebGL(2) context. */
   webgl?: 1 | 2 | false
@@ -146,7 +169,7 @@ export interface ModelDriverRequirements {
   opfs?: boolean
   /** Spawns workers. */
   worker?: boolean
-  /** Needs a live `AudioContext` (lip sync, beat sync). */
+  /** Needs a live `AudioContext` (lip sync). */
   audioContext?: boolean
   /**
    * Needs a DOM canvas of its own.
@@ -154,11 +177,9 @@ export interface ModelDriverRequirements {
    * That canvas belongs to the renderer and sits inside the box the host mounts it into
    * (`RendererMountViewport`): the host never sizes it, draws into it, or holds a handle to it.
    */
-  dom?: 'canvas' | 'none'
+  dom?: ModelDriverDomRequirement
   /** Globals the host must install before activation, instead of "the app's index.html happens to include a script tag". */
   globalScripts?: string[]
-  /** Third-party license the user must accept before the driver is usable. */
-  license?: 'spine-editor' | 'live2d-cubism' | 'none'
   /** Rough persistent-storage appetite, for the host's quota UI. */
   storageHintBytes?: number
 }

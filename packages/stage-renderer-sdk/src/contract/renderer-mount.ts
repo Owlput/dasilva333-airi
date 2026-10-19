@@ -32,15 +32,12 @@ import type {
  *
  * A policy the host declares for this mount; it does not carry cross-renderer state of its own.
  */
-export type RendererMountInteractionMode = 'tactile' | 'orbit' | 'drag' | 'positioning' | 'none'
-
-/**
- * Mouth/lip-sync input.
- * Raw audio is only granted when user granted the permission.
- */
-export interface RendererMountMouthInput {
-  openness?: number
-  audioSource?: AudioBufferSourceNode
+export enum RendererMountInteractionMode {
+  TACTILE = 'tactile',
+  ORBIT = 'orbit',
+  DRAG = 'drag',
+  POSITIONING = 'positioning',
+  NONE = 'none',
 }
 
 /**
@@ -62,14 +59,23 @@ export interface RendererMountHitAreaChange {
   entered: boolean
 }
 
+/** The host's read on whether the current render load is sustainable. */
+export enum RendererQualityHint {
+  FULL = 'full',
+  REDUCED = 'reduced',
+}
+
 /**
  * Props every model renderer mount must accept.
  *
- * Three families belong on a prop rather than in a service or a cue: the value the host samples
- * every frame (`mouth`), the live host decisions about this mount (`paused`, `visible`,
- * `reducedMotion`, `qualityHint`, `interactionMode`), and what the host assigns to the mount itself
- * (`modelDriverId`, `mountId`, `stateScope`, `surface`). Everything else a renderer pulls out of
- * `ModelDriverHostServices`; discrete intents arrive as cues.
+ * Two families belong on a prop rather than in a service or a cue: the live host decisions about this
+ * mount (`paused`, `visible`, `reducedMotion`, `qualityHint`, `interactionMode`, `viewport`), and what
+ * the host assigns to the mount itself (`modelDriverId`, `mountId`, `stateScope`, `surface`).
+ * Everything else a renderer pulls out of `ModelDriverHostServices`; discrete intents arrive as cues.
+ *
+ * There is deliberately no per-frame value here. The one that used to be — mouth openness — is now
+ * derived by the renderer from the audio it is served (`HostAudioInterface`), because a scalar the
+ * host computes is a second opinion about a signal the renderer already has.
  *
  * A prop carries a **value** the host can restate on every render; a stream of **events** is a
  * service a renderer subscribes to. That is why the pointer is not here: pointer input lives in
@@ -132,10 +138,10 @@ export interface RendererMountProps {
   reducedMotion?: boolean
   /**
    * Signals whether the host is struggling to keep up with the rendering.
-   * Upon receiving `qualityHint: 'reduced'`, the renderer SHOULD lower
-   * the render quality automatically, unless the user explicity disable it.
+   * Upon receiving `RendererQualityHint.REDUCED`, the renderer SHOULD lower
+   * the render quality automatically, unless the user explicitly disabled that.
    */
-  qualityHint?: 'full' | 'reduced'
+  qualityHint?: RendererQualityHint
   viewport?: RendererMountViewport
   /**
    * Which pointer interaction this mount accepts, when the host offers one.
@@ -148,8 +154,6 @@ export interface RendererMountProps {
    * a moving mode sees them and ignores them.
    */
   interactionMode?: RendererMountInteractionMode
-  /** Continuous lip-sync input stream. */
-  mouth?: RendererMountMouthInput
   /**
    * Where this mount lives — used for cue routing, panel placement and host overlays.
    *
@@ -225,12 +229,16 @@ export interface RendererMountHitArea {
 /**
  * How thoroughly a mount is torn down, when the host asks for it.
  *
- * `shallow` keeps parsed/GPU resources alive for a fast re-mount, `deep` releases everything. The
- * choice is the host's, not the renderer's: only the caller knows whether it is about to re-mount the
- * same model or is done with it, which is also why it is a parameter of
+ * The choice is the host's, not the renderer's: only the caller knows whether it is about to
+ * re-mount the same model or is done with it, which is also why it is a parameter of
  * `RendererMountExposed.dispose` rather than renderer-side state.
  */
-export type RendererMountDisposeStrategy = 'shallow' | 'deep'
+export enum RendererMountDisposeStrategy {
+  /** Keeps parsed/GPU resources alive for a fast re-mount of the same model. */
+  SHALLOW = 'shallow',
+  /** Releases everything. */
+  DEEP = 'deep',
+}
 
 /**
  * Methods the host may call on a mounted renderer.
