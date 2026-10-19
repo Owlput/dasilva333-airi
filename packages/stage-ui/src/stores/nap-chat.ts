@@ -8,6 +8,9 @@ import { isUserAway } from './proactivity-telemetry'
 
 export const NAP_CHAT_DEFAULT_THRESHOLD_MIN = 15
 
+export const DEFAULT_SOCIAL_PROMPT_GUIDANCE
+  = 'Be casual, friendly, and enthusiastic. Discuss our shared creative and coding projects while keeping private user personal details confidential.'
+
 export interface NapTurn {
   speaker: string
   text: string
@@ -33,40 +36,11 @@ export const useNapChatStore = defineStore('nap-chat', () => {
   const afkThresholdMinutes = ref(NAP_CHAT_DEFAULT_THRESHOLD_MIN)
   const welcomeBackRecapEnabled = ref(true)
   const firedForIdleSession = ref(false)
+  const socialPromptGuidance = ref(DEFAULT_SOCIAL_PROMPT_GUIDANCE)
 
-  const latestEpisode = ref<NapEpisode | null>({
-    sessionId: 'nap-sess-7b2a',
-    with: {
-      characterName: 'Kirie',
-      alias: 'Alex',
-    },
-    turnCount: 4,
-    summary: 'Compared notes on a rainy afternoon and traded ideas for the café.',
-    timestamp: Date.now() - 42 * 60 * 1000,
-    journalEntryId: 'ltmm-entry-10492',
-    turns: [
-      {
-        speaker: 'AIRI',
-        text: 'Hey Kirie! Richard just stepped away from his desk. Are you guys still compiling the shaders?',
-        time: '14:20',
-      },
-      {
-        speaker: 'Kirie',
-        text: 'Hi AIRI! Yeah, Alex is experimenting with IS-Net background removal right now. The pipeline latency dropped by 40%.',
-        time: '14:21',
-      },
-      {
-        speaker: 'AIRI',
-        text: 'That’s awesome! I’ll make sure to note that down for Richard when he gets back.',
-        time: '14:21',
-      },
-      {
-        speaker: 'Kirie',
-        text: 'Great! Also tell him we loved the rainy day café scene he configured.',
-        time: '14:22',
-      },
-    ],
-  })
+  // NOTICE: No prototype seed. Episodes are recorded by the nap-chat coordinator
+  // after a real autonomous session; the UI renders its empty state until then.
+  const latestEpisode = ref<NapEpisode | null>(null)
 
   function selectCandidates(roster: Peer[], companionId: string, currentIdleSec?: number): Peer[] {
     if (!napEnabled.value)
@@ -103,6 +77,7 @@ export const useNapChatStore = defineStore('nap-chat', () => {
     afkThresholdMinutes,
     welcomeBackRecapEnabled,
     firedForIdleSession,
+    socialPromptGuidance,
     latestEpisode,
     selectCandidates,
     markIdleSessionStarted,

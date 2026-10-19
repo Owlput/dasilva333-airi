@@ -54,21 +54,40 @@ describe('useNapChatStore.selectCandidates', () => {
 
   it('records episode and formats welcome-back recap with NO_REPLY guard', () => {
     const store = useNapChatStore()
-    expect(store.formatWelcomeBackRecap()).toContain('Kirie')
+    expect(store.latestEpisode).toBeNull()
+    expect(store.formatWelcomeBackRecap()).toBe('NO_REPLY')
 
     store.recordEpisode({
       sessionId: 'sess-test-99',
-      with: { characterName: 'Lain', alias: 'Navi' },
-      turnCount: 2,
-      summary: 'Discussed wired protocols.',
+      with: { characterName: 'Kirie', alias: 'Alex' },
+      turnCount: 4,
+      summary: 'Compared notes on a rainy afternoon.',
       timestamp: Date.now(),
       journalEntryId: 'ltmm-entry-99',
-      turns: [],
+      turns: [{ speaker: 'AIRI', text: 'Hey Kirie!', time: '14:20' }],
     })
 
-    expect(store.latestEpisode?.with.characterName).toBe('Lain')
-    expect(store.formatWelcomeBackRecap()).toContain('Lain')
+    expect(store.latestEpisode?.with.characterName).toBe('Kirie')
+    expect(store.formatWelcomeBackRecap()).toContain('Kirie')
 
     expect(store.formatWelcomeBackRecap(null)).toBe('NO_REPLY')
+  })
+
+  it('manages companion social prompt guidance and per-friend topic guidance', () => {
+    const store = useNapChatStore()
+    expect(store.socialPromptGuidance).toContain('Be casual, friendly, and enthusiastic')
+
+    store.socialPromptGuidance = 'Focus on robotics, anime recommendations, and 3D printing.'
+    expect(store.socialPromptGuidance).toBe('Focus on robotics, anime recommendations, and 3D printing.')
+
+    const peerWithGuidance = friend({
+      allowedCapabilities: {
+        canNapChat: true,
+        canShareMemories: false,
+        canStreamSensory: false,
+        customPromptGuidance: 'Discuss local LLM benchmarks and quantization.',
+      },
+    })
+    expect(peerWithGuidance.allowedCapabilities.customPromptGuidance).toBe('Discuss local LLM benchmarks and quantization.')
   })
 })

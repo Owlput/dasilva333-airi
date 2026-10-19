@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { AmbassadorCard, ExternalFriend, Peer } from '@proj-airi/stage-shared'
 
+import type { NapTurn } from '../../stores/nap-chat'
+
 import { isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot } from 'vaul-vue'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
@@ -26,8 +29,13 @@ const {
   afkThresholdMinutes,
   welcomeBackRecapEnabled: welcomeBackEnabled,
   latestEpisode,
+  socialPromptGuidance,
 } = storeToRefs(napChatStore)
 const embassy = usePeerEmbassy()
+const router = useRouter()
+
+// NOTICE: Stable empty reference — never allocate `[]` inside a computed.
+const EMPTY_TURNS: NapTurn[] = Object.freeze([]) as NapTurn[]
 
 onMounted(async () => {
   await peersStore.init()
@@ -107,26 +115,28 @@ const pendingRequests = ref([
   },
 ])
 
-const conversationTurns = computed(() => latestEpisode.value?.turns || [])
+const conversationTurns = computed(() => latestEpisode.value?.turns ?? EMPTY_TURNS)
 
 function handleViewHistory() {
   const recap = napChatStore.formatWelcomeBackRecap()
   if (recap !== 'NO_REPLY') {
-    toast.info(recap, {
-      duration: 5000,
-      icon: '💬',
-    })
+    toast.info(recap, { duration: 5000 })
   }
   else {
     toast.info('Viewing full historical dream turn logs.')
   }
 }
 
-function handleOpenJournal() {
-  if (latestEpisode.value?.journalEntryId)
-    toast.success(`Opening entry ${latestEpisode.value.journalEntryId} in Episodic Memory Text Journal...`)
-  else
+async function handleOpenJournal() {
+  const entryId = latestEpisode.value?.journalEntryId
+  try {
+    await router.push('/settings/modules/memory-long-term')
+    if (entryId)
+      toast.success(`Entry ${entryId} lives in the Episodic Memory Text Journal.`)
+  }
+  catch {
     toast.info('Opening Episodic Memory Text Journal...')
+  }
 }
 
 function getPeerAvatarGradient(name: string): string {
@@ -250,6 +260,13 @@ async function handleSendRequest() {
 
 function openPermissions(friend: ExternalFriend) {
   selectedFriend.value = JSON.parse(JSON.stringify(friend))
+  if (selectedFriend.value && !selectedFriend.value.allowedCapabilities) {
+    selectedFriend.value.allowedCapabilities = {
+      canNapChat: true,
+      canShareMemories: false,
+      canStreamSensory: false,
+    }
+  }
   showPermissionsDrawer.value = true
 }
 
@@ -717,6 +734,20 @@ const surfaceCardClass = computed(() => [
               description="Hear what happened when you return."
             />
 
+            <!-- Companion social guidance -->
+            <div :class="['space-y-1', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
+              <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                Companion social guidance
+              </div>
+              <FieldInput
+                v-model="socialPromptGuidance"
+                placeholder="e.g. Be casual, friendly, and enthusiastic..."
+              />
+              <p :class="['text-[10px]', 'text-neutral-500']">
+                Global tone and boundary guidance for autonomous messages.
+              </p>
+            </div>
+
             <!-- Accordion Diagnostic Link -->
             <button
               :class="['flex', 'w-full', 'items-center', 'justify-between', 'pt-1', 'text-[11px]', 'text-neutral-500', 'hover:text-neutral-700', 'dark:hover:text-neutral-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
@@ -822,7 +853,7 @@ const surfaceCardClass = computed(() => [
               Autonomous Nap-Chat Transcript {{ latestEpisode ? `(with ${latestEpisode.with.characterName})` : '' }}
             </h3>
           </div>
-          <button :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white']" @click="showConversationModal = false">
+          <button :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:outline-none', 'focus-visible:ring-2', 'focus-visible:ring-primary-500', 'rounded-md']" aria-label="Close conversation transcript" @click="showConversationModal = false">
             ✕
           </button>
         </div>
@@ -911,6 +942,20 @@ const surfaceCardClass = computed(() => [
                     {{ comp.name }}
                   </button>
                 </div>
+              </div>
+
+              <!-- Friend topic guidance -->
+              <div :class="['space-y-1.5', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
+                <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  Friend topic guidance (optional)
+                </div>
+                <FieldInput
+                  v-model="selectedFriend.allowedCapabilities.customPromptGuidance"
+                  placeholder="e.g. Talk about 3D shaders and game dev, keep inside jokes playful."
+                />
+                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                  Specific topics or conversational style tailored for {{ selectedFriend.characterName }}.
+                </p>
               </div>
             </div>
 

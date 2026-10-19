@@ -30,6 +30,7 @@ export interface ExternalFriend extends BasePeer {
     canNapChat: boolean
     canShareMemories: boolean
     canStreamSensory: boolean
+    customPromptGuidance?: string
   }
   allowedCompanionIds?: string[]
   introMessage?: string

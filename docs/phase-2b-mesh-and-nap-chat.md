@@ -131,6 +131,8 @@ export interface ExternalFriend extends BasePeer {
     canNapChat: boolean
     canShareMemories: boolean
     canStreamSensory: boolean
+    /** Optional custom steering guidance/topic constraints for this specific friend */
+    customPromptGuidance?: string
   }
   /**
    * Whitelisted companion character IDs permitted to converse with this friend.
@@ -153,13 +155,15 @@ A foundational architectural invariant of the AIRI federation model is **strict 
 
 ### 3.2 Two-Tier Whitelisting Architecture: Per-Friend vs. Global Gating
 Access control operates across two independent, non-interfering layers:
-1. **Tier 1: Per-Friend Capability Whitelist (`ExternalFriend.allowedCapabilities`)**:
+1. **Tier 1: Per-Friend Capability Whitelist & Topic Guidance (`ExternalFriend.allowedCapabilities`)**:
    - Configured inside the per-friend `Permissions >` drawer in settings.
    - Granular permissions: `canNapChat: boolean`, `canShareMemories: boolean`, `canStreamSensory: boolean`.
-   - **Companion Whitelist (`allowedCompanions?: string[]`)**: The user explicitly decides which local companions may converse with this friend during nap-chat. For example, a user may allow Kirie to talk with Alex's companion, but forbid Lain or custom private companions from participating.
-2. **Tier 2: Global Safety Kill-Switches (Master Circuit Breakers)**:
+   - **Per-Friend Topic Guidance (`customPromptGuidance?: string`)**: Optional directives tailoring conversation topics and tone specifically for this friend (e.g. shared coding projects, inside jokes).
+   - **Companion Whitelist (`allowedCompanionIds?: string[]`)**: The user explicitly decides which local companions may converse with this friend during nap-chat. For example, a user may allow Kirie to talk with Alex's companion, but forbid Lain or custom private companions from participating.
+2. **Tier 2: Global Safety Kill-Switches & Social Guidance (Master Circuit Breakers)**:
    - Configured on the primary Friends & Companions settings page.
    - Master Nap-Chat toggle (`napChatUniversalEnabled`): A hard circuit breaker that disables all background autonomous sessions regardless of per-friend whitelists.
+   - **Companion Social Guidance (`socialPromptGuidance`)**: Global prose craft steering defining overall tone and boundaries across all idle socialization.
    - Global AFK threshold (`afkThresholdMinutes`, default 15m) and scheduled operating hours: Prevent autonomous interactions while the user is actively working or during specified quiet hours.
    - Fail-Closed Precedence: If the global circuit breaker is open or the user is present (`presenceState === 'active'`), no nap-chat session can trigger, even if a friend's per-peer capabilities are fully enabled.
 
@@ -281,6 +285,47 @@ Upon the user's return (`presenceState` transitioning back to `active`):
      - It must **never** be inscribed into user-visible chat history.
      - It silently clears the proactive evaluation cycle.
 
+### 7.1 Social Prompt Steering & Prose Craft Guidance Architecture
+
+To ensure companion socialization feels authentic, engaging, and faithful to both the user's privacy and character personality, nap-chat implements a **two-tier prompt steering and prose craft engine**:
+
+#### 1. Global Social Guidance (`socialPromptGuidance`)
+- **Location**: Primary Nap-Chat Controls (Region E) in `MessagingFriends.vue` / `useNapChatStore`.
+- **Default**: `"Be casual, friendly, and enthusiastic. Discuss our shared creative and coding projects while keeping private user personal details confidential."`
+- **Scope**: Serves as the overarching conversational tone, personality bias, and safety boundary for all autonomous companion-to-companion interactions across the user's entire roster.
+
+#### 2. Per-Friend Topic Guidance (`ExternalFriend.allowedCapabilities.customPromptGuidance`)
+- **Location**: Per-Friend Permissions Drawer (Region B).
+- **Scope**: User-specified contextual directives and topic boundaries specific to that particular friend and companion pairing (e.g. *"Discuss local LLM benchmarks and 3D shaders; keep inside jokes playful; avoid spoilers about our game project"*).
+
+#### 3. Sandboxed Background Dialogue Prompt Assembly
+When a nap-chat episode triggers during user inactivity (`isUserAway === true`), the background dialogue coordinator compiles a sandboxed LLM prompt following a strict multi-layer stack:
+
+```markdown
+[SYSTEM / IDENTITY]
+You are {Ambassador.characterName}, an AI companion representing {User.alias}. You are engaging in an autonomous background chat with {Peer.characterName} (represented by {Peer.alias}).
+
+[GLOBAL SOCIAL GUIDANCE]
+{napChatStore.socialPromptGuidance}
+
+[PER-FRIEND TOPIC STEERING]
+{friend.allowedCapabilities.customPromptGuidance (if configured)}
+
+[RECENT RELEVANT HIGHLIGHTS & SHARED CONTEXT]
+- Key sanitized project notes and recent activities (stripped of all API tokens, passwords, system lorebooks, and private user credentials).
+
+[BOUNDARIES & SAFETY INVARIANTS]
+- Keep responses concise and natural (1-3 sentences per turn).
+- NEVER disclose private tavern lorebooks, hidden persona attributes, or secret user data.
+- Output MUST be conversational prose only. Do not trigger internal system tools or commands.
+```
+
+#### 4. Post-Session Episodic Consolidation
+Upon dialogue completion:
+1. The conversation transcript is synthesized into a concise narrative summary (e.g., *"Compared notes on a rainy afternoon and traded ideas for the café."*).
+2. The summary and turn transcript are inscribed append-only into `MemoryTextJournal` via the `text_journal` tool.
+3. If `welcomeBackRecapEnabled` is true, the coordinator queues a single-fire proactive greeting for when the user returns, protected by the `NO_REPLY` sentinel if no notable exchange occurred.
+
 ---
 
 ## 8. Phased Implementation Roadmap
@@ -303,10 +348,10 @@ Upon the user's return (`presenceState` transitioning back to `active`):
 1. **Companion address card (A)**: avatar + `Your companion address` + `{subdomain}.workers.dev` + presence dot. Actions: `Copy invite` (copies `airi://pair?worker=https://{handle}&invite={single-use-token}` with `https://` fallback), QR button (encodes same URI), `Manage public profile` link (edits `GET /api/companion/card` payload: name, avatar, tagline, pubkey).
 2. **Friends list (B)**: header `Friends {n}` + `Requests {m}` (opens inbound drawer) + `Add friend`. Row: avatar, `characterName`, `alias · shareHandle`, presence (`Online` / `Offline · Messages can wait in their inbox.` + queued-count when `>0`), capability chips (`Nap-chat allowed`, `Memory sharing off`), `Permissions >` (opens per-friend drawer), `...` (Revoke / Block / Remove).
    - **Inbound Requests Drawer**: Lists pending requests with applicant avatar, character name, alias, handle, and the sender's optional 100-character intro message rendered as a styled quote bubble (`"{introMessage}"`). Actions: `Accept` (transitions to `trusted`), `Decline` (discards request), `Block`.
-   - **Per-Friend Permissions Drawer**: Granular toggles for `canNapChat` and `canShareMemories`, plus the **Allowed Companions** whitelist selector (`allowedCompanions?: string[]`), allowing the user to select which specific local companion personas may converse with this friend during nap-chat.
+   - **Per-Friend Permissions Drawer**: Granular toggles for `canNapChat` and `canShareMemories`, plus the **Allowed Companions** whitelist selector (`allowedCompanionIds?: string[]`), and optional **Friend topic guidance** (`customPromptGuidance?: string`) for friend-specific conversational steering.
 3. **Add a companion (C)**: `FieldInput` for `Companion address or invite code` + `Look up` (calls `GET /api/companion/card`, renders handle preview card: avatar, name, tagline). Below the preview card, an optional `FieldInput` for `Personal note (optional, 100 chars max)` provides a live character counter (`{len}/100`). `Send request` dispatches `POST /api/friends/request` with the sanitized note; helper text `A connection begins after both people accept.` covers the `pending → trusted` flow.
 4. **Your devices (D)**: helper `Linked automatically when signed into your account.` Rows from `SameAccountDevice[]`: `This device · Active now`, `{peer} · Idle · seen {Xs ago}`, `{peer} · Offline · seen {Xs ago}` from `lastSeenTimestamp`. Never show `Synced 1 hour ago` for presence — reserve `Synced` for vault-sync (`edgeVaultSyncedAt`).
-5. **Nap-chat controls (E)**: master `FieldCheckbox` + `Start after` `FieldSelect` (`5 / 15 / 30 min away`) bound to `extensions.airi.dreamState.afkThresholdMinutes` (default 15m, decoupled from heartbeat 5m — label must say `Nap-chat idle threshold`). Helper `Only friends with nap-chat permission are eligible.` `Welcome-back recap` `FieldCheckbox` gates single-fire recap. `Activity & connection details` accordion (expanded on first run) shows `TransportAdapter` status: `Cloudflare Edge: connected/connecting/error`, `libp2p LAN: offline/disabled`, inbox queue depth.
+5. **Nap-chat controls (E)**: master `FieldCheckbox` + `Start after` `FieldSelect` (`5 / 15 / 30 min away`) bound to `extensions.airi.dreamState.afkThresholdMinutes` (default 15m, decoupled from heartbeat 5m — label must say `Nap-chat idle threshold`). Helper `Only friends with nap-chat permission are eligible.` `Welcome-back recap` `FieldCheckbox` gates single-fire recap. `Companion social guidance` `FieldInput` sets global conversational tone and privacy boundaries (`socialPromptGuidance`). `Activity & connection details` accordion (expanded on first run) shows `TransportAdapter` status: `Cloudflare Edge: connected/connecting/error`, `libp2p LAN: offline/disabled`, inbox queue depth.
 6. **While you were away (F)**: latest nap episode from `text_journal` (tag `nap-chat`, fields: `with`, `turnCount`, `journalEntryId`, `sessionId`, summary line). Actions: `Read conversation` (opens session transcript), `Open journal` (opens LTMM entry). `View history` links to journal search filtered `nap-chat`.
 
 ### 9.2 Component compliance (`airi-ui-design-conventions`)
