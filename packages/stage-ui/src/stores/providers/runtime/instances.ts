@@ -12,6 +12,8 @@ import type { Ref } from 'vue'
 
 import type { ProviderMetadata } from '../types'
 
+import { keylessOrOptionalKey } from '../../../libs/providers/types'
+
 export interface ProviderInstancesDeps {
   providerInstanceCache: Ref<Record<string, unknown>>
   providerMetadata: Record<string, ProviderMetadata>
@@ -75,11 +77,11 @@ export function createProviderInstances(deps: ProviderInstancesDeps) {
     }
 
     // Providers that explicitly require no credentials (local engines,
-    // browser-native APIs) may safely construct with an empty config.
+    // browser-native APIs, keyless or optional-key gateways) may safely construct with an empty config.
     // Everything else must present a non-empty credential BEFORE the SDK is
     // instantiated so client code receives an immediate, localized error
     // instead of a network round-trip that ends in a 401.
-    const noCredentials = metadata.requiresCredentials === false || metadata.deployment === 'local' || providerId === 'browser-web-speech-api'
+    const noCredentials = keylessOrOptionalKey(metadata.requiresCredentials) || metadata.deployment === 'local' || providerId === 'browser-web-speech-api'
 
     let config = deps.providerInstanceOptions?.(providerId, targetInstanceId)
       ?? deps.getProviderCredentials()[providerId]

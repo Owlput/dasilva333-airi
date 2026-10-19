@@ -109,6 +109,36 @@ const pollinationsPresets = [
   },
 ]
 
+const lanlanFreePresets = [
+  {
+    id: 'free-model',
+    name: 'StepFun Free Model',
+    description: 'Fast, zero-setup conversational model sponsored by StepFun',
+    badge: 'StepFun',
+  },
+]
+
+const kiloPresets = [
+  {
+    id: 'kilo-auto/free',
+    name: 'Kilo Auto Free',
+    description: 'Auto-routes to best available free coding & chat model',
+    badge: 'Auto',
+  },
+  {
+    id: 'dots-studio/dots-3-note-preview:free',
+    name: 'Dots3-Note Preview',
+    description: 'Dots Studio preview model, 512K context',
+    badge: 'Vision',
+  },
+  {
+    id: 'nvidia/nemotron-3.5-super-vl:free',
+    name: 'Nemotron 3.5 Super VL',
+    description: 'NVIDIA vision-language reasoning, 1M context',
+    badge: '1M Context',
+  },
+]
+
 function getCloudflareCredentials(): { apiKey: string, accountId: string } {
   const apiKey = (cloudflareStore.activeAccessToken || cloudflareStore.cfApiToken || cloudflareStore.cfOAuthTokens?.accessToken || '').trim()
   const accountId = (cloudflareStore.activeAccountId || cloudflareStore.cfAccountId || cloudflareStore.cfOAuthTokens?.accountId || '').trim()
@@ -139,7 +169,30 @@ function selectCloudflareModel(modelId: string) {
 function selectPollinationsModel(modelId: string) {
   selectedProviderId.value = 'pollinations'
   selectedModelId.value = modelId
+  if (!providersStore.providers.pollinations) {
+    providersStore.providers.pollinations = {}
+  }
   providersStore.markProviderAdded('pollinations')
+  recordDraft()
+}
+
+function selectLanlanFreeModel(modelId: string = 'free-model') {
+  selectedProviderId.value = 'lanlan-free'
+  selectedModelId.value = modelId
+  if (!providersStore.providers['lanlan-free']) {
+    providersStore.providers['lanlan-free'] = { apiKey: 'free-access', baseUrl: 'https://www.lanlan.tech/text/v1/' }
+  }
+  providersStore.markProviderAdded('lanlan-free')
+  recordDraft()
+}
+
+function selectKiloModel(modelId: string = 'kilo-auto/free') {
+  selectedProviderId.value = 'kilo'
+  selectedModelId.value = modelId
+  if (!providersStore.providers.kilo) {
+    providersStore.providers.kilo = { apiKey: '', baseUrl: 'https://api.kilo.ai/api/gateway/v1' }
+  }
+  providersStore.markProviderAdded('kilo')
   recordDraft()
 }
 
@@ -189,6 +242,7 @@ const isLoadingActiveProviderModels = computed(() => providersStore.isLoadingMod
 // --- Hardware Detection (WebLLM needs WebGPU) ---
 const webgpuSupported = ref(false)
 const fp16Supported = ref(true)
+const selectedLlmModel = ref<string>(draft.state.llmModel || WEB_LLM_MODELS[0].id)
 
 const localModelDescriptionKeys: Record<string, string> = {
   'Qwen3.5-0.8B-q4f16_1-MLC': 'onboarding.steps.consciousness.localModels.descriptions.qwen3-5-0-8b-q4f16-1-mlc',
@@ -212,7 +266,13 @@ onMounted(async () => {
   if (selectedProviderId.value === 'web-llm' || selectedProviderId.value === 'apple-core-ai') {
     activeTab.value = 'local'
   }
-  else if (selectedProviderId.value && selectedProviderId.value !== 'cloudflare-workers-ai' && selectedProviderId.value !== 'pollinations') {
+  else if (
+    selectedProviderId.value
+    && selectedProviderId.value !== 'cloudflare-workers-ai'
+    && selectedProviderId.value !== 'pollinations'
+    && selectedProviderId.value !== 'lanlan-free'
+    && selectedProviderId.value !== 'kilo'
+  ) {
     activeTab.value = 'custom'
   }
   else {
@@ -324,7 +384,6 @@ const downloadState = ref<DownloadState>('idle')
 const downloadProgress = ref(0)
 const downloadStatusText = ref('')
 const downloadAbort = ref<AbortController>()
-const selectedLlmModel = ref<string>(draft.state.llmModel || WEB_LLM_MODELS[0].id)
 
 const isWebLlmSelected = computed(() => selectedProviderId.value === 'web-llm')
 
@@ -476,6 +535,18 @@ function getApiKeyPlaceholder(providerId: string): string {
   return map[providerId] || t('onboarding.steps.consciousness.apiKeyPlaceholder')
 }
 
+// --- Live Connection Test & Dialogue Simulator ---
+type ProbeState = 'idle' | 'connecting' | 'inferencing' | 'verified' | 'error'
+const probeState = ref<ProbeState>('idle')
+const probeResponseMessage = ref('')
+const probeErrorMessage = ref('')
+const probeBenchmarkMs = ref<number | null>(draft.state.brainBenchmark?.latencyMs ?? null)
+const probeTokens = ref<number | null>(null)
+const probeSentences = ref<number | null>(null)
+const probeHasReasoning = ref<boolean>(draft.state.brainBenchmark?.hasReasoning ?? false)
+const testSimulationPrompt = ref('Say hello and introduce yourself!')
+const probeRequestId = ref(0)
+
 function onSelectProvider(provider: ProviderMetadata) {
   selectedProviderId.value = provider.id
   selectedModelId.value = ''
@@ -622,18 +693,6 @@ const characterPersonaContext = computed(() => {
 
   return parts.join('\n\n')
 })
-
-// --- Live Connection Test & Dialogue Simulator ---
-type ProbeState = 'idle' | 'connecting' | 'inferencing' | 'verified' | 'error'
-const probeState = ref<ProbeState>('idle')
-const probeResponseMessage = ref('')
-const probeErrorMessage = ref('')
-const probeBenchmarkMs = ref<number | null>(draft.state.brainBenchmark?.latencyMs ?? null)
-const probeTokens = ref<number | null>(null)
-const probeSentences = ref<number | null>(null)
-const probeHasReasoning = ref<boolean>(draft.state.brainBenchmark?.hasReasoning ?? false)
-const testSimulationPrompt = ref('Say hello and introduce yourself!')
-const probeRequestId = ref(0)
 
 const effectiveConfigKey = computed(() => {
   return `${selectedProviderId.value}::${(selectedModelId.value || '').trim()}`
@@ -1073,6 +1132,82 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </template>
+              </div>
+
+              <!-- LanLan Free (StepFun) -->
+              <div class="flex flex-col gap-3 border border-neutral-200/60 rounded-[20px] bg-white/40 p-4 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/40 sm:p-5">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0 flex items-center gap-2">
+                    <div class="i-solar:cloud-bold h-4.5 w-4.5 flex-shrink-0 text-cyan-500" />
+                    <span class="truncate text-xs text-neutral-700 font-bold tracking-wider uppercase dark:text-neutral-300">LanLan Free (StepFun)</span>
+                  </div>
+                  <span class="flex-shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">
+                    100% Free · No Sign-in
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    v-for="preset in lanlanFreePresets"
+                    :key="preset.id"
+                    type="button"
+                    :class="[
+                      'relative flex flex-col gap-1 border-2 rounded-xl p-3 text-left transition-all duration-200 cursor-pointer min-h-[44px]',
+                      selectedProviderId === 'lanlan-free' && selectedModelId === preset.id
+                        ? 'border-primary-500 bg-primary-500/5 shadow-md shadow-primary-500/10 dark:border-primary-400'
+                        : 'border-neutral-200/60 bg-white/50 dark:border-neutral-800/80 dark:bg-neutral-900/50 hover:border-primary-500/40',
+                    ]"
+                    @click="selectLanlanFreeModel(preset.id)"
+                  >
+                    <div class="flex items-center justify-between gap-1">
+                      <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-100">{{ preset.name }}</span>
+                      <span class="flex-shrink-0 rounded bg-cyan-500/10 px-1.5 py-0.2 text-[9px] text-cyan-600 font-bold dark:text-cyan-400">
+                        {{ preset.badge }}
+                      </span>
+                    </div>
+                    <p class="line-clamp-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {{ preset.description }}
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Kilo Gateway -->
+              <div class="flex flex-col gap-3 border border-neutral-200/60 rounded-[20px] bg-white/40 p-4 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/40 sm:p-5">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0 flex items-center gap-2">
+                    <div class="i-solar:code-bold h-4.5 w-4.5 flex-shrink-0 text-emerald-500" />
+                    <span class="truncate text-xs text-neutral-700 font-bold tracking-wider uppercase dark:text-neutral-300">Kilo Free Gateway</span>
+                  </div>
+                  <span class="flex-shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">
+                    Free AI Gateway · Keyless
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <button
+                    v-for="preset in kiloPresets"
+                    :key="preset.id"
+                    type="button"
+                    :class="[
+                      'relative flex flex-col gap-1 border-2 rounded-xl p-3 text-left transition-all duration-200 cursor-pointer min-h-[44px]',
+                      selectedProviderId === 'kilo' && selectedModelId === preset.id
+                        ? 'border-primary-500 bg-primary-500/5 shadow-md shadow-primary-500/10 dark:border-primary-400'
+                        : 'border-neutral-200/60 bg-white/50 dark:border-neutral-800/80 dark:bg-neutral-900/50 hover:border-primary-500/40',
+                    ]"
+                    @click="selectKiloModel(preset.id)"
+                  >
+                    <div class="flex items-center justify-between gap-1">
+                      <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-100">{{ preset.name }}</span>
+                      <span v-if="preset.badge" class="flex-shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.2 text-[9px] text-emerald-600 font-bold dark:text-emerald-400">
+                        {{ preset.badge }}
+                      </span>
+                    </div>
+                    <p class="line-clamp-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {{ preset.description }}
+                    </p>
+                  </button>
+                </div>
               </div>
 
               <!-- Pollinations AI -->

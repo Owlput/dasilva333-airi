@@ -5,6 +5,8 @@ import type { ProviderMetadata, ProviderRuntimeState } from '../types'
 
 import { toast } from 'vue-sonner'
 
+import { keylessOrOptionalKey } from '../../../libs/providers/types'
+
 export interface ProviderValidationDeps {
   providerCredentials: Ref<Record<string, Record<string, unknown>>>
   providerRuntimeState: Ref<Record<string, ProviderRuntimeState>>
@@ -50,12 +52,12 @@ export function createProviderValidation(deps: ProviderValidationDeps) {
     if (!metadata)
       return false
 
-    if (!providerCredentials.value[providerId] && (metadata.requiresCredentials === false || metadata.deployment === 'local' || providerId === 'browser-web-speech-api')) {
+    if (!providerCredentials.value[providerId] && (keylessOrOptionalKey(metadata.requiresCredentials) || metadata.deployment === 'local' || providerId === 'browser-web-speech-api')) {
       providerCredentials.value[providerId] = getDefaultProviderConfig(providerId)
     }
 
     const config = providerCredentials.value[providerId]
-    if (!config && metadata.requiresCredentials !== false && metadata.deployment !== 'local' && providerId !== 'browser-web-speech-api')
+    if (!config && !keylessOrOptionalKey(metadata.requiresCredentials) && metadata.deployment !== 'local' && providerId !== 'browser-web-speech-api')
       return false
 
     const configString = JSON.stringify(config || {})
