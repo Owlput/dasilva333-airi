@@ -18,6 +18,7 @@ import ProviderPickerGrid from '../components/provider-picker-grid.vue'
 
 import { DEFAULT_WEB_LLM_FP32_MODEL, WEB_LLM_MODELS } from '../../../../../../libs/inference/constants'
 import { NativeAI } from '../../../../../../libs/native-ai'
+import { isKeylessProvider, isOptionalKeyProvider, keylessOrOptionalKey } from '../../../../../../libs/providers/types'
 import { useAiriCardStore } from '../../../../../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../../../../../stores/modules/cloudflare'
 import { useProvidersStore } from '../../../../../../stores/providers'
@@ -423,18 +424,32 @@ const selectedChatProvider = computed<ProviderMetadata | null>(() => {
 const isProviderConfigured = computed(() => {
   if (!selectedChatProvider.value)
     return false
-  if (selectedChatProvider.value.requiresCredentials === false)
+  const provider = selectedChatProvider.value
+  if (keylessOrOptionalKey(provider.requiresCredentials))
     return true
-  return configuredChatProvidersMetadata.value.some(p => p.id === selectedChatProvider.value!.id)
+  return configuredChatProvidersMetadata.value.some(p => p.id === provider.id)
 })
 
-const inlineConfigProvider = computed(() => {
+// An optional-key provider works immediately, but its key field still has to be
+// reachable, so only strictly keyless providers skip the inline card.
+const needsInlineConfig = computed(() => {
   if (!selectedChatProvider.value)
-    return null
-  if (selectedChatProvider.value.requiresCredentials === false)
-    return null
-  return isProviderConfigured.value ? null : selectedChatProvider.value
+    return false
+  const provider = selectedChatProvider.value
+  if (isKeylessProvider(provider.requiresCredentials))
+    return false
+  // An optional-key provider is isProviderConfigured the moment it is
+  // selected (marked added for keyless use). Gate on an actually typed key instead.
+  const savedKey = (providersStore.providers[provider.id]?.apiKey as string | undefined)?.trim()
+  if (isOptionalKeyProvider(provider.requiresCredentials))
+    return !savedKey
+  return !isProviderConfigured.value
 })
+
+const inlineConfigProvider = computed(() => (needsInlineConfig.value ? selectedChatProvider.value : null))
+
+// Optional-key providers can proceed without typing a key.
+const keyIsOptional = computed(() => isOptionalKeyProvider(selectedChatProvider.value?.requiresCredentials))
 
 const actionTargetRef = ref<HTMLElement | null>(null)
 
@@ -487,8 +502,9 @@ function onSelectProvider(provider: ProviderMetadata) {
   }
 
   // Zero-credential or pre-configured providers query live models immediately
-  if (provider.requiresCredentials === false || isProviderConfigured.value) {
-    if (provider.requiresCredentials === false) {
+  const zeroCredential = keylessOrOptionalKey(provider.requiresCredentials)
+  if (zeroCredential || isProviderConfigured.value) {
+    if (zeroCredential) {
       providersStore.markProviderAdded(provider.id)
     }
     void fetchLiveModels()
@@ -514,7 +530,10 @@ async function fetchLiveModels() {
 }
 
 async function saveAndConnectInline() {
-  if (!selectedProviderId.value || !apiKeyInput.value.trim())
+  if (!selectedProviderId.value)
+    return
+  // An optional-key provider may be connected without any key.
+  if (!keyIsOptional.value && !apiKeyInput.value.trim())
     return
 
   // Credentials are changing: invalidate any prior verification result.
@@ -1419,8 +1438,13 @@ onBeforeUnmount(() => {
                   <!-- API Key Field -->
                   <div class="space-y-1.5">
                     <label class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">
-                      {{ t('onboarding.steps.consciousness.apiKey') }} <span class="text-red-500">*</span>
+                      {{ t('onboarding.steps.consciousness.apiKey') }}
+                      <span v-if="!keyIsOptional" class="text-red-500">*</span>
+                      <span v-else class="ml-1 text-neutral-400 font-normal">(optional)</span>
                     </label>
+                    <p v-if="keyIsOptional && inlineConfigProvider" class="text-[11px] text-neutral-500 leading-relaxed dark:text-neutral-400">
+                      {{ inlineConfigProvider.name }} works without a key. Add one to unlock paid models and higher quotas.
+                    </p>
                     <div class="relative flex items-center">
                       <input
                         v-model="apiKeyInput"
@@ -1470,19 +1494,19 @@ onBeforeUnmount(() => {
                     </button>
                     <button
                       type="button"
-                      :disabled="!apiKeyInput.trim() || isSavingConfig"
+                      :disabled="(keyIsOptional ? false : !apiKeyInput.trim()) || isSavingConfig"
                       class="min-h-[44px] flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-1.5 text-xs text-white font-bold shadow-md transition active:scale-95 disabled:cursor-not-allowed hover:bg-primary-600 disabled:opacity-50"
                       @click="saveAndConnectInline"
                     >
                       <div v-if="isSavingConfig" class="i-solar:restart-square-bold h-3.5 w-3.5 animate-spin" />
-                      <span>{{ isSavingConfig ? t('onboarding.steps.consciousness.connecting') : t('onboarding.steps.consciousness.saveConnect') }}</span>
+                      <span>{{ isSavingConfig ? t('onboarding.steps.consciousness.connecting') : (keyIsOptional && !apiKeyInput.trim() ? 'Continue without key' : t('onboarding.steps.consciousness.saveConnect')) }}</span>
                     </button>
                   </div>
                 </div>
 
                 <!-- Model Selection (probe moved to shared right panel) -->
                 <div
-                  v-if="!isWebLlmSelected && !isCoreAiSelected && selectedProviderId && (isProviderConfigured || selectedChatProvider?.requiresCredentials === false)"
+                  v-if="!isWebLlmSelected && !isCoreAiSelected && selectedProviderId && (isProviderConfigured || keylessOrOptionalKey(selectedChatProvider?.requiresCredentials))"
                   :class="['p-4 sm:p-5 rounded-[20px]', 'bg-white/40 dark:bg-neutral-900/40', 'border border-neutral-200/60 dark:border-neutral-800/80', 'backdrop-blur-md space-y-4']"
                 >
                   <!-- Section Header -->
