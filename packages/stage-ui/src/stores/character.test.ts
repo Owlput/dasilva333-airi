@@ -44,8 +44,6 @@ describe('store character', () => {
         if (textPart)
           await options.onLiteral?.(textPart)
       },
-      // This parser emits each part at once, so it holds nothing back.
-      async flush() {},
       async end() {
         parserEndSpy()
       },

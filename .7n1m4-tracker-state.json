@@ -1,0 +1,89 @@
+{
+  "last_inspected_sha": "2988fb784556b2eccf61635ca814915bc4746cd9",
+  "last_run_timestamp": "2026-10-19T01:18:28.631Z",
+  "remote": "7n1m4",
+  "branch": "main",
+  "tracked_prs": {
+    "PR:8": {
+      "title": "fix: migrate zod imports to default for Node 26 Vite SSR interop",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-18T02:56:27Z",
+      "url": "https://github.com/7n1m4/airi/pull/8",
+      "type": "PR"
+    },
+    "PR:7": {
+      "title": "feat(agentic): presence single source + nap & companion nap-chat",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 1,
+      "updatedAt": "2026-10-17T14:45:56Z",
+      "url": "https://github.com/7n1m4/airi/pull/7",
+      "type": "PR"
+    },
+    "PR:6": {
+      "title": "feat(libp2p): complete pairing over the wire and paired-device management",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-13T05:19:27Z",
+      "url": "https://github.com/7n1m4/airi/pull/6",
+      "type": "PR"
+    },
+    "PR:5": {
+      "title": "Phase 1: Purge all Cloudflare infrastructure",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-09T13:32:34Z",
+      "url": "https://github.com/7n1m4/airi/pull/5",
+      "type": "PR"
+    },
+    "Issue:1": {
+      "title": "wayfinder: Cloudflare Purge → libp2p Local Mesh → Agentic OS",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 1,
+      "updatedAt": "2026-10-19T00:29:48Z",
+      "url": "https://github.com/7n1m4/airi/issues/1",
+      "type": "Issue"
+    },
+    "Issue:2": {
+      "title": "Phase 1: Cloudflare Purge",
+      "state": "CLOSED",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-09T13:32:35Z",
+      "url": "https://github.com/7n1m4/airi/issues/2",
+      "type": "Issue"
+    },
+    "Issue:4": {
+      "title": "Phase 3: Agentic OS Integration",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-08T23:40:02Z",
+      "url": "https://github.com/7n1m4/airi/issues/4",
+      "type": "Issue"
+    },
+    "Issue:3": {
+      "title": "Phase 2: libp2p Local Mesh Foundation",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "7n1m4",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-08T23:38:23Z",
+      "url": "https://github.com/7n1m4/airi/issues/3",
+      "type": "Issue"
+    }
+  },
+  "history": []
+}

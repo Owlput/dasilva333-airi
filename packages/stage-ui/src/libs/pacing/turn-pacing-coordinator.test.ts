@@ -1110,3 +1110,162 @@ describe('turnPacingCoordinator (Phase 0)', () => {
     })
   })
 })
+
+describe('turnPacingCoordinator (coverage extras)', () => {
+  it('cancel is no-op when already SETTLED', () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    coord.cancel('first')
+    coord.cancel('second')
+    expect(coord.state).toBe('SETTLED')
+  })
+
+  it('onAssistantEnd is no-op when already SETTLED', async () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    coord.cancel('x')
+    await coord.onAssistantEnd()
+    expect(coord.state).toBe('SETTLED')
+  })
+
+  it('cancel while FILLER_ARMED marks filler canceled', () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    clock.advance(coord.deadlineMs + 1)
+    coord.cancel('x')
+    expect(coord.state).toBe('SETTLED')
+  })
+
+  it('onAssistantEnd while FILLER_ARMED cancels filler', async () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    clock.advance(coord.deadlineMs + 1)
+    await coord.onAssistantEnd()
+    expect(coord.state).toBe('SETTLED')
+  })
+  it('cancel with stale generation is no-op', () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    coord.cancel('stale', 999)
+    expect(coord.state).not.toBe('SETTLED')
+  })
+  it('notifyFillerAudioEnded after answer scheduled records handoff gap and settles', () => {
+    const onSettled = vi.fn()
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock, onSettled })
+    coord.dispatch()
+    clock.advance(coord.deadlineMs + 1)
+    coord.notifyFillerAudioStarted(clock.now())
+    coord.notifyAnswerAudioScheduled(clock.now())
+    coord.notifyFillerAudioEnded(clock.now())
+    expect(coord.state).toBe('HANDOFF')
+    expect(onSettled).toHaveBeenCalled()
+  })
+  it('notifyFillerAudioEnded is no-op when not FILLER_ACTIVE', () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    coord.notifyFillerAudioEnded(clock.now())
+    expect(coord.state).toBe('STAGING')
+  })
+  it('notifyCacheMiss clears existing interval timer', () => {
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock })
+    coord.dispatch()
+    clock.advance(coord.deadlineMs + 1)
+    ;(coord as any).intervalTimerHandle = clock.setTimeout(() => {}, 1000)
+    coord.notifyCacheMiss({ reason: 'timeout' })
+    expect(coord.state).toBe('STAGING')
+  })
+  it('notifyFillerAudioStarted when not FILLER_ARMED marks filler rejected', () => {
+    const onSettled = vi.fn()
+    const clock = new VirtualClock()
+    const coord = new TurnPacingCoordinator({ turnId: 't', generation: 1, providerKey: 'p', policy: defaultPolicy, clock, onSettled })
+    coord.dispatch()
+    coord.notifyFillerAudioStarted(clock.now())
+    expect(coord.metrics.fillerOutcome).toBe('rejected')
+  })
+  it('arms organic pivot candidate via onArmFiller fallback when no onArmDynamicAside', () => {
+    const clock = new VirtualClock()
+    const onArmFiller = vi.fn()
+
+    const coordinator = new TurnPacingCoordinator({
+      turnId: 'turn-fallback',
+      generation: 1,
+      providerKey: 'test-provider',
+      policy: {
+        ...defaultPolicy,
+        semanticExtractorEnabled: true,
+        dynamicAfterMs: 15000,
+        pacingIntervalMs: 15000,
+      },
+      clock,
+      onArmFiller,
+    })
+
+    coordinator.dispatch()
+
+    clock.advance(1800)
+    coordinator.notifyFillerAudioStarted(clock.now())
+    clock.advance(1200)
+    coordinator.notifyFillerAudioEnded(clock.now())
+
+    clock.advance(12200)
+    coordinator.submitAsideCandidate({
+      cueId: 'needle-pivot-2',
+      turn: { turnId: 'turn-fallback', generation: 1 },
+      source: 'organic',
+      text: 'organic fallback candidate',
+      phraseKey: 'needle-pivot-2',
+      collectedAtMs: clock.now(),
+      expiresAtMs: clock.now() + 15000,
+    })
+
+    clock.advance(2800)
+
+    expect(coordinator.state).toBe('FILLER_ARMED')
+    expect(onArmFiller).toHaveBeenCalled()
+    expect(coordinator.metrics.dynamicCueSource).toBe('organic')
+  })
+
+  it('closes pacing when organic aside arms at maxFillersPerTurn=1', () => {
+    const clock = new VirtualClock()
+    const onArmFiller = vi.fn()
+    const coordinator = new TurnPacingCoordinator({
+      turnId: 'turn-organic-close',
+      generation: 1,
+      providerKey: 'test-provider',
+      policy: {
+        ...defaultPolicy,
+        semanticExtractorEnabled: true,
+        maxFillersPerTurn: 1,
+        dynamicAfterMs: 0,
+        pacingIntervalMs: 1000,
+      },
+      clock,
+      onArmFiller,
+    })
+    coordinator.dispatch()
+    clock.advance(1000)
+    coordinator.notifyFillerAudioStarted(clock.now())
+    clock.advance(100)
+    coordinator.notifyFillerAudioEnded(clock.now())
+    clock.advance(1200)
+    coordinator.submitAsideCandidate({
+      cueId: 'organic-close',
+      turn: { turnId: 'turn-organic-close', generation: 1 },
+      source: 'organic',
+      text: 'organic close candidate',
+      phraseKey: 'organic-close',
+      collectedAtMs: clock.now(),
+      expiresAtMs: clock.now() + 15000,
+    })
+    clock.advance(1100)
+    expect(coordinator.metrics.pacingClosed).toBe(true)
+  })
+})

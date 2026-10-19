@@ -4,6 +4,7 @@ import { createTestingPinia } from '@pinia/testing'
 import { setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { layeredMemory } from '../libs/search/layered-memory'
 import { useEchoesStore } from './echo-chips'
 
 const mockSavedChips = vi.hoisted(() => ({ list: [] as any[] }))
@@ -67,6 +68,8 @@ const h = vi.hoisted(() => ({
   activeProvider: { r: null as any },
   activeModel: { r: null as any },
   generateObjectResult: { r: null as any },
+  configuredProviders: { r: { 'provider-1': {} } as unknown },
+  providerInstance: { r: {} as unknown },
 }))
 
 vi.mock('./auth', async () => {
@@ -115,8 +118,8 @@ vi.mock('./modules/consciousness', async () => {
 
 vi.mock('./providers', () => ({
   useProvidersStore: () => ({
-    configuredProviders: { 'provider-1': {} },
-    getProviderInstance: vi.fn(async () => ({})),
+    configuredProviders: h.configuredProviders.r,
+    getProviderInstance: vi.fn(async () => h.providerInstance.r),
   }),
 }))
 
@@ -254,5 +257,78 @@ describe('useEchoesStore (Consumer 4)', () => {
     expect(newChips[0].content).toBe('Late night tea')
     expect(newChips[0].claims).toEqual([])
     expect(newChips[0].moodShift).toBeUndefined()
+  })
+
+  it('provider instance null throws', async () => {
+    h.providerInstance.r = null
+    const store = useEchoesStore()
+    await expect(store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })).rejects.toThrow()
+    h.providerInstance.r = {}
+  })
+
+  it('load and persist and getCharacterChips', async () => {
+    const store = useEchoesStore()
+    await store.load()
+    await store.persist([])
+    expect(store.getCharacterChips('char-1')).toEqual([])
+  })
+
+  it('deleteChip', async () => {
+    const store = useEchoesStore()
+    await store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })
+    await store.deleteChip('nonexistent')
+    expect(store.chips.length).toBe(2)
+  })
+
+  it('filters historical anchors inside the window', async () => {
+    vi.mocked(layeredMemory.search).mockResolvedValueOnce([
+      { id: 'inside', layer: 'dialogue', date: '2026-08-01', observed_text: 'inside window', timestamp: 1500 },
+    ] as any)
+    const store = useEchoesStore()
+    const chips = await store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })
+    expect(chips).toHaveLength(2)
+  })
+  it('filters historical anchors at window boundaries', async () => {
+    vi.mocked(layeredMemory.search).mockResolvedValueOnce([
+      { id: 'boundary', layer: 'dialogue', date: '2026-08-01', observed_text: 'boundary', timestamp: 1000 },
+      { id: 'outside', layer: 'dialogue', date: '2026-08-01', observed_text: 'outside', timestamp: 5000 },
+    ] as any)
+    const store = useEchoesStore()
+    const chips = await store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })
+    expect(chips).toHaveLength(2)
+  })
+
+  it('handles historical anchor search failure', async () => {
+    vi.mocked(layeredMemory.search).mockRejectedValueOnce(new Error('boom'))
+    const store = useEchoesStore()
+    const chips = await store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })
+    expect(chips).toHaveLength(2)
+  })
+
+  it('throws when no provider/model configured', async () => {
+    h.activeProvider.r.value = null
+    h.activeModel.r.value = null
+    const cardMap = new Map()
+    cardMap.set('char-1', { name: 'Alice', extensions: {} } as any)
+    h.cards.r.value = cardMap
+    const store = useEchoesStore()
+    await expect(store.synthesizeForCharacter('char-1', { force: true, fromTimestamp: 0, toTimestamp: 3000 })).rejects.toThrow()
+    h.activeProvider.r.value = 'provider-1'
+    h.activeModel.r.value = 'model-1'
+    const restored = new Map()
+    restored.set('char-1', {
+      name: 'Alice',
+      extensions: { airi: { modules: { consciousness: { provider: 'provider-1', model: 'model-1' } } } },
+    } as any)
+    h.cards.r.value = restored
+  })
+
+  it('aborts when provider unconfigured and not forced', async () => {
+    const prev = h.configuredProviders.r
+    h.configuredProviders.r = {} as any
+    const store = useEchoesStore()
+    const chips = await store.synthesizeForCharacter('char-1', { fromTimestamp: 0, toTimestamp: 3000 })
+    expect(chips).toEqual([])
+    h.configuredProviders.r = prev
   })
 })

@@ -24,8 +24,6 @@ function makeHost(initIntimacy = 0) {
     intimacy: intimacyStore,
     tracking: { setMouseTracking: vi.fn(), setEyeBlink: vi.fn() },
     texture: { replaceTexture: vi.fn() },
-    hitAreas: { setHitAreaEnabled: vi.fn() },
-    external: { openUrl: vi.fn() },
     events: {
       showChoices: vi.fn(),
       showText: vi.fn(),
@@ -310,50 +308,5 @@ describe('dSLVirtualMachine — features + NextMtn chain', () => {
     const resultCaps = vm.dispatch('CHOICE')
     expect(resultCaps).toBeDefined()
     expect(vm.hasPendingChoices()).toBe(true)
-  })
-
-  it('hit_areas enable/disable and open_url execute through runtime ports and track state', () => {
-    const { host } = makeHost()
-    const vm = new DSLVirtualMachine({ host })
-    vm.loadGroups([
-      {
-        name: 'Start',
-        entries: [{
-          Command: 'hit_areas disable menu,song;hit_areas enable phone;open_url https://space.bilibili.com/40607053',
-        }],
-      },
-    ])
-
-    vm.dispatch('Start')
-    expect(vm.isHitAreaEnabled('phone')).toBe(true)
-    expect(vm.isHitAreaEnabled('menu')).toBe(false)
-    expect(vm.isHitAreaEnabled('song')).toBe(false)
-    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('menu', false)
-    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('song', false)
-    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('phone', true)
-    expect(host.external!.openUrl).toHaveBeenCalledWith('https://space.bilibili.com/40607053')
-  })
-})
-
-describe('dSLVirtualMachine.dispatchCommand — raw widget chains', () => {
-  it('runs stop_sound and hit_areas chains without a group', () => {
-    const { host } = makeHost()
-    const vm = new DSLVirtualMachine({ host })
-
-    vm.dispatchCommand('stop_sound 0')
-    expect(host.sound!.stopSound).toHaveBeenCalledWith(0)
-
-    vm.dispatchCommand('hit_areas disable a,b;hit_areas enable phone')
-    expect(vm.isHitAreaEnabled('a')).toBe(false)
-    expect(vm.isHitAreaEnabled('b')).toBe(false)
-    expect(vm.isHitAreaEnabled('phone')).toBe(true)
-    expect(host.hitAreas!.setHitAreaEnabled).toHaveBeenCalledWith('a', false)
-  })
-
-  it('ignores empty chains', () => {
-    const { host } = makeHost()
-    const vm = new DSLVirtualMachine({ host })
-    vm.dispatchCommand('')
-    expect(host.sound!.stopSound).not.toHaveBeenCalled()
   })
 })

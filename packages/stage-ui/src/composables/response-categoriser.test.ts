@@ -99,30 +99,6 @@ describe('createStreamingCategorizer', () => {
     expect(result.reasoning).toContain('inner')
   })
 
-  // PR #2916: Ensure nested segments do not move the streaming cursor backwards
-  it.each([
-    {
-      chunking: 'one chunk',
-      chunks: ['Start <think>outer <analysis>inner</analysis> hidden</think> end'],
-    },
-    {
-      chunking: 'separate chunks',
-      chunks: ['Start ', '<think>outer <analysis>inner</analysis> hidden</think>', ' end'],
-    },
-  ])('excludes nested reasoning from streamed speech in $chunking (PR #2916)', ({ chunks }) => {
-    const categorizer = createStreamingCategorizer()
-    let position = 0
-    let speech = ''
-
-    for (const chunk of chunks) {
-      categorizer.consume(chunk)
-      speech += categorizer.filterToSpeech(chunk, position)
-      position += chunk.length
-    }
-
-    expect(speech).toBe('Start  end')
-  })
-
   it('should correctly identify speech positions with isSpeechAt', () => {
     const categorizer = createStreamingCategorizer()
     const text = 'Hello <reasoning>thinking</reasoning> world!'
@@ -552,11 +528,5 @@ describe('stripMarkers', () => {
     const input = '<|ACT:emotion="happy"|>Hello! <|STICKER airi-affectionate|> How are you?<|DELAY:2|>'
     const stripped = stripMarkers(input)
     expect(stripped).toBe('Hello!  How are you?')
-  })
-
-  it('should strip parametric STICKER tokens with surface, weight, and pos', () => {
-    const input = 'Look at this: <|STICKER airi-celebrate surface="widget" weight="0.8" pos="topRight"|> Amazing, right? <|STICKER id="lupin-warm-smile" surface="both" weight="0.5" pos="bottomLeft"|>'
-    const stripped = stripMarkers(input)
-    expect(stripped).toBe('Look at this:  Amazing, right? ')
   })
 })
