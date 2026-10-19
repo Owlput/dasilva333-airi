@@ -160,8 +160,8 @@ function formatEngineLabel(provider: string, model: string, voiceId?: string): s
     return 'Moondream2 (1.6B VLM)'
   if (provider === 'web-speech-api')
     return 'Web Speech API'
-  if (provider === 'mimo')
-    return 'MiMo (Free)'
+  if (provider === 'kilo')
+    return 'Kilo (Free Gateway)'
   if (provider === 'speech-noop')
     return 'Mute / Silent'
   if (voiceId)
@@ -229,7 +229,8 @@ const allFacultyProviders = computed<ProviderItem[]>(() => {
 
   if (activeDrawerFaculty.value === 'consciousness') {
     const recommendedMap: Record<string, string> = {
-      'mimo': 'Xiaomi MiMo (Free Cloud • Zero Sign-Up)',
+      'kilo': 'Kilo Gateway (Free Cloud • Zero Sign-Up)',
+      'pollinations': 'Pollinations AI (Free Cloud • Zero Sign-Up)',
       'web-llm': 'WebLLM (Local In-Browser WebGPU)',
       'web-rwkv': 'RWKV-7 (Local WebGPU)',
       'ollama': 'Ollama (Local Server)',
@@ -378,8 +379,8 @@ function resolveModelsForFacultyProvider(faculty: FacultyName | null, provider: 
   }
 
   if (faculty === 'consciousness') {
-    if (provider === 'mimo') {
-      return [{ id: 'mimo-auto', name: 'mimo-auto (Free Xiaomi Cloud)' }]
+    if (provider === 'kilo') {
+      return [{ id: 'kilo-auto/free', name: 'kilo-auto/free (Kilo Free Gateway)' }]
     }
     if (provider === 'web-llm') {
       return [
@@ -797,7 +798,7 @@ function saveDrawer() {
 
 function handleResetToFactorySafe() {
   facultyDefaultsStore.resetToFactorySafe()
-  toast.success('Reset to Factory Safe defaults: MiMo, Pollinations, Kokoro, Whisper & WD14!')
+  toast.success('Reset to Factory Safe defaults: Kilo, Pollinations, Kokoro, Whisper & WD14!')
 }
 
 function handleGlobalCircuitBreakerToggle() {

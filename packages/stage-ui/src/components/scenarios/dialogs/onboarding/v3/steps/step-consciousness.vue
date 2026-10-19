@@ -109,15 +109,6 @@ const pollinationsPresets = [
   },
 ]
 
-const lanlanFreePresets = [
-  {
-    id: 'free-model',
-    name: 'StepFun Free Model',
-    description: 'Fast, zero-setup conversational model sponsored by StepFun',
-    badge: 'StepFun',
-  },
-]
-
 const kiloPresets = [
   {
     id: 'kilo-auto/free',
@@ -173,16 +164,6 @@ function selectPollinationsModel(modelId: string) {
     providersStore.providers.pollinations = {}
   }
   providersStore.markProviderAdded('pollinations')
-  recordDraft()
-}
-
-function selectLanlanFreeModel(modelId: string = 'free-model') {
-  selectedProviderId.value = 'lanlan-free'
-  selectedModelId.value = modelId
-  if (!providersStore.providers['lanlan-free']) {
-    providersStore.providers['lanlan-free'] = { apiKey: 'free-access', baseUrl: 'https://www.lanlan.tech/text/v1/' }
-  }
-  providersStore.markProviderAdded('lanlan-free')
   recordDraft()
 }
 
@@ -270,7 +251,6 @@ onMounted(async () => {
     selectedProviderId.value
     && selectedProviderId.value !== 'cloudflare-workers-ai'
     && selectedProviderId.value !== 'pollinations'
-    && selectedProviderId.value !== 'lanlan-free'
     && selectedProviderId.value !== 'kilo'
   ) {
     activeTab.value = 'custom'
@@ -1132,44 +1112,6 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </template>
-              </div>
-
-              <!-- LanLan Free (StepFun) -->
-              <div class="flex flex-col gap-3 border border-neutral-200/60 rounded-[20px] bg-white/40 p-4 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/40 sm:p-5">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="min-w-0 flex items-center gap-2">
-                    <div class="i-solar:cloud-bold h-4.5 w-4.5 flex-shrink-0 text-cyan-500" />
-                    <span class="truncate text-xs text-neutral-700 font-bold tracking-wider uppercase dark:text-neutral-300">LanLan Free (StepFun)</span>
-                  </div>
-                  <span class="flex-shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600 font-bold dark:text-emerald-400">
-                    100% Free · No Sign-in
-                  </span>
-                </div>
-
-                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    v-for="preset in lanlanFreePresets"
-                    :key="preset.id"
-                    type="button"
-                    :class="[
-                      'relative flex flex-col gap-1 border-2 rounded-xl p-3 text-left transition-all duration-200 cursor-pointer min-h-[44px]',
-                      selectedProviderId === 'lanlan-free' && selectedModelId === preset.id
-                        ? 'border-primary-500 bg-primary-500/5 shadow-md shadow-primary-500/10 dark:border-primary-400'
-                        : 'border-neutral-200/60 bg-white/50 dark:border-neutral-800/80 dark:bg-neutral-900/50 hover:border-primary-500/40',
-                    ]"
-                    @click="selectLanlanFreeModel(preset.id)"
-                  >
-                    <div class="flex items-center justify-between gap-1">
-                      <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-100">{{ preset.name }}</span>
-                      <span class="flex-shrink-0 rounded bg-cyan-500/10 px-1.5 py-0.2 text-[9px] text-cyan-600 font-bold dark:text-cyan-400">
-                        {{ preset.badge }}
-                      </span>
-                    </div>
-                    <p class="line-clamp-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                      {{ preset.description }}
-                    </p>
-                  </button>
-                </div>
               </div>
 
               <!-- Kilo Gateway -->

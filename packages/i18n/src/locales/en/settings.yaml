@@ -1169,15 +1169,12 @@ pages:
       pollinations:
         description: Zero Friction Free - Open-source, no key required chat completions
         title: Pollinations AI
-      lanlan-free:
-        description: Zero-setup free LLM endpoint sponsored by StepFun
-        title: LanLan Free
       kilo:
         description: Coding-optimized free gateway — auto-routes to best model
         title: Kilo
       mimo:
-        description: Xiaomi MiMo Code - Zero-friction free AI coding assistant
-        title: MiMo
+        description: api.xiaomimimo.com
+        title: Xiaomi MiMo
       featherless:
         description: Unlimited Tokens - Flat $10/mo fee for 6,700+ models
         title: Featherless AI

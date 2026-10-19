@@ -31,8 +31,8 @@ export interface GlobalFacultyDefaultsState {
 
 export const FACTORY_SAFE_DEFAULTS: GlobalFacultyDefaultsState = {
   consciousness: {
-    primaryProvider: 'mimo',
-    primaryModel: 'mimo-auto',
+    primaryProvider: 'kilo',
+    primaryModel: 'kilo-auto/free',
     fallbackProvider: 'web-llm',
     fallbackModel: '',
     autoFailover: true,

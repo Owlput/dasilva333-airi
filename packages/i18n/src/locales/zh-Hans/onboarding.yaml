@@ -723,7 +723,7 @@ steps:
     retryDownload: 重新下载
     firstLaunchOnDeviceWarmupNotice: 首次启动本地模型的预热提示
     6090Seconds: 约 60–90 秒
-    webgpuIsnTAvailableInThisBrowserPickAFreeOrCloudProviderBelowEG: 当前浏览器不支持 WebGPU。请在下方选择免费或云端提供商（如 OpenRouter、Gemini、Pollinations、MiMo）来驱动伴侣。
+    webgpuIsnTAvailableInThisBrowserPickAFreeOrCloudProviderBelowEG: 当前浏览器不支持 WebGPU。请在下方选择免费或云端提供商（如 OpenRouter、Gemini、Pollinations、Kilo）来驱动伴侣。
     localWebllmWebgpuEngine: 本地 WebLLM（WebGPU 引擎）
     offlineLocal: 离线 · 本地
     recommended: ⭐ 推荐

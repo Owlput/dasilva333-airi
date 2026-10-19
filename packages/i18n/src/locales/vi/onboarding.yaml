@@ -828,7 +828,7 @@ steps:
     6090Seconds: ~60–90 seconds
     webgpuIsnTAvailableInThisBrowserPickAFreeOrCloudProviderBelowEG:
       WebGPU isn't available in this browser. Pick a free or cloud provider
-      below (e.g. OpenRouter, Gemini, Pollinations, MiMo) to power your
+      below (e.g. OpenRouter, Gemini, Pollinations, Kilo) to power your
       companion.
     localWebllmWebgpuEngine: Local WebLLM (WebGPU Engine)
     offlineLocal: OFFLINE · LOCAL

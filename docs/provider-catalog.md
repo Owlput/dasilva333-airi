@@ -55,7 +55,7 @@ The AIRI provider subsystem is organized across four distinct layers:
 | `n1n` | N1N | `libs/providers/providers/n1n/` | High-speed API proxy |
 | `opencode-go` | OpenCode Go | `libs/providers/providers/opencode-go/` | Coding-specialized gateway |
 | `pollinations` | Pollinations AI (Text) | `libs/providers/providers/pollinations/` | Zero-config free text generation |
-| `mimo` | Xiaomi MiMo | `libs/providers/providers/mimo/` | Xiaomi AI models |
+| `kilo` | Kilo | `libs/providers/providers/kilo/` | Coding-optimized free AI gateway |
 | `zai` | Zhipu AI (GLM) | `libs/providers/providers/zai/` | GLM-4 series |
 
 ### 2.2 Local, Self-Hosted & On-Device Chat Engines
