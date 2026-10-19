@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExternalFriend, Peer } from '@proj-airi/stage-shared'
+import type { AmbassadorCard, ExternalFriend, Peer } from '@proj-airi/stage-shared'
 
 import { isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
@@ -11,13 +11,15 @@ import { toast } from 'vue-sonner'
 
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
+import { usePeerEmbassy } from '../../composables/use-peer-embassy'
 import { usePeersStore } from '../../stores/peers'
 
 const { copy: copyToClipboard } = useClipboard()
 
-// Store integration
+// Store & Embassy integration
 const peersStore = usePeersStore()
 const { friends, devices } = storeToRefs(peersStore)
+const embassy = usePeerEmbassy()
 
 onMounted(async () => {
   await peersStore.init()
@@ -48,6 +50,14 @@ const lookupIntroNote = ref('')
 const showLookupResult = ref(true)
 const isRequestSent = ref(false)
 const lookupError = ref('')
+const lookedUpCard = ref<AmbassadorCard | null>({
+  name: 'Mira',
+  avatarUrl: null,
+  tagline: 'A curious companion who likes quiet conversations.',
+  publicKey: 'ed25519-mira-mock-key',
+})
+const lookedUpHandle = ref('mira.workers.dev')
+const lookedUpInviteToken = ref<string | undefined>(undefined)
 
 // Modals & Drawers
 const showConversationModal = ref(false)
@@ -156,8 +166,11 @@ function handleCopyAddress() {
   toast.success('Companion address copied to clipboard!')
 }
 
-function handleCopyInvite() {
-  copyToClipboard(`https://${myAddress.value}/api/friends/invite?code=cf_inv_8f7b3a9`)
+async function handleCopyInvite() {
+  const token = await embassy.mintInviteToken({
+    myWorkerUrl: `https://${myAddress.value}`,
+  })
+  copyToClipboard(token.uri)
   toast.success('Single-use invite link copied to clipboard!')
 }
 
@@ -168,30 +181,60 @@ function toggleAddCompanion() {
 
 async function handleLookup() {
   lookupError.value = ''
+  isRequestSent.value = false
   if (!lookupInput.value.trim()) {
     lookupError.value = 'Please enter a valid companion address or invite code.'
     showLookupResult.value = false
     return
   }
-  showLookupResult.value = true
+
+  const result = await embassy.fetchCompanionCard(lookupInput.value)
+  if (result) {
+    lookedUpCard.value = result.card
+    lookedUpHandle.value = result.normalized.handle
+    lookedUpInviteToken.value = result.normalized.invite
+    showLookupResult.value = true
+  }
+  else {
+    lookupError.value = embassy.error.value || 'Could not find a companion at that address.'
+    showLookupResult.value = false
+  }
 }
 
 async function handleSendRequest() {
+  if (!lookedUpCard.value)
+    return
+
   isRequestSent.value = true
+  const res = await embassy.sendFriendRequest(lookedUpHandle.value, {
+    fromHandle: myAddress.value,
+    fromCharacterName: 'AIRI',
+    introMessage: lookupIntroNote.value.trim(),
+    inviteToken: lookedUpInviteToken.value,
+  })
+
   await peersStore.upsertPeer({
-    id: 'ed25519-mira-jamie',
-    alias: 'Jamie',
-    characterName: 'Mira',
+    id: lookedUpCard.value.publicKey || `ed25519-${lookedUpCard.value.name.toLowerCase()}-${Date.now().toString(36)}`,
+    alias: lookedUpHandle.value.split('.')[0] || 'Friend',
+    characterName: lookedUpCard.value.name,
+    avatarUrl: lookedUpCard.value.avatarUrl || undefined,
     relationship: 'external-friend',
     trustState: 'pending',
     lastSeenTimestamp: Date.now(),
-    endpoints: { cloudflareWorkerUrl: 'https://mira.workers.dev' },
-    shareHandle: 'mira.workers.dev',
+    endpoints: { cloudflareWorkerUrl: `https://${lookedUpHandle.value}` },
+    shareHandle: lookedUpHandle.value,
     allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
     allowedCompanionIds: ['kirie'],
     introMessage: lookupIntroNote.value.trim().slice(0, 100),
   })
-  toast.success('Friend request sent to Mira (Jamie)!')
+
+  if (res.ok) {
+    toast.success(`Friend request sent to ${lookedUpCard.value.name}!`)
+  }
+  else {
+    toast.info(`Request queued locally for ${lookedUpCard.value.name} (${res.error})`)
+  }
+  lookupIntroNote.value = ''
 }
 
 function openPermissions(friend: ExternalFriend) {
@@ -379,12 +422,14 @@ const surfaceCardClass = computed(() => [
                 <FieldInput
                   v-model="lookupInput"
                   placeholder="Companion address or invite code"
+                  :disabled="embassy.isLookingUp.value"
                   @keyup.enter="handleLookup"
                 />
               </div>
               <Button
                 variant="secondary"
-                label="Look up"
+                :label="embassy.isLookingUp.value ? 'Looking up...' : 'Look up'"
+                :disabled="embassy.isLookingUp.value"
                 @click="handleLookup"
               />
             </div>
@@ -395,20 +440,29 @@ const surfaceCardClass = computed(() => [
 
             <!-- Looked Up Companion Preview with Distinct Initial Avatar -->
             <div
-              v-if="showLookupResult"
+              v-if="showLookupResult && lookedUpCard"
               :class="['mt-3', 'rounded-xl', 'border', 'border-primary-500/20', 'bg-primary-500/5', 'p-3', 'backdrop-blur-md', 'space-y-3']"
             >
               <div :class="['flex', 'items-center', 'justify-between']">
                 <div :class="['flex', 'items-center', 'gap-3']">
-                  <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient('Mira')]">
-                    M
+                  <div
+                    v-if="lookedUpCard.avatarUrl"
+                    :class="['size-10', 'overflow-hidden', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10']"
+                  >
+                    <img :src="lookedUpCard.avatarUrl" :alt="lookedUpCard.name" class="size-full object-cover">
+                  </div>
+                  <div
+                    v-else
+                    :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(lookedUpCard.name)]"
+                  >
+                    {{ (lookedUpCard.name || 'C').charAt(0) }}
                   </div>
                   <div>
                     <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                      Mira <span :class="['text-[11px]', 'font-normal', 'text-neutral-500', 'dark:text-neutral-400']">· Jamie</span>
+                      {{ lookedUpCard.name }} <span :class="['text-[11px]', 'font-mono', 'text-neutral-500', 'dark:text-neutral-400']">· {{ lookedUpHandle }}</span>
                     </div>
                     <div :class="['text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
-                      A curious companion who likes quiet conversations.
+                      {{ lookedUpCard.tagline || 'A companion looking forward to connecting.' }}
                     </div>
                   </div>
                 </div>
@@ -416,8 +470,8 @@ const surfaceCardClass = computed(() => [
                 <Button
                   variant="primary"
                   size="sm"
-                  :label="isRequestSent ? 'Request sent' : 'Send request'"
-                  :disabled="isRequestSent"
+                  :label="isRequestSent ? 'Request sent' : (embassy.isSending.value ? 'Sending...' : 'Send request')"
+                  :disabled="isRequestSent || embassy.isSending.value"
                   @click="handleSendRequest"
                 />
               </div>

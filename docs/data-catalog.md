@@ -519,6 +519,8 @@ interface DirectorNote {
 | **Type** | `Peer[]` (`SameAccountDevice \| ExternalFriend` in `packages/stage-shared/src/peers.ts`) |
 | **Sync** | **Merged** — per-peer `id` dedup + `lastSeenTimestamp` LWW; Global Profile Scope (cross-character/universe) |
 | **Channel** | `airi:peers-sync` (`{ type: 'peers-updated', at }`) |
+| **Same-account discovery** | Edge Vault `devices` map (`VaultDeviceMap` in `packages/stage-shared/src/peers-reconciler.ts`) merged via `mergeSameAccountDevices` LWW, 15m stale cutoff; store bridge `toVaultDeviceMapForSync` / `mergeVaultDevices` |
+| **Nap-chat stub** | `packages/stage-ui/src/stores/nap-chat.ts` (`napEnabled` kill-switch, 15m threshold, single-fire recap); transport `packages/stage-shared/src/transport.ts` (loopback driver, edge config type) |
 
 ### 1.13 Event Log (System Event Ledger)
 

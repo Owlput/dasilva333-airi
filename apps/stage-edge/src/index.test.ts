@@ -193,4 +193,236 @@ describe('apps/stage-edge worker index', () => {
       expect(res.status).toBe(404)
     })
   })
+
+  describe('companion embassy', () => {
+    function createKv() {
+      const map = new Map<string, string>()
+      return {
+        store: map,
+        async get(key: string) {
+          return map.has(key) ? map.get(key)! : null
+        },
+        async put(key: string, value: string) {
+          map.set(key, value)
+        },
+        async delete(key: string) {
+          map.delete(key)
+        },
+      }
+    }
+
+    async function generateEdKey() {
+      const keyPair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
+      const rawPublicKey = await crypto.subtle.exportKey('raw', keyPair.publicKey)
+      const publicKeyHex = uint8ArrayToHex(new Uint8Array(rawPublicKey))
+      return { keyPair, publicKeyHex }
+    }
+
+    async function signHex(privateKey: CryptoKey, message: string): Promise<string> {
+      const data = new TextEncoder().encode(message)
+      const sig = await crypto.subtle.sign('Ed25519', privateKey, data)
+      return uint8ArrayToHex(new Uint8Array(sig))
+    }
+
+    it('gET /api/companion/card exposes ambassador only', async () => {
+      const req = new Request('https://edge.airi.moeru.ai/api/companion/card')
+      const res = await worker.fetch(req, {
+        ...baseEnv,
+        CHARACTER_NAME: 'Kirie',
+        COMPANION_TAGLINE: 'quiet conversations',
+        COMPANION_PUBLIC_KEY: 'ab'.repeat(32),
+      })
+      expect(res.status).toBe(200)
+      const data: any = await res.json()
+      expect(data.name).toBe('Kirie')
+      expect(data.tagline).toBe('quiet conversations')
+      expect(data.publicKey).toBe('ab'.repeat(32))
+      expect(data.cards ?? null).toBeNull()
+      expect(data.systemPrompt ?? null).toBeNull()
+    })
+
+    it('pOST /api/friends/invite requires KV and owner', async () => {
+      const noKv = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/invite', { method: 'POST' }),
+        { ...baseEnv, OWNER_ID: 'owner-1' },
+      )
+      expect(noKv.status).toBe(503)
+
+      const kv = createKv()
+      const forbidden = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/invite', { method: 'POST' }),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any },
+      )
+      expect(forbidden.status).toBe(403)
+
+      const ok = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/invite', {
+          method: 'POST',
+          headers: { 'x-owner-id': 'owner-1' },
+        }),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any },
+      )
+      expect(ok.status).toBe(200)
+      const data: any = await ok.json()
+      expect(typeof data.invite).toBe('string')
+      expect(data.uri).toContain('airi://pair?worker=')
+      expect(data.expiresAt).toBeGreaterThan(Date.now() + 23 * 3600 * 1000)
+      expect(kv.store.has(`friends/invites/${data.invite}`)).toBe(true)
+    })
+
+    it('pOST /api/friends/request enforces intro limit, freshness, nonce, signature', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const env: Env = { ...baseEnv, MEMORY: kv as any }
+
+      const tooLong = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'x'.repeat(101),
+            timestamp: Date.now(),
+            nonce: 'nonce-1-abcdef',
+            signature: '00'.repeat(64),
+          }),
+        }),
+        env,
+      )
+      expect(tooLong.status).toBe(400)
+      expect((await tooLong.json() as any).error).toBe('intro_too_long')
+
+      const stale = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi',
+            timestamp: Date.now() - 600_000,
+            nonce: 'nonce-2-abcdef',
+            signature: '00'.repeat(64),
+          }),
+        }),
+        env,
+      )
+      expect(stale.status).toBe(400)
+
+      const timestamp = Date.now()
+      const nonce = 'nonce-3-abcdef'
+      const payload = `${timestamp}:${nonce}:hi:${publicKeyHex}`
+      const signature = await signHex(keyPair.privateKey, payload)
+      const first = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi <b>there</b>',
+            timestamp,
+            nonce,
+            signature: await signHex(keyPair.privateKey, `${timestamp}:${nonce}:hi there:${publicKeyHex}`),
+          }),
+        }),
+        env,
+      )
+      expect(first.status).toBe(200)
+      expect((await first.json() as any).status).toBe('pending')
+
+      const replay = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi there',
+            timestamp: Date.now(),
+            nonce,
+            signature,
+          }),
+        }),
+        env,
+      )
+      expect(replay.status).toBe(400)
+      expect((await replay.json() as any).error).toBe('replayed_nonce')
+
+      const tampered = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'tampered',
+            timestamp: Date.now(),
+            nonce: 'nonce-4-abcdef',
+            signature: '00'.repeat(64),
+          }),
+        }),
+        env,
+      )
+      expect(tampered.status).toBe(401)
+    })
+
+    it('pOST /api/friends/inbox quarantines untrusted senders and queues trusted', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const env: Env = { ...baseEnv, MEMORY: kv as any }
+      const bodyText = JSON.stringify({ action: 'nap_propose' })
+
+      const quarantined = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': '00'.repeat(64),
+            'x-signature-timestamp': String(Date.now()),
+            'x-signature-nonce': 'inbox-nonce-1',
+          },
+          body: bodyText,
+        }),
+        env,
+      )
+      expect(quarantined.status).toBe(403)
+
+      await kv.put(`friends/accepted/${publicKeyHex}`, JSON.stringify({ at: Date.now() }))
+      const timestamp = Date.now()
+      const nonce = 'inbox-nonce-2'
+      const signature = await signHex(keyPair.privateKey, `${timestamp}:${nonce}:${bodyText}`)
+      const queued = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': signature,
+            'x-signature-timestamp': String(timestamp),
+            'x-signature-nonce': nonce,
+          },
+          body: bodyText,
+        }),
+        env,
+      )
+      expect(queued.status).toBe(200)
+      expect((await queued.json() as any).queued).toBe(true)
+
+      const replay = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': signature,
+            'x-signature-timestamp': String(timestamp),
+            'x-signature-nonce': nonce,
+          },
+          body: bodyText,
+        }),
+        env,
+      )
+      expect(replay.status).toBe(400)
+    })
+  })
 })

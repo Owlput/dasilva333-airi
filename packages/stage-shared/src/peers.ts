@@ -47,6 +47,13 @@ export interface FriendRequest {
   status: 'pending' | 'accepted' | 'ignored'
 }
 
+export interface AmbassadorCard {
+  name: string
+  avatarUrl?: string | null
+  tagline?: string | null
+  publicKey?: string | null
+}
+
 export const MAX_INTRO_MESSAGE_LENGTH = 100
 
 export function sanitizeIntroMessage(input?: string | null): string {
