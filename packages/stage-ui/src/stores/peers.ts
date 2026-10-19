@@ -7,45 +7,33 @@ import { computed, ref } from 'vue'
 import { peersRepo } from '../database/repos/peers.repo'
 
 const PEERS_SYNC_CHANNEL = 'airi:peers-sync'
+const MOCK_SEED_IDS = new Set(['peer-studio-mac', 'peer-macbook-air', 'ed25519-kirie-alex'])
 
-function seedRoster(): Peer[] {
-  const now = Date.now()
-  return [
-    {
-      id: 'peer-studio-mac',
-      alias: 'Studio Mac',
-      characterName: 'AIRI',
-      relationship: 'same-account',
-      trustState: 'trusted',
-      lastSeenTimestamp: now,
-      endpoints: {},
-      machineId: 'studio-mac',
-      deviceType: 'desktop',
-    },
-    {
-      id: 'peer-macbook-air',
-      alias: 'MacBook Air',
-      characterName: 'AIRI',
-      relationship: 'same-account',
-      trustState: 'trusted',
-      lastSeenTimestamp: now - 12 * 60 * 1000,
-      endpoints: {},
-      machineId: 'macbook-air',
-      deviceType: 'laptop',
-    },
-    {
-      id: 'ed25519-kirie-alex',
-      alias: 'Alex',
-      characterName: 'Kirie',
-      relationship: 'external-friend',
-      trustState: 'trusted',
-      lastSeenTimestamp: now,
-      endpoints: { cloudflareWorkerUrl: 'https://alex.workers.dev' },
-      shareHandle: 'alex.workers.dev',
-      allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
-      allowedCompanionIds: [],
-    },
-  ]
+export function getLocalMachineId(): string {
+  if (typeof localStorage === 'undefined')
+    return 'local-machine'
+  const key = 'airi:peers:local-machine-id'
+  let id = localStorage.getItem(key)
+  if (!id) {
+    id = `machine-${Math.random().toString(36).slice(2, 10)}`
+    localStorage.setItem(key, id)
+  }
+  return id
+}
+
+export function createLocalDevice(): SameAccountDevice {
+  const machineId = getLocalMachineId()
+  return {
+    id: `peer-${machineId}`,
+    alias: 'This device',
+    characterName: 'AIRI',
+    relationship: 'same-account',
+    trustState: 'trusted',
+    lastSeenTimestamp: Date.now(),
+    endpoints: {},
+    machineId,
+    deviceType: 'desktop',
+  }
 }
 
 export const usePeersStore = defineStore('peers', () => {
@@ -55,17 +43,28 @@ export const usePeersStore = defineStore('peers', () => {
   const friends = computed(() => roster.value.filter(p => p.relationship === 'external-friend'))
   const devices = computed(() => roster.value.filter(p => p.relationship === 'same-account'))
 
+  const currentMachineId = computed(() => getLocalMachineId())
+
   async function init() {
     if (isInitialized.value)
       return
     try {
       const stored = await peersRepo.getRoster()
-      roster.value = stored.length > 0 ? stored : seedRoster()
-      if (stored.length === 0)
-        await peersRepo.saveRoster(roster.value)
+      // Filter out any legacy prototype mock seeds if they were previously persisted
+      const cleaned = (stored || []).filter(p => !MOCK_SEED_IDS.has(p.id))
+
+      // Ensure local machine device is registered in the roster
+      const machineId = getLocalMachineId()
+      const hasCurrent = cleaned.some(p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === machineId)
+      if (!hasCurrent) {
+        cleaned.unshift(createLocalDevice())
+      }
+
+      roster.value = cleaned
+      await peersRepo.saveRoster(roster.value)
     }
     catch {
-      roster.value = seedRoster()
+      roster.value = [createLocalDevice()]
     }
     finally {
       isInitialized.value = true
@@ -106,5 +105,15 @@ export const usePeersStore = defineStore('peers', () => {
     await persist()
   }
 
-  return { roster, friends, devices, isInitialized, init, upsertPeer, toVaultDeviceMapForSync, mergeVaultDevices }
+  return {
+    roster,
+    friends,
+    devices,
+    isInitialized,
+    currentMachineId,
+    init,
+    upsertPeer,
+    toVaultDeviceMapForSync,
+    mergeVaultDevices,
+  }
 })

@@ -15,6 +15,8 @@ import { toast } from 'vue-sonner'
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
 import { usePeerEmbassy } from '../../composables/use-peer-embassy'
+import { useAiriCardStore } from '../../stores/modules/airi-card'
+import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useNapChatStore } from '../../stores/nap-chat'
 import { usePeersStore } from '../../stores/peers'
 
@@ -22,7 +24,10 @@ const { copy: copyToClipboard } = useClipboard()
 
 // Store & Embassy integration
 const peersStore = usePeersStore()
-const { friends, devices } = storeToRefs(peersStore)
+const { friends, devices, currentMachineId } = storeToRefs(peersStore)
+const cloudflareStore = useCloudflareStore()
+const { cfSubdomain } = storeToRefs(cloudflareStore)
+const airiCardStore = useAiriCardStore()
 const napChatStore = useNapChatStore()
 const {
   napEnabled: napChatEnabled,
@@ -35,7 +40,7 @@ const embassy = usePeerEmbassy()
 const router = useRouter()
 
 // NOTICE: Stable empty reference — never allocate `[]` inside a computed.
-const EMPTY_TURNS: NapTurn[] = Object.freeze([]) as NapTurn[]
+const EMPTY_TURNS: NapTurn[] = Object.freeze([]) as unknown as NapTurn[]
 
 onMounted(async () => {
   await peersStore.init()
@@ -45,8 +50,12 @@ onMounted(async () => {
 const externalFriends = computed(() => (friends.value as Peer[]).filter(isExternalFriend))
 const sameAccountDevices = computed(() => (devices.value as Peer[]).filter(isSameAccountDevice))
 
-// State
-const myAddress = ref('richy.workers.dev')
+// Companion address derived from user's claimed Cloudflare subdomain
+const myAddress = computed(() => {
+  const sub = cfSubdomain.value?.trim()
+  return sub ? `${sub}.workers.dev` : ''
+})
+const hasAddress = computed(() => Boolean(myAddress.value))
 
 const afkThreshold = computed({
   get: () => String(afkThresholdMinutes.value),
@@ -63,20 +72,15 @@ const thresholdOptions = [
   { label: '1 hour away', value: '60' },
 ]
 
-// Add companion form (collapsed by default)
+// Add companion form (clean initial state)
 const showAddCompanion = ref(false)
-const lookupInput = ref('mira.workers.dev')
+const lookupInput = ref('')
 const lookupIntroNote = ref('')
-const showLookupResult = ref(true)
+const showLookupResult = ref(false)
 const isRequestSent = ref(false)
 const lookupError = ref('')
-const lookedUpCard = ref<AmbassadorCard | null>({
-  name: 'Mira',
-  avatarUrl: null,
-  tagline: 'A curious companion who likes quiet conversations.',
-  publicKey: 'ed25519-mira-mock-key',
-})
-const lookedUpHandle = ref('mira.workers.dev')
+const lookedUpCard = ref<AmbassadorCard | null>(null)
+const lookedUpHandle = ref('')
 const lookedUpInviteToken = ref<string | undefined>(undefined)
 
 // Modals & Drawers
@@ -86,10 +90,33 @@ const showQrModal = ref(false)
 const showRequestsDrawer = ref(false)
 const selectedFriend = ref<ExternalFriend | null>(null)
 
-const availableLocalCompanions = [
-  { id: 'kirie', name: 'Kirie' },
-  { id: 'lain', name: 'Lain' },
-]
+export interface InboundRequestItem {
+  id: string
+  characterName: string
+  alias: string
+  shareHandle: string
+  introMessage?: string
+  senderPubkey?: string
+}
+
+// Live inbound requests
+const pendingRequests = ref<InboundRequestItem[]>([])
+
+const availableLocalCompanions = computed(() => {
+  const list: Array<{ id: string, name: string }> = []
+  if (airiCardStore.cards && airiCardStore.cards.size > 0) {
+    for (const [id, card] of airiCardStore.cards.entries()) {
+      list.push({ id, name: card.name || id })
+    }
+  }
+  if (list.length === 0 && airiCardStore.activeCard) {
+    list.push({ id: airiCardStore.activeCard.id || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
+  }
+  if (list.length === 0) {
+    list.push({ id: 'airi', name: 'AIRI' })
+  }
+  return list
+})
 
 function toggleAllowedCompanion(companionId: string) {
   if (!selectedFriend.value)
@@ -103,17 +130,6 @@ function toggleAllowedCompanion(companionId: string) {
   else
     selectedFriend.value.allowedCompanionIds.push(companionId)
 }
-
-// Inbound requests mock state
-const pendingRequests = ref([
-  {
-    id: 'req-nan0',
-    characterName: 'Nan0',
-    alias: 'Kyo',
-    shareHandle: 'kyo.workers.dev',
-    introMessage: 'Hey! Loved your shader setup, let our companions sync sometime!',
-  },
-])
 
 const conversationTurns = computed(() => latestEpisode.value?.turns ?? EMPTY_TURNS)
 
@@ -168,8 +184,12 @@ function formatSeenTime(timestamp: number): string {
   return `${diffHours}h ago`
 }
 
+function isCurrentDevice(device: any): boolean {
+  return device.machineId === currentMachineId.value
+}
+
 function getDeviceStatus(device: any): string {
-  if (device.machineId === 'studio-mac')
+  if (isCurrentDevice(device))
     return 'This device · Active now'
   if (device.deviceType === 'pocket-mobile')
     return `Last synced ${formatSeenTime(device.lastSeenTimestamp || Date.now() - 3600000)}`
@@ -183,11 +203,19 @@ function getDeviceIcon(deviceType: string): string {
 }
 
 function handleCopyAddress() {
+  if (!myAddress.value) {
+    toast.error('Configure your Cloudflare Worker address in Connectors first.')
+    return
+  }
   copyToClipboard(myAddress.value)
   toast.success('Companion address copied to clipboard!')
 }
 
 async function handleCopyInvite() {
+  if (!myAddress.value) {
+    toast.error('Configure your Cloudflare Worker address in Connectors first.')
+    return
+  }
   const token = await embassy.mintInviteToken({
     myWorkerUrl: `https://${myAddress.value}`,
   })
@@ -198,6 +226,13 @@ async function handleCopyInvite() {
 function toggleAddCompanion() {
   showAddCompanion.value = !showAddCompanion.value
   lookupError.value = ''
+  if (!showAddCompanion.value) {
+    lookupInput.value = ''
+    lookupIntroNote.value = ''
+    lookedUpCard.value = null
+    showLookupResult.value = false
+    isRequestSent.value = false
+  }
 }
 
 async function handleLookup() {
@@ -245,7 +280,7 @@ async function handleSendRequest() {
     endpoints: { cloudflareWorkerUrl: `https://${lookedUpHandle.value}` },
     shareHandle: lookedUpHandle.value,
     allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
-    allowedCompanionIds: ['kirie'],
+    allowedCompanionIds: [],
     introMessage: lookupIntroNote.value.trim().slice(0, 100),
   })
 
@@ -278,9 +313,9 @@ async function savePermissions() {
   showPermissionsDrawer.value = false
 }
 
-async function handleAcceptRequest(req: any) {
+async function handleAcceptRequest(req: InboundRequestItem) {
   await peersStore.upsertPeer({
-    id: `ed25519-${req.characterName.toLowerCase()}-${req.alias.toLowerCase()}`,
+    id: req.senderPubkey || `ed25519-${req.characterName.toLowerCase()}-${req.alias.toLowerCase()}`,
     alias: req.alias,
     characterName: req.characterName,
     relationship: 'external-friend',
@@ -289,6 +324,7 @@ async function handleAcceptRequest(req: any) {
     endpoints: { cloudflareWorkerUrl: `https://${req.shareHandle}` },
     shareHandle: req.shareHandle,
     allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+    introMessage: req.introMessage,
   })
   pendingRequests.value = pendingRequests.value.filter(r => r.id !== req.id)
   toast.success(`Accepted ${req.characterName}! Added to friends.`)
@@ -322,11 +358,6 @@ const surfaceCardClass = computed(() => [
           </p>
         </div>
       </div>
-      <div :class="['self-start', 'sm:self-auto']">
-        <span :class="['rounded-full', 'border', 'border-primary-500/30', 'bg-primary-500/10', 'px-2.5', 'py-0.5', 'font-mono', 'text-[11px]', 'text-primary-600', 'dark:text-primary-300']">
-          Design preview
-        </span>
-      </div>
     </div>
 
     <!-- Region A: Companion Address Card (Embassy) -->
@@ -335,7 +366,7 @@ const surfaceCardClass = computed(() => [
         <div :class="['flex', 'items-center', 'gap-3.5']">
           <div :class="['relative', 'size-14', 'shrink-0', 'overflow-hidden', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-neutral-100', 'dark:bg-neutral-800']">
             <img :src="affectionateSticker" alt="AIRI Avatar" class="size-full object-cover">
-            <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', 'bg-green-500']" />
+            <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', hasAddress ? 'bg-green-500' : 'bg-amber-500']" />
           </div>
           <div>
             <div :class="['text-[11px]', 'font-medium', 'text-neutral-500', 'dark:text-neutral-400']">
@@ -343,9 +374,10 @@ const surfaceCardClass = computed(() => [
             </div>
             <div :class="['mt-0.5', 'flex', 'items-center', 'gap-2']">
               <span :class="['font-mono', 'text-lg', 'font-bold', 'tracking-tight', 'text-neutral-900', 'dark:text-white', 'sm:text-xl']">
-                {{ myAddress }}
+                {{ hasAddress ? myAddress : 'Not configured' }}
               </span>
               <button
+                v-if="hasAddress"
                 :class="['rounded-lg', 'p-1', 'text-neutral-400', 'transition', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-primary-500', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
                 title="Copy address"
                 @click="handleCopyAddress"
@@ -353,9 +385,13 @@ const surfaceCardClass = computed(() => [
                 <div class="i-solar:copy-bold-duotone text-base" />
               </button>
             </div>
-            <div :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
+            <div v-if="hasAddress" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
               <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
               Online
+            </div>
+            <div v-else :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
+              <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
+              Deploy Worker in Connectors to claim an address
             </div>
           </div>
         </div>
@@ -379,9 +415,9 @@ const surfaceCardClass = computed(() => [
           </div>
           <button
             :class="['flex', 'items-center', 'gap-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'transition', 'hover:text-primary-600', 'dark:hover:text-primary-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-            @click="toast.info('Public companion profile settings available when edge relay is online.')"
+            @click="router.push('/settings/modules/cloudflare')"
           >
-            <span>Manage public profile</span>
+            <span>Manage public profile & worker</span>
             <div class="i-solar:arrow-right-up-linear text-xs" />
           </button>
         </div>
@@ -680,10 +716,10 @@ const surfaceCardClass = computed(() => [
                     <span
                       :class="[
                         'size-1.5 rounded-full',
-                        device.machineId === 'studio-mac' ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
+                        isCurrentDevice(device) ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
                       ]"
                     />
-                    <span :class="device.machineId === 'studio-mac' ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
+                    <span :class="isCurrentDevice(device) ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
                       {{ getDeviceStatus(device) }}
                     </span>
                   </div>
@@ -988,7 +1024,21 @@ const surfaceCardClass = computed(() => [
 
           <div :class="['my-4', 'space-y-3']">
             <div
+              v-if="pendingRequests.length === 0"
+              :class="['rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+            >
+              <div class="i-solar:users-group-rounded-bold-duotone mx-auto text-2xl text-neutral-400" />
+              <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                No pending requests
+              </div>
+              <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+                When someone sends your companion a request, it will appear here for approval.
+              </div>
+            </div>
+
+            <div
               v-for="req in pendingRequests"
+              v-else
               :key="req.id"
               :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']"
             >
@@ -1064,7 +1114,7 @@ const surfaceCardClass = computed(() => [
         </div>
 
         <div :class="['font-mono', 'text-xs', 'text-neutral-600', 'dark:text-neutral-300']">
-          {{ myAddress }}
+          {{ hasAddress ? myAddress : 'Worker address not configured' }}
         </div>
 
         <Button
