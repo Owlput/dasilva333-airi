@@ -1,0 +1,106 @@
+export type PeerRelationship = 'same-account' | 'external-friend'
+export type PeerTrustState = 'pending' | 'trusted' | 'restricted' | 'blocked'
+
+export interface BasePeer {
+  id: string
+  alias: string
+  characterName: string
+  avatarUrl?: string
+  relationship: PeerRelationship
+  trustState: PeerTrustState
+  lastSeenTimestamp: number
+  endpoints: {
+    cloudflareWorkerUrl?: string
+    libp2pMultiaddrs?: string[]
+  }
+}
+
+export interface SameAccountDevice extends BasePeer {
+  relationship: 'same-account'
+  machineId: string
+  deviceType: 'desktop' | 'laptop' | 'pocket-mobile'
+  edgeVaultSyncedAt?: number
+}
+
+export interface ExternalFriend extends BasePeer {
+  relationship: 'external-friend'
+  shareHandle: string
+  mutualConsentToken?: string
+  allowedCapabilities: {
+    canNapChat: boolean
+    canShareMemories: boolean
+    canStreamSensory: boolean
+  }
+  allowedCompanionIds?: string[]
+  introMessage?: string
+}
+
+export interface FriendRequest {
+  id: string
+  fromHandle: string
+  fromPubkey: string
+  fromCharacterName: string
+  fromAvatarUrl?: string
+  introMessage?: string
+  timestamp: number
+  nonce: string
+  status: 'pending' | 'accepted' | 'ignored'
+}
+
+export const MAX_INTRO_MESSAGE_LENGTH = 100
+
+export function sanitizeIntroMessage(input?: string | null): string {
+  const text = (input ?? '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim()
+  return text.slice(0, MAX_INTRO_MESSAGE_LENGTH)
+}
+
+export function isIntroMessageValid(input?: string | null): boolean {
+  if (input == null || input === '')
+    return true
+  return input.length <= MAX_INTRO_MESSAGE_LENGTH
+}
+
+export function buildRequestSignaturePayload(timestamp: number, nonce: string, introMessage: string, senderPubkey: string): string {
+  return `${timestamp}:${nonce}:${sanitizeIntroMessage(introMessage)}:${senderPubkey}`
+}
+
+export type Peer = SameAccountDevice | ExternalFriend
+
+export function isSameAccountDevice(peer: Peer): peer is SameAccountDevice {
+  return peer.relationship === 'same-account'
+}
+
+export function isExternalFriend(peer: Peer): peer is ExternalFriend {
+  return peer.relationship === 'external-friend'
+}
+
+export function isNapChatEligible(peer: Peer): boolean {
+  if (!isExternalFriend(peer))
+    return false
+  return peer.trustState === 'trusted' && peer.allowedCapabilities.canNapChat
+}
+
+export function isQuarantined(peer: Peer): boolean {
+  return peer.trustState !== 'trusted'
+}
+
+export function canSeePresence(peer: Peer): boolean {
+  return peer.trustState === 'trusted'
+}
+
+export function isMemoryShareEligible(peer: Peer): boolean {
+  if (!isExternalFriend(peer))
+    return false
+  return peer.trustState === 'trusted' && peer.allowedCapabilities.canShareMemories
+}
+
+export function isCompanionAllowedForFriend(peer: Peer, companionId: string): boolean {
+  if (!isExternalFriend(peer))
+    return false
+  if (peer.trustState !== 'trusted')
+    return false
+  const allowlist = peer.allowedCompanionIds
+  if (!allowlist || allowlist.length === 0)
+    return true
+  return allowlist.includes(companionId)
+}

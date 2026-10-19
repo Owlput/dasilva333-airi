@@ -8,6 +8,7 @@ import {
   formatProactiveTailEnvelope,
   formatSensorPayload,
   isNoReplySentinel,
+  isUserAway,
 } from './proactivity-telemetry'
 
 describe('evaluateHeartbeatGating', () => {
@@ -69,6 +70,22 @@ describe('evaluateHeartbeatGating', () => {
     const now = 1000000
     const res = evaluateHeartbeatGating({ now, lastHeartbeatTime: now - 30000, intervalMinutes: 0 })
     expect(res.allowed).toBe(false)
+  })
+})
+
+describe('isUserAway', () => {
+  it('false when active', () => {
+    expect(isUserAway(10, 5)).toBe(false)
+  })
+  it('true at threshold', () => {
+    expect(isUserAway(300, 5)).toBe(true)
+  })
+  it('true when over nap threshold', () => {
+    expect(isUserAway(901, 15)).toBe(true)
+  })
+  it('defaults threshold 5m and handles undefined', () => {
+    expect(isUserAway(undefined)).toBe(false)
+    expect(isUserAway(300)).toBe(true)
   })
 })
 

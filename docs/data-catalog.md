@@ -509,7 +509,18 @@ interface DirectorNote {
 }
 ```
 
-### 1.12 Event Log (System Event Ledger)
+### 1.12 Friends & Peers Roster
+
+| Attribute | Value |
+| :--- | :--- |
+| **Key** | `local:peers/roster` |
+| **Repo** | `packages/stage-ui/src/database/repos/peers.repo.ts` — `peersRepo` |
+| **Store** | `packages/stage-ui/src/stores/peers.ts` — `usePeersStore` |
+| **Type** | `Peer[]` (`SameAccountDevice \| ExternalFriend` in `packages/stage-shared/src/peers.ts`) |
+| **Sync** | **Merged** — per-peer `id` dedup + `lastSeenTimestamp` LWW; Global Profile Scope (cross-character/universe) |
+| **Channel** | `airi:peers-sync` (`{ type: 'peers-updated', at }`) |
+
+### 1.13 Event Log (System Event Ledger)
 
 | Attribute | Value |
 | :--- | :--- |

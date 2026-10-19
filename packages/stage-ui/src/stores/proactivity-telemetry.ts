@@ -92,6 +92,10 @@ export function evaluateHeartbeatGating(
   return { allowed: true }
 }
 
+export function isUserAway(currentIdleSec?: number, afkThresholdMinutes = 5): boolean {
+  return (currentIdleSec ?? 0) >= afkThresholdMinutes * 60
+}
+
 export interface PipeBusyState {
   sending?: boolean
   activeSpokenText?: string | null

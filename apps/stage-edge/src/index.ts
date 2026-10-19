@@ -15,6 +15,61 @@ export interface Env {
   SYSTEM_PROMPT?: string
   CHARACTER_NAME?: string
   MEMORY?: KVNamespace
+  COMPANION_PUBLIC_KEY?: string
+  COMPANION_TAGLINE?: string
+  COMPANION_AVATAR_URL?: string
+  OWNER_ID?: string
+}
+
+const MAX_INTRO_MESSAGE_LENGTH = 100
+const SIGNATURE_DRIFT_SEC = 300
+const NONCE_TTL_SEC = 600
+const INVITE_TTL_SEC = 86400
+
+function sanitizeIntroMessage(input?: unknown): string {
+  const text = typeof input === 'string' ? input : ''
+  return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, MAX_INTRO_MESSAGE_LENGTH)
+}
+
+function isHex64(value?: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value)
+}
+
+async function verifyEd25519Message(publicKeyHex: string, signatureHex: string, message: string): Promise<boolean> {
+  try {
+    const { hexToUint8Array } = await import('./crypto/ed25519')
+    const encoder = new TextEncoder()
+    const data = encoder.encode(message)
+    const keyData = hexToUint8Array(publicKeyHex)
+    const signatureData = hexToUint8Array(signatureHex)
+    const key = await crypto.subtle.importKey('raw', keyData.buffer as BufferSource, 'Ed25519', false, ['verify'])
+    return await crypto.subtle.verify('Ed25519', key, signatureData.buffer as BufferSource, data.buffer as BufferSource)
+  }
+  catch {
+    return false
+  }
+}
+
+async function consumeNonce(env: Env, nonce: string): Promise<boolean> {
+  if (!env.MEMORY || !nonce || nonce.length < 8 || nonce.length > 128)
+    return false
+  const key = `friends/nonces/${nonce}`
+  try {
+    const seen = await env.MEMORY.get(key)
+    if (seen)
+      return false
+    await env.MEMORY.put(key, '1', { expirationTtl: NONCE_TTL_SEC })
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+function isTimestampFresh(timestamp: unknown): timestamp is number {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp))
+    return false
+  return Math.abs(Date.now() - timestamp) <= SIGNATURE_DRIFT_SEC * 1000
 }
 
 export interface ExecutionContext {
@@ -229,6 +284,145 @@ export default {
           return jsonResponse({ type: 5 })
         }
       }
+    }
+
+    // Companion embassy: public ambassador card (single-character exposure only).
+    if (request.method === 'GET' && url.pathname === '/api/companion/card') {
+      return jsonResponse({
+        name: env.CHARACTER_NAME || 'AIRI',
+        avatarUrl: env.COMPANION_AVATAR_URL || null,
+        tagline: env.COMPANION_TAGLINE || null,
+        publicKey: env.COMPANION_PUBLIC_KEY || null,
+      }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+
+    // Companion embassy: owner-only single-use invite mint (24h expiry).
+    if (request.method === 'POST' && url.pathname === '/api/friends/invite') {
+      if (!env.MEMORY) {
+        return jsonResponse({ error: 'kv_not_configured' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const ownerId = request.headers.get('x-owner-id')
+      if (!env.OWNER_ID || !ownerId || ownerId !== env.OWNER_ID) {
+        return jsonResponse({ error: 'forbidden' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const invite = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 18)}`
+      const createdAt = Date.now()
+      try {
+        await env.MEMORY.put(`friends/invites/${invite}`, JSON.stringify({ createdAt }), { expirationTtl: INVITE_TTL_SEC })
+      }
+      catch {
+        return jsonResponse({ error: 'kv_write_failed' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const origin = new URL(request.url).origin
+      return jsonResponse({
+        invite,
+        uri: `airi://pair?worker=${origin}&invite=${invite}`,
+        expiresAt: createdAt + INVITE_TTL_SEC * 1000,
+      }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+
+    // Companion embassy: public inbound friend request intake (pending quarantine).
+    if (request.method === 'POST' && url.pathname === '/api/friends/request') {
+      if (!env.MEMORY) {
+        return jsonResponse({ error: 'kv_not_configured' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      let body: any = null
+      try {
+        body = await request.json()
+      }
+      catch {
+        return jsonResponse({ error: 'invalid_json' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const introMessage = sanitizeIntroMessage(body?.introMessage)
+      if (typeof body?.introMessage === 'string' && body.introMessage.length > MAX_INTRO_MESSAGE_LENGTH) {
+        return jsonResponse({ error: 'intro_too_long' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const { fromHandle, fromPubkey, fromCharacterName, timestamp, nonce, signature, invite } = body ?? {}
+      if (typeof fromHandle !== 'string' || !fromHandle || !isHex64(fromPubkey) || typeof fromCharacterName !== 'string' || !fromCharacterName) {
+        return jsonResponse({ error: 'invalid_identity' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (!isTimestampFresh(timestamp) || typeof nonce !== 'string') {
+        return jsonResponse({ error: 'stale_or_missing_timestamp' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (typeof signature !== 'string' || !signature) {
+        return jsonResponse({ error: 'missing_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (invite !== undefined) {
+        if (typeof invite !== 'string' || !invite) {
+          return jsonResponse({ error: 'invalid_invite' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+        }
+        let stored: string | null = null
+        try {
+          stored = await env.MEMORY.get(`friends/invites/${invite}`)
+        }
+        catch {}
+        if (!stored) {
+          return jsonResponse({ error: 'invalid_invite' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+        }
+      }
+      if (!await consumeNonce(env, nonce)) {
+        return jsonResponse({ error: 'replayed_nonce' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const payload = `${timestamp}:${nonce}:${introMessage}:${fromPubkey}`
+      if (!await verifyEd25519Message(fromPubkey, signature, payload)) {
+        return jsonResponse({ error: 'invalid_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      try {
+        await env.MEMORY.put(`friends/requests/inbound/${id}`, JSON.stringify({
+          id,
+          fromHandle,
+          fromPubkey,
+          fromCharacterName,
+          introMessage,
+          timestamp,
+          nonce,
+          status: 'pending',
+        }))
+      }
+      catch {
+        return jsonResponse({ error: 'kv_write_failed' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      return jsonResponse({ status: 'pending', id }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+
+    // Companion embassy: authenticated peer inbox relay (trusted senders only).
+    if (request.method === 'POST' && url.pathname === '/api/friends/inbox') {
+      if (!env.MEMORY) {
+        return jsonResponse({ error: 'kv_not_configured' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const senderPubkey = request.headers.get('x-sender-pubkey')
+      const signature = request.headers.get('x-signature-ed25519')
+      const timestampHeader = request.headers.get('x-signature-timestamp')
+      const nonce = request.headers.get('x-signature-nonce')
+      const timestamp = timestampHeader ? Number(timestampHeader) : Number.NaN
+      if (!isHex64(senderPubkey) || !signature || !isTimestampFresh(timestamp) || !nonce) {
+        return jsonResponse({ error: 'unauthorized' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      let accepted: string | null = null
+      try {
+        accepted = await env.MEMORY.get(`friends/accepted/${senderPubkey}`)
+      }
+      catch {}
+      if (!accepted) {
+        return jsonResponse({ error: 'quarantined' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const bodyText = await request.text()
+      if (!await consumeNonce(env, nonce)) {
+        return jsonResponse({ error: 'replayed_nonce' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (!await verifyEd25519Message(senderPubkey, signature, `${timestamp}:${nonce}:${bodyText}`)) {
+        return jsonResponse({ error: 'invalid_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      try {
+        await env.MEMORY.put(`friends/inbox/${senderPubkey}/${timestamp}_${nonce}`, bodyText)
+      }
+      catch {
+        return jsonResponse({ error: 'kv_write_failed' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      return jsonResponse({ queued: true }, { headers: { 'Access-Control-Allow-Origin': '*' } })
     }
 
     return new Response('Not Found', { status: 404 })
