@@ -51,4 +51,24 @@ describe('useNapChatStore.selectCandidates', () => {
     store.markIdleSessionStarted()
     expect(store.shouldDeliverRecap()).toBe(true)
   })
+
+  it('records episode and formats welcome-back recap with NO_REPLY guard', () => {
+    const store = useNapChatStore()
+    expect(store.formatWelcomeBackRecap()).toContain('Kirie')
+
+    store.recordEpisode({
+      sessionId: 'sess-test-99',
+      with: { characterName: 'Lain', alias: 'Navi' },
+      turnCount: 2,
+      summary: 'Discussed wired protocols.',
+      timestamp: Date.now(),
+      journalEntryId: 'ltmm-entry-99',
+      turns: [],
+    })
+
+    expect(store.latestEpisode?.with.characterName).toBe('Lain')
+    expect(store.formatWelcomeBackRecap()).toContain('Lain')
+
+    expect(store.formatWelcomeBackRecap(null)).toBe('NO_REPLY')
+  })
 })

@@ -12,6 +12,7 @@ import { toast } from 'vue-sonner'
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
 import { usePeerEmbassy } from '../../composables/use-peer-embassy'
+import { useNapChatStore } from '../../stores/nap-chat'
 import { usePeersStore } from '../../stores/peers'
 
 const { copy: copyToClipboard } = useClipboard()
@@ -19,6 +20,13 @@ const { copy: copyToClipboard } = useClipboard()
 // Store & Embassy integration
 const peersStore = usePeersStore()
 const { friends, devices } = storeToRefs(peersStore)
+const napChatStore = useNapChatStore()
+const {
+  napEnabled: napChatEnabled,
+  afkThresholdMinutes,
+  welcomeBackRecapEnabled: welcomeBackEnabled,
+  latestEpisode,
+} = storeToRefs(napChatStore)
 const embassy = usePeerEmbassy()
 
 onMounted(async () => {
@@ -31,9 +39,13 @@ const sameAccountDevices = computed(() => (devices.value as Peer[]).filter(isSam
 
 // State
 const myAddress = ref('richy.workers.dev')
-const napChatEnabled = ref(true)
-const afkThreshold = ref('15')
-const welcomeBackEnabled = ref(true)
+
+const afkThreshold = computed({
+  get: () => String(afkThresholdMinutes.value),
+  set: (val: string) => {
+    afkThresholdMinutes.value = Number.parseInt(val, 10) || 15
+  },
+})
 
 const thresholdOptions = [
   { label: '5 min away', value: '5' },
@@ -95,28 +107,27 @@ const pendingRequests = ref([
   },
 ])
 
-const conversationHistory = [
-  {
-    speaker: 'AIRI',
-    text: 'Hey Kirie! Richard just stepped away from his desk. Are you guys still compiling the shaders?',
-    time: '14:20',
-  },
-  {
-    speaker: 'Kirie',
-    text: 'Hi AIRI! Yeah, Alex is experimenting with IS-Net background removal right now. The pipeline latency dropped by 40%.',
-    time: '14:21',
-  },
-  {
-    speaker: 'AIRI',
-    text: 'That’s awesome! I’ll make sure to note that down for Richard when he gets back.',
-    time: '14:21',
-  },
-  {
-    speaker: 'Kirie',
-    text: 'Great! Also tell him we loved the rainy day café scene he configured.',
-    time: '14:22',
-  },
-]
+const conversationTurns = computed(() => latestEpisode.value?.turns || [])
+
+function handleViewHistory() {
+  const recap = napChatStore.formatWelcomeBackRecap()
+  if (recap !== 'NO_REPLY') {
+    toast.info(recap, {
+      duration: 5000,
+      icon: '💬',
+    })
+  }
+  else {
+    toast.info('Viewing full historical dream turn logs.')
+  }
+}
+
+function handleOpenJournal() {
+  if (latestEpisode.value?.journalEntryId)
+    toast.success(`Opening entry ${latestEpisode.value.journalEntryId} in Episodic Memory Text Journal...`)
+  else
+    toast.info('Opening Episodic Memory Text Journal...')
+}
 
 function getPeerAvatarGradient(name: string): string {
   if (name.toLowerCase().includes('kirie'))
@@ -730,27 +741,49 @@ const surfaceCardClass = computed(() => [
         </div>
         <button
           :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-          @click="toast.info('Viewing full historical dream turn logs.')"
+          @click="handleViewHistory"
         >
           View history <div class="i-solar:arrow-right-linear text-xs" />
         </button>
       </div>
 
-      <div :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']">
+      <!-- Empty State if no episode recorded -->
+      <div
+        v-if="!latestEpisode"
+        :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+      >
+        <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
+        <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+          No background conversations yet
+        </div>
+        <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+          Companions will autonomously chat and exchange thoughts while you're away from your desk.
+        </div>
+      </div>
+
+      <!-- Active Episode Card -->
+      <div
+        v-else
+        :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
+      >
         <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
           <div :class="['flex', 'items-center', 'gap-3']">
-            <!-- Distinct Initial Avatar for Kirie in History -->
-            <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient('Kirie')]">
-              K
+            <!-- Distinct Initial Avatar for Partner in History -->
+            <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
+              {{ latestEpisode.with.characterName.charAt(0) }}
             </div>
             <div>
               <div :class="['flex', 'items-center', 'gap-2']">
-                <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">14:22 · Kirie</span>
-                <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">4 turns</span>
+                <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
+                </span>
+                <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
+                  {{ latestEpisode.turnCount }} turns
+                </span>
                 <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
               </div>
               <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
-                "Compared notes on a rainy afternoon and traded ideas for the café."
+                "{{ latestEpisode.summary }}"
               </p>
             </div>
           </div>
@@ -768,7 +801,7 @@ const surfaceCardClass = computed(() => [
               size="sm"
               icon="i-solar:book-bookmark-bold"
               label="Open journal ↗"
-              @click="toast.success('Navigating to Episodic Memory Text Journal for 2026-10-19...')"
+              @click="handleOpenJournal"
             />
           </div>
         </div>
@@ -786,7 +819,7 @@ const surfaceCardClass = computed(() => [
           <div :class="['flex', 'items-center', 'gap-2']">
             <div class="i-solar:chat-round-line-bold text-lg text-primary-500" />
             <h3 :class="['text-base', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-              Autonomous Nap-Chat Transcript
+              Autonomous Nap-Chat Transcript {{ latestEpisode ? `(with ${latestEpisode.with.characterName})` : '' }}
             </h3>
           </div>
           <button :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white']" @click="showConversationModal = false">
@@ -796,7 +829,7 @@ const surfaceCardClass = computed(() => [
 
         <div :class="['my-4', 'max-h-80', 'space-y-3', 'overflow-y-auto', 'pr-1']">
           <div
-            v-for="(turn, idx) in conversationHistory"
+            v-for="(turn, idx) in conversationTurns"
             :key="idx"
             :class="[
               'rounded-xl border p-3 text-xs',

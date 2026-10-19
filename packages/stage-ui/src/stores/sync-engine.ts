@@ -2585,6 +2585,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             'local:widgets/registry',
             'local:localstorage/settings/live2d/available-motions',
             'local:localstorage/settings/speech/voice-profiles',
+            'local:peers/roster',
           ].includes(localKey)
 
           if (isMergeableKey) {
