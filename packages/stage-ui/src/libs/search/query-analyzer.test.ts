@@ -78,6 +78,27 @@ describe('query-analyzer', () => {
       expect(res.anaphoraResolved).toBe(false)
       expect(res.expandedQuery).toBe(query)
     })
+
+    it('binds grounded entities from Turn N-1 when pronoun is present', () => {
+      const query = 'and where did you get that item from?'
+      const prevTurn = 'Ren was on the cot with mana poisoning and the nurse tried to flush it.'
+      const prevGrounding = {
+        entities: ['crystal', 'tentacle', 'infirmary'],
+        hits: [
+          {
+            id: 'kg-mention:123',
+            subject: 'Ren & Taro & The Central Academy',
+            content: 'The crystal was almost completely absorbed.',
+          },
+        ],
+      }
+
+      const res = resolveTurnAnaphora(query, prevTurn, prevGrounding)
+      expect(res.anaphoraResolved).toBe(true)
+      expect(res.pronounsDetected).toContain('that')
+      expect(res.expandedQuery).toContain('crystal')
+      expect(res.expandedQuery).toContain('tentacle')
+    })
   })
 
   describe('expandCasualQuery', () => {

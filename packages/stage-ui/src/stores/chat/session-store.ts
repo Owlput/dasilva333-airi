@@ -1025,6 +1025,22 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return sessionMessages.value[sessionId] ?? []
   }
 
+  function getLastGroundedTurn(sessionId = activeSessionId.value) {
+    if (!sessionId)
+      return null
+    const msgs = sessionMessages.value[sessionId] || []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i]
+      if (msg && (msg as any).grounding && (((msg as any).grounding.hits?.length > 0) || ((msg as any).grounding.entities?.length > 0))) {
+        return {
+          message: msg,
+          grounding: (msg as any).grounding,
+        }
+      }
+    }
+    return null
+  }
+
   function getSessionGeneration(sessionId: string) {
     ensureGeneration(sessionId)
     return sessionGenerations.value[sessionId] ?? 0
@@ -1610,6 +1626,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     setSessionMessages,
     persistSessionMessages,
     getSessionMessages,
+    getLastGroundedTurn,
     sessionMessages,
     sessionMetas,
     getSessionMeta,

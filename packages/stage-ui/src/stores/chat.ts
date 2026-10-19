@@ -3,7 +3,7 @@ import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { CommonContentPart, Message, ToolMessage } from '@xsai/shared-chat'
 
-import type { ChatAssistantMessage, ChatSlices, ChatStreamEventContext } from '../types/chat'
+import type { ChatAssistantMessage, ChatGroundingHit, ChatGroundingMetadata, ChatSlices, ChatStreamEventContext } from '../types/chat'
 import type { PacingMetrics } from '../types/pacing'
 import type { GroundingMessage } from './chat/grounding-assembler'
 import type { ChatInputBridgePayload } from './chat/input-bridge'
@@ -882,6 +882,52 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           }
           catch (err) {
             console.error('[ChatStore] Failed to query semantic memories during ingest:', err)
+          }
+        }
+      }
+
+      // Compile and attach durable grounding metadata to the assistant message
+      if (retrievedSemanticMemories && retrievedSemanticMemories.length > 0) {
+        const hits: ChatGroundingHit[] = retrievedSemanticMemories.map((item: any) => ({
+          id: item.id || `hit-${Math.random().toString(36).slice(2, 7)}`,
+          subject: item.subject,
+          predicate: item.predicate,
+          object: item.object,
+          title: item.title,
+          content: item.content,
+          score: item.score,
+          source: item.source,
+          isKgClaim: !!item.isKgClaim,
+        }))
+
+        const entities = Array.from(new Set(
+          retrievedSemanticMemories
+            .flatMap((item: any) => [item.subject, item.object])
+            .filter((e): e is string => typeof e === 'string' && e.trim().length > 0),
+        ))
+
+        const groundingMeta: ChatGroundingMetadata = {
+          queries: typeof sendingMessage === 'string' ? [sendingMessage] : [],
+          entities,
+          hits,
+        }
+
+        buildingMessage.grounding = groundingMeta
+
+        console.log('[GroundingPersistence:Attached]', {
+          messageId: buildingMessage.id,
+          sessionId,
+          entitiesCount: entities.length,
+          entities,
+          hitsCount: hits.length,
+        })
+
+        if (typeof window !== 'undefined') {
+          ;(window as any).__AIRI_LAST_GROUNDED_TURN__ = {
+            messageId: buildingMessage.id,
+            sessionId,
+            grounding: groundingMeta,
+            timestamp: Date.now(),
           }
         }
       }

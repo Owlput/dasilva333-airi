@@ -6,6 +6,7 @@ import { watchDebounced } from '@vueuse/core'
 import { computed, ref, unref, watch } from 'vue'
 
 import { formatSemanticMemoriesBlock } from '../stores/chat/grounding-assembler'
+import { useChatSessionStore } from '../stores/chat/session-store'
 import { useTextJournalStore } from '../stores/memory-text-journal'
 import { useAiriCardStore } from '../stores/modules/airi-card'
 
@@ -46,6 +47,7 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
 
   const airiCardStore = useAiriCardStore()
   const textJournalStore = useTextJournalStore()
+  const chatSessionStore = useChatSessionStore()
 
   const memories = ref<PreFlightMemoryItem[]>([])
   const kgFacts = ref<PreFlightKgFact[]>([])
@@ -81,10 +83,21 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
     const charId = unref(activeCardId) ?? unref(airiCardStore.activeCardId)
     isSearching.value = true
     try {
+      const lastGrounded = chatSessionStore.getLastGroundedTurn()
+      const sessionMessages = chatSessionStore.sessionMessages[chatSessionStore.activeSessionId] || []
+      const lastMsg = sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1] : undefined
+      const previousTurnText = typeof lastMsg?.content === 'string'
+        ? lastMsg.content
+        : Array.isArray(lastMsg?.content)
+          ? (lastMsg.content as any[]).map(p => p?.text || '').join(' ')
+          : undefined
+
       const results = await textJournalStore.searchEntries({
         query: trimmed,
         limit: Math.max(12, evidenceLimit * 2),
         characterId: charId,
+        previousTurn: previousTurnText,
+        previousGrounding: lastGrounded?.grounding,
         signal: controller.signal,
       })
 
@@ -95,11 +108,27 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
       const nextKgFacts: PreFlightKgFact[] = []
       const stagedItems: any[] = []
 
+      // Balanced quota allocation: separate quotas for S-P-O claims vs dialogue scene mentions
+      // so verified facts and grounded dialogue scenes never starve each other.
+      const maxClaims = Math.max(3, Math.floor(evidenceLimit / 2))
+      const maxMentions = Math.max(5, evidenceLimit)
+      let claimCount = 0
+      let mentionCount = 0
+
       for (const rawItem of results) {
         const item = rawItem as any
-        const isKg = item.isKgClaim || item.kind === 'kg_claim' || item.id?.startsWith('claim:') || item.id?.startsWith('kg-')
+        const isMention = item.id?.startsWith('kg-mention:')
+        const isClaim = (item.isKgClaim || item.kind === 'kg_claim' || item.id?.startsWith('claim:')) && !isMention
+        const isKg = isClaim || isMention || item.id?.startsWith('kg-')
+
         if (isKg && item.subject) {
-          if (nextKgFacts.length < evidenceLimit) {
+          const canAdd = isClaim ? (claimCount < maxClaims) : (mentionCount < maxMentions)
+          if (canAdd) {
+            if (isClaim)
+              claimCount++
+            else
+              mentionCount++
+
             nextKgFacts.push({
               id: item.id,
               subject: item.subject,

@@ -1,3 +1,4 @@
+import type { ChatGroundingMetadata } from '../../types/chat'
 import type { ClaimRecord, EntityLedger, SourceRecord } from './entity-ledger'
 import type { HybridSearchResult, MemoryLayer, SearchDocumentMeta } from './hybrid-scorer'
 import type { TriageDecision } from './query-analyzer'
@@ -57,6 +58,7 @@ export interface LayeredSearchResult extends HybridSearchResult {
 
 export interface LayeredSearchOptions {
   previousTurn?: string
+  previousGrounding?: ChatGroundingMetadata
   anaphoraEnabled?: boolean
   temporalBoost?: boolean
   ledger?: EntityLedger
@@ -258,6 +260,7 @@ export const layeredMemory = {
     // 2. Query Analysis & Turn-1 Anaphora Resolution
     const analysis = analyzeQuery(query, {
       previousTurn: options?.previousTurn,
+      previousGrounding: options?.previousGrounding,
       anaphoraEnabled: options?.anaphoraEnabled ?? true,
     })
 

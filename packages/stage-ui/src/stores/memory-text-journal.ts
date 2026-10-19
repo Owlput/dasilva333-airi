@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from '../types/chat'
+import type { ChatGroundingMetadata, ChatStreamEvent } from '../types/chat'
 import type { TextJournalEntry, TextJournalEntrySource } from '../types/text-journal'
 
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
@@ -899,6 +899,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     limit?: number
     characterId?: string
     previousTurn?: string
+    previousGrounding?: ChatGroundingMetadata
     anaphoraEnabled?: boolean
     signal?: AbortSignal
   }): Promise<(TextJournalEntry & { kind: string, score?: number })[]> {
@@ -907,7 +908,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
       return []
 
     const targetCharacterId = input.characterId ?? activeCardId.value
-    const flightKey = `${targetCharacterId || ''}::${input.limit ?? 3}::${query}::${input.previousTurn || ''}`
+    const flightKey = `${targetCharacterId || ''}::${input.limit ?? 3}::${query}::${input.previousTurn || ''}::${input.previousGrounding?.entities?.join(',') || ''}`
     const inFlight = inFlightSearches.get(flightKey)
     if (inFlight)
       return inFlight
@@ -956,6 +957,7 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
         results = await layeredMemory.search(query, input.limit ?? 3, targetCharacterId, {
           previousTurn: input.previousTurn,
+          previousGrounding: input.previousGrounding,
           anaphoraEnabled: input.anaphoraEnabled,
           ledger: isLedgerForTargetChar ? entityLedgerStore?.activeLedger : undefined,
           systemOneStore,
