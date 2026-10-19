@@ -125,7 +125,8 @@ the host panels listed in §4.
 
 ### 3.1 Spine
 
-**Grow:** `manifest` (`capabilityDiscovery: 'static'`, `headPose: true`, no `view`),
+**Grow:** `manifest` (`capabilityDiscovery: 'static'`, `headPose: true`, `occupiesPoint: true`
+from its own canvas alpha (§8.2), no `view`),
 `activate`/`deactivate` (replacing
 `import.meta.hot?.dispose(() => window.location.reload())` at `Model.vue:1177-1180`
 and `Canvas.vue:75-78`), `provider` (`list`, `remove`, `preview`, `probe`,
@@ -168,7 +169,8 @@ not user data. The model file itself takes the D13 path, not the bag.
 
 ### 3.2 MMD
 
-**Grow:** manifest (`capabilityDiscovery: 'runtime'`, `headPose: true`, no `view`),
+**Grow:** manifest (`capabilityDiscovery: 'runtime'`, `headPose: true`, `occupiesPoint: true`
+via canvas alpha or its render target (§8.2), no `view`),
 runtime with `deactivate`, provider (`probe` is real here: `validateMMDZip` exists
 at `utils/mmd-validator.ts:28-69` with **no caller** today), mount shim, and the cue
 sink.
@@ -217,7 +219,8 @@ written and never read; `shouldUpdateView()` with no subscriber despite
 
 ### 3.3 Live2D
 
-**Grow:** manifest (`capabilityDiscovery: 'static'`, no `headPose` today, no
+**Grow:** manifest (`capabilityDiscovery: 'static'`, `occupiesPoint` from its own canvas alpha (§8.2),
+no `headPose` today, no
 `view`), runtime with `deactivate`, provider, mount shim, and the cue sink — none of
 which exist (no `handle(envelope)`, no `profileId`, no `modelCapabilities()`
 anywhere in the package).
@@ -430,19 +433,28 @@ factory may return a component whose state is per-instance — but it is the lar
 driver-side work here, and it has to land in the same step as §8.5, because the per-scope
 state work assumes per-instance ownership.
 
-### 8.2 `occupiesPoint` is implementable only by the WebGL renderers
+### 8.2 `occupiesPoint`: the reader exists, the wiring does not
 
-The member is synchronous. VRM can answer it: it already reads a render target synchronously
-(`stage-ui-three/src/composables/render-target.ts:51,94`, wired at `ThreeScene.vue:130`).
-Pixi-based renderers cannot read pixels synchronously, so Live2D and Spine must declare
-`occupiesPoint: false` even though they know their own geometry.
+The member is synchronous, and the first read of it said only VRM could answer: it reads a render target
+synchronously (`stage-ui-three/src/composables/render-target.ts:51,94`, wired at `ThreeScene.vue:130`)
+while Pixi was assumed unable to read pixels synchronously.
 
-**Decided: keep it synchronous, and occlusion stays a 3D capability for this migration.** VRM answers
-from its render target; Live2D and Spine declare `occupiesPoint: false`, which loses nothing that works
-today — click-through is already VRM-only (`stage-three-transparency.ts:14` checks
-`stageModelRenderer === 'vrm'`) and the rest of the app uses geometry. An async member would put a
-promise in front of every pointer move, and "the last rendered frame" needs a staleness policy nobody
-has asked for. Revisit only if a 2D renderer ever needs click-through.
+That is wrong, and this tree already contains the counter-example:
+`composables/canvas-alpha.ts:19` (`isCanvasRegionTransparent`, a `gl.readPixels` over a circle's bounding
+box that re-checks the circle on the CPU) and `:161` (`useCanvasPixelIsTransparentAtPoint`). Live2D and
+Spine draw through Pixi, whose canvas is a WebGL context, so the same call answers for them; MMD draws
+through Three like VRM and can use either path. What is missing is not the capability but the wiring:
+the helper has **no consumer** today, `ControlStripHost.vue:1963-1973` stubs the read to `null`, and
+`RendererStage.vue:166-170` answers `null` for every format except VRM — which is why click-through is
+VRM-only in practice (`stage-three-transparency.ts:14`).
+
+**Decided: keep the member synchronous and let every renderer answer, Live2D included.** Two caveats
+belong to the renderer, not to the contract: a drawing-buffer read is only reliable for the frame that
+drew it (Pixi and Three both default `preserveDrawingBuffer: false`), so a renderer renders on demand,
+sets the flag, or caches the last answered point; and choosing the threshold and the sample radius is
+exactly the "sensitivity is the renderer's own policy" line in `renderer-mount.ts`. The migration item is
+therefore to move `canvas-alpha.ts`'s read into the drivers and delete the host copy with the other
+reach-throughs (§4.2) — not to declare a capability false.
 
 ### 8.3 `hit-area-change` is edge-triggered, and nobody computes it that way
 

@@ -149,7 +149,7 @@ Audited divergences between the four implementations:
 | focus/gaze      | `focusAt` in **window** space                         | `useMouse()` in **viewport** space          | none                              | cursor position     |
 | head pose       | **missing**                                           | yes                                         | yes (`yaw`/`pitch` hardcoded `0`) | yes                 |
 | capture         | `Blob \| null`                                        | `Blob \| null`                              | `Blob \| null`                    | yes                 |
-| occlusion query | none                                                  | offscreen render target (call site stubbed) | none                              | none                |
+| occlusion query | none queried (WebGL alpha read works)                 | offscreen render target (call site stubbed) | none                              | none                |
 | native hit test | native `hitTest` used internally, not exposed         | none                                        | parsed, never surfaced            | none                |
 | readiness       | 3-value enum, `finally` sets `mounted` after an error | same                                        | same                              | resets to `pending` |
 
@@ -831,10 +831,13 @@ Design rules that generated this shape:
   so it stops blocking what is behind it"), the second about the model ("where does
   an interaction item *AIRI* added land"). A renderer may answer either without the
   other; sensitivity (how much alpha counts) is the renderer's own policy and
-  deliberately not a parameter or a host setting. Both exist in renderer code today
-  and neither is reachable: `ControlStripHost.vue:1963-1973` stubs the occlusion
-  read to `null` and `RendererStage.vue:166-170` answers `null` for every format
-  except VRM.
+  deliberately not a parameter or a host setting. Both exist in this tree today and
+  neither is reachable: the occlusion read is stubbed twice (`ControlStripHost.vue:1963-1973`
+  returns `null`, `RendererStage.vue:166-170` answers for VRM only), and the pixel read that
+  would serve the other three is host code with no consumer (`composables/canvas-alpha.ts:19,161`
+  — `gl.readPixels` over a circle, then a CPU re-check). Each works for any WebGL canvas, Pixi's
+  included; what the migration moves into the renderer is the read itself, along with that
+  renderer's own `preserveDrawingBuffer` policy.
 - **`animation-finished` echoes the `nonce`, and there is no start/status
   counterpart.** The only renderer that ever emitted a start status sent a resolved
   `url` that no consumer could map back to a motion, and what its consumer did with
@@ -1672,7 +1675,7 @@ tree's accident.
 | gaze                   | `focusAt` (window space)        | `useMouse()` (viewport space)                                                             | none                                          | cursor position                               |
 | head pose              | missing                         | yes                                                                                       | yes (`yaw`/`pitch` = 0)                       | yes                                           |
 | capture                | `Blob \| null`                  | `Blob \| null`                                                                            | `Blob \| null`                                | yes                                           |
-| occlusion              | none                            | offscreen render target (call site stubbed)                                               | none                                          | none                                          |
+| occlusion              | none queried (alpha read works) | offscreen render target (call site stubbed)                                               | none                                          | none                                          |
 | native hit test        | native `hitTest`, internal only | none                                                                                      | parsed, never surfaced                        | none                                          |
 | expressions            | `exp3.json` + blend modes       | runtime expression manager + unlocked morphs                                              | skins/variants                                | morphs (host truncates to 30)                 |
 | motions                | group + index, DSL groups       | named `.vrma` clips + user blobs                                                          | named animations, variants                    | VMD + custom motions                          |
