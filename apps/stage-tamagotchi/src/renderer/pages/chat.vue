@@ -62,6 +62,18 @@ const isSettingsOpen = ref(false)
 if (!activeCardId.value)
   activeCardId.value = airiCardStore.activeCardId
 
+// Sync activeCardId with current session's character whenever the session activates/changes
+watch(
+  () => chatSessionStore.sessionMetas[activeSessionId.value]?.characterId,
+  (sessionCharId) => {
+    if (sessionCharId && sessionCharId !== activeCardId.value && airiCardStore.cards.has(sessionCharId)) {
+      console.log('[Chat] Syncing activeCardId to match active session character:', { from: activeCardId.value, to: sessionCharId })
+      activeCardId.value = sessionCharId
+    }
+  },
+  { immediate: true },
+)
+
 function handleOpenStudio() {
   if (!activeCardId.value)
     return
@@ -73,7 +85,7 @@ function handleOpenStudio() {
 }
 
 function handleOpenCharacterConfig() {
-  const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
+  const targetId = activeCardId.value || airiCardStore.activeCardId || airiCardStore.resolveCardId()
   const route = `/settings/airi-card/edit?id=${targetId}`
   void openSettings({
     route,
@@ -91,7 +103,7 @@ function handleOpenMemorySettings() {
 }
 
 function handleOpenStagingSettings() {
-  const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
+  const targetId = activeCardId.value || airiCardStore.activeCardId || airiCardStore.resolveCardId()
   const route = `/settings/airi-card/edit?id=${targetId}&tab=staging`
   void openSettings({
     route,
@@ -101,7 +113,7 @@ function handleOpenStagingSettings() {
 }
 
 function handleOpenVoiceSettings() {
-  const targetId = activeCardId.value || airiCardStore.activeCardId || 'default'
+  const targetId = activeCardId.value || airiCardStore.activeCardId || airiCardStore.resolveCardId()
   const route = `/settings/airi-card/edit?id=${targetId}&tab=voice`
   void openSettings({
     route,
@@ -1024,7 +1036,7 @@ const characterSessions = computed(() => {
     indexedList.unshift({
       sessionId: currentId,
       userId: 'local',
-      characterId: cardId || 'default',
+      characterId: cardId || airiCardStore.resolveCardId(),
       title: meta?.title,
       messageCount: messages.value.length || meta?.messageCount || 0,
       createdAt: meta?.createdAt || Date.now(),
@@ -1511,6 +1523,7 @@ function selectSurface(surface: typeof activeSurface.value) {
           <ChatOptionsPopover
             trigger-variant="dots"
             :show-chat-layout="true"
+            :character-id="chatSessionStore.sessionMetas[activeSessionId]?.characterId || activeCardId"
             :on-apply-chat-preset="handleApplyChatPreset"
             @open-staging-settings="handleOpenStagingSettings"
             @open-voice-settings="handleOpenVoiceSettings"

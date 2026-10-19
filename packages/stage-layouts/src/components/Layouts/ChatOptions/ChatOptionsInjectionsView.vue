@@ -6,43 +6,69 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
+const props = defineProps<{
+  characterId?: string
+}>()
+
 const airiCardStore = useAiriCardStore()
 const memoryLifetimeStore = useMemoryLifetimeStore()
 const chatSessionStore = useChatSessionStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+
+const effectiveCardId = computed(() => {
+  const rawCandidateId = props.characterId
+    || chatSessionStore.sessionMetas[chatSessionStore.activeSessionId]?.characterId
+    || activeCardId.value
+  // NOTICE: Guard against legacy 'default' ghost ID — always resolve to a card
+  // that actually exists in the store so reads and writes target the same card.
+  return airiCardStore.resolveCardId(rawCandidateId)
+})
+
+const targetCard = computed(() => {
+  return (effectiveCardId.value ? airiCardStore.cards.get(effectiveCardId.value) : undefined) || activeCard.value
+})
 
 const showLifetimeModal = ref(false)
 
 // NOTICE: mirrors LifetimeMemoryView.vue so the chat drawer resolves the same
 // per-universe artifact as the settings UI instead of always reading 'global'.
 const activeUniverseId = computed(() => {
-  if (!activeCardId.value)
+  if (!effectiveCardId.value)
     return 'global'
-  const activeSessionId = chatSessionStore.getCharacterIndex(activeCardId.value)?.activeSessionId || chatSessionStore.activeSessionId
+  const activeSessionId = chatSessionStore.getCharacterIndex(effectiveCardId.value)?.activeSessionId || chatSessionStore.activeSessionId
   const activeSessionMeta = chatSessionStore.getSessionMeta(activeSessionId)
   return activeSessionMeta?.universeId || 'global'
 })
 
 const hasLifetimeArtifact = computed(() => {
-  if (!activeCardId.value)
+  if (!effectiveCardId.value)
     return false
-  return Boolean(memoryLifetimeStore.getArtifact(activeCardId.value, activeUniverseId.value)?.distilledContent?.trim())
+  return Boolean(memoryLifetimeStore.getArtifact(effectiveCardId.value, activeUniverseId.value)?.distilledContent?.trim())
+})
+
+const activeAiriExt = computed(() => {
+  const card = targetCard.value as any
+  if (!card)
+    return undefined
+  const rawDataExt = ('data' in card ? card.data?.extensions?.airi : undefined)
+  const rootExt = card.extensions?.airi
+  return rawDataExt && rootExt ? { ...rawDataExt, ...rootExt } : (rootExt || rawDataExt)
 })
 
 const isLifetimeMemoryEnabled = computed(() => {
-  if (!activeCard.value || !hasLifetimeArtifact.value)
+  if (!targetCard.value || !hasLifetimeArtifact.value)
     return false
-  return activeCard.value.extensions?.airi?.lifetimeMemory?.enabled ?? true
+  return activeAiriExt.value?.lifetimeMemory?.enabled ?? true
 })
 
 function handleToggleLifetimeMemory() {
-  if (!activeCardId.value)
+  if (!effectiveCardId.value)
     return
   if (!hasLifetimeArtifact.value) {
     showLifetimeModal.value = true
     return
   }
-  airiCardStore.toggleLifetimeMemory(activeCardId.value)
+  airiCardStore.toggleLifetimeMemory(effectiveCardId.value)
 }
 
 function handleOpenLifetimeSettings(e: MouseEvent) {
@@ -50,7 +76,7 @@ function handleOpenLifetimeSettings(e: MouseEvent) {
   showLifetimeModal.value = true
 }
 
-watch([activeCardId, activeUniverseId], ([id, universeId]) => {
+watch([effectiveCardId, activeUniverseId], ([id, universeId]) => {
   if (id) {
     void memoryLifetimeStore.loadForCharacter(id, universeId)
   }
@@ -58,74 +84,67 @@ watch([activeCardId, activeUniverseId], ([id, universeId]) => {
 
 // --- CONTEXT INJECTIONS ---
 const isGroundingEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.groundingEnabled ?? false
+  return activeAiriExt.value?.groundingEnabled ?? false
 })
 
 function handleToggleGrounding() {
-  if (activeCardId.value) {
-    airiCardStore.toggleGrounding(activeCardId.value)
+  if (effectiveCardId.value) {
+    airiCardStore.toggleGrounding(effectiveCardId.value)
   }
 }
 
 const isShortTermMemoryEnabled = computed(() => {
-  if (!activeCard.value)
+  if (!targetCard.value)
     return true
-  return activeCard.value.extensions?.airi?.shortTermMemory?.enabled ?? true
+  return activeAiriExt.value?.shortTermMemory?.enabled ?? true
 })
 
 function handleToggleShortTermMemory() {
-  if (activeCardId.value)
-    airiCardStore.toggleShortTermMemory(activeCardId.value)
+  if (effectiveCardId.value)
+    airiCardStore.toggleShortTermMemory(effectiveCardId.value)
 }
 
 const isGroundingMemoryEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.groundingMemoryEnabled ?? false
+  return activeAiriExt.value?.groundingMemoryEnabled
+    ?? (activeAiriExt.value as any)?.cognition?.searchEngine?.universeRagEnabled
+    ?? false
 })
 
 function handleToggleGroundingMemory() {
-  if (activeCardId.value) {
-    airiCardStore.toggleGroundingMemory(activeCardId.value)
+  if (effectiveCardId.value) {
+    airiCardStore.toggleGroundingMemory(effectiveCardId.value)
   }
 }
 
 const isGroundingDirectorScratchpadEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.groundingDirectorScratchpadEnabled ?? false
+  return activeAiriExt.value?.groundingDirectorScratchpadEnabled ?? false
 })
 
 function handleToggleGroundingDirectorScratchpad() {
-  if (!activeCardId.value || !activeCard.value)
-    return
-  const current = isGroundingDirectorScratchpadEnabled.value
-  airiCardStore.updateCard(activeCardId.value, {
-    extensions: {
-      ...activeCard.value.extensions,
-      airi: {
-        ...activeCard.value.extensions?.airi,
-        groundingDirectorScratchpadEnabled: !current,
-      },
-    },
-  } as any)
+  if (effectiveCardId.value) {
+    airiCardStore.toggleGroundingDirectorScratchpad(effectiveCardId.value)
+  }
 }
 
 const isDreamStateEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.dreamState?.enabled ?? false
+  return activeAiriExt.value?.dreamState?.enabled ?? false
 })
 
 const isDreamIntrusionEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.dreamState?.injectDreamContext ?? false
+  return activeAiriExt.value?.dreamState?.injectDreamContext ?? false
 })
 
 function handleToggleDreamIntrusion() {
-  if (!activeCardId.value || !activeCard.value || !isDreamStateEnabled.value)
+  if (!effectiveCardId.value || !targetCard.value || !isDreamStateEnabled.value)
     return
   const current = isDreamIntrusionEnabled.value
-  airiCardStore.updateCard(activeCardId.value, {
+  airiCardStore.updateCard(effectiveCardId.value, {
     extensions: {
-      ...activeCard.value.extensions,
+      ...targetCard.value.extensions,
       airi: {
-        ...activeCard.value.extensions?.airi,
+        ...targetCard.value.extensions?.airi,
         dreamState: {
-          ...activeCard.value.extensions?.airi?.dreamState,
+          ...targetCard.value.extensions?.airi?.dreamState,
           injectDreamContext: !current,
         },
       },
@@ -134,12 +153,12 @@ function handleToggleDreamIntrusion() {
 }
 
 const allowedTools = computed<string[]>(() => {
-  return activeCard.value?.extensions?.airi?.generation?.known?.allowedTools ?? ['text_journal', 'image_journal']
+  return activeAiriExt.value?.generation?.known?.allowedTools ?? ['text_journal', 'image_journal']
 })
 
 function isToolActive(toolName: string): boolean {
   if (toolName === 'bash') {
-    return allowedTools.value.includes('bash') || (activeCard.value?.extensions?.airi?.sandbox?.enabled ?? false)
+    return allowedTools.value.includes('bash') || (activeAiriExt.value?.sandbox?.enabled ?? false)
   }
   return allowedTools.value.includes(toolName)
 }
@@ -149,20 +168,20 @@ const hasTextJournal = computed(() => {
 })
 
 const isJournalIntrusionEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.textJournal?.injectJournalContext ?? false
+  return activeAiriExt.value?.textJournal?.injectJournalContext ?? false
 })
 
 function handleToggleJournalIntrusion() {
-  if (!activeCardId.value || !activeCard.value)
+  if (!effectiveCardId.value || !targetCard.value)
     return
   const current = isJournalIntrusionEnabled.value
-  airiCardStore.updateCard(activeCardId.value, {
+  airiCardStore.updateCard(effectiveCardId.value, {
     extensions: {
-      ...activeCard.value.extensions,
+      ...targetCard.value.extensions,
       airi: {
-        ...activeCard.value.extensions?.airi,
+        ...targetCard.value.extensions?.airi,
         textJournal: {
-          ...activeCard.value.extensions?.airi?.textJournal,
+          ...targetCard.value.extensions?.airi?.textJournal,
           injectJournalContext: !current,
         },
       },
@@ -175,20 +194,20 @@ const hasImageJournal = computed(() => {
 })
 
 const isArtistryIntrusionEnabled = computed(() => {
-  return activeCard.value?.extensions?.airi?.artistry?.injectArtistryContext ?? false
+  return activeAiriExt.value?.artistry?.injectArtistryContext ?? false
 })
 
 function handleToggleArtistryIntrusion() {
-  if (!activeCardId.value || !activeCard.value)
+  if (!effectiveCardId.value || !targetCard.value)
     return
   const current = isArtistryIntrusionEnabled.value
-  airiCardStore.updateCard(activeCardId.value, {
+  airiCardStore.updateCard(effectiveCardId.value, {
     extensions: {
-      ...activeCard.value.extensions,
+      ...targetCard.value.extensions,
       airi: {
-        ...activeCard.value.extensions?.airi,
+        ...targetCard.value.extensions?.airi,
         artistry: {
-          ...activeCard.value.extensions?.airi?.artistry,
+          ...targetCard.value.extensions?.airi?.artistry,
           injectArtistryContext: !current,
         },
       },
@@ -476,9 +495,9 @@ function handleToggleArtistryIntrusion() {
 
     <!-- Lifetime Provisioning Modal -->
     <LifetimeProvisioningModal
-      v-if="activeCardId"
+      v-if="effectiveCardId"
       v-model:open="showLifetimeModal"
-      :character-id="activeCardId"
+      :character-id="effectiveCardId"
       :universe-id="activeUniverseId"
     />
   </div>

@@ -957,7 +957,7 @@ async function saveCard(card: Card): Promise<boolean> {
   // Before saving, let's validate what the user entered :
   const rawCard: Card = toRaw(card)
   const existingAiriExt = (isEditMode.value && props.cardId)
-    ? cardStore.getCard(props.cardId)?.extensions?.airi as AiriExtension | undefined
+    ? cardStore.getCard(cardStore.resolveCardId(props.cardId))?.extensions?.airi as AiriExtension | undefined
     : undefined
 
   const isStateCartridgeCard = Boolean(
@@ -1204,6 +1204,7 @@ async function saveCard(card: Card): Promise<boolean> {
           },
         },
         groundingEnabled: groundingEnabled.value,
+        groundingMemoryEnabled: universeRagGroundingEnabled.value,
         visual_assets: existingAiriExt?.visual_assets || {},
         active_concepts: existingAiriExt?.active_concepts || [],
         eternal_record: existingAiriExt?.eternal_record || { relational_milestones: [], lore_bits: [] },
@@ -1323,7 +1324,9 @@ function initializeCard(): Card {
   initializingDepth.value++
   try {
     // Extract existing card data if in edit mode
-    const existingCard = (isEditMode.value && props.cardId) ? cardStore.getCard(props.cardId) : undefined
+    // NOTICE: Resolve legacy 'default' ghost ID so stale bookmarks edit relu.
+    const resolvedId = (isEditMode.value && props.cardId) ? cardStore.resolveCardId(props.cardId) : undefined
+    const existingCard = resolvedId ? cardStore.getCard(resolvedId) : undefined
     const airiExt = existingCard?.extensions?.airi as AiriExtension | undefined
 
     // Initialize module selections with fallback logic (handles all cases: create, edit with/without extension)
@@ -1362,7 +1365,8 @@ function initializeCard(): Card {
     triggerOverrides.value = cognitionData?.triggers?.overrides ?? {}
 
     // Cognition - Memory State (Universe RAG++)
-    universeRagGroundingEnabled.value = cognitionData?.searchEngine?.universeRagEnabled ?? true
+    // NOTICE: groundingMemoryEnabled is canonical; searchEngine.universeRagEnabled is the legacy alias.
+    universeRagGroundingEnabled.value = airiExt?.groundingMemoryEnabled ?? cognitionData?.searchEngine?.universeRagEnabled ?? false
     precisionRerankerEnabled.value = cognitionData?.searchEngine?.rerankerEnabled ?? true
     selectedRerankerProvider.value = cognitionData?.searchEngine?.rerankerProvider ?? 'laya-local'
     system2EscalationEnabled.value = cognitionData?.searchEngine?.system2EscalationEnabled ?? true

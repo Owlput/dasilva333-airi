@@ -2,10 +2,11 @@
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { CharacterContextDialog, ChatSessionModal, StageBackgroundDialogPicker } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
+import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import ChatOptionsAppearanceView from './ChatOptions/ChatOptionsAppearanceView.vue'
@@ -18,6 +19,8 @@ import ChatOptionsToolsView from './ChatOptions/ChatOptionsToolsView.vue'
 import ChatOptionsVoiceView from './ChatOptions/ChatOptionsVoiceView.vue'
 
 const props = withDefaults(defineProps<{
+  characterId?: string
+  cardId?: string
   triggerVariant?: 'dots' | 'circle'
   showChatLayout?: boolean
   onApplyChatPreset?: (preset: 'mini' | 'medium' | 'large' | 'full') => void
@@ -37,8 +40,22 @@ const emit = defineEmits<{
 
 const isElectron = isStageTamagotchi()
 
+const chatSessionStore = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+
+const effectiveCharacterId = computed(() => {
+  const rawCandidateId = props.characterId
+    || props.cardId
+    || chatSessionStore.sessionMetas[chatSessionStore.activeSessionId]?.characterId
+    || activeCardId.value
+  // NOTICE: Guard against legacy 'default' ghost ID.
+  return airiCardStore.resolveCardId(rawCandidateId)
+})
+
+const effectiveCard = computed(() => {
+  return (effectiveCharacterId.value ? airiCardStore.cards.get(effectiveCharacterId.value) : undefined) || activeCard.value
+})
 
 const backgroundStore = useBackgroundStore()
 const { chatboxActiveBackgroundId, activeBackgroundId } = storeToRefs(backgroundStore)
@@ -106,7 +123,7 @@ function handleOpenCardSettings() {
   isOpen.value = false
   emit('openCardSettings')
   if (router && typeof window !== 'undefined' && !(window as any).electron) {
-    const targetId = activeCardId.value || 'default'
+    const targetId = effectiveCharacterId.value || airiCardStore.resolveCardId()
     void router.push(`/settings/airi-card/edit?id=${targetId}`).catch(() => {})
   }
 }
@@ -248,6 +265,7 @@ function handleOpenAllSettings() {
             <ChatOptionsInjectionsView
               v-else-if="currentView === 'injections'"
               key="injections"
+              :character-id="effectiveCharacterId"
             />
 
             <!-- ================= MEMORIES & TIMELINES VIEW ================= -->
@@ -289,7 +307,7 @@ function handleOpenAllSettings() {
 
   <StageBackgroundDialogPicker
     v-model="stageBackgroundDialogOpen"
-    :card-id="activeCardId"
+    :card-id="effectiveCharacterId"
     :auto-apply="false"
     :close-on-pick="true"
     :selected-id="isElectron ? chatboxActiveBackgroundId : activeBackgroundId"
@@ -301,7 +319,7 @@ function handleOpenAllSettings() {
 
   <CharacterContextDialog
     v-model="characterContextDialogOpen"
-    :character-id="activeCardId"
-    :character-name="activeCard?.name || 'AIRI'"
+    :character-id="effectiveCharacterId"
+    :character-name="effectiveCard?.name || 'AIRI'"
   />
 </template>

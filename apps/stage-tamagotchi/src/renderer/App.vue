@@ -324,6 +324,10 @@ async function runSyncEngineStep() {
 async function runCharacterCardStep() {
   await reportStartupMilestone('character-card', 'loading')
   try {
+    // NOTICE: Card store must initialize after local-backup restore and before
+    // chat sessions so activeCardId is healed (legacy 'default' -> 'relu')
+    // before session indexes bind to it.
+    await cardStore.initialize()
     await chatSessionStore.initialize()
     await shortTermMemoryStore.load()
     if (isMainWindow.value) {
@@ -474,6 +478,7 @@ onMounted(async () => {
 
   logStep('Initializing Analytics & Card stores')
   analyticsStore.initialize()
+  await cardStore.initialize().catch((err: any) => console.error('[PipelineTTS:App] FAILED card store init:', err))
   if (isMainWindow.value) {
     await textJournalStore.load()
   }

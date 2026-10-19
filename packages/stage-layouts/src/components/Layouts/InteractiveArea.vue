@@ -62,7 +62,7 @@ const characterSessions = computed(() => {
     indexedList.unshift({
       sessionId: currentId,
       userId: 'local',
-      characterId: cardId || 'default',
+      characterId: cardId || cardStore.resolveCardId(),
       title: meta?.title,
       messageCount: messages.value.length || 0,
       createdAt: meta?.createdAt || Date.now(),

@@ -325,7 +325,16 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         if (!record || !record.meta)
           continue
 
-        const charId = record.meta.characterId || 'relu'
+        // NOTICE: Legacy 'default' ghost ID migration — sessions created before
+        // 7178d242a carry characterId 'default'; fold them into 'relu'.
+        let charId = record.meta.characterId || 'relu'
+        if (charId === 'default') {
+          charId = 'relu'
+          if (record.meta.characterId !== charId) {
+            record.meta = { ...record.meta, characterId: charId }
+            void chatSessionsRepo.saveSession(sessionId, record).catch(() => {})
+          }
+        }
         if (!index.value.characters[charId]) {
           index.value.characters[charId] = {
             activeSessionId: sessionId,
@@ -365,6 +374,25 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     index.value = stored ?? {
       userId: currentUserId,
       characters: {},
+    }
+    // NOTICE: Fold legacy `characters['default']` index into `characters['relu']`
+    // so pre-rename timelines stay attached. Never delete user timelines.
+    if (index.value?.characters?.default) {
+      const legacy = index.value.characters.default
+      const targetKey = 'relu'
+      if (!index.value.characters[targetKey]) {
+        index.value.characters[targetKey] = { activeSessionId: '', sessions: {} }
+      }
+      const target = index.value.characters[targetKey]
+      for (const [sid, meta] of Object.entries(legacy.sessions || {})) {
+        if (!target.sessions[sid]) {
+          target.sessions[sid] = { ...(meta as any), characterId: targetKey }
+        }
+      }
+      if (!target.activeSessionId && legacy.activeSessionId)
+        target.activeSessionId = legacy.activeSessionId
+      delete (index.value.characters as any).default
+      void persistIndex()
     }
     await reconstructIndexFromIndexedDB(currentUserId)
   }
@@ -566,13 +594,25 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         return
       }
 
+      // NOTICE: Normalize legacy 'default' before the mid-flight guard so
+      // pre-rename sessions don't abort loading after index migration.
+      if (stored.meta?.characterId === 'default') {
+        stored.meta = { ...stored.meta, characterId: 'relu' }
+      }
       // NOTICE: Guard against mid-flight session deletions during the async IDB fetch.
       // If the session is no longer registered in our character index, abort loading.
       const characterId = stored.meta?.characterId
       const characterIndex = characterId ? index.value?.characters[characterId] : undefined
       if (!characterIndex || !characterIndex.sessions[sessionId]) {
-        debug(`[ChatSession] loadSession aborted: session ${sessionId} was deleted mid-flight.`)
-        return
+        // Fallback: legacy session may still be registered under the other key
+        const fallbackIndex = index.value?.characters[characterId === 'relu' ? 'default' : 'relu']
+        if (fallbackIndex?.sessions[sessionId]) {
+          fallbackIndex.sessions[sessionId] = { ...fallbackIndex.sessions[sessionId], characterId: characterId || 'relu' } as any
+        }
+        else {
+          debug(`[ChatSession] loadSession aborted: session ${sessionId} was deleted mid-flight.`)
+          return
+        }
       }
 
       const currentMessages = sessionMessages.value[sessionId] ?? []

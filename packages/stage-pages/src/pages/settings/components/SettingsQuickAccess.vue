@@ -237,7 +237,7 @@ const row2Items = computed<QuickAccessItem[]>(() => [
 function navigate(target: string | QuickAccessItem) {
   if (typeof target === 'object') {
     if (target.id === 'character-config') {
-      const targetId = activeCardId.value || 'default'
+      const targetId = activeCardId.value || cardStore.resolveCardId()
       router.push({ path: '/settings/airi-card/edit', query: { id: targetId } })
       return
     }
