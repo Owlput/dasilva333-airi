@@ -343,12 +343,14 @@ export default {
     }
 
     if (enableDO) {
-      metadata.migrations = [
-        {
-          tag: 'v1',
-          new_sqlite_classes: ['EmbassyDO'],
-        },
-      ]
+      metadata.migrations = {
+        new_tag: 'v1',
+        steps: [
+          {
+            new_sqlite_classes: ['EmbassyDO'],
+          },
+        ],
+      }
     }
 
     const formData = new FormData()
