@@ -597,6 +597,9 @@ export function setupDiscordService() {
       const res = await deployer.deployCorsProxy({
         targetSubdomain: payload.targetSubdomain,
         scriptName: payload.scriptName,
+        ownerId: payload.ownerId || payload.accountId,
+        characterName: payload.characterName,
+        enableEmbassyDO: payload.enableEmbassyDO,
       })
       pushLog('DEPLOY', `Web CORS Reverse-Proxy deployed successfully: ${res.workerUrl}`)
       return { success: true, workerUrl: res.workerUrl }

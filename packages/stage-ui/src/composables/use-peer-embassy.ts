@@ -135,58 +135,61 @@ export function usePeerEmbassy() {
   async function fetchCompanionCard(addressOrUri: string): Promise<{ card: AmbassadorCard, normalized: NormalizedAddress } | null> {
     isLookingUp.value = true
     error.value = null
-    const normalized = normalizeAddress(addressOrUri)
-    if (!normalized.workerUrl) {
-      error.value = 'Invalid companion address or URI.'
-      isLookingUp.value = false
-      return null
-    }
+    try {
+      const normalized = normalizeAddress(addressOrUri)
+      if (!normalized.workerUrl) {
+        error.value = 'Invalid companion address or URI.'
+        return null
+      }
 
-    const urlsToTry: string[] = [normalized.workerUrl]
-    const handleParts = normalized.handle.split('.')
-    if (handleParts.length === 3 && handleParts[1] === 'workers' && handleParts[2] === 'dev') {
-      urlsToTry.push(`https://airi-stage-edge.${normalized.handle}`)
-      urlsToTry.push(`https://airi-cors-proxy.${normalized.handle}`)
-    }
+      const urlsToTry: string[] = [normalized.workerUrl]
+      const handleParts = normalized.handle.split('.')
+      if (handleParts.length === 3 && handleParts[1] === 'workers' && handleParts[2] === 'dev') {
+        urlsToTry.push(`https://airi-stage-edge.${normalized.handle}`)
+        urlsToTry.push(`https://airi-cors-proxy.${normalized.handle}`)
+      }
 
-    let lastError: any = null
-    for (const baseUrl of urlsToTry) {
-      try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 6000)
+      let lastError: any = null
+      for (const baseUrl of urlsToTry) {
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 6000)
 
-        const res = await fetch(`${baseUrl}/api/companion/card`, {
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        })
-        clearTimeout(timeoutId)
+          const res = await fetch(`${baseUrl}/api/companion/card`, {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          })
+          clearTimeout(timeoutId)
 
-        if (res.ok) {
-          const data: AmbassadorCard = await res.json()
-          return {
-            card: data,
-            normalized: {
-              ...normalized,
-              workerUrl: baseUrl,
-              handle: new URL(baseUrl).host,
-            },
+          if (res.ok) {
+            const data: AmbassadorCard = await res.json()
+            return {
+              card: data,
+              normalized: {
+                ...normalized,
+                workerUrl: baseUrl,
+                handle: new URL(baseUrl).host,
+              },
+            }
+          }
+          else {
+            lastError = new Error(`Worker returned status ${res.status}`)
           }
         }
-        else {
-          lastError = new Error(`Worker returned status ${res.status}`)
+        catch (err: any) {
+          lastError = err
         }
       }
-      catch (err: any) {
-        lastError = err
-      }
-    }
 
-    const message = lastError?.name === 'AbortError'
-      ? 'Request timed out. Please check that the worker is online.'
-      : `Could not reach ${normalized.handle}: ${lastError?.message || 'Network error'}`
-    error.value = message
-    isLookingUp.value = false
-    return null
+      const message = lastError?.name === 'AbortError'
+        ? 'Request timed out. Please check that the worker is online.'
+        : `Could not reach ${normalized.handle}: ${lastError?.message || 'Network error'}`
+      error.value = message
+      return null
+    }
+    finally {
+      isLookingUp.value = false
+    }
   }
 
   async function sendFriendRequest(
@@ -278,7 +281,7 @@ export function usePeerEmbassy() {
     }
   }
 
-  async function mintInviteToken(options: { myWorkerUrl?: string, ownerId?: string } = {}): Promise<{ invite: string, uri: string, expiresAt: number }> {
+  async function mintInviteToken(options: { myWorkerUrl?: string, ownerId?: string } = {}): Promise<{ invite: string, uri: string, expiresAt: number, verified?: boolean }> {
     const { myWorkerUrl, ownerId } = options
     if (myWorkerUrl && ownerId) {
       try {
@@ -291,12 +294,16 @@ export function usePeerEmbassy() {
         if (res.ok) {
           const data = await res.json()
           if (data.invite && data.uri) {
-            return data
+            return { ...data, verified: true }
           }
         }
+        else {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData?.error || `HTTP ${res.status}`)
+        }
       }
-      catch {
-        // Fall back to client generation
+      catch (e: any) {
+        throw new Error(`Embassy invite mint failed: ${e?.message || e}`)
       }
     }
 
@@ -307,6 +314,7 @@ export function usePeerEmbassy() {
       invite,
       uri,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      verified: false,
     }
   }
 

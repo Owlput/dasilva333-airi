@@ -319,11 +319,22 @@ async function handleCopyInvite() {
     toast.error('Configure your Cloudflare Worker address in Connectors first.')
     return
   }
-  const token = await embassy.mintInviteToken({
-    myWorkerUrl: `https://${myAddress.value}`,
-  })
-  copyToClipboard(token.uri)
-  toast.success('Single-use invite link copied to clipboard!')
+  const ownerId = cloudflareStore.activeAccountId
+  if (!ownerId) {
+    toast.error('Sign in to Cloudflare first in Settings.')
+    return
+  }
+  try {
+    const token = await embassy.mintInviteToken({
+      myWorkerUrl: `https://${myAddress.value}`,
+      ownerId,
+    })
+    copyToClipboard(token.uri)
+    toast.success('Single-use invite link copied to clipboard!')
+  }
+  catch (err: any) {
+    toast.error(err?.message || 'Failed to mint invite code from worker embassy.')
+  }
 }
 
 function toggleAddCompanion() {
@@ -411,28 +422,29 @@ async function handleSendRequest() {
   })
 
   const targetName = lookedUpCard.value?.name || lookedUpHandle.value.split('.')[0] || 'Friend'
-  await peersStore.upsertPeer({
-    id: lookedUpCard.value?.publicKey || `ed25519-${targetName.toLowerCase()}-${Date.now().toString(36)}`,
-    alias: lookedUpHandle.value.split('.')[0] || 'Friend',
-    characterName: targetName,
-    avatarUrl: lookedUpCard.value?.avatarUrl || undefined,
-    relationship: 'external-friend',
-    trustState: 'pending',
-    lastSeenTimestamp: Date.now(),
-    endpoints: { cloudflareWorkerUrl: `https://${lookedUpHandle.value}` },
-    shareHandle: lookedUpHandle.value,
-    allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
-    allowedCompanionIds: [],
-    introMessage: lookupIntroNote.value.trim().slice(0, 100),
-  })
 
   if (res.ok) {
+    await peersStore.upsertPeer({
+      id: lookedUpCard.value?.publicKey || `ed25519-${targetName.toLowerCase()}-${Date.now().toString(36)}`,
+      alias: lookedUpHandle.value.split('.')[0] || 'Friend',
+      characterName: targetName,
+      avatarUrl: lookedUpCard.value?.avatarUrl || undefined,
+      relationship: 'external-friend',
+      trustState: 'pending',
+      lastSeenTimestamp: Date.now(),
+      endpoints: { cloudflareWorkerUrl: `https://${lookedUpHandle.value}` },
+      shareHandle: lookedUpHandle.value,
+      allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+      allowedCompanionIds: [],
+      introMessage: lookupIntroNote.value.trim().slice(0, 100),
+    })
     toast.success(`Friend request sent to ${targetName}!`)
+    lookupIntroNote.value = ''
   }
   else {
-    toast.info(`Request queued locally for ${targetName} (${res.error})`)
+    isRequestSent.value = false
+    toast.error(`Failed to send friend request to ${targetName}: ${res.error || 'Server error'}`)
   }
-  lookupIntroNote.value = ''
 }
 
 function openPermissions(friend: ExternalFriend) {

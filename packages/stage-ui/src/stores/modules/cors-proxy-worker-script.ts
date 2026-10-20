@@ -18,7 +18,7 @@
 // NOTICE: plain string concatenation inside the worker source (no backticks or
 // ${} interpolations) so this outer template literal needs no escaping.
 export const CORS_PROXY_WORKER_SCRIPT = `export default {
-  async fetch(request) {
+  async fetch(request, env) {
     var url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -39,7 +39,7 @@ export const CORS_PROXY_WORKER_SCRIPT = `export default {
 
     if (url.pathname === '/api/companion/card') {
       return corsJson({
-        name: 'AIRI',
+        name: (env && env.CHARACTER_NAME) || 'AIRI',
         avatarUrl: null,
         tagline: 'Personal Edge Companion',
         publicKey: null
@@ -48,12 +48,32 @@ export const CORS_PROXY_WORKER_SCRIPT = `export default {
 
     if (url.pathname === '/api/friends/request') {
       var reqId = 'cf_req_' + Date.now().toString(36);
-      return corsJson({ ok: true, id: reqId, status: 'received' }, 200);
+      if (env && env.MEMORY) {
+        try {
+          var body = await request.clone().json();
+          await env.MEMORY.put('friends/requests/inbound/' + reqId, JSON.stringify({
+            id: reqId,
+            fromHandle: body.fromHandle || '',
+            fromPubkey: body.fromPubkey || '',
+            fromCharacterName: body.fromCharacterName || '',
+            introMessage: body.introMessage || '',
+            timestamp: body.timestamp || Date.now(),
+            status: 'pending'
+          }));
+        } catch (e) {}
+      }
+      return corsJson({ ok: true, id: reqId, status: 'pending' }, 200);
     }
 
     if (url.pathname === '/api/friends/invite') {
       var invCode = 'cf_inv_' + Date.now().toString(36);
-      return corsJson({ invite: invCode, expiresAt: Date.now() + 86400000 }, 200);
+      if (env && env.MEMORY) {
+        try {
+          await env.MEMORY.put('friends/invites/' + invCode, JSON.stringify({ createdAt: Date.now() }), { expirationTtl: 86400 });
+        } catch (e) {}
+      }
+      var origin = new URL(request.url).origin;
+      return corsJson({ invite: invCode, uri: 'airi://pair?worker=' + origin + '&invite=' + invCode, expiresAt: Date.now() + 86400000 }, 200);
     }
 
     if (url.pathname === '/api/friends/inbox') {

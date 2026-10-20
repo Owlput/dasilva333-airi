@@ -262,6 +262,9 @@ export interface CloudflareDeployCorsProxyPayload {
   accountId: string
   targetSubdomain?: string
   scriptName?: string
+  ownerId?: string
+  characterName?: string
+  enableEmbassyDO?: boolean
 }
 
 export interface CloudflareDeployCorsProxyResult {

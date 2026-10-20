@@ -758,6 +758,8 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           accountId,
           targetSubdomain: subdomain,
           scriptName,
+          ownerId: accountId,
+          characterName: 'AIRI',
           enableEmbassyDO: Boolean(options?.enableEmbassyDO),
         })
         if (!res.success)
@@ -771,23 +773,57 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
 
     // Web / mobile REST upload for airi-stage-edge
-    const metadata: Record<string, unknown> = {
-      main_module: 'index.js',
-      compatibility_date: '2025-02-04',
-      compatibility_flags: ['nodejs_compat'],
-      bindings: [],
+    // 1. Resolve or create KV namespace for airi-stage-edge MEMORY
+    let memoryNsId = ''
+    try {
+      const kvListRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      })
+      if (kvListRes.ok) {
+        const kvListData: any = await kvListRes.json()
+        const existing = kvListData.result?.find((n: any) => n.title === 'airi-kv-airi-stage-edge')
+        if (existing?.id)
+          memoryNsId = existing.id
+      }
+      if (!memoryNsId) {
+        const createRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title: 'airi-kv-airi-stage-edge' }),
+        })
+        if (createRes.ok) {
+          const createData: any = await createRes.json()
+          memoryNsId = createData.result?.id
+        }
+      }
+    }
+    catch (e) {
+      console.warn('[useCloudflareStore] KV namespace resolution warning:', e)
     }
 
+    const bindings: any[] = []
+    if (memoryNsId) {
+      bindings.push({ type: 'kv_namespace', name: 'MEMORY', namespace_id: memoryNsId })
+    }
+    bindings.push({ type: 'plain_text', name: 'OWNER_ID', text: accountId })
+    bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: 'AIRI' })
+
     if (options?.enableEmbassyDO) {
-      (metadata.bindings as unknown[]).push({
+      bindings.push({
         type: 'durable_object_namespace',
         name: 'EMBASSY',
         class_name: 'EmbassyDO',
       })
-      metadata.migrations = {
-        tag: 'v1',
-        new_sqlite_classes: ['EmbassyDO'],
-      }
+    }
+
+    const metadata: Record<string, unknown> = {
+      main_module: 'index.js',
+      compatibility_date: '2025-02-04',
+      compatibility_flags: ['nodejs_compat'],
+      bindings,
     }
 
     const formData = new FormData()

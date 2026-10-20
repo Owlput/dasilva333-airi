@@ -295,7 +295,13 @@ export default {
   /**
    * Deploys the lightweight Web CORS Reverse-Proxy Worker to the user's workers.dev subdomain.
    */
-  public async deployCorsProxy(options?: { scriptName?: string, targetSubdomain?: string }): Promise<{ workerUrl: string }> {
+  public async deployCorsProxy(options?: {
+    scriptName?: string
+    targetSubdomain?: string
+    ownerId?: string
+    characterName?: string
+    enableEmbassyDO?: boolean
+  }): Promise<{ workerUrl: string }> {
     const scriptName = options?.scriptName || 'airi-cors-proxy'
     console.info(`[Stage-Deployer] Deploying Web CORS Reverse-Proxy Worker "${scriptName}"...`)
 
@@ -311,11 +317,34 @@ export default {
       workerScriptCode = BUNDLED_WORKER_SCRIPT
     }
 
-    const metadata = {
+    const bindings: any[] = []
+    if (scriptName === 'airi-stage-edge' || options?.ownerId) {
+      const namespaceId = await this.ensureKvNamespace('airi-kv-airi-stage-edge')
+      bindings.push({ type: 'kv_namespace', name: 'MEMORY', namespace_id: namespaceId })
+      bindings.push({ type: 'plain_text', name: 'OWNER_ID', text: options?.ownerId || accountId })
+      bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: options?.characterName || 'AIRI' })
+    }
+
+    if (options?.enableEmbassyDO) {
+      bindings.push({
+        type: 'durable_object_namespace',
+        name: 'EMBASSY',
+        class_name: 'EmbassyDO',
+      })
+    }
+
+    const metadata: Record<string, unknown> = {
       main_module: 'index.js',
       compatibility_date: '2025-02-04',
       compatibility_flags: ['nodejs_compat'],
-      bindings: [],
+      bindings,
+    }
+
+    if (options?.enableEmbassyDO) {
+      metadata.migrations = {
+        tag: 'v1',
+        new_sqlite_classes: ['EmbassyDO'],
+      }
     }
 
     const formData = new FormData()
