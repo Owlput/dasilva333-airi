@@ -6,6 +6,7 @@
 > - [PR #3033](https://github.com/moeru-ai/airi/pull/3033): `fix(stage-tamagotchi): keep native glass through macOS Space changes` (Author: `@luoling8192`)
 > - [PR #3021](https://github.com/moeru-ai/airi/pull/3021): `feat(stage-ui,agents): make cards for tool calls without a widget` (Author: `@chiba233` / `蓝莓🫐`)
 > - [PR #3040](https://github.com/moeru-ai/airi/pull/3040): `feat(stage-ui,agents): show what each tool call does and why` (Author: `@chiba233` / `蓝莓🫐`)
+> - [PR #3051](https://github.com/moeru-ai/airi/pull/3051): `feat(stage-ui,agents,core-agent): let the model pick a Tabler icon for each tool call` (Author: `@chiba233` / `蓝莓🫐`)
 > **Target Subsystems**: Desktop Shell (`apps/stage-tamagotchi`), Chat & Generative Presentation (`packages/stage-ui`), Tools Architecture (`packages/stage-ui/src/tools`, `@proj-airi/mcp`)
 
 ---
@@ -113,7 +114,29 @@ sequenceDiagram
 
 ---
 
-## 4. Integration Roadmap for dasilva333/airi
+## 4. Pillar III: Model-Selected Dynamic Tool Icons & Tabler Assets (PR #3051)
+
+### 4.1 Problem & Upstream Breakthrough
+While intent summaries ([PR #3040](https://github.com/moeru-ai/airi/pull/3040)) clarify *what* a tool is doing, every generic tool invocation or MCP call without an explicit custom icon previously fell back to the same generic magic wand icon.
+
+In **PR #3051**, `@chiba233` (`蓝莓🫐`) solved this by enabling the LLM to choose contextual icons on the fly:
+- **`call_icon` Invocations**: Alongside `call_summary`, the model provides a secondary argument: up to three Tabler outline icon names (`i-tabler-*`) ranked by relevance to what the specific call is doing (e.g. `['cloud-download', 'arrow-down', 'download']` for file downloads).
+- **Zero Runtime Request Overhead**: Rather than downloading SVG assets at runtime, icons are backed by `@iconify-json/tabler`. The chat row and hit-pill dynamically replace the `--un-icon` CSS mask value on the existing icon container, preserving exact dimensions, color themes, and hover transitions.
+- **Card Asset Discovery & Safety**: Generative OpenUI cards are permitted to display Tabler icons. A built-in discovery tool (`builtIn_searchIcons`) allows the card synthesis model to query icon names by semantic keywords, while the card validator strictly rejects arbitrary or unverified icon names.
+
+### 4.2 Architectural Seam & Fork Decoupling Adaptation
+In upstream, PR #3051 directly modified `stores/chat.ts`, `stores/ai/chat-llm/llm.ts`, and core agent stream options (`providerTools`).
+**In our fork, we preserve cognitive pipeline purity**:
+- **Argument Stripping**: Like `call_summary`, `call_icon` is parsed and stripped before the tool receives its arguments. Core cognitive stores (`chat.ts`) remain free of icon selection churn.
+- **Presentation Layer Seam**: Icon resolution is confined strictly to the rendering components ([`tool-call-group.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/chat/tool-call-group.vue) and [`hit-pill.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/chat/components/hit-pill.vue)).
+- **Fallback Hierarchy**:
+  1. Valid model-selected Tabler icon (`i-tabler-<name>`).
+  2. Registered tool default icon from our built-in registry (`airi-tool-registry-builtin-tools`).
+  3. Category default (e.g., generic MCP tool or Bash terminal).
+
+---
+
+## 5. Integration Roadmap for dasilva333/airi
 
 | Phase | Milestone | Scope / Target Files | Risk / Divergence Guard |
 | :--- | :--- | :--- | :--- |
@@ -121,10 +144,11 @@ sequenceDiagram
 | **Phase 2: Floating UI Vibrancy** | Wire `useWindowBackdrop` into Control Strip and floating chat shell | `apps/stage-tamagotchi/src/renderer/composables/use-window-backdrop.ts`, `ControlStripHost.vue`, `chat-floating.vue` | Maintain graceful CSS fallback when native module is unavailable. |
 | **Phase 3: OpenUI Core & Card Catalog** | Add `@openuidev/lang-core` and card presentation primitives | `packages/stage-ui/src/libs/cards/`, `card-view.vue`, `catalog.ts` | Ensure zero telemetry in `@openuidev/lang-core` (verify `allowBuilds: false` in pnpm). |
 | **Phase 4: Tool Intent Summaries** | Implement `tool-call-summary.ts` and upgrade chat hit-pills | `packages/stage-ui/src/components/scenarios/chat/components/hit-pill.vue`, `tool-call-summary.ts` | Keep pure: no direct mutations to Pinia `chat.ts` store state. |
+| **Phase 5: Dynamic Tabler Tool Icons** | Add `@iconify-json/tabler`, implement `libs/tabler-icons.ts` and `--un-icon` mask replacement | `packages/stage-ui/src/libs/tabler-icons.ts`, `tool-call-group.vue`, `hit-pill.vue`, `tools/search-icons.ts` | Strip `call_icon` before tool dispatch; confine dynamic icon masking strictly to presentation components. |
 
 ---
 
-## 5. Architectural Verification & Invariants
+## 6. Architectural Verification & Invariants
 
 1. **Window-Stage Purity Invariant**: `RendererStage.vue` must remain 100% transparent. Native blur must never sample behind the 3D/Live2D model's mesh or avatar bounds.
 2. **Cognitive Seam Invariant**: Card rendering must be presentation-only. Do not inject artificial `card` message slices into IndexedDB chat session transcripts; transcripts store standard tool call events, which are rendered on the fly.

@@ -19,12 +19,272 @@
 | [#2552](https://github.com/moeru-ai/airi/pull/2552) | `add bilingual subtitles` | `@phx3334` | `Open` (32 comments) | 🟡 **Subtitles & Localization** | Implements bilingual subtitle rendering in stage overlays. **Directive**: Monitor for closure/merge; review when closed for fork adoption per user request. |
 | [#3000](https://github.com/moeru-ai/airi/pull/3000) | `feat(memory-eval): add identity-continuity evaluation package` | `@RUI-debug769` | `Open` (119 comments) | 🟢 **Memory & Identity Intelligence** | Proposes `@proj-airi/memory-eval` using mathematical metrics (Wasserstein-1, GMM BIC bimodality, fixed-point operator). **Directive**: Proposal drafted in [`docs/memory_lab/proposal-identity-continuity-and-persona-drift-eval.md`](./memory_lab/proposal-identity-continuity-and-persona-drift-eval.md) as a behavioral identity continuity complement to LoCoMo F1. |
 | [#3020](https://github.com/moeru-ai/airi/pull/3020) / [#3033](https://github.com/moeru-ai/airi/pull/3033) | `feat(stage-tamagotchi): add native glass chat backgrounds` | `@luoling8192` | `Merged` | 🟢 **Visual Immersion** (Regional backdrop blur) | Native glass backdrops on macOS via `@proj-airi/electron-native-backdrop` (`backdrop.mm`) and Space change fix. **Directive**: Design spec drafted in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md); adapt to Control Strip while keeping Actor Stage 100% transparent. |
-| [#3021](https://github.com/moeru-ai/airi/pull/3021) / [#3040](https://github.com/moeru-ai/airi/pull/3040) | `feat(stage-ui,agents): make cards for tool calls without a widget` | `@chiba233` | `Merged` | 🟢 **Generative UI & Tool Transparency** | Generative OpenUI cards (`@openuidev/lang-core`, tables, metrics, sparklines, steps, code) and real-time tool intent summaries (`tool-call-summary.ts`). **Directive**: Design spec drafted in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md); adapt strictly as presentation seam without modifying Pinia `chat.ts`. |
+| [#3021](https://github.com/moeru-ai/airi/pull/3021) / [#3040](https://github.com/moeru-ai/airi/pull/3040) / [#3051](https://github.com/moeru-ai/airi/pull/3051) | `feat(stage-ui,agents): make cards for tool calls without a widget` | `@chiba233` | `Merged` | 🟢 **Generative UI & Tool Transparency** | Generative OpenUI cards, real-time intent summaries, and dynamic Tabler icon selection. **Directive**: Design spec in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md); adapt strictly as presentation seam. |
+| [#3044](https://github.com/moeru-ai/airi/pull/3044) | `fix(stage-ui): link only parsed web URLs in citations and search results` | `@nekomeowww` | `Merged` | 🟢 **Security & Sanitization** | Hardens web URL parsing against pseudo-protocols (`javascript:`, `data:`, `file:`) and hostless inputs. **Directive**: **Ported & Tested in Fork (#3044)** via `isWebUrl()` and modernized `isUrl()` in `@proj-airi/stage-shared`. |
+| [#3053](https://github.com/moeru-ai/airi/pull/3053) | `fix(stage-ui): avoid splitting surrogate pairs in chat reply preview` | `@keeponlight` | `Open` | 🟢 **Text Encoding & Reliability** | Prevents bisecting UTF-16 surrogate pairs (emojis/astral-plane code points) during string truncation. **Directive**: **Ported & Tested in Fork (#3053)** via universal `safeTruncate()` in `@proj-airi/stage-shared` and applied to chat tool summaries. |
 
 ---
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-20] Upstream Delta: `7858795f..bc41885f` (12 commits, 119 files, 21 update(s))
+
+### 🎯 Executive Highlights
+#### Upstream Trajectory & Executive Summary
+- **Dynamic Tool Call Tabler Icons (#3051, Commit `bc41885f0`)**: Authored by @chiba233 (`蓝莓🫐`), upstream merged a feature allowing the LLM to select up to 3 Tabler outline icon names (`call_icon`) representing tool intents alongside `call_summary` (PR #3040), rendering them with `--un-icon` masks via `@iconify-json/tabler`. Cards and tools also gain `builtIn_searchIcons` to search Tabler names.
+- **Cloud Account Notifications System (#3022, Commit `b7ca81403`)**: RainbowBird merged a massive 4,900+ line infrastructure change introducing `@proj-airi/cloud-client`, OpenAPI client generation, SSE stream consumption, inbox drawer/popover UI, and unread notification badges wired into upstream's legacy `controls-island`.
+- **Speech & Local Model Window Binding (#3026, Commit `f573fab5a`)**: Oba Yang resolved multi-window Kokoro speech generation by ensuring `loadModel` is executed directly within the window requesting synthesis rather than assuming preloaded cross-window adapter state.
+- **Google GenAI Typed SDK Migration (#3024, Commit `4ec76340f`)**: Younsang Na migrated Gemini speech and Nano Banana image generation in `apps/stage-tamagotchi` from legacy untyped REST calls to the official `@google/genai` (2.30.0) SDK.
+- **URL Link Sanitization & Parsing (#3044, Commit `548b627f7`)**: Neko hardened citation rendering and web search widgets by validating URLs using `URL.canParse()` and enforcing `http:`/`https:` protocols via `isWebUrl()` in `@proj-airi/stage-shared`, eliminating unsafe pseudo-protocols (`javascript:`, `data:`, `file:`) and hostless strings (`http://`).
+- **Turbo Test Graph & CI Optimization (#3048)**: Younsang Na opened PR #3048 routing package tests through Turbo tasks with caching (reducing warm runs to ~1s) while revealing 1,971 unexecuted test cases across packages.
+
+### 💬 Discussion & Community Buzz
+- **#3000: `feat(memory-eval): add identity-continuity evaluation package`** by @RUI-debug769 (**119 comments total**): High-velocity discussion continues around mathematical persona-continuity metrics (Wasserstein-1 distance, GMM BIC bimodality for split-persona detection, and fixed-point operator convergence).
+- **#2541: `Telltworose/feat/drop in plugins`** by @telltworose (**59 comments total**): Active review following author's 180° pivot from in-process Node execution to MCP stdio child processes.
+- **#2290: `feat(server): stream official ASR over WebSocket`** by @luoling8192 (**59 comments total**): Ongoing review regarding official ASR transport options (WebSocket vs OpenAI-compatible HTTP SSE).
+- **#2672: `refactor(stage-ui): bind conversations to window-local characters`** by @luoling8192 (**48 comments total**): Tracking conversation scoping and window-local character decoupling.
+- **#2552: `add bilingual subtitles`** by @phx3334 (**36 comments total**): Bilingual subtitle rendering in stage overlays.
+- **#3027: `feat(stage-tamagotchi): add opt-in local AI HTTP proxy`** by @Jim (**+4 new comments, 11 total**): Discussion on local CORS-bypass HTTP proxying in Electron.
+- **#2991: `chore(i18n): update translations`** (**+4 new comments, 10 total**): Active translation sync.
+- **#3048: `test: run workspace tests through Turbo`** by @nayounsang (**6 comments total**): Maintainer feedback and review on workspace test migration.
+- **#3041: `refactor(provider-inference): share SSE stream parsing`** by @nayounsang (**+4 new comments, 5 total, MERGED**): Stream parser consolidation across providers.
+- **#2687: `feat(plugin-sdk): add hosted Kit registration`** (**+2 new comments, 3 total, Draft ➔ Ready**): Transitioned to ready for maintainer review.
+
+### 🍒 Cherry-Pick Candidates
+- ⭐ **PR #3044 / Commit `548b627f7` (Neko) — `fix(stage-ui): link only parsed web URLs in citations and search results`**:
+  - **Status**: **Ported & Tested in Fork (#3044)**.
+  - **Priority**: High / Security & URL Sanitization.
+  - **Rationale**: Minimal, self-contained utility `isWebUrl()` in `@proj-airi/stage-shared` (+19 lines) that prevents XSS/script execution (`javascript:`, `data:`, `file:`, malformed URLs) in chat response citations and web search widgets. Modernized `isUrl()` to use `URL.canParse()` without throwing.
+- ⭐ **PR #3053 (keeponlight) — `fix(stage-ui): avoid splitting surrogate pairs in chat reply preview`**:
+  - **Status**: **Ported & Tested in Fork (#3053)**.
+  - **Priority**: Medium / Chat Preview Reliability.
+  - **Rationale**: Extracted universal `safeTruncate()` utility in `@proj-airi/stage-shared` using `Array.from()` to operate on Unicode code points rather than UTF-16 code units. Hardened chat tool call summaries against surrogate-pair splitting and replacement glyphs.
+- ⭐ **PR #3049 (Redestiny) — `fix(stage-shared): parse Electron punctuation accelerators`**:
+  - **Priority**: Medium / Desktop Keyboard Accessibility.
+  - **Rationale**: Fixes shortcut parser rejecting punctuation characters (e.g. `CmdOrCtrl+,`) by accepting all 11 punctuation spellings from `ELECTRON_KEY_OVERRIDES`. Cleanly enhances accelerator parsing in Electron.
+- ⚪ **PR #3051 / Commit `bc41885f0` (蓝莓🫐) — `let the model pick a Tabler icon for each tool call`**:
+  - **Priority**: Architectural Interest (Presentation only).
+  - **Rationale**: While visually rich, this couples icon selection into `llm.ts`, `tool-call-summary.ts`, and `chat.ts`. If adopted, should follow `docs/design-native-glass-and-generative-tool-cards.md` and be adapted strictly as a presentation-layer seam rather than mutating our cognitive pipeline.
+- ⚪ **PR #3026 / Commit `f573fab5a` (Oba Yang) — `load the Kokoro model in the window that generates speech`**:
+  - **Priority**: Disregarded / Does Not Apply.
+  - **Rationale**: Our fork routes speech intents centrally through `airi-speech-runtime` and hosts playback in the primary desktop runtime rather than decentralized multi-window audio synthesis.
+- ⚪ **PR #3022 / Commit `b7ca81403` (RainbowBird) — Cloud Notifications & Inbox**:
+  - **Priority**: Auto-Reject.
+  - **Rationale**: Hosted multi-user cloud notifications (`@proj-airi/cloud-client`), remote servers, and `controls-island` additions violate our offline-first BYOS architecture.
+
+### ⚠️ Divergence / Collision Warnings
+- 🚨 **Chat Store & LLM Dispatch (`packages/stage-ui/src/stores/chat.ts`, `stores/ai/chat-llm/llm.ts`)**:
+  - Commit `bc41885f0` modifies `chat.ts` and `llm.ts` to inject Tabler icon candidate schemas and tool filters. Our fork heavily customizes these files for multi-actor routing, `<|ACTOR|>` token parsing, Two-Layer Memory (Sacred Journal), and Director loops. Never merge upstream's `chat.ts` directly.
+- 🚨 **Deprecated Control Island (`apps/stage-tamagotchi/.../controls-island/`)**:
+  - Commit `b7ca81403` heavily modifies `controls-island/index.vue` (+366 lines) and adds notification tests. Our fork completely deleted `controls-island` in commit `e10223f2e` in favor of the decoupled floating Control Strip (`ControlStrip.vue`, `ControlStripHost.vue`). These changes must be permanently ignored.
+- 🚨 **Nano Banana Service (`apps/stage-tamagotchi/src/main/services/airi/widgets/providers/nanobanana.ts`)**:
+  - Commit `4ec76340f` rewires Nano Banana to `@google/genai` SDK. Our fork maintains native ComfyUI BYOW pipelines and custom widget orchestration. Any changes to `nanobanana.ts` must be inspected carefully to avoid breaking local image generation.
+
+### 📋 Upstream Commits
+- `bc41885f0` feat(stage-ui,agents,core-agent): let the model pick a Tabler icon for each tool call (#3051) [#3051](https://github.com/moeru-ai/airi/pull/3051) _(蓝莓🫐, 2026-10-20)_
+- `c8943f47c` chore(nix): update pnpmDeps hash (#3050) [#3050](https://github.com/moeru-ai/airi/pull/3050) _(Weathercold, 2026-10-20)_
+- `b7ca81403` feat: show account Notifications from AIRI Cloud (#3022) [#3022](https://github.com/moeru-ai/airi/pull/3022) _(RainbowBird, 2026-10-20)_
+- `b3463466d` chore(nix): update pnpmDeps hash (#3047) [#3047](https://github.com/moeru-ai/airi/pull/3047) _(Weathercold, 2026-10-19)_
+- `f573fab5a` fix(stage-ui): load the Kokoro model in the window that generates speech (#3026) [#3026](https://github.com/moeru-ai/airi/pull/3026) _(Oba Yang, 2026-10-20)_
+- `4ec76340f` refactor: use Google GenAI SDK for Gemini providers (#3024) [#3024](https://github.com/moeru-ai/airi/pull/3024) _(Younsang Na, 2026-10-20)_
+- `fdb6cab5c` refactor(provider-inference): share SSE stream parsing (#3041) [#3041](https://github.com/moeru-ai/airi/pull/3041) _(Younsang Na, 2026-10-20)_
+- `88753f72f` fix(stage-layouts): stop the drawer scroll lock from cancelling volume drags (#3046) [#3046](https://github.com/moeru-ai/airi/pull/3046) _(RainbowBird, 2026-10-20)_
+- `8781d10cd` refactor(server): use valibot format actions instead of regexes (#3045) [#3045](https://github.com/moeru-ai/airi/pull/3045) _(Neko, 2026-10-20)_
+- `548b627f7` fix(stage-ui): link only parsed web URLs in citations and search results (#3044) [#3044](https://github.com/moeru-ai/airi/pull/3044) _(Neko, 2026-10-20)_
+- `80cf17f34` fix(server): match trusted origins by their parsed URL (#3043) [#3043](https://github.com/moeru-ai/airi/pull/3043) _(Neko, 2026-10-19)_
+- `06103df97` feat(api-server): pass the language of speech text to StepFun (#3042) [#3042](https://github.com/moeru-ai/airi/pull/3042) _(Neko, 2026-10-19)_
+
+### 🔬 Subsystem Breakdown
+#### Mobile & Web Platforms (`⚪ ignore / low-priority`) — 1 file(s) (+1/-0)
+- `apps/stage-pocket/package.json` *(+1/-0)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 5 file(s) (+92/-25)
+- `apps/stage-tamagotchi-kirie/package.json` *(+1/-0)*
+- `apps/stage-tamagotchi/package.json` *(+2/-0)*
+- `apps/stage-tamagotchi/src/main/services/airi/widgets/providers/nanobanana.test.ts` *(+69/-0)*
+- `apps/stage-tamagotchi/src/main/services/airi/widgets/providers/nanobanana.ts` *(+19/-24)*
+- `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.browser.test.ts` *(+1/-1)*
+
+#### Deprecated Surfaces (Control Island) (`⚪ ignore / rejected in fork (decoupled into Control Strip)`) — 2 file(s) (+399/-133)
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/controls-island-notifications.browser.test.ts` *(+166/-0)*
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue` *(+233/-133)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 62 file(s) (+4511/-224)
+- `apps/ui-server-auth/src/modules/loopback.ts` *(+11/-0)*
+- `apps/ui-server-auth/src/modules/server-auth-context.ts` *(+3/-8)*
+- `apps/ui-server-auth/src/modules/sign-in.ts` *(+2/-8)*
+- `eslint.config.ts` *(+2/-0)*
+- `nix/pnpm-deps-hash.txt` *(+1/-1)*
+- `packages/agents/src/generate-text.ts` *(+12/-5)*
+- `packages/agents/src/tool-card/index.ts` *(+5/-3)*
+- `packages/cloud-client/openapi-ts.config.ts` *(+7/-0)*
+- `packages/cloud-client/openapi.yaml` *(+312/-0)*
+- `packages/cloud-client/src/generated/client.gen.ts` *(+16/-0)*
+- `packages/cloud-client/src/generated/client/client.gen.ts` *(+277/-0)*
+- `packages/cloud-client/src/generated/client/index.ts` *(+27/-0)*
+- `packages/cloud-client/src/generated/client/types.gen.ts` *(+218/-0)*
+- `packages/cloud-client/src/generated/client/utils.gen.ts` *(+316/-0)*
+- `packages/cloud-client/src/generated/core/auth.gen.ts` *(+48/-0)*
+- `packages/cloud-client/src/generated/core/bodySerializer.gen.ts` *(+82/-0)*
+- `packages/cloud-client/src/generated/core/params.gen.ts` *(+178/-0)*
+- `packages/cloud-client/src/generated/core/pathSerializer.gen.ts` *(+171/-0)*
+- `packages/cloud-client/src/generated/core/queryKeySerializer.gen.ts` *(+117/-0)*
+- `packages/cloud-client/src/generated/core/serverSentEvents.gen.ts` *(+242/-0)*
+- `packages/cloud-client/src/generated/core/types.gen.ts` *(+110/-0)*
+- `packages/cloud-client/src/generated/core/utils.gen.ts` *(+140/-0)*
+- `packages/cloud-client/src/generated/index.ts` *(+4/-0)*
+- `packages/cloud-client/src/generated/sdk.gen.ts` *(+33/-0)*
+- `packages/cloud-client/src/generated/types.gen.ts` *(+327/-0)*
+- `packages/provider-inference/src/providers/cloud/google-gemini-audio-speech/index.test.ts` *(+58/-0)*
+- `packages/provider-inference/src/providers/cloud/google-gemini-audio-speech/index.ts` *(+17/-18)*
+- `packages/provider-inference/src/providers/cloud/minimax-speech/index.test.ts` *(+1/-1)*
+- `packages/provider-inference/src/providers/cloud/minimax-speech/index.ts` *(+30/-43)*
+- `packages/provider-inference/src/providers/cloud/openrouter-audio-speech/index.ts` *(+18/-32)*
+- `packages/stage-shared/src/url.test.ts` *(+25/-0)*
+- `packages/stage-shared/src/url.ts` *(+19/-0)*
+- `packages/stage-ui/src/components/misc/badge.story.vue` *(+27/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/response-citations.browser.test.ts` *(+2/-0)*
+- `packages/stage-ui/src/components/scenarios/chat/components/response-citations.vue` *(+2/-1)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-group.vue` *(+15/-5)*
+- `packages/stage-ui/src/components/scenarios/chat/components/tool-call-web-search-widget.vue` *(+2/-1)*
+- `packages/stage-ui/src/components/scenarios/index.ts` *(+1/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-drawer.browser.test.ts` *(+72/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-drawer.vue` *(+64/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-message-item.vue` *(+55/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-panel.browser.test.ts` *(+34/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-panel.story.vue` *(+141/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-panel.vue` *(+121/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-popover.browser.test.ts` *(+103/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-popover.vue` *(+73/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/inbox-presentation.ts` *(+112/-0)*
+- `packages/stage-ui/src/components/scenarios/notifications/index.ts` *(+3/-0)*
+- `packages/stage-ui/src/composables/text-generation.ts` *(+9/-4)*
+- `packages/stage-ui/src/libs/cards/catalog.ts` *(+8/-41)*
+- `packages/stage-ui/src/libs/cards/program.ts` *(+6/-6)*
+- `packages/stage-ui/src/libs/providers/providers/kokoro-local/index.test.ts` *(+76/-0)*
+- `packages/stage-ui/src/libs/providers/providers/kokoro-local/index.ts` *(+12/-3)*
+- `packages/stage-ui/src/libs/tabler-icons.ts` *(+180/-0)*
+- `packages/stage-ui/src/stores/ai/chat-llm/llm.ts` *(+11/-3)*
+- `packages/stage-ui/src/stores/ai/chat-llm/tool-call-summary.ts` *(+49/-25)*
+- `packages/stage-ui/src/stores/inbox.browser.test.ts` *(+174/-0)*
+- `packages/stage-ui/src/stores/inbox.ts` *(+259/-0)*
+- `packages/stage-ui/src/stores/tool-cards.ts` *(+3/-0)*
+- `packages/stage-ui/src/tools/icons.ts` *(+22/-16)*
+- `packages/stage-ui/src/tools/search-icons.ts` *(+44/-0)*
+- `pnpm-workspace.yaml` *(+2/-0)*
+
+#### Documentation & Scaffolding (`⚪ ignore`) — 4 file(s) (+68/-1)
+- `docs/ai/context/ui-components.md` *(+11/-0)*
+- `packages/agents/README.md` *(+1/-1)*
+- `packages/cloud-client/README.md` *(+43/-0)*
+- `packages/stage-ui/README.md` *(+13/-0)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 4 file(s) (+285/-0)
+- `packages/cloud-client/package.json` *(+15/-0)*
+- `packages/provider-inference/package.json` *(+2/-0)*
+- `packages/stage-ui/package.json` *(+2/-0)*
+- `pnpm-lock.yaml` *(+266/-0)*
+
+#### Core Agent Runtime (`🔍 inspect`) — 3 file(s) (+8/-2)
+- `packages/core-agent/src/runtime/llm-service.ts` *(+1/-1)*
+- `packages/core-agent/src/runtime/responses.ts` *(+1/-1)*
+- `packages/core-agent/src/types/llm.ts` *(+6/-0)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 3 file(s) (+59/-0)
+- `packages/i18n/glossary/terms.yaml` *(+11/-0)*
+- `packages/i18n/src/locales/en/stage.yaml` *(+24/-0)*
+- `packages/i18n/src/locales/zh-Hans/stage.yaml` *(+24/-0)*
+
+#### Stage Layouts & Shells (`🔍 inspect`) — 2 file(s) (+304/-225)
+- `packages/stage-layouts/src/components/Layouts/HeaderAvatar.vue` *(+237/-200)*
+- `packages/stage-layouts/src/components/Layouts/mobile-settings-drawer.vue` *(+67/-25)*
+
+#### Cognitive & Consciousness (`⚠️ hand-merge`) — 2 file(s) (+7/-5)
+- `packages/stage-ui/src/stores/chat.contract.test.ts` *(+3/-3)*
+- `packages/stage-ui/src/stores/chat.ts` *(+4/-2)*
+
+#### UI Primitives & Pages (`📦 import / inspect`) — 2 file(s) (+40/-0)
+- `packages/ui/src/components/misc/badge.vue` *(+39/-0)*
+- `packages/ui/src/components/misc/index.ts` *(+1/-0)*
+
+#### Cloud Services, Billing & Auth (`⚪ ignore / rejected in fork (offline-first architecture)`) — 29 file(s) (+432/-70)
+- `server/apps/api/src/libs/redis/stream.ts` *(+1/-1)*
+- `server/apps/api/src/libs/tests/redis.ts` *(+1/-1)*
+- `server/apps/api/src/routes/internal-auth.test.ts` *(+2/-2)*
+- `server/apps/api/src/routes/openai/v1/route.test.ts` *(+62/-0)*
+- `server/apps/api/src/routes/revenuecat/route.test.ts` *(+7/-7)*
+- `server/apps/api/src/services/adapters/account-events.test.ts` *(+5/-5)*
+- `server/apps/api/src/services/adapters/account-events.ts` *(+1/-1)*
+- `server/apps/api/src/services/adapters/tts/index.test.ts` *(+48/-0)*
+- `server/apps/api/src/services/adapters/tts/stepfun.ts` *(+23/-0)*
+- `server/apps/api/src/services/adapters/tts/types.ts` *(+9/-0)*
+- `server/apps/api/src/services/domain/display-models.test.ts` *(+20/-1)*
+- `server/apps/api/src/services/domain/display-models.ts` *(+3/-2)*
+- `server/apps/api/src/services/domain/field-sync/request.ts` *(+4/-4)*
+- `server/apps/api/src/services/domain/openai-speech/index.ts` *(+45/-0)*
+- `server/apps/api/src/utils/origin.test.ts` *(+19/-0)*
+- `server/apps/api/src/utils/origin.ts` *(+3/-16)*
+- `server/apps/auth/src/origin.test.ts` *(+32/-0)*
+- `server/apps/auth/src/origin.ts` *(+3/-16)*
+- `server/apps/auth/src/plugins/oidc-jwt-bearer.ts` *(+2/-2)*
+- `server/apps/auth/src/routes.ts` *(+2/-2)*
+- `server/apps/auth/src/tests/oidc-jwt-bearer.test.ts` *(+7/-1)*
+- `server/apps/auth/src/tests/routes-oidc-token-auth.test.ts` *(+11/-5)*
+- `server/docs/ai/adr/2026-10-18-account-events-stream.md` *(+3/-3)*
+- `server/docs/ai/adr/2026-10-19-tts-speech-language.md` *(+77/-0)*
+- `server/packages/auth-shared/README.md` *(+1/-1)*
+- `server/packages/auth-shared/package.json` *(+3/-0)*
+- `server/packages/auth-shared/src/index.ts` *(+1/-0)*
+- `server/packages/auth-shared/src/origin.ts` *(+34/-0)*
+- `server/packages/auth-shared/tsconfig.json` *(+3/-0)*
+
+### 📬 Upstream Activity Radar
+#### 🆕 New Items Opened (12)
+- [PR] [#3053](https://github.com/moeru-ai/airi/pull/3053) `fix(stage-ui): avoid splitting surrogate pairs in chat reply preview` by **@keeponlight** *(3 comments)*
+- [PR] [#3052](https://github.com/moeru-ai/airi/pull/3052) `fix(provider-inference): prefer current MiniMax chat models` by **@octo-patch** *(3 comments)*
+- [PR] [#3051](https://github.com/moeru-ai/airi/pull/3051) `feat(stage-ui,agents,core-agent): let the model pick a Tabler icon for each tool call` by **@chiba233** *(3 comments)*
+- [PR] [#3050](https://github.com/moeru-ai/airi/pull/3050) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(3 comments)*
+- [PR] [#3048](https://github.com/moeru-ai/airi/pull/3048) `test: run workspace tests through Turbo` by **@nayounsang** *(6 comments)*
+- [PR] [#3049](https://github.com/moeru-ai/airi/pull/3049) `fix(stage-shared): parse Electron punctuation accelerators` by **@Redestiny** *(3 comments)*
+- [PR] [#3047](https://github.com/moeru-ai/airi/pull/3047) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(3 comments)*
+- [PR] [#3046](https://github.com/moeru-ai/airi/pull/3046) `fix(stage-layouts): stop the drawer scroll lock from cancelling volume drags` by **@luoling8192** *(3 comments)*
+- [PR] [#3045](https://github.com/moeru-ai/airi/pull/3045) `refactor(server): use valibot format actions instead of regexes` by **@nekomeowww** *(3 comments)*
+- [PR] [#3044](https://github.com/moeru-ai/airi/pull/3044) `fix(stage-ui): link only parsed web URLs in citations and search results` by **@nekomeowww** *(3 comments)*
+- [PR] [#3043](https://github.com/moeru-ai/airi/pull/3043) `fix(server): match trusted origins by their parsed URL` by **@nekomeowww** *(3 comments)*
+- [PR] [#3042](https://github.com/moeru-ai/airi/pull/3042) `feat(api-server): pass the language of speech text to StepFun` by **@nekomeowww** *(3 comments)*
+
+#### 🔄 Status & Lifecycle Changes (5)
+- [PR] [#3022](https://github.com/moeru-ai/airi/pull/3022) `feat(api,ui,stage-ui,stage-layouts,stage-tamagotchi): show account Notifications from AIRI Cloud` — `OPEN` ➔ `MERGED`
+- [PR] [#2687](https://github.com/moeru-ai/airi/pull/2687) `feat(plugin-sdk): add hosted Kit registration` — `Draft` ➔ `Ready`
+- [PR] [#3026](https://github.com/moeru-ai/airi/pull/3026) `fix(stage-ui): load the Kokoro model in the window that generates speech` — `OPEN` ➔ `MERGED`
+- [PR] [#3024](https://github.com/moeru-ai/airi/pull/3024) `refactor: use Google GenAI SDK for Gemini providers` — `OPEN` ➔ `MERGED`
+- [PR] [#3041](https://github.com/moeru-ai/airi/pull/3041) `refactor(provider-inference): share SSE stream parsing` — `OPEN` ➔ `MERGED`, `Draft` ➔ `Ready`
+
+#### 💬 Discussion Activity (4)
+- [PR] [#2991](https://github.com/moeru-ai/airi/pull/2991) `chore(i18n): update translations` — *+4 comments (6 ➔ 10 total)*
+- [PR] [#2687](https://github.com/moeru-ai/airi/pull/2687) `feat(plugin-sdk): add hosted Kit registration` — *+2 comments (1 ➔ 3 total)*
+- [PR] [#3027](https://github.com/moeru-ai/airi/pull/3027) `feat(stage-tamagotchi): add opt-in local AI HTTP proxy` — *+4 comments (7 ➔ 11 total)*
+- [PR] [#3041](https://github.com/moeru-ai/airi/pull/3041) `refactor(provider-inference): share SSE stream parsing` — *+4 comments (1 ➔ 5 total)*
+
+### 👁️ Watched Upstream Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [OPEN] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+- [PR] [#2980](https://github.com/moeru-ai/airi/pull/2980) `feat(stage-ui,stage-pages): add voiceprint enrollment` [MERGED] — *(15 comments)*
+  - *Focus*: Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port
+- [PR] [#2552](https://github.com/moeru-ai/airi/pull/2552) ` add bilingual subtitles` [OPEN] — *(36 comments)*
+  - *Focus*: Bilingual subtitle rendering in stage overlays; monitor for closure/merge to evaluate for fork adoption
+- [PR] [#3000](https://github.com/moeru-ai/airi/pull/3000) `feat(memory-eval): add identity-continuity evaluation package` [OPEN] — *(119 comments)*
+  - *Focus*: Mathematical metrics (Wasserstein-1, GMM BIC bimodality, fixed-point operator) for persona continuity during long-turn memory compression; monitor maintainer triage and package boundary placement
+
+---
 ## [2026-10-19] Upstream Delta: `461d34ac..7858795f` (14 commits, 130 files, 28 update(s))
 
 ### 🎯 Executive Highlights
