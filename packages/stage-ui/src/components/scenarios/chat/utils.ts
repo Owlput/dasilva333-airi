@@ -1,5 +1,7 @@
 import type { ChatHistoryItem } from '../../../types/chat'
 
+import { safeTruncate } from '@proj-airi/stage-shared'
+
 import { stripMarkers } from '../../../composables/response-categoriser'
 
 function isTextPart(part: unknown): part is { type: 'text', text?: string } {
@@ -102,7 +104,7 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
     if (!rawCmd)
       return '$ bash'
     const normalized = rawCmd.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').replace(/'\s+/, '\'').trim()
-    const truncated = normalized.length > 34 ? `${normalized.slice(0, 34)}...` : normalized
+    const truncated = safeTruncate(normalized, 34, '...')
     return `$ ${truncated}`
   }
 
@@ -110,9 +112,8 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
   if (toolName === 'text_journal') {
     const action = parsed?.action
     if (action === 'create') {
-      const title = parsed?.title?.trim()
-        || parsed?.content?.trim()?.slice(0, 24)
-        || 'journal entry'
+      const rawTitle = parsed?.title?.trim() || parsed?.content?.trim()
+      const title = rawTitle ? safeTruncate(rawTitle, 24) : 'journal entry'
       return `📓 Created ${title}`
     }
     if (action === 'search') {
@@ -125,9 +126,8 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
   // 3. Image Journal
   if (toolName === 'image_journal') {
     const mode = parsed?.mode || 'inline'
-    const title = parsed?.title?.trim()
-      || parsed?.prompt?.trim()?.slice(0, 24)
-      || 'image'
+    const rawTitle = parsed?.title?.trim() || parsed?.prompt?.trim()
+    const title = rawTitle ? safeTruncate(rawTitle, 24) : 'image'
     return `🎨 Created new ${mode} image called ${title}`
   }
 
@@ -147,7 +147,7 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
       if (!rawCmd)
         return '$ bash'
       const normalized = rawCmd.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').replace(/'\s+/, '\'').trim()
-      const truncated = normalized.length > 34 ? `${normalized.slice(0, 34)}...` : normalized
+      const truncated = safeTruncate(normalized, 34, '...')
       return `$ ${truncated}`
     }
 
@@ -174,7 +174,7 @@ export function formatToolCallSummary(toolName: string, argsInput: string | Reco
     // Cite tool name and first string param if available
     const firstVal = Object.values(params).find(v => typeof v === 'string' && (v as string).trim().length > 0) as string | undefined
     if (firstVal) {
-      const truncatedVal = firstVal.length > 20 ? `${firstVal.slice(0, 20)}...` : firstVal
+      const truncatedVal = safeTruncate(firstVal, 20, '...')
       return `🛠️ ${toolOnly}: ${truncatedVal}`
     }
 
