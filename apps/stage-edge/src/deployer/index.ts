@@ -325,7 +325,9 @@ export default {
       bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: options?.characterName || 'AIRI' })
     }
 
-    if (options?.enableEmbassyDO) {
+    const enableDO = options?.enableEmbassyDO ?? (scriptName === 'airi-stage-edge')
+
+    if (enableDO) {
       bindings.push({
         type: 'durable_object_namespace',
         name: 'EMBASSY',
@@ -340,11 +342,13 @@ export default {
       bindings,
     }
 
-    if (options?.enableEmbassyDO) {
-      metadata.migrations = {
-        tag: 'v1',
-        new_sqlite_classes: ['EmbassyDO'],
-      }
+    if (enableDO) {
+      metadata.migrations = [
+        {
+          tag: 'v1',
+          new_sqlite_classes: ['EmbassyDO'],
+        },
+      ]
     }
 
     const formData = new FormData()
@@ -359,7 +363,7 @@ export default {
       'index.js',
     )
 
-    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+    let res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${this.client.apiToken}`,
@@ -369,7 +373,23 @@ export default {
 
     if (!res.ok) {
       const errText = await res.text()
-      throw new Error(`CORS proxy upload failed -> HTTP ${res.status}: ${errText}`)
+      if (metadata.migrations && (errText.includes('migration') || errText.includes('tag') || errText.includes('already'))) {
+        delete metadata.migrations
+        const retryFormData = new FormData()
+        retryFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata')
+        retryFormData.append('index.js', new Blob([workerScriptCode], { type: 'application/javascript+module' }), 'index.js')
+        res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${this.client.apiToken}`,
+          },
+          body: retryFormData,
+        })
+      }
+      if (!res.ok) {
+        const finalErr = await res.text().catch(() => errText)
+        throw new Error(`Worker upload failed -> HTTP ${res.status}: ${finalErr}`)
+      }
     }
 
     let subdomainName = await this.getSubdomain()

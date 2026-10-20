@@ -828,24 +828,40 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
 
     if (enableDO) {
-      metadata.migrations = {
-        tag: 'v1',
-        new_sqlite_classes: ['EmbassyDO'],
-      }
+      metadata.migrations = [
+        {
+          tag: 'v1',
+          new_sqlite_classes: ['EmbassyDO'],
+        },
+      ]
     }
 
     const formData = new FormData()
-    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata')
     formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
 
-    const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+    let uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${apiToken}` },
       body: formData,
     })
     if (!uploadRes.ok) {
       const errText = await uploadRes.text().catch(() => '')
-      throw new Error(`Embassy worker upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
+      if (metadata.migrations && (errText.includes('migration') || errText.includes('tag') || errText.includes('already'))) {
+        delete metadata.migrations
+        const retryFormData = new FormData()
+        retryFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata')
+        retryFormData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
+        uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${apiToken}` },
+          body: retryFormData,
+        })
+      }
+      if (!uploadRes.ok) {
+        const finalErr = await uploadRes.text().catch(() => errText)
+        throw new Error(`Embassy worker upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(finalErr)}`)
+      }
     }
     const uploadData: any = await uploadRes.json().catch(() => null)
     if (uploadData && uploadData.success === false) {
