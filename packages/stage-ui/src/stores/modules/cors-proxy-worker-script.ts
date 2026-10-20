@@ -8,16 +8,62 @@
  * - GET /health
  * - /cors-proxy + /proxy forwarding with Access-Control-Allow-Origin: *
  * - GET /api/companion/card for friend discovery
- * - POST /api/friends/request for cross-account pairing
- * - POST /api/friends/invite for invite code issuance
- * - POST /api/friends/inbox for nap-chat turn relay
+ * - GET /ws hibernated socket attach (owner-gated, DO only)
+ * - POST /api/friends/request for cross-account pairing (Ed25519-verified)
+ * - POST /api/friends/invite for invite code issuance (owner-gated)
+ * - POST /api/friends/accept for trust grants (owner-gated)
+ * - POST /api/friends/inbox for nap-chat turn relay (Ed25519-verified, trust-gated)
+ * - GET /api/friends/requests for owner-side pending review (owner-gated, on-demand only — never polled)
  *
- * No KV bindings, secrets, or external imports — a single self-contained ES module.
+ * No external imports — a single self-contained ES module. Requires MEMORY KV
+ * and OWNER_ID bindings in production; degrades to explicit 503s without them.
+ * Security posture mirrors apps/stage-edge/src/index.ts exactly: verify-first
+ * (signature before trust), fail-closed on every malformed or unauthenticated
+ * call. Any divergence between the two is a bug — see
+ * cors-proxy-worker-script.test.ts, which locks the parity.
  */
 
 // NOTICE: plain string concatenation inside the worker source (no backticks or
 // ${} interpolations) so this outer template literal needs no escaping.
-export const CORS_PROXY_WORKER_SCRIPT = `export default {
+export const CORS_PROXY_WORKER_SCRIPT = `function hexToPeerBytes(hex) {
+  if (!hex) return new Uint8Array();
+  var matches = String(hex).match(/.{1,2}/g);
+  if (!matches) return new Uint8Array();
+  return new Uint8Array(matches.map(function(byte) { return Number.parseInt(byte, 16); }));
+}
+function sanitizeIntroMessage(input) {
+  var text = typeof input === 'string' ? input : '';
+  return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, 100);
+}
+function isHex64Peer(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
+}
+function isFreshPeerTimestamp(timestamp) {
+  if (typeof timestamp !== 'number' || !isFinite(timestamp)) return false;
+  return Math.abs(Date.now() - timestamp) <= 300 * 1000;
+}
+async function verifyPeerSignature(publicKeyHex, signatureHex, message) {
+  try {
+    var encoder = new TextEncoder();
+    var data = encoder.encode(message);
+    var key = await crypto.subtle.importKey('raw', hexToPeerBytes(publicKeyHex).buffer, 'Ed25519', false, ['verify']);
+    return await crypto.subtle.verify('Ed25519', key, hexToPeerBytes(signatureHex).buffer, data.buffer);
+  } catch (e) {
+    return false;
+  }
+}
+async function consumePeerNonce(env, nonce) {
+  if (!env || !env.MEMORY || !nonce || nonce.length < 8 || nonce.length > 128) return false;
+  try {
+    var seen = await env.MEMORY.get('friends/nonces/' + nonce);
+    if (seen) return false;
+    await env.MEMORY.put('friends/nonces/' + nonce, '1', { expirationTtl: 600 });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+export default {
   async fetch(request, env) {
     var url = new URL(request.url);
 
@@ -59,23 +105,64 @@ export const CORS_PROXY_WORKER_SCRIPT = `export default {
     }
 
     if (url.pathname === '/api/friends/request') {
-      var reqId = 'cf_req_' + Date.now().toString(36);
+      if (!env || !env.MEMORY) {
+        return corsJson({ error: 'kv_not_configured' }, 503);
+      }
       var reqBody = null;
       try {
-        reqBody = await request.clone().json();
-      } catch (e) {}
+        reqBody = await request.json();
+      } catch (e) {
+        return corsJson({ error: 'invalid_json' }, 400);
+      }
+      var reqIntro = sanitizeIntroMessage(reqBody && reqBody.introMessage);
+      if (reqBody && typeof reqBody.introMessage === 'string' && reqBody.introMessage.length > 100) {
+        return corsJson({ error: 'intro_too_long' }, 400);
+      }
+      if (!reqBody || typeof reqBody.fromHandle !== 'string' || !reqBody.fromHandle
+        || !isHex64Peer(reqBody.fromPubkey) || typeof reqBody.fromCharacterName !== 'string' || !reqBody.fromCharacterName) {
+        return corsJson({ error: 'invalid_identity' }, 400);
+      }
+      if (!isFreshPeerTimestamp(reqBody.timestamp) || typeof reqBody.nonce !== 'string') {
+        return corsJson({ error: 'stale_or_missing_timestamp' }, 400);
+      }
+      if (typeof reqBody.signature !== 'string' || !reqBody.signature) {
+        return corsJson({ error: 'missing_signature' }, 401);
+      }
+      if (reqBody.invite !== undefined) {
+        if (typeof reqBody.invite !== 'string' || !reqBody.invite) {
+          return corsJson({ error: 'invalid_invite' }, 400);
+        }
+        var invStored = null;
+        try {
+          invStored = await env.MEMORY.get('friends/invites/' + reqBody.invite);
+        } catch (e) {}
+        if (!invStored) {
+          return corsJson({ error: 'invalid_invite' }, 400);
+        }
+      }
+      if (!await consumePeerNonce(env, reqBody.nonce)) {
+        return corsJson({ error: 'replayed_nonce' }, 400);
+      }
+      var reqSigOk = await verifyPeerSignature(
+        reqBody.fromPubkey, reqBody.signature,
+        reqBody.timestamp + ':' + reqBody.nonce + ':' + reqIntro + ':' + reqBody.fromPubkey
+      );
+      if (!reqSigOk) {
+        return corsJson({ error: 'invalid_signature' }, 401);
+      }
+      var reqId = 'cf_req_' + Date.now().toString(36);
       var record = {
         id: reqId,
-        fromHandle: (reqBody && reqBody.fromHandle) || '',
-        fromPubkey: (reqBody && reqBody.fromPubkey) || '',
-        fromCharacterName: (reqBody && reqBody.fromCharacterName) || 'AIRI',
-        introMessage: (reqBody && reqBody.introMessage) || '',
-        timestamp: (reqBody && reqBody.timestamp) || Date.now(),
-        nonce: (reqBody && reqBody.nonce) || reqId,
+        fromHandle: reqBody.fromHandle,
+        fromPubkey: reqBody.fromPubkey,
+        fromCharacterName: reqBody.fromCharacterName,
+        introMessage: reqIntro,
+        timestamp: reqBody.timestamp,
+        nonce: reqBody.nonce,
         status: 'pending'
       };
 
-      if (env && env.EMBASSY) {
+      if (env.EMBASSY) {
         try {
           var embassyStub = env.EMBASSY.get(env.EMBASSY.idFromName('embassy'));
           var doRes = await embassyStub.fetch('http://do/internal/friend-request', {
@@ -83,17 +170,27 @@ export const CORS_PROXY_WORKER_SCRIPT = `export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(record)
           });
-          var doData = await doRes.json().catch(function() { return {}; });
+          var doData = {};
+          try {
+            doData = await doRes.json();
+          } catch (e) {}
+          if (!doRes.ok) {
+            var doStatus = doRes.status === 400 ? 400 : 502;
+            var doBody = (doData && doData.error) ? doData : { error: 'embassy_unreachable' };
+            return corsJson(doBody, doStatus);
+          }
           return corsJson({ status: 'pending', id: reqId, pushed: doData.pushed || 0 }, 200);
-        } catch (e) {}
+        } catch (e) {
+          return corsJson({ error: 'embassy_unreachable' }, 502);
+        }
       }
 
-      if (env && env.MEMORY) {
-        try {
-          await env.MEMORY.put('friends/requests/inbound/' + reqId, JSON.stringify(record));
-        } catch (e) {}
+      try {
+        await env.MEMORY.put('friends/requests/inbound/' + reqId, JSON.stringify(record));
+      } catch (e) {
+        return corsJson({ error: 'kv_write_failed' }, 503);
       }
-      return corsJson({ ok: true, id: reqId, status: 'pending' }, 200);
+      return corsJson({ status: 'pending', id: reqId }, 200);
     }
 
     if (url.pathname === '/api/friends/accept') {
@@ -159,18 +256,92 @@ export const CORS_PROXY_WORKER_SCRIPT = `export default {
     }
 
     if (url.pathname === '/api/friends/invite') {
+      if (!env || !env.MEMORY) {
+        return corsJson({ error: 'kv_not_configured' }, 503);
+      }
+      var inviteOwner = request.headers.get('x-owner-id');
+      if (!env.OWNER_ID || !inviteOwner || inviteOwner !== env.OWNER_ID) {
+        return corsJson({ error: 'forbidden' }, 403);
+      }
       var invCode = 'cf_inv_' + Date.now().toString(36);
-      if (env && env.MEMORY) {
-        try {
-          await env.MEMORY.put('friends/invites/' + invCode, JSON.stringify({ createdAt: Date.now() }), { expirationTtl: 86400 });
-        } catch (e) {}
+      try {
+        await env.MEMORY.put('friends/invites/' + invCode, JSON.stringify({ createdAt: Date.now() }), { expirationTtl: 86400 });
+      } catch (e) {
+        return corsJson({ error: 'kv_write_failed' }, 503);
       }
       var origin = new URL(request.url).origin;
       return corsJson({ invite: invCode, uri: 'airi://pair?worker=' + origin + '&invite=' + invCode, expiresAt: Date.now() + 86400000 }, 200);
     }
 
     if (url.pathname === '/api/friends/inbox') {
-      return corsJson({ ok: true, delivered: true }, 200);
+      if (!env || !env.MEMORY) {
+        return corsJson({ error: 'kv_not_configured' }, 503);
+      }
+      var senderPubkey = request.headers.get('x-sender-pubkey');
+      var inboxSig = request.headers.get('x-signature-ed25519');
+      var inboxTsHeader = request.headers.get('x-signature-timestamp');
+      var inboxNonce = request.headers.get('x-signature-nonce');
+      var inboxTs = inboxTsHeader ? Number(inboxTsHeader) : NaN;
+      if (!isHex64Peer(senderPubkey) || !inboxSig || !isFreshPeerTimestamp(inboxTs) || !inboxNonce) {
+        return corsJson({ error: 'unauthorized' }, 401);
+      }
+      var inboxBody = await request.text();
+      if (!await consumePeerNonce(env, inboxNonce)) {
+        return corsJson({ error: 'replayed_nonce' }, 400);
+      }
+      var inboxSigOk = await verifyPeerSignature(senderPubkey, inboxSig, inboxTs + ':' + inboxNonce + ':' + inboxBody);
+      if (!inboxSigOk) {
+        return corsJson({ error: 'invalid_signature' }, 401);
+      }
+      if (env.EMBASSY) {
+        var inboxTopic = 'unknown';
+        try {
+          var inboxParsed = JSON.parse(inboxBody);
+          if (inboxParsed && typeof inboxParsed.topic === 'string' && inboxParsed.topic) {
+            inboxTopic = inboxParsed.topic;
+          }
+        } catch (e) {}
+        try {
+          var inboxStub = env.EMBASSY.get(env.EMBASSY.idFromName('embassy'));
+          var inboxRes = await inboxStub.fetch('http://do/internal/inbox', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              senderPubkey: senderPubkey,
+              topic: inboxTopic,
+              payloadJson: inboxBody,
+              timestamp: inboxTs,
+              nonce: inboxNonce
+            })
+          });
+          var inboxData = {};
+          try {
+            inboxData = await inboxRes.json();
+          } catch (e) {}
+          if (!inboxRes.ok) {
+            if (inboxRes.status === 403) {
+              return corsJson({ error: 'quarantined' }, 403);
+            }
+            return corsJson((inboxData && inboxData.error) ? inboxData : { error: 'embassy_unreachable' }, 502);
+          }
+          return corsJson({ queued: true, pushed: inboxData.pushed || 0 }, 200);
+        } catch (e) {
+          return corsJson({ error: 'embassy_unreachable' }, 502);
+        }
+      }
+      var inboxAccepted = null;
+      try {
+        inboxAccepted = await env.MEMORY.get('friends/accepted/' + senderPubkey);
+      } catch (e) {}
+      if (!inboxAccepted) {
+        return corsJson({ error: 'quarantined' }, 403);
+      }
+      try {
+        await env.MEMORY.put('friends/inbox/' + senderPubkey + '/' + inboxTs + '_' + inboxNonce, inboxBody);
+      } catch (e) {
+        return corsJson({ error: 'kv_write_failed' }, 503);
+      }
+      return corsJson({ queued: true }, 200);
     }
 
     if (url.pathname === '/cors-proxy' || url.pathname === '/proxy') {
@@ -306,6 +477,42 @@ export class EmbassyDO {
         );
       });
       return Response.json({ trusted: true });
+    }
+
+    if (request.method === 'POST' && url.pathname === '/internal/inbox') {
+      var inTurn = null;
+      try {
+        inTurn = await request.json();
+      } catch (e) {
+        return Response.json({ error: 'invalid_turn' }, { status: 400 });
+      }
+      if (!inTurn || typeof inTurn.senderPubkey !== 'string' || typeof inTurn.topic !== 'string' || typeof inTurn.payloadJson !== 'string') {
+        return Response.json({ error: 'invalid_turn' }, { status: 400 });
+      }
+      var inTrusted = false;
+      await this.state.blockConcurrencyWhile(async () => {
+        this.ensureSchema();
+        var inRows = this.state.storage.sql.exec(
+          'SELECT pubkey FROM trusted_peers WHERE pubkey = ? LIMIT 1', inTurn.senderPubkey
+        ).toArray();
+        inTrusted = inRows.length > 0;
+        if (!inTrusted) return;
+        this.state.storage.sql.exec(
+          'INSERT OR IGNORE INTO nap_turns (id, sender_pubkey, topic, payload_json, timestamp) VALUES (?, ?, ?, ?, ?)',
+          inTurn.timestamp + '_' + (inTurn.nonce || 'x'), inTurn.senderPubkey, inTurn.topic, inTurn.payloadJson, Number(inTurn.timestamp)
+        );
+      });
+      if (!inTrusted) {
+        return Response.json({ error: 'quarantined' }, { status: 403 });
+      }
+      var inPushed = this.pushToSockets({
+        type: 'nap_turn',
+        turn: {
+          id: '' + inTurn.timestamp, senderPubkey: inTurn.senderPubkey, topic: inTurn.topic,
+          payloadJson: inTurn.payloadJson, timestamp: Number(inTurn.timestamp)
+        }
+      });
+      return Response.json({ queued: true, pushed: inPushed });
     }
 
     if (request.method === 'GET' && url.pathname === '/internal/pending') {

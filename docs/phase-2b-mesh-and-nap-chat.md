@@ -419,6 +419,21 @@ Upon dialogue completion:
 - `trustState`: `pending` rows show `Awaiting approval` and remain quarantined from candidate selection (`isNapChatEligible === false`); `restricted/blocked` hidden from nap candidate pool and show Revoke state.
 - Fail-closed nap gate (no silent TTS, `NO_REPLY` never rendered, `firedForIdleSession` single recap) applies to region F.
 
+### 9.4 Onboarding: conditionally-mandatory Friends step (Settled 2026-10-20)
+
+The Friends surface doubles as a first-run onboarding step (Guided Setup only — never Quick Start, which must stay a 60-second path). Inclusion is a qualified rule, not a debate about visibility:
+
+```text
+showFriendsStep = draft.architecture === 'cloud' && draft.experienceArchetype !== 'quiet'
+```
+
+- **Quiet Observer is exempt regardless of sign-in.** No social surface, no exceptions.
+- **Cloudflare signed-in + any other archetype: core step, must-visit.** The step is unconditional in `activeSteps` (no `moduleKey`, so no experience-page toggle can exempt anyone else). "Mandatory" means exposure only: Next is always available, nothing on the page may block progress.
+- **Deploy stays an explicit opt-in click.** The beacon's `[ Deploy Companion Embassy ]` is a deliberate user action on the page; seeing the page never deploys anything by itself.
+- **Mechanism fits existing rules.** Both gating inputs already live in the V3 draft (`state.architecture: 'local' | 'cloud'` from triage, `state.experienceArchetype` from the experience step), and `activeSteps` is reactive, so flipping triage or archetype mid-flow adds/removes the page without special handling. The roster is global-profile scope and the request flow is inherently live, so the step writes nothing to the onboarding draft and participates in nothing in the finale's atomic card commit.
+- **Out of scope, stated explicitly.** Users who sign into Cloudflare *after* onboarding never see this page; the settings surface is their permanent home. Do not file that as a bug.
+- **Default friend (Myspace Tom pattern).** The onboarding variant ships with the team ambassador handle prefilled as a one-tap "Add Tom" action — a sanctioned first contact that doubles as the live end-to-end exercise of lookup → send → pending on every fresh install. The ambassador card exposes only the public persona (name, avatar, tagline, pubkey); no tavern contents ever leak through this path.
+
 ## 10. Authoritative Reference Documents
 - [RFC #28: Modular TransportAdapter Proposal](https://github.com/dasilva333/airi/issues/28)
 - [Violet's User Presence Design Record (`docs/design-user-presence.md`)](https://github.com/7n1m4/airi/blob/main/docs/design-user-presence.md)
