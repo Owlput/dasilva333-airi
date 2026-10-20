@@ -36,5 +36,23 @@
   },
   "vueCompilerOptions": {
     "skipTemplateCodegen": false
-  }
+  },
+  "include": [
+    "*.ts",
+    "*.d.ts",
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.vue"
+  ],
+  // NOTICE: root tsconfig.json excludes bare "apps"/"apps/**"; in a child config those entries
+  // resolve against this child's own directory, i.e. <root>/apps, which is an ancestor of this
+  // workspace, so the inherited exclude emptied the entire default (**/*) include set (TS18003).
+  // A child-level exclude fully REPLACES the inherited one, so restate what matters locally.
+  // ".cache" holds a vendored CubismSdkForWeb checkout and must stay out of the program.
+  "exclude": [
+    "dist",
+    "node_modules",
+    ".cache",
+    ".turbo"
+  ]
 }

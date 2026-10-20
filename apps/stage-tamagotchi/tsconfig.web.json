@@ -52,6 +52,7 @@
     "skipLibCheck": true
   },
   "include": [
+    "src/env.d.ts",
     "src/renderer/**/*.ts",
     "src/renderer/**/*.d.ts",
     "src/renderer/**/*.tsx",
@@ -61,6 +62,10 @@
     "src/shared/**/*.d.ts",
     "src/shared/**/*.tsx",
     "src/shared/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ],
   "vueCompilerOptions": {
     "plugins": [
