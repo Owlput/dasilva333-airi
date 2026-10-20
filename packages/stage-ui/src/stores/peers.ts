@@ -131,6 +131,20 @@ export const usePeersStore = defineStore('peers', () => {
     await persist()
   }
 
+  async function renameLocalDevice(newAlias: string) {
+    if (!isInitialized.value)
+      await init()
+    const trimmed = newAlias.trim()
+    if (!trimmed)
+      return
+    const machineId = getLocalMachineId()
+    const local = roster.value.find(p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === machineId) as SameAccountDevice | undefined
+    if (local) {
+      local.alias = trimmed
+      await persist()
+    }
+  }
+
   function toVaultDeviceMapForSync(): VaultDeviceMap {
     return toVaultDeviceMap(roster.value.filter(p => p.relationship === 'same-account') as SameAccountDevice[])
   }
@@ -154,6 +168,7 @@ export const usePeersStore = defineStore('peers', () => {
     init,
     upsertPeer,
     removePeer,
+    renameLocalDevice,
     toVaultDeviceMapForSync,
     mergeVaultDevices,
   }

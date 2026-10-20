@@ -129,6 +129,8 @@ const showConversationModal = ref(false)
 const showPermissionsDrawer = ref(false)
 const showQrModal = ref(false)
 const showRequestsDrawer = ref(false)
+const showRenameModal = ref(false)
+const renameInput = ref('')
 const selectedFriend = ref<ExternalFriend | null>(null)
 
 export interface InboundRequestItem {
@@ -379,6 +381,23 @@ async function handleRemoveDevice(device: any) {
     void cloudflareStore.syncVaultDevices().catch(() => {})
   }
   toast.success(`Removed ${device.alias} from devices.`)
+}
+
+function openRenameModal(device: any) {
+  renameInput.value = device.alias || ''
+  showRenameModal.value = true
+}
+
+async function handleSaveRename() {
+  const newName = renameInput.value.trim()
+  if (!newName)
+    return
+  await peersStore.renameLocalDevice(newName)
+  showRenameModal.value = false
+  if (cloudflareStore.isAuthenticated) {
+    void cloudflareStore.syncVaultDevices().catch(() => {})
+  }
+  toast.success(`Renamed device to "${newName}"`)
 }
 
 async function handleRemoveFriend(friend: ExternalFriend) {
@@ -859,6 +878,20 @@ const surfaceCardClass = computed(() => [
                     align="end"
                   >
                     <DropdownMenuItem
+                      v-if="isCurrentDevice(device)"
+                      :class="[
+                        'relative flex cursor-pointer select-none items-center gap-2',
+                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                        'text-neutral-700 dark:text-neutral-200',
+                        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      ]"
+                      @click="openRenameModal(device)"
+                    >
+                      <div class="i-solar:pen-bold text-xs" />
+                      <span>Rename device</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
                       :class="[
                         'relative flex cursor-pointer select-none items-center gap-2',
                         'rounded-lg px-2.5 py-1.5 text-xs outline-none',
@@ -1283,6 +1316,54 @@ const surfaceCardClass = computed(() => [
           :class="['mt-5']"
           @click="showQrModal = false"
         />
+      </div>
+    </div>
+
+    <!-- Rename Device Modal -->
+    <div
+      v-if="showRenameModal"
+      :class="['fixed', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'bg-black/70', 'p-4', 'backdrop-blur-sm']"
+      @click.self="showRenameModal = false"
+    >
+      <div :class="['w-full', 'max-w-sm', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-white', 'dark:bg-neutral-900', 'p-5', 'shadow-2xl']">
+        <div :class="['flex', 'items-center', 'gap-2.5']">
+          <div :class="['flex', 'size-9', 'items-center', 'justify-center', 'rounded-xl', 'bg-primary-500/10', 'text-primary-500', 'dark:text-primary-400']">
+            <div class="i-solar:pen-bold text-lg" />
+          </div>
+          <div>
+            <h3 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              Rename this device
+            </h3>
+            <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+              Visible to other companions on your account.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <FieldInput
+            v-model="renameInput"
+            placeholder="e.g. Studio Mac, Work Laptop"
+            maxlength="40"
+            @keydown.enter="handleSaveRename"
+          />
+        </div>
+
+        <div :class="['mt-4', 'flex', 'items-center', 'justify-end', 'gap-2']">
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Cancel"
+            @click="showRenameModal = false"
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            label="Save"
+            :disabled="!renameInput.trim()"
+            @click="handleSaveRename"
+          />
+        </div>
       </div>
     </div>
   </div>
