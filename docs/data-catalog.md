@@ -1061,6 +1061,7 @@ interface VoiceProfile {
 | `chat/messages/v2` | (chat history) | — | `stores/chat/constants.ts` |
 | `chat/active-session` | `string` | — | `stores/chat/constants.ts` |
 | `airi:chat:grounding-preview-expanded` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |
+| `airi:chat:preflight-cache` | `PreFlightGroundingCacheEntry` | — | `packages/stage-ui/.../use-preflight-grounding.ts` |
 | `airi:chat:left-panel-open` | `boolean` | — | `apps/stage-tamagotchi/.../pages/chat.vue` |
 | `airi:chat:right-panel-open` | `boolean` | — | `apps/stage-tamagotchi/.../pages/chat.vue` |
 | `airi:chat:media-collapsed` | `boolean` | — | `apps/stage-tamagotchi/.../InteractiveArea.vue` |

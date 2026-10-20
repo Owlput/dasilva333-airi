@@ -10,6 +10,44 @@ import { useChatSessionStore } from '../stores/chat/session-store'
 import { useTextJournalStore } from '../stores/memory-text-journal'
 import { useAiriCardStore } from '../stores/modules/airi-card'
 
+export const PREFLIGHT_GROUNDING_CACHE_KEY = 'airi:chat:preflight-cache'
+
+export interface PreFlightGroundingCacheEntry {
+  charId?: string
+  sessionId?: string
+  turnIndex: number
+  query: string
+  memories: PreFlightMemoryItem[]
+  kgFacts: PreFlightKgFact[]
+  rawResults: any[]
+  timestamp: number
+}
+
+function readPreFlightCache(): PreFlightGroundingCacheEntry | null {
+  try {
+    if (typeof localStorage === 'undefined')
+      return null
+    const raw = localStorage.getItem(PREFLIGHT_GROUNDING_CACHE_KEY)
+    if (!raw)
+      return null
+    return JSON.parse(raw) as PreFlightGroundingCacheEntry
+  }
+  catch {
+    return null
+  }
+}
+
+function writePreFlightCache(entry: PreFlightGroundingCacheEntry) {
+  try {
+    if (typeof localStorage === 'undefined')
+      return
+    localStorage.setItem(PREFLIGHT_GROUNDING_CACHE_KEY, JSON.stringify(entry))
+  }
+  catch {
+    // Ignore quota or disabled storage
+  }
+}
+
 export interface PreFlightMemoryItem {
   id: string
   title: string
@@ -65,7 +103,37 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
     )
   })
 
-  async function executeSearch(query: string) {
+  function tryRestoreFromCache(val: string): boolean {
+    const trimmed = val.trim()
+    if (!isMemoryEnabled.value || trimmed.length <= 3)
+      return false
+
+    const charId = unref(activeCardId) ?? unref(airiCardStore.activeCardId)
+    const sessionId = chatSessionStore.activeSessionId
+    const sessionMessages = (sessionId && chatSessionStore.sessionMessages[sessionId]) || []
+    const turnIndex = sessionMessages.length
+    const cached = readPreFlightCache()
+
+    if (
+      cached
+      && cached.charId === charId
+      && cached.sessionId === sessionId
+      && cached.turnIndex === turnIndex
+      && cached.query.toLowerCase() === trimmed.toLowerCase()
+    ) {
+      memories.value = cached.memories
+      kgFacts.value = cached.kgFacts
+      rawResults.value = cached.rawResults
+      isSearching.value = false
+      return true
+    }
+    return false
+  }
+
+  // Immediate restore check on initialization (e.g. after HMR or draft restore)
+  tryRestoreFromCache(messageInput.value)
+
+  async function executeSearch(query: string, options?: { force?: boolean }) {
     const trimmed = query.trim()
     activeAbortController?.abort()
     activeAbortController = null
@@ -77,14 +145,35 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
       return
     }
 
+    const charId = unref(activeCardId) ?? unref(airiCardStore.activeCardId)
+    const sessionId = chatSessionStore.activeSessionId
+    const sessionMessages = (sessionId && chatSessionStore.sessionMessages[sessionId]) || []
+    const turnIndex = sessionMessages.length
+
+    // Check ad-hoc cache to avoid duplicate search on HMR / remount
+    if (!options?.force) {
+      const cached = readPreFlightCache()
+      if (
+        cached
+        && cached.charId === charId
+        && cached.sessionId === sessionId
+        && cached.turnIndex === turnIndex
+        && cached.query.toLowerCase() === trimmed.toLowerCase()
+      ) {
+        memories.value = cached.memories
+        kgFacts.value = cached.kgFacts
+        rawResults.value = cached.rawResults
+        isSearching.value = false
+        return
+      }
+    }
+
     const controller = new AbortController()
     activeAbortController = controller
 
-    const charId = unref(activeCardId) ?? unref(airiCardStore.activeCardId)
     isSearching.value = true
     try {
       const lastGrounded = chatSessionStore.getLastGroundedTurn()
-      const sessionMessages = chatSessionStore.sessionMessages[chatSessionStore.activeSessionId] || []
       const lastMsg = sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1] : undefined
       const previousTurnText = typeof lastMsg?.content === 'string'
         ? lastMsg.content
@@ -160,6 +249,17 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
       rawResults.value = stagedItems
       memories.value = nextMemories
       kgFacts.value = nextKgFacts
+
+      writePreFlightCache({
+        charId,
+        sessionId,
+        turnIndex,
+        query: trimmed,
+        memories: nextMemories,
+        kgFacts: nextKgFacts,
+        rawResults: stagedItems,
+        timestamp: Date.now(),
+      })
     }
     catch (err) {
       if ((err as Error)?.name === 'AbortError')
@@ -175,6 +275,14 @@ export function usePreFlightGrounding(options: UsePreFlightGroundingOptions) {
       }
     }
   }
+
+  watch(
+    messageInput,
+    (val) => {
+      // If the incoming text matches what was already grounded in the cache, restore immediately
+      tryRestoreFromCache(val)
+    },
+  )
 
   watchDebounced(
     messageInput,

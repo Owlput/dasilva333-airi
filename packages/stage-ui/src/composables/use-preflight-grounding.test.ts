@@ -5,6 +5,10 @@ import { ref } from 'vue'
 
 import { usePreFlightGrounding } from './use-preflight-grounding'
 
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({ t: (k: string) => k }),
+}))
+
 const mockSearchEntries = vi.fn()
 
 vi.mock('../stores/memory-text-journal', () => ({
@@ -34,6 +38,9 @@ describe('usePreFlightGrounding', () => {
   beforeEach(() => {
     setActivePinia(createTestingPinia({ createSpy: vi.fn, stubActions: false }))
     mockSearchEntries.mockReset()
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear()
+    }
     activeCardMock.value = {
       name: 'Ren',
       extensions: {
@@ -131,5 +138,92 @@ describe('usePreFlightGrounding', () => {
     expect(memories.value).toHaveLength(0)
     expect(kgFacts.value).toHaveLength(0)
     expect(mockSearchEntries).not.toHaveBeenCalled()
+  })
+
+  it('caches search results in localStorage and hits cache on repeated search with same query and turn', async () => {
+    mockSearchEntries.mockResolvedValueOnce([
+      {
+        id: 'journal-entry-1',
+        title: 'Spore Cultivation',
+        kind: 'journal',
+        content: 'Ren harvested glowing moss spores today.',
+        score: 0.82,
+      },
+    ])
+
+    const messageInput = ref('tell me about spore cultivation')
+    const { memories, search } = usePreFlightGrounding({
+      messageInput,
+      activeCardId: activeCardIdMock,
+    })
+
+    // First search: executes backend search
+    await search('tell me about spore cultivation')
+    expect(memories.value).toHaveLength(1)
+    expect(mockSearchEntries).toHaveBeenCalledTimes(1)
+
+    // Second search with same query & turn: hits localStorage cache, skips backend search
+    await search('tell me about spore cultivation')
+    expect(memories.value).toHaveLength(1)
+    expect(mockSearchEntries).toHaveBeenCalledTimes(1) // Still 1!
+  })
+
+  it('restores instantly from cache on mount/initialization when query matches', async () => {
+    // Populate cache manually or via prior search
+    mockSearchEntries.mockResolvedValueOnce([
+      {
+        id: 'journal-entry-1',
+        title: 'Spore Cultivation',
+        kind: 'journal',
+        content: 'Ren harvested glowing moss spores today.',
+        score: 0.82,
+      },
+    ])
+
+    const query = 'tell me about spore cultivation'
+    const input1 = ref(query)
+    const instance1 = usePreFlightGrounding({
+      messageInput: input1,
+      activeCardId: activeCardIdMock,
+    })
+    await instance1.search(query)
+    expect(mockSearchEntries).toHaveBeenCalledTimes(1)
+
+    // Simulate HMR / remount where messageInput has the draft query
+    const input2 = ref(query)
+    const instance2 = usePreFlightGrounding({
+      messageInput: input2,
+      activeCardId: activeCardIdMock,
+    })
+
+    // Immediate check on initialization should have restored memories without even calling search()!
+    expect(instance2.memories.value).toHaveLength(1)
+    expect(instance2.memories.value[0].title).toBe('Spore Cultivation')
+    expect(mockSearchEntries).toHaveBeenCalledTimes(1) // Still 1!
+  })
+
+  it('bypasses cache when force option is true', async () => {
+    mockSearchEntries.mockResolvedValue([
+      {
+        id: 'journal-entry-1',
+        title: 'Spore Cultivation',
+        kind: 'journal',
+        content: 'Ren harvested glowing moss spores today.',
+        score: 0.82,
+      },
+    ])
+
+    const messageInput = ref('tell me about spore cultivation')
+    const { search } = usePreFlightGrounding({
+      messageInput,
+      activeCardId: activeCardIdMock,
+    })
+
+    await search('tell me about spore cultivation')
+    expect(mockSearchEntries).toHaveBeenCalledTimes(1)
+
+    // Force refresh: bypasses cache and calls searchEntries again
+    await search('tell me about spore cultivation', { force: true })
+    expect(mockSearchEntries).toHaveBeenCalledTimes(2)
   })
 })
