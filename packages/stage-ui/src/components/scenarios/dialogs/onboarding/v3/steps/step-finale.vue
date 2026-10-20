@@ -116,6 +116,11 @@ const activeModelId = computed(() => {
   return draft.state.vesselDisplayModelId || 'preset-live2d-2'
 })
 
+// Quiet Observer (or blank vessel id) means text-only: omit vessel badges/labels entirely.
+const hasVessel = computed(() => {
+  return draft.state.experienceArchetype !== 'quiet' && (draft.state.vesselDisplayModelId ?? '') !== ''
+})
+
 const currentModel = computed(() => {
   const targetId = activeModelId.value
   return displayModelsStore.displayModels.find(m =>
@@ -459,15 +464,17 @@ const honestyMatrix = computed<HonestyItem[]>(() => {
     })
   }
 
-  // 4. Avatar Stage (Vessel)
-  items.push({
-    id: 'vessel',
-    title: t('onboarding.steps.finale.pillars.avatar'),
-    status: t('onboarding.steps.finale.status.ready'),
-    subtitle: modelFormatLabel.value,
-    icon: 'i-solar:people-nearby-bold-duotone',
-    theme: 'green',
-  })
+  // 4. Avatar Stage (Vessel) — omitted for Quiet Observer / text-only
+  if (hasVessel.value) {
+    items.push({
+      id: 'vessel',
+      title: t('onboarding.steps.finale.pillars.avatar'),
+      status: t('onboarding.steps.finale.status.ready'),
+      subtitle: modelFormatLabel.value,
+      icon: 'i-solar:people-nearby-bold-duotone',
+      theme: 'green',
+    })
+  }
 
   // 5. Memory Hierarchy
   if (d.modules.memory) {
@@ -588,8 +595,8 @@ async function handleLaunch() {
       <div :class="['lg:col-span-5 flex flex-col gap-3 min-h-0 h-full']">
         <!-- Avatar Viewport Frame -->
         <div :class="['flex-1 min-h-[260px] lg:min-h-0 relative rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-900/90 overflow-hidden shadow-inner flex flex-col']">
-          <!-- Top Left: Model Format Badge -->
-          <div :class="['absolute top-3 left-3 z-10 px-2.5 py-1 rounded-lg bg-neutral-900/80 backdrop-blur-md border border-neutral-700/60 text-[11px] font-medium text-neutral-200 flex items-center gap-1.5 shadow-md']">
+          <!-- Top Left: Model Format Badge (hidden for Quiet Observer / text-only) -->
+          <div v-if="hasVessel" :class="['absolute top-3 left-3 z-10 px-2.5 py-1 rounded-lg bg-neutral-900/80 backdrop-blur-md border border-neutral-700/60 text-[11px] font-medium text-neutral-200 flex items-center gap-1.5 shadow-md']">
             <div
               :class="[
                 modelType === 'vrm' || modelType === 'mmd' ? 'i-solar:box-bold text-sky-400' : 'i-solar:layers-minimalistic-bold text-emerald-400',
@@ -636,6 +643,15 @@ async function handleLaunch() {
                 :alt="t('onboarding.steps.finale.avatarPreview')"
                 :class="['h-44 w-44 object-contain rounded-2xl shadow-md border border-neutral-700/50 bg-black/40']"
               >
+              <div
+                v-else-if="!hasVessel"
+                :class="['h-44 w-44 rounded-2xl border border-neutral-700/50 bg-neutral-800/60 flex flex-col items-center justify-center gap-2 p-4 text-center shadow-md']"
+              >
+                <div :class="['i-solar:chat-round-line-bold text-slate-300 w-12 h-12']" />
+                <span class="max-w-full text-xs text-neutral-300 font-medium">
+                  {{ t('onboarding.steps.finale.textOnlyNoAvatar', 'Text Only — No Avatar') }}
+                </span>
+              </div>
               <div
                 v-else
                 :class="['h-44 w-44 rounded-2xl border border-neutral-700/50 bg-neutral-800/60 flex flex-col items-center justify-center gap-2 p-4 text-center shadow-md']"
@@ -748,12 +764,17 @@ async function handleLaunch() {
                 <span class="text-neutral-400">{{ t('onboarding.steps.finale.soul') }}</span>
                 <strong>{{ resolvedPersona.name }}</strong>
               </span>
-              <span class="text-neutral-300 dark:text-neutral-700">•</span>
-              <span :class="['flex items-center gap-1 font-mono text-[11px]']">
-                <span class="text-neutral-400">{{ t('onboarding.steps.finale.vessel') }}</span>
-                <strong>{{ modelType.toUpperCase() }}</strong>
-              </span>
-              <span class="text-neutral-300 dark:text-neutral-700">•</span>
+              <template v-if="hasVessel">
+                <span class="text-neutral-300 dark:text-neutral-700">•</span>
+                <span :class="['flex items-center gap-1 font-mono text-[11px]']">
+                  <span class="text-neutral-400">{{ t('onboarding.steps.finale.vessel') }}</span>
+                  <strong>{{ modelType.toUpperCase() }}</strong>
+                </span>
+                <span class="text-neutral-300 dark:text-neutral-700">•</span>
+              </template>
+              <template v-else>
+                <span class="text-neutral-300 dark:text-neutral-700">•</span>
+              </template>
               <span :class="['flex items-center gap-1 font-mono text-[11px]']">
                 <span class="text-neutral-400">{{ t('onboarding.steps.finale.brain') }}</span>
                 <strong>{{ draft.state.llmModel || 'gpt-4o' }}</strong>

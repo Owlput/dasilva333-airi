@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -11,6 +12,10 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const showSkipConfirmation = ref(false)
+
+// Desktop (Electron system tray) vs web stage (cog icon in settings) have
+// different re-entry paths back into the Companion Wizard.
+const isDesktop = computed(() => isStageTamagotchi())
 
 const featurePills = computed(() => [
   {
@@ -182,7 +187,7 @@ function confirmCloseToTray() {
     >
       <div :class="['relative max-w-sm w-full rounded-2xl border border-neutral-200 dark:border-white/15 bg-white dark:bg-[#10101c] p-6 text-center shadow-2xl space-y-4']">
         <div :class="['mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-500/30 bg-primary-950/20 text-primary-400 shadow-inner']">
-          <div :class="['i-solar:tray-bold-duotone h-8 w-8']" />
+          <div :class="[isDesktop ? 'i-solar:tray-bold-duotone' : 'i-solar:settings-bold-duotone', 'h-8 w-8']" />
         </div>
 
         <div>
@@ -190,12 +195,25 @@ function confirmCloseToTray() {
             {{ t('onboarding.steps.welcome.dialog.savedTitle') }}
           </h3>
           <p :class="['mt-2 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed']">
-            {{ t('onboarding.steps.welcome.dialog.savedDescription') }}
+            {{ t('onboarding.steps.welcome.dialog.comebackLead', 'If you want to come back to this later, just') }}
+            <template v-if="isDesktop">
+              {{ t('onboarding.steps.welcome.dialog.desktopInstruction', 'right-click the AIRI system tray icon and click Companion Wizard.') }}
+            </template>
+            <template v-else>
+              {{ t('onboarding.steps.welcome.dialog.webInstruction', 'tap the cog icon in the top-right to open Settings, then go Character Wizard → Companion Wizard.') }}
+            </template>
           </p>
-          <div :class="['mt-3 rounded-xl border border-primary-500/30 bg-primary-500/10 dark:bg-primary-950/30 px-3.5 py-2 text-xs font-semibold text-primary-600 dark:text-primary-300 flex items-center justify-center gap-2']">
+          <div v-if="isDesktop" :class="['mt-3 rounded-xl border border-primary-500/30 bg-primary-500/10 dark:bg-primary-950/30 px-3.5 py-2 text-xs font-semibold text-primary-600 dark:text-primary-300 flex items-center justify-center gap-2']">
             <div :class="['i-solar:cursor-square-bold-duotone h-4 w-4']" />
             <span>{{ t('onboarding.steps.welcome.dialog.trayItem') }}</span>
           </div>
+          <div v-else :class="['mt-3 rounded-xl border border-primary-500/30 bg-primary-500/10 dark:bg-primary-950/30 px-3.5 py-2 text-xs font-semibold text-primary-600 dark:text-primary-300 flex items-center justify-center gap-2']">
+            <div :class="['i-solar:settings-bold-duotone h-4 w-4']" />
+            <span>{{ t('onboarding.steps.welcome.dialog.webSettingsPath', 'Settings → Character Wizard → Companion Wizard') }}</span>
+          </div>
+          <p v-if="isDesktop" :class="['mt-2 text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed']">
+            {{ t('onboarding.steps.welcome.dialog.desktopAlternative', 'Or open Settings → Character Wizard → Companion Wizard.') }}
+          </p>
         </div>
 
         <div :class="['flex items-center gap-3 pt-2']">
@@ -211,7 +229,7 @@ function confirmCloseToTray() {
             :class="['flex-1 rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500 transition-colors shadow-md shadow-primary-600/30 cursor-pointer']"
             @click="confirmCloseToTray"
           >
-            {{ t('onboarding.steps.welcome.dialog.closeToTray') }}
+            {{ isDesktop ? t('onboarding.steps.welcome.dialog.closeToTray') : t('onboarding.steps.welcome.dialog.close', 'Close') }}
           </button>
         </div>
       </div>

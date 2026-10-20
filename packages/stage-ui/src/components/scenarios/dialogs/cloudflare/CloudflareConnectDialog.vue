@@ -40,6 +40,11 @@ const authMode = ref<'oauth' | 'token'>(isElectron ? 'oauth' : 'token')
 const apiTokenInput = ref('')
 const isValidatingToken = ref(false)
 
+// Manual callback fallback (web popup -> localhost:8976 pattern, mirrors step-triage.vue)
+const isManualCodeMode = ref(false)
+const manualCodeInput = ref('')
+const isExchangingCode = ref(false)
+
 // Subdomain
 const subdomainInput = ref('')
 const isClaimingSubdomain = ref(false)
@@ -69,9 +74,12 @@ watch(showDialog, async (open) => {
 })
 
 async function handleOAuthLogin() {
+  isManualCodeMode.value = true
   try {
     const success = await cloudflareStore.authenticateWithCloudflare()
     if (success) {
+      isManualCodeMode.value = false
+      manualCodeInput.value = ''
       toast.success(t('settings.cloudflare.connect.oauth_success', 'Signed in with Cloudflare!'))
       currentStep.value = 2
       subdomainInput.value = cfSubdomain.value || ''
@@ -80,6 +88,53 @@ async function handleOAuthLogin() {
   }
   catch (err: any) {
     toast.error(err?.message || 'OAuth authentication failed')
+  }
+}
+
+function handleCancelOAuth() {
+  cloudflareStore.isAuthenticating = false
+  isManualCodeMode.value = false
+  manualCodeInput.value = ''
+}
+
+async function handlePasteFromClipboard() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      const text = await navigator.clipboard.readText()
+      if (text && text.trim()) {
+        manualCodeInput.value = text.trim()
+        toast.info('Pasted URL from clipboard!')
+      }
+    }
+  }
+  catch {
+    // Clipboard permission denied or not supported
+  }
+}
+
+async function handleManualCodeSubmit() {
+  const clean = manualCodeInput.value.trim()
+  if (!clean) {
+    toast.error('Please enter the authorization code or redirect URL.')
+    return
+  }
+  isExchangingCode.value = true
+  try {
+    await cloudflareStore.handleManualCallbackInput(clean)
+    if (cloudflareStore.isAuthenticated) {
+      isManualCodeMode.value = false
+      manualCodeInput.value = ''
+      toast.success(t('settings.cloudflare.connect.oauth_success', 'Signed in with Cloudflare!'))
+      currentStep.value = 2
+      subdomainInput.value = cfSubdomain.value || ''
+      await runVaultCheck()
+    }
+  }
+  catch (err: any) {
+    toast.error(err?.message || 'OAuth authentication failed')
+  }
+  finally {
+    isExchangingCode.value = false
   }
 }
 
@@ -288,6 +343,63 @@ function handleFinish() {
                 <div v-else class="i-solar:lock-keyhole-minimalistic-bold text-base" />
                 <span>{{ isAuthenticating ? 'Authorizing with Cloudflare...' : 'Sign In with Cloudflare' }}</span>
               </Button>
+
+              <!-- Manual callback fallback: shown once OAuth starts (mirrors step-triage.vue) -->
+              <div v-if="isManualCodeMode || isAuthenticating" class="w-full border border-neutral-200/80 rounded-xl bg-neutral-50/80 p-2.5 text-left text-xs space-y-2 dark:border-neutral-800 dark:bg-neutral-900/60">
+                <div class="text-[10px] text-neutral-500 leading-tight dark:text-neutral-400">
+                  If your browser redirect shows "localhost refused to connect", copy the browser URL or code and paste here:
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input
+                    v-model="manualCodeInput"
+                    type="text"
+                    placeholder="http://localhost:8976/oauth/callback?code=..."
+                    class="flex-1 border border-neutral-200 rounded-xl bg-white px-3 py-1.5 text-xs text-neutral-900 font-mono outline-none dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-950 dark:text-white"
+                    @keydown.enter="handleManualCodeSubmit"
+                  >
+                  <button
+                    type="button"
+                    class="flex shrink-0 items-center gap-1 border border-neutral-200 rounded-xl px-2.5 py-1.5 text-xs text-neutral-700 font-medium transition-colors dark:border-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                    title="Paste from clipboard"
+                    @click="handlePasteFromClipboard"
+                  >
+                    <div class="i-solar:clipboard-text-bold text-sm text-primary-500" />
+                    <span>Paste</span>
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="isExchangingCode || !manualCodeInput.trim()"
+                    class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-500 px-3.5 py-1.5 text-xs text-white font-semibold transition-colors hover:bg-primary-600 disabled:opacity-50"
+                    @click="handleManualCodeSubmit"
+                  >
+                    <div v-if="isExchangingCode" class="i-solar:restart-circle-bold-duotone animate-spin text-xs" />
+                    <span>{{ isExchangingCode ? 'Verifying...' : 'Submit' }}</span>
+                  </button>
+                </div>
+
+                <div class="text-[11px mt-2 border border-amber-500/25 rounded-xl bg-amber-500/10 p-2.5 text-amber-900 leading-relaxed space-y-1.5 dark:bg-amber-500/15 dark:text-amber-200">
+                  <div class="flex items-center gap-1.5 text-xs text-amber-700 font-bold dark:text-amber-300">
+                    <div class="i-solar:danger-triangle-bold shrink-0 text-sm text-amber-600 dark:text-amber-400" />
+                    <span>Seeing "ERR_CONNECTION_REFUSED" or "Can't reach page"?</span>
+                  </div>
+                  <p class="text-[10.5px text-neutral-700 leading-normal dark:text-neutral-300">
+                    <strong>That is completely normal!</strong> Cloudflare finished authorizing and redirected to <code class="rounded bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-800 font-mono dark:bg-amber-400/15 dark:text-amber-200">localhost:8976</code>.
+                  </p>
+                  <p class="text-[10.5px text-neutral-700 leading-normal dark:text-neutral-300">
+                    👉 In your browser, tap or hold the address bar to <strong>Copy</strong> the entire link, then come back here, tap <strong>Paste</strong>, and click <strong>Submit</strong>.
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-end">
+                  <button
+                    type="button"
+                    class="text-[11px] text-neutral-500 underline hover:text-neutral-800 dark:hover:text-white"
+                    @click="handleCancelOAuth"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- API Token Pane -->

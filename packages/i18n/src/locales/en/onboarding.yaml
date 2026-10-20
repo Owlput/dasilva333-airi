@@ -41,6 +41,13 @@ steps:
       trayItem: Companion Setup & Sign-In (V3)
       continue: Continue Setup
       closeToTray: Close to Tray
+      comebackLead: If you want to come back to this later, just
+      desktopInstruction: right-click the AIRI system tray icon and click Companion Wizard.
+      desktopAlternative: Or open Settings → Character Wizard → Companion Wizard.
+      webInstruction: tap the cog icon in the top-right to open Settings, then go
+        Character Wizard → Companion Wizard.
+      webSettingsPath: Settings → Character Wizard → Companion Wizard
+      close: Close
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
 
