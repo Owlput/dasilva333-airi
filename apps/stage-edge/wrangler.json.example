@@ -13,5 +13,21 @@
       "binding": "MEMORY",
       "id": "YOUR_KV_NAMESPACE_ID"
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EMBASSY",
+        "class_name": "EmbassyDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "EmbassyDO"
+      ]
+    }
   ]
 }

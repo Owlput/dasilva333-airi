@@ -4,8 +4,11 @@
 
 import { verifyDiscordSignature } from './crypto/ed25519'
 import { jsonResponse } from './discord/client'
+import { EMBASSY_DO_ID_NAME } from './embassy/embassy-do'
 import { generateLlmReply } from './inference/llm'
 import { buildSystemInstruction } from './templates/character'
+
+export { EmbassyDO } from './embassy/embassy-do'
 
 export interface Env {
   LLM_API_KEY: string
@@ -19,6 +22,7 @@ export interface Env {
   COMPANION_TAGLINE?: string
   COMPANION_AVATAR_URL?: string
   OWNER_ID?: string
+  EMBASSY?: DurableObjectNamespace
 }
 
 const MAX_INTRO_MESSAGE_LENGTH = 100
@@ -70,6 +74,36 @@ function isTimestampFresh(timestamp: unknown): timestamp is number {
   if (typeof timestamp !== 'number' || !Number.isFinite(timestamp))
     return false
   return Math.abs(Date.now() - timestamp) <= SIGNATURE_DRIFT_SEC * 1000
+}
+
+function getEmbassyStub(env: Env): DurableObjectStub | null {
+  try {
+    if (!env.EMBASSY)
+      return null
+    return env.EMBASSY.get(env.EMBASSY.idFromName(EMBASSY_DO_ID_NAME))
+  }
+  catch {
+    return null
+  }
+}
+
+async function callEmbassy(path: string, stub: DurableObjectStub, body: unknown): Promise<{ ok: boolean, status: number, data: any }> {
+  try {
+    const res = await stub.fetch(`https://embassy${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    let data: any = null
+    try {
+      data = await res.json()
+    }
+    catch {}
+    return { ok: res.ok, status: res.status, data }
+  }
+  catch {
+    return { ok: false, status: 502, data: { error: 'embassy_unreachable' } }
+  }
 }
 
 export interface ExecutionContext {
@@ -286,6 +320,19 @@ export default {
       }
     }
 
+    // Companion embassy: hibernated WebSocket attachment (single DO per user).
+    if (url.pathname === '/ws') {
+      const ownerId = request.headers.get('x-owner-id') ?? url.searchParams.get('owner')
+      if (!env.OWNER_ID || !ownerId || ownerId !== env.OWNER_ID) {
+        return jsonResponse({ error: 'forbidden' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const embassyStub = getEmbassyStub(env)
+      if (!embassyStub) {
+        return jsonResponse({ error: 'embassy_not_configured' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      return embassyStub.fetch(request)
+    }
+
     // Companion embassy: public ambassador card (single-character exposure only).
     if (request.method === 'GET' && url.pathname === '/api/companion/card') {
       return jsonResponse({
@@ -370,15 +417,27 @@ export default {
         return jsonResponse({ error: 'invalid_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
       }
       const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      const record = {
+        id,
+        fromHandle,
+        fromPubkey,
+        fromCharacterName,
+        introMessage,
+        timestamp,
+        nonce,
+      }
+      const embassyStub = getEmbassyStub(env)
+      if (embassyStub) {
+        const routed = await callEmbassy('/internal/friend-request', embassyStub, record)
+        if (!routed.ok) {
+          const status = routed.status === 400 ? 400 : 502
+          return jsonResponse(routed.data ?? { error: 'embassy_unreachable' }, { status, headers: { 'Access-Control-Allow-Origin': '*' } })
+        }
+        return jsonResponse({ status: 'pending', id, pushed: routed.data?.pushed ?? 0 }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
       try {
         await env.MEMORY.put(`friends/requests/inbound/${id}`, JSON.stringify({
-          id,
-          fromHandle,
-          fromPubkey,
-          fromCharacterName,
-          introMessage,
-          timestamp,
-          nonce,
+          ...record,
           status: 'pending',
         }))
       }
@@ -401,6 +460,36 @@ export default {
       if (!isHex64(senderPubkey) || !signature || !isTimestampFresh(timestamp) || !nonce) {
         return jsonResponse({ error: 'unauthorized' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
       }
+      const bodyText = await request.text()
+      if (!await consumeNonce(env, nonce)) {
+        return jsonResponse({ error: 'replayed_nonce' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (!await verifyEd25519Message(senderPubkey, signature, `${timestamp}:${nonce}:${bodyText}`)) {
+        return jsonResponse({ error: 'invalid_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const inboxStub = getEmbassyStub(env)
+      if (inboxStub) {
+        let topic = 'unknown'
+        try {
+          const parsed = JSON.parse(bodyText)
+          if (parsed && typeof parsed.topic === 'string' && parsed.topic)
+            topic = parsed.topic
+        }
+        catch {}
+        const routed = await callEmbassy('/internal/inbox', inboxStub, {
+          senderPubkey,
+          topic,
+          payloadJson: bodyText,
+          timestamp,
+          nonce,
+        })
+        if (!routed.ok) {
+          if (routed.status === 403)
+            return jsonResponse({ error: 'quarantined' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
+          return jsonResponse(routed.data ?? { error: 'embassy_unreachable' }, { status: 502, headers: { 'Access-Control-Allow-Origin': '*' } })
+        }
+        return jsonResponse({ queued: true, pushed: routed.data?.pushed ?? 0 }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
       let accepted: string | null = null
       try {
         accepted = await env.MEMORY.get(`friends/accepted/${senderPubkey}`)
@@ -408,13 +497,6 @@ export default {
       catch {}
       if (!accepted) {
         return jsonResponse({ error: 'quarantined' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
-      }
-      const bodyText = await request.text()
-      if (!await consumeNonce(env, nonce)) {
-        return jsonResponse({ error: 'replayed_nonce' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
-      }
-      if (!await verifyEd25519Message(senderPubkey, signature, `${timestamp}:${nonce}:${bodyText}`)) {
-        return jsonResponse({ error: 'invalid_signature' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
       }
       try {
         await env.MEMORY.put(`friends/inbox/${senderPubkey}/${timestamp}_${nonce}`, bodyText)

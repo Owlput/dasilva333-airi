@@ -10,6 +10,29 @@ function uint8ArrayToHex(arr: Uint8Array): string {
   return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+function createKv() {
+  const map = new Map<string, string>()
+  return {
+    store: map,
+    async get(key: string) {
+      return map.has(key) ? map.get(key)! : null
+    },
+    async put(key: string, value: string) {
+      map.set(key, value)
+    },
+    async delete(key: string) {
+      map.delete(key)
+    },
+  }
+}
+
+async function generateEdKey() {
+  const keyPair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
+  const rawPublicKey = await crypto.subtle.exportKey('raw', keyPair.publicKey)
+  const publicKeyHex = uint8ArrayToHex(new Uint8Array(rawPublicKey))
+  return { keyPair, publicKeyHex }
+}
+
 describe('apps/stage-edge worker index', () => {
   const baseEnv: Env = {
     LLM_API_KEY: 'test-llm-key',
@@ -186,6 +209,148 @@ describe('apps/stage-edge worker index', () => {
     })
   })
 
+  describe('embassy DO routing (KV fallback preserved)', () => {
+    function stubEmbassy(handler: (url: string, init: any) => Promise<Response>) {
+      const fetchFn = vi.fn(handler)
+      const stub = { fetch: fetchFn }
+      const ns = {
+        idFromName: vi.fn(() => ({ toString: () => 'embassy-id' })),
+        get: vi.fn(() => stub),
+      }
+      return { ns, stub, fetchFn }
+    }
+
+    async function signedRequestPayload(keyPair: CryptoKeyPair, publicKeyHex: string, intro: string, nonce: string) {
+      const timestamp = Date.now()
+      const payload = `${timestamp}:${nonce}:${intro}:${publicKeyHex}`
+      const data = new TextEncoder().encode(payload)
+      const sig = await crypto.subtle.sign('Ed25519', keyPair.privateKey, data)
+      return { timestamp, signature: uint8ArrayToHex(new Uint8Array(sig)) }
+    }
+
+    it('routes friend requests through the DO when bound, skipping KV', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const { ns, fetchFn } = stubEmbassy(async () => new Response(JSON.stringify({ stored: true, pushed: 1 }), { status: 200 }))
+      const { timestamp, signature } = await signedRequestPayload(keyPair, publicKeyHex, 'hi there', 'do-nonce-1')
+      const res = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi there',
+            timestamp,
+            nonce: 'do-nonce-1',
+            signature,
+          }),
+        }),
+        { ...baseEnv, MEMORY: kv as any, EMBASSY: ns as any },
+      )
+      expect(res.status).toBe(200)
+      const data: any = await res.json()
+      expect(data.status).toBe('pending')
+      expect(data.pushed).toBe(1)
+      expect(fetchFn).toHaveBeenCalledOnce()
+      expect([...kv.store.keys()].some(k => k.startsWith('friends/requests/inbound/'))).toBe(false)
+    })
+
+    it('returns 502 when the DO is unreachable', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const ns = {
+        idFromName: () => ({ toString: () => 'embassy-id' }),
+        get: () => ({ fetch: async () => { throw new Error('boom') } }),
+      }
+      const { timestamp, signature } = await signedRequestPayload(keyPair, publicKeyHex, 'hi', 'do-nonce-2')
+      const res = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi',
+            timestamp,
+            nonce: 'do-nonce-2',
+            signature,
+          }),
+        }),
+        { ...baseEnv, MEMORY: kv as any, EMBASSY: ns as any },
+      )
+      expect(res.status).toBe(502)
+    })
+
+    it('routes inbox through the DO and maps quarantine', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const trusted = stubEmbassy(async () => new Response(JSON.stringify({ queued: true, pushed: 2 }), { status: 200 }))
+      const bodyText = JSON.stringify({ topic: 'airi/nap-chat/turn', payload: { text: 'hey' } })
+      const timestamp = Date.now()
+      const nonce = 'do-inbox-1'
+      const sigData = new TextEncoder().encode(`${timestamp}:${nonce}:${bodyText}`)
+      const sig = uint8ArrayToHex(new Uint8Array(await crypto.subtle.sign('Ed25519', keyPair.privateKey, sigData)))
+      const res = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': sig,
+            'x-signature-timestamp': String(timestamp),
+            'x-signature-nonce': nonce,
+          },
+          body: bodyText,
+        }),
+        { ...baseEnv, MEMORY: kv as any, EMBASSY: trusted.ns as any },
+      )
+      expect(res.status).toBe(200)
+      expect((await res.json() as any).queued).toBe(true)
+
+      const quarantined = stubEmbassy(async () => new Response(JSON.stringify({ error: 'quarantined' }), { status: 403 }))
+      const nonce2 = 'do-inbox-2'
+      const sigData2 = new TextEncoder().encode(`${timestamp}:${nonce2}:${bodyText}`)
+      const sig2 = uint8ArrayToHex(new Uint8Array(await crypto.subtle.sign('Ed25519', keyPair.privateKey, sigData2)))
+      const res2 = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': sig2,
+            'x-signature-timestamp': String(timestamp),
+            'x-signature-nonce': nonce2,
+          },
+          body: bodyText,
+        }),
+        { ...baseEnv, MEMORY: kv as any, EMBASSY: quarantined.ns as any },
+      )
+      expect(res2.status).toBe(403)
+    })
+
+    it('gates /ws on owner proof and DO binding', async () => {
+      const noDo = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/ws', { headers: { 'x-owner-id': 'owner-1' } }),
+        { ...baseEnv, OWNER_ID: 'owner-1' },
+      )
+      expect(noDo.status).toBe(503)
+
+      const forbidden = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/ws'),
+        { ...baseEnv, OWNER_ID: 'owner-1', EMBASSY: stubEmbassy(async () => new Response(null, { status: 200 })).ns as any },
+      )
+      expect(forbidden.status).toBe(403)
+
+      // NOTE: Node's Response caps status at 599, so the stub answers 200 here;
+      // in workerd the DO answers the real 101 upgrade. Passthrough is what matters.
+      const { ns } = stubEmbassy(async () => new Response(null, { status: 200 }))
+      const passthrough = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/ws?machine=studio-mac', { headers: { 'x-owner-id': 'owner-1' } }),
+        { ...baseEnv, OWNER_ID: 'owner-1', EMBASSY: ns as any },
+      )
+      expect(passthrough.status).toBe(200)
+    })
+  })
+
   describe('unmatched routes', () => {
     it('returns 404 Not Found for unrecognized path', async () => {
       const req = new Request('https://edge.airi.moeru.ai/unknown-route')
@@ -195,29 +360,6 @@ describe('apps/stage-edge worker index', () => {
   })
 
   describe('companion embassy', () => {
-    function createKv() {
-      const map = new Map<string, string>()
-      return {
-        store: map,
-        async get(key: string) {
-          return map.has(key) ? map.get(key)! : null
-        },
-        async put(key: string, value: string) {
-          map.set(key, value)
-        },
-        async delete(key: string) {
-          map.delete(key)
-        },
-      }
-    }
-
-    async function generateEdKey() {
-      const keyPair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
-      const rawPublicKey = await crypto.subtle.exportKey('raw', keyPair.publicKey)
-      const publicKeyHex = uint8ArrayToHex(new Uint8Array(rawPublicKey))
-      return { keyPair, publicKeyHex }
-    }
-
     async function signHex(privateKey: CryptoKey, message: string): Promise<string> {
       const data = new TextEncoder().encode(message)
       const sig = await crypto.subtle.sign('Ed25519', privateKey, data)
@@ -374,13 +516,18 @@ describe('apps/stage-edge worker index', () => {
       const env: Env = { ...baseEnv, MEMORY: kv as any }
       const bodyText = JSON.stringify({ action: 'nap_propose' })
 
+      // Authenticated but untrusted sender: valid signature, no roster entry → 403.
+      // Signature is verified before the trust check so strangers cannot probe
+      // the roster (no membership oracle for unauthenticated callers).
+      const quarantineTimestamp = Date.now()
+      const quarantineSig = await signHex(keyPair.privateKey, `${quarantineTimestamp}:inbox-nonce-1:${bodyText}`)
       const quarantined = await worker.fetch(
         new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
           method: 'POST',
           headers: {
             'x-sender-pubkey': publicKeyHex,
-            'x-signature-ed25519': '00'.repeat(64),
-            'x-signature-timestamp': String(Date.now()),
+            'x-signature-ed25519': quarantineSig,
+            'x-signature-timestamp': String(quarantineTimestamp),
             'x-signature-nonce': 'inbox-nonce-1',
           },
           body: bodyText,
