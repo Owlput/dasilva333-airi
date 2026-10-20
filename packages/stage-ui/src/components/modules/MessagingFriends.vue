@@ -103,17 +103,24 @@ async function probeEmbassyHealth() {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 4000)
-    let res = await fetch(`https://${myAddress.value}/health`, { signal: controller.signal })
-    if (!res.ok) {
-      res = await fetch(`https://${myAddress.value}/api/companion/card`, { signal: controller.signal })
-    }
+    const owner = cloudflareStore.activeAccountId || ''
+    // Probe the WebSocket endpoint: an active EmbassyDO returns 426 (Expected websocket).
+    // An inactive/dummy worker returns 404/403 or throws.
+    const res = await fetch(`https://${myAddress.value}/ws?owner=${owner}`, { signal: controller.signal })
     clearTimeout(timeout)
-    isEmbassyOnline.value = res.ok
+    isEmbassyOnline.value = res.status === 426 || embassyInboxStore.socketStatus === 'connected'
   }
   catch {
-    isEmbassyOnline.value = false
+    isEmbassyOnline.value = embassyInboxStore.socketStatus === 'connected'
   }
 }
+
+watch(() => embassyInboxStore.socketStatus, (status) => {
+  if (status === 'connected')
+    isEmbassyOnline.value = true
+  else if (status === 'disconnected' && isEmbassyOnline.value !== true)
+    isEmbassyOnline.value = false
+})
 
 async function handleDeployEmbassy() {
   if (!cloudflareStore.isAuthenticated) {
@@ -723,6 +730,14 @@ const surfaceCardClass = computed(() => [
                 @click="showQrModal = true"
               >
                 <div class="i-solar:qr-code-bold-duotone text-base" />
+              </button>
+              <button
+                :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                title="Redeploy Companion Embassy Worker"
+                :disabled="isDeployingEmbassy"
+                @click="handleDeployEmbassy"
+              >
+                <div :class="[isDeployingEmbassy ? 'i-solar:restart-circle-bold-duotone animate-spin' : 'i-solar:cloud-upload-bold-duotone', 'text-base']" />
               </button>
             </template>
             <template v-else>

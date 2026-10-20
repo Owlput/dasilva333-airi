@@ -4,7 +4,7 @@ import { useCloudflareStore } from '@proj-airi/stage-ui/stores/modules/cloudflar
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -29,6 +29,11 @@ const isDeployingCors = ref(false)
 const isTestingCors = ref(false)
 const corsHealth = ref<'unknown' | 'online' | 'offline'>('unknown')
 
+// Companion Embassy Worker
+const isDeployingEmbassy = ref(false)
+const isTestingEmbassy = ref(false)
+const embassyHealth = ref<'unknown' | 'online' | 'offline'>('unknown')
+
 // Edge Vault
 const isSavingVault = ref(false)
 const isFetchingVault = ref(false)
@@ -41,6 +46,15 @@ onMounted(async () => {
   if (cfSubdomain.value) {
     subdomainInput.value = cfSubdomain.value
     void testCorsHealth()
+    void testEmbassyHealth()
+  }
+})
+
+watch(cfSubdomain, (val) => {
+  if (val) {
+    subdomainInput.value = val
+    void testCorsHealth()
+    void testEmbassyHealth()
   }
 })
 
@@ -66,18 +80,18 @@ async function handleSaveSubdomain() {
 async function handleDeployCors() {
   isDeployingCors.value = true
   try {
-    toast.info('Deploying Edge Workers to Cloudflare...')
+    toast.info('Deploying Web CORS Proxy to Cloudflare...')
     const ok = await cloudflareStore.deployCorsProxy()
     if (!ok)
-      throw new Error('Worker deployment failed.')
-    toast.success('Edge Workers deployed successfully!')
+      throw new Error('Proxy deployment failed.')
+    toast.success('Web CORS Proxy deployed successfully!')
     await testCorsHealth()
     if (corsHealth.value === 'offline') {
-      toast.info('Workers uploaded — workers.dev DNS may take a moment. Hit Ping Test to re-check.')
+      toast.info('Proxy uploaded — workers.dev DNS may take a moment. Hit Ping Test to re-check.')
     }
   }
   catch (err: any) {
-    toast.error(err?.message || 'Failed to deploy Edge Workers')
+    toast.error(err?.message || 'Failed to deploy CORS Proxy')
   }
   finally {
     isDeployingCors.value = false
@@ -102,6 +116,49 @@ async function testCorsHealth() {
   }
   finally {
     isTestingCors.value = false
+  }
+}
+
+async function testEmbassyHealth() {
+  if (!cfSubdomain.value)
+    return
+  isTestingEmbassy.value = true
+  try {
+    const owner = cfAccountId.value || ''
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    const res = await fetch(`https://airi-stage-edge.${cfSubdomain.value}.workers.dev/ws?owner=${owner}`, { signal: controller.signal })
+    clearTimeout(timeout)
+    embassyHealth.value = res.status === 426 ? 'online' : 'offline'
+  }
+  catch {
+    embassyHealth.value = 'offline'
+  }
+  finally {
+    isTestingEmbassy.value = false
+  }
+}
+
+async function handleDeployEmbassy() {
+  isDeployingEmbassy.value = true
+  try {
+    toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
+    const res = await cloudflareStore.deployCompanionEmbassy({ enableEmbassyDO: true })
+    if (res.success) {
+      toast.success('Companion Embassy deployed successfully!')
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await testEmbassyHealth()
+        if (embassyHealth.value === 'online')
+          break
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+  }
+  catch (err: any) {
+    toast.error(err?.message || 'Failed to deploy Companion Embassy')
+  }
+  finally {
+    isDeployingEmbassy.value = false
   }
 }
 
@@ -282,7 +339,7 @@ function handleDisconnect() {
         </div>
       </div>
 
-      <!-- Card 2: Web CORS Reverse-Proxy & Embassy Worker -->
+      <!-- Card 2: Web CORS Reverse-Proxy Worker -->
       <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
         <div>
           <div class="mb-2 flex items-center justify-between">
@@ -291,7 +348,7 @@ function handleDisconnect() {
                 <div class="i-solar:shield-check-bold-duotone" />
               </div>
               <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-                Edge Workers (Proxy & Embassy)
+                Web CORS Proxy
               </h3>
             </div>
             <span
@@ -308,7 +365,7 @@ function handleDisconnect() {
             </span>
           </div>
           <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-            Deploys <code>airi-cors-proxy</code> and <code>airi-stage-edge</code> to handle browser CORS bridging and companion embassy peer requests.
+            Deploys <code>airi-cors-proxy</code> to handle browser CORS bridging for LLM providers.
           </p>
           <p v-if="!cfSubdomain" class="mt-2 text-xs text-amber-600 font-medium dark:text-amber-400">
             ⚠️ Claim a workers.dev subdomain above before deploying.
@@ -325,7 +382,7 @@ function handleDisconnect() {
           >
             <div v-if="isDeployingCors" class="i-solar:restart-circle-bold-duotone animate-spin text-sm" />
             <div v-else class="i-solar:rocket-2-bold-duotone text-sm" />
-            <span>{{ isDeployingCors ? 'Deploying...' : 'Deploy Workers' }}</span>
+            <span>{{ isDeployingCors ? 'Deploying...' : 'Deploy Proxy' }}</span>
           </Button>
 
           <Button
@@ -340,22 +397,36 @@ function handleDisconnect() {
         </div>
       </div>
 
-      <!-- Card 3: Edge Key Vault (airi-edge-vault) -->
+      <!-- Card 3: Companion Embassy Worker (airi-stage-edge) -->
       <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
         <div>
-          <div class="mb-2 flex items-center gap-2">
-            <div class="size-8 flex items-center justify-center rounded-xl bg-amber-500/15 text-lg text-amber-600 dark:text-amber-400">
-              <div class="i-solar:key-bold-duotone" />
+          <div class="mb-2 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="size-8 flex items-center justify-center rounded-xl bg-cyan-500/15 text-lg text-cyan-600 dark:text-cyan-400">
+                <div class="i-solar:users-group-rounded-bold-duotone" />
+              </div>
+              <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+                Companion Embassy (DO)
+              </h3>
             </div>
-            <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-              Edge Key Vault (KV)
-            </h3>
+            <span
+              v-if="embassyHealth === 'online'"
+              class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700 font-bold dark:bg-emerald-950/60 dark:text-emerald-300"
+            >
+              ONLINE
+            </span>
+            <span
+              v-else-if="embassyHealth === 'offline'"
+              class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 font-bold dark:bg-amber-950/60 dark:text-amber-300"
+            >
+              INACTIVE
+            </span>
           </div>
           <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-            Encrypted Cloudflare KV namespace (<code>airi-edge-vault</code>) that synchronizes R2/S3 credentials so any device can restore cloud sync with 1 click.
+            Deploys <code>airi-stage-edge</code> with SQLite Durable Object to manage hibernated WebSockets, friends roster, and nap-chat relay.
           </p>
-          <p v-if="vaultStatus" class="mt-2 text-xs text-emerald-600 font-semibold dark:text-emerald-400">
-            {{ vaultStatus }}
+          <p v-if="!cfSubdomain" class="mt-2 text-xs text-amber-600 font-medium dark:text-amber-400">
+            ⚠️ Claim a workers.dev subdomain above before deploying.
           </p>
         </div>
 
@@ -363,68 +434,120 @@ function handleDisconnect() {
           <Button
             size="sm"
             variant="primary"
-            :disabled="isSavingVault || !syncStore.s3Bucket"
-            class="flex items-center gap-1.5 text-xs font-bold"
-            @click="handleSaveToVault"
+            :disabled="isDeployingEmbassy || !cfSubdomain"
+            class="flex items-center gap-1.5 font-bold"
+            @click="handleDeployEmbassy"
           >
-            <div class="i-solar:lock-bold text-xs" />
-            <span>Save to Vault</span>
+            <div v-if="isDeployingEmbassy" class="i-solar:restart-circle-bold-duotone animate-spin text-sm" />
+            <div v-else class="i-solar:cloud-upload-bold-duotone text-sm" />
+            <span>{{ isDeployingEmbassy ? 'Deploying...' : (embassyHealth === 'online' ? 'Redeploy Embassy' : 'Deploy Embassy') }}</span>
           </Button>
 
           <Button
             size="sm"
             variant="secondary"
-            :disabled="isFetchingVault"
+            :disabled="isTestingEmbassy || !cfSubdomain"
             class="text-xs font-semibold"
-            @click="handleRestoreFromVault"
+            @click="testEmbassyHealth"
           >
-            {{ isFetchingVault ? 'Fetching...' : 'Restore from Vault' }}
+            {{ isTestingEmbassy ? 'Testing...' : 'Test WebSocket' }}
           </Button>
         </div>
       </div>
+      :disabled="isTestingCors || !cfSubdomain"
+      class="text-xs font-semibold"
+      @click="testCorsHealth"
+      >
+      {{ isTestingCors ? 'Pinging...' : 'Ping Test' }}
+      </Button>
+    </div>
+  </div>
 
-      <!-- Card 4: BYOS Cloud Storage Link -->
-      <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
-        <div>
-          <div class="mb-2 flex items-center gap-2">
-            <div class="size-8 flex items-center justify-center rounded-xl bg-primary-500/15 text-lg text-primary-600 dark:text-primary-400">
-              <div class="i-solar:cloud-storage-bold-duotone" />
-            </div>
-            <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-              Cloud Storage & Sync
-            </h3>
-          </div>
-          <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-            Configure automated multi-device synchronization using Cloudflare R2 or Amazon S3.
-          </p>
-          <div class="mt-2 text-xs text-neutral-600 font-mono dark:text-neutral-300">
-            Bucket: <strong>{{ syncStore.s3Bucket || 'None' }}</strong> ({{ syncStore.syncEnabled ? 'Active' : 'Paused' }})
-          </div>
+  <!-- Card 3: Edge Key Vault (airi-edge-vault) -->
+  <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
+    <div>
+      <div class="mb-2 flex items-center gap-2">
+        <div class="size-8 flex items-center justify-center rounded-xl bg-amber-500/15 text-lg text-amber-600 dark:text-amber-400">
+          <div class="i-solar:key-bold-duotone" />
         </div>
+        <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+          Edge Key Vault (KV)
+        </h3>
+      </div>
+      <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
+        Encrypted Cloudflare KV namespace (<code>airi-edge-vault</code>) that synchronizes R2/S3 credentials so any device can restore cloud sync with 1 click.
+      </p>
+      <p v-if="vaultStatus" class="mt-2 text-xs text-emerald-600 font-semibold dark:text-emerald-400">
+        {{ vaultStatus }}
+      </p>
+    </div>
 
-        <div class="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            class="text-xs font-semibold"
-            @click="router.push('/settings/modules/cloud-sync')"
-          >
-            Manage Cloud Sync &rarr;
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            class="text-xs font-semibold"
-            @click="router.push('/settings/providers/cloud/s3')"
-          >
-            S3/R2 Keys &rarr;
-          </Button>
+    <div class="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="primary"
+        :disabled="isSavingVault || !syncStore.s3Bucket"
+        class="flex items-center gap-1.5 text-xs font-bold"
+        @click="handleSaveToVault"
+      >
+        <div class="i-solar:lock-bold text-xs" />
+        <span>Save to Vault</span>
+      </Button>
+
+      <Button
+        size="sm"
+        variant="secondary"
+        :disabled="isFetchingVault"
+        class="text-xs font-semibold"
+        @click="handleRestoreFromVault"
+      >
+        {{ isFetchingVault ? 'Fetching...' : 'Restore from Vault' }}
+      </Button>
+    </div>
+  </div>
+
+  <!-- Card 4: BYOS Cloud Storage Link -->
+  <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
+    <div>
+      <div class="mb-2 flex items-center gap-2">
+        <div class="size-8 flex items-center justify-center rounded-xl bg-primary-500/15 text-lg text-primary-600 dark:text-primary-400">
+          <div class="i-solar:cloud-storage-bold-duotone" />
         </div>
+        <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+          Cloud Storage & Sync
+        </h3>
+      </div>
+      <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
+        Configure automated multi-device synchronization using Cloudflare R2 or Amazon S3.
+      </p>
+      <div class="mt-2 text-xs text-neutral-600 font-mono dark:text-neutral-300">
+        Bucket: <strong>{{ syncStore.s3Bucket || 'None' }}</strong> ({{ syncStore.syncEnabled ? 'Active' : 'Paused' }})
       </div>
     </div>
 
-    <!-- Connect Dialog Modal -->
-    <CloudflareConnectDialog v-model="isConnectModalOpen" />
+    <div class="flex items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        class="text-xs font-semibold"
+        @click="router.push('/settings/modules/cloud-sync')"
+      >
+        Manage Cloud Sync &rarr;
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        class="text-xs font-semibold"
+        @click="router.push('/settings/providers/cloud/s3')"
+      >
+        S3/R2 Keys &rarr;
+      </Button>
+    </div>
+  </div>
+  </div>
+
+  <!-- Connect Dialog Modal -->
+  <CloudflareConnectDialog v-model="isConnectModalOpen" />
   </div>
 </template>
 
