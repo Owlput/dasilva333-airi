@@ -4,6 +4,7 @@ import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import {
   cloudflareServiceDeployCorsProxy,
   cloudflareServiceFetchEdgeVault,
+  cloudflareServiceRefreshOAuth,
   cloudflareServiceSaveEdgeVault,
   discordServiceCloudflareOAuth,
   discordServiceGetCloudflareSubdomain,
@@ -40,6 +41,13 @@ export interface CloudflareOAuthTokens {
 }
 
 const TOKEN_ENDPOINT = CLOUDFLARE_TOKEN_ENDPOINT
+
+function isCfAuthError(err: any): boolean {
+  if (!err)
+    return false
+  const str = typeof err === 'string' ? err : (err?.message || JSON.stringify(err) || '')
+  return str.includes('401') || str.includes('Authentication error') || str.includes('10000') || str.toLowerCase().includes('unauthorized')
+}
 
 async function generateWebPkce(): Promise<{ codeVerifier: string, codeChallenge: string }> {
   const randomBytes = new Uint8Array(32)
@@ -169,6 +177,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
   const invokeSaveEdgeVault = isElectron ? useElectronEventaInvoke(cloudflareServiceSaveEdgeVault) : null
   const invokeFetchEdgeVault = isElectron ? useElectronEventaInvoke(cloudflareServiceFetchEdgeVault) : null
   const invokeDeployCorsProxy = isElectron ? useElectronEventaInvoke(cloudflareServiceDeployCorsProxy) : null
+  const invokeRefreshOAuth = isElectron ? useElectronEventaInvoke(cloudflareServiceRefreshOAuth) : null
 
   function getCorsProxiedUrls(rawUrl: string): string[] {
     const isViteDev = Boolean(
@@ -659,25 +668,29 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return true
   }
 
-  async function saveToEdgeVault(vaultData: Record<string, any>, key: string = CLOUDFLARE_EDGE_VAULT_KEY) {
-    const apiToken = activeAccessToken.value
+  async function saveToEdgeVault(vaultData: Record<string, any>, key: string = CLOUDFLARE_EDGE_VAULT_KEY, tokenOverride?: string) {
+    const apiToken = tokenOverride || activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
       throw new Error('Cloudflare access token missing.')
 
-    if (isElectron && invokeSaveEdgeVault) {
-      const res = await invokeSaveEdgeVault({ apiToken, accountId, vaultData, key })
-      if (!res.success) {
-        throw new Error(res.error || 'Failed to save to Edge Key Vault.')
+    const doSave = async (token: string) => {
+      if (isElectron && invokeSaveEdgeVault) {
+        const res = await invokeSaveEdgeVault({ apiToken: token, accountId, vaultData, key })
+        if (!res.success) {
+          throw new Error(res.error || 'Failed to save to Edge Key Vault.')
+        }
+        return res
       }
-      return res
-    }
 
-    // Non-Electron (Web & Mobile) REST API with CORS proxy
-    try {
+      // Non-Electron (Web & Mobile) REST API with CORS proxy
       const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
-        headers: { Authorization: `Bearer ${apiToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       })
+      if (listRes.status === 401) {
+        const errText = await listRes.text().catch(() => '')
+        throw new Error(`401 ${errText || 'Authentication error'}`)
+      }
       let nsId = ''
       if (listRes.ok) {
         const listData: any = await listRes.json()
@@ -690,66 +703,96 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         const createRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiToken}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ title: CLOUDFLARE_EDGE_VAULT_NAMESPACE }),
         })
+        if (createRes.status === 401) {
+          const errText = await createRes.text().catch(() => '')
+          throw new Error(`401 ${errText || 'Authentication error'}`)
+        }
         if (createRes.ok) {
           const createData: any = await createRes.json()
           nsId = createData.result?.id
         }
       }
-      if (nsId) {
-        const payloadBody = key === CLOUDFLARE_EDGE_VAULT_KEY
-          ? formatEdgeVaultPayload(vaultData)
-          : (typeof vaultData === 'string' ? vaultData : JSON.stringify(vaultData))
+      if (!nsId) {
+        throw new Error('Failed to resolve or create KV namespace for Edge Vault')
+      }
 
-        await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${nsId}/values/${encodeURIComponent(key)}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${apiToken}`,
-            'Content-Type': 'text/plain',
-          },
-          body: payloadBody,
-        })
+      const payloadBody = key === CLOUDFLARE_EDGE_VAULT_KEY
+        ? formatEdgeVaultPayload(vaultData)
+        : (typeof vaultData === 'string' ? vaultData : JSON.stringify(vaultData))
+
+      const putRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${nsId}/values/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain',
+        },
+        body: payloadBody,
+      })
+      if (putRes.status === 401) {
+        const errText = await putRes.text().catch(() => '')
+        throw new Error(`401 ${errText || 'Authentication error'}`)
+      }
+      if (!putRes.ok) {
+        const errText = await putRes.text().catch(() => '')
+        throw new Error(`Failed to write to KV: ${putRes.status} ${errText}`)
       }
       return { success: true }
     }
-    catch (e) {
-      console.warn('[useCloudflareStore] Failed to save Edge Vault via REST:', e)
-      return { success: false, error: String(e) }
+
+    try {
+      return await doSave(apiToken)
+    }
+    catch (err: any) {
+      if (isCfAuthError(err) && cfOAuthTokens.value?.refreshToken) {
+        console.info('[useCloudflareStore] 401 encountered in saveToEdgeVault, attempting token refresh...')
+        const refreshed = await refreshOAuthTokens()
+        if (refreshed?.accessToken) {
+          return await doSave(refreshed.accessToken)
+        }
+      }
+      throw err
     }
   }
 
-  async function fetchFromEdgeVault(key: string = CLOUDFLARE_EDGE_VAULT_KEY): Promise<Record<string, any> | null> {
-    const apiToken = activeAccessToken.value
+  async function fetchFromEdgeVault(key: string = CLOUDFLARE_EDGE_VAULT_KEY, tokenOverride?: string): Promise<Record<string, any> | null> {
+    const apiToken = tokenOverride || activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
       return null
 
-    if (isElectron && invokeFetchEdgeVault) {
-      try {
-        const res = await invokeFetchEdgeVault({ apiToken, accountId, key })
+    const doFetch = async (token: string): Promise<Record<string, any> | null> => {
+      if (isElectron && invokeFetchEdgeVault) {
+        const res = await invokeFetchEdgeVault({ apiToken: token, accountId, key })
+        if (!res.success && isCfAuthError(res.error)) {
+          throw new Error(res.error || 'Authentication error')
+        }
         return res.success && res.vaultData ? res.vaultData : null
       }
-      catch {
-        return null
-      }
-    }
 
-    // Non-Electron (Web & Mobile) REST fetch with CORS proxy
-    try {
+      // Non-Electron (Web & Mobile) REST fetch with CORS proxy
       const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
-        headers: { Authorization: `Bearer ${apiToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       })
+      if (listRes.status === 401) {
+        const errText = await listRes.text().catch(() => '')
+        throw new Error(`401 ${errText || 'Authentication error'}`)
+      }
       if (listRes.ok) {
         const listData: any = await listRes.json()
         const vaultNs = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
         if (vaultNs?.id) {
           const valRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${vaultNs.id}/values/${encodeURIComponent(key)}`, {
-            headers: { Authorization: `Bearer ${apiToken}` },
+            headers: { Authorization: `Bearer ${token}` },
           })
+          if (valRes.status === 401) {
+            const errText = await valRes.text().catch(() => '')
+            throw new Error(`401 ${errText || 'Authentication error'}`)
+          }
           if (valRes.ok) {
             const raw = await valRes.text()
             if (key === CLOUDFLARE_EDGE_VAULT_KEY) {
@@ -764,12 +807,27 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           }
         }
       }
-    }
-    catch (e) {
-      console.warn('[useCloudflareStore] REST KV query failed:', e)
+      return null
     }
 
-    return null
+    try {
+      return await doFetch(apiToken)
+    }
+    catch (err: any) {
+      if (isCfAuthError(err) && cfOAuthTokens.value?.refreshToken) {
+        console.info('[useCloudflareStore] 401 encountered in fetchFromEdgeVault, attempting token refresh...')
+        try {
+          const refreshed = await refreshOAuthTokens()
+          if (refreshed?.accessToken) {
+            return await doFetch(refreshed.accessToken)
+          }
+        }
+        catch (e) {
+          console.warn('[useCloudflareStore] Refresh during fetchFromEdgeVault failed:', e)
+        }
+      }
+      return null
+    }
   }
 
   async function syncVaultDevices(): Promise<{ success: boolean, count?: number, error?: string }> {
@@ -779,14 +837,14 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       return { success: false, error: 'Not authenticated with Cloudflare' }
     }
 
-    try {
+    const runSync = async (token: string) => {
       const peersStore = usePeersStore()
       if (!peersStore.isInitialized) {
         await peersStore.init()
       }
 
       // 1. Fetch remote devices map from KV
-      const remoteMap = await fetchFromEdgeVault(CLOUDFLARE_EDGE_VAULT_DEVICES_KEY) as VaultDeviceMap | null
+      const remoteMap = await fetchFromEdgeVault(CLOUDFLARE_EDGE_VAULT_DEVICES_KEY, token) as VaultDeviceMap | null
 
       // 2. Merge remote devices into local peers store
       if (remoteMap && typeof remoteMap === 'object') {
@@ -812,15 +870,36 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
 
       // 4. Export fresh local + merged map and push back to KV
       const updatedMap = peersStore.toVaultDeviceMapForSync()
-      await saveToEdgeVault(updatedMap, CLOUDFLARE_EDGE_VAULT_DEVICES_KEY)
+      await saveToEdgeVault(updatedMap, CLOUDFLARE_EDGE_VAULT_DEVICES_KEY, token)
 
       const deviceCount = peersStore.devices.length
       console.info(`[useCloudflareStore] Synchronized ${deviceCount} device(s) with Edge Vault.`)
       return { success: true, count: deviceCount }
     }
+
+    try {
+      return await runSync(apiToken)
+    }
     catch (err: any) {
+      if (isCfAuthError(err) && cfOAuthTokens.value?.refreshToken) {
+        console.info('[useCloudflareStore] 401 encountered in syncVaultDevices, attempting transparent token refresh...')
+        try {
+          const refreshed = await refreshOAuthTokens()
+          if (refreshed?.accessToken) {
+            console.info('[useCloudflareStore] Token refreshed, retrying syncVaultDevices...')
+            return await runSync(refreshed.accessToken)
+          }
+        }
+        catch (refreshErr) {
+          console.warn('[useCloudflareStore] Transparent refresh failed during syncVaultDevices:', refreshErr)
+        }
+      }
+
       console.warn('[useCloudflareStore] syncVaultDevices failed:', err)
-      return { success: false, error: err?.message || String(err) }
+      const userFacingError = isCfAuthError(err)
+        ? 'Cloudflare session expired. Please re-authenticate in Settings.'
+        : (err?.message || String(err))
+      return { success: false, error: userFacingError }
     }
   }
 
@@ -895,9 +974,39 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return tokens
   }
 
+  let inFlightRefreshPromise: Promise<CloudflareOAuthTokens | null> | null = null
+
   async function refreshOAuthTokens(): Promise<CloudflareOAuthTokens | null> {
+    if (inFlightRefreshPromise) {
+      return inFlightRefreshPromise
+    }
+    inFlightRefreshPromise = doRefreshOAuthTokens().finally(() => {
+      inFlightRefreshPromise = null
+    })
+    return inFlightRefreshPromise
+  }
+
+  async function doRefreshOAuthTokens(): Promise<CloudflareOAuthTokens | null> {
     if (!cfOAuthTokens.value?.refreshToken) {
       return null
+    }
+
+    if (isElectron && invokeRefreshOAuth) {
+      try {
+        const res = await invokeRefreshOAuth({ refreshToken: cfOAuthTokens.value.refreshToken })
+        if (res.success && res.tokens?.accessToken) {
+          cfOAuthTokens.value = {
+            accessToken: res.tokens.accessToken,
+            refreshToken: res.tokens.refreshToken || cfOAuthTokens.value.refreshToken,
+            expiresIn: res.tokens.expiresIn,
+            accountId: res.tokens.accountId || cfOAuthTokens.value.accountId,
+          }
+          return cfOAuthTokens.value
+        }
+      }
+      catch (e) {
+        console.warn('[useCloudflareStore] invokeRefreshOAuth failed in Electron:', e)
+      }
     }
 
     const isViteDev = Boolean(

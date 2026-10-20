@@ -480,6 +480,7 @@ export { artistryGenerateHeadless } from '@proj-airi/stage-shared'
 export {
   cloudflareServiceDeployCorsProxy,
   cloudflareServiceFetchEdgeVault,
+  cloudflareServiceRefreshOAuth,
   cloudflareServiceSaveEdgeVault,
   discordServiceCloudflareOAuth,
   discordServiceDeployCloudRelay,

@@ -167,4 +167,96 @@ describe('cloudflare store persistence & corruption recovery', () => {
 
     vi.unstubAllGlobals()
   })
+
+  it('syncVaultDevices transparently refreshes expired OAuth token on 401 and retries', async () => {
+    const store = useCloudflareStore()
+    store.cfOAuthTokens = {
+      accessToken: 'expired_access_token',
+      refreshToken: 'valid_refresh_token_123',
+      accountId: 'mock-account-id',
+    }
+
+    let refreshCalled = false
+    const remoteMap = {
+      'remote-laptop': {
+        machineId: 'remote-laptop',
+        deviceName: 'MacBook Air',
+        relationship: 'same-account',
+        discoveredAt: 1000,
+        lastSeenTimestamp: 2000,
+      },
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async (url: any, init?: any) => {
+      const decodedUrl = decodeURIComponent(String(url))
+      const authHeader = init?.headers?.Authorization
+
+      // If called with expired token, return 401 Authentication error
+      if (authHeader === 'Bearer expired_access_token') {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({
+            success: false,
+            errors: [{ code: 10000, message: 'Authentication error' }],
+          }),
+          text: async () => JSON.stringify({
+            success: false,
+            errors: [{ code: 10000, message: 'Authentication error' }],
+          }),
+        } as any
+      }
+
+      // OAuth token refresh endpoint
+      if (init?.body && String(init.body).includes('grant_type=refresh_token')) {
+        refreshCalled = true
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            access_token: 'freshly_minted_access_token',
+            refresh_token: 'valid_refresh_token_123',
+            expires_in: 3600,
+          }),
+        } as any
+      }
+
+      // Successful calls with refreshed token
+      if (authHeader === 'Bearer freshly_minted_access_token') {
+        if (decodedUrl.includes('/storage/kv/namespaces') && !decodedUrl.includes('/values/')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              success: true,
+              result: [{ id: 'mock-edge-vault-ns', title: 'airi-edge-vault' }],
+            }),
+          } as any
+        }
+
+        if (decodedUrl.includes('/values/devices/map') || decodedUrl.includes('/values/devices%2Fmap')) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify(remoteMap),
+            json: async () => ({ success: true }),
+          } as any
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+        text: async () => '',
+      } as any
+    }))
+
+    const res = await store.syncVaultDevices()
+    expect(res.success).toBe(true)
+    expect(refreshCalled).toBe(true)
+    expect(store.activeAccessToken).toBe('freshly_minted_access_token')
+
+    vi.unstubAllGlobals()
+  })
 })

@@ -39,6 +39,7 @@ import './byteplus-coding-plan'
 import './volcengine-coding-plan'
 import './typesafe-ai'
 import './laya-local'
+import './cloudflare-workers-ai'
 
 export {
   getDefinedProvider,

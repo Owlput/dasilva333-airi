@@ -24,6 +24,7 @@ import { nanoid } from 'nanoid'
 import {
   cloudflareServiceDeployCorsProxy,
   cloudflareServiceFetchEdgeVault,
+  cloudflareServiceRefreshOAuth,
   cloudflareServiceSaveEdgeVault,
   discordServiceCloudflareOAuth,
   discordServiceDeployCloudRelay,
@@ -405,6 +406,25 @@ export function setupDiscordService() {
     catch (err: any) {
       pushLog('ERROR', `Cloudflare OAuth authentication failed: ${err?.message || err}`)
       throw err
+    }
+  })
+
+  defineInvokeHandler(context, cloudflareServiceRefreshOAuth, async (payload) => {
+    try {
+      const { refreshOAuthToken } = await import('@proj-airi/stage-edge/deployer/oauth')
+      const tokens = await refreshOAuthToken(payload.refreshToken)
+      pushLog('OAUTH', 'Cloudflare OAuth token refreshed successfully!')
+      return {
+        success: true,
+        tokens,
+      }
+    }
+    catch (err: any) {
+      pushLog('ERROR', `Cloudflare OAuth token refresh failed: ${err?.message || err}`)
+      return {
+        success: false,
+        error: err?.message || String(err),
+      }
     }
   })
 

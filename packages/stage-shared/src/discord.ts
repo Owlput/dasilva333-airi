@@ -273,6 +273,25 @@ export const cloudflareServiceDeployCorsProxy = defineInvokeEventa<CloudflareDep
   'eventa:invoke:electron:cloudflare:deploy-cors-proxy',
 )
 
+export interface CloudflareRefreshOAuthPayload {
+  refreshToken: string
+}
+
+export interface CloudflareRefreshOAuthResult {
+  success: boolean
+  tokens?: {
+    accessToken: string
+    refreshToken: string
+    expiresIn: number
+    accountId?: string
+  }
+  error?: string
+}
+
+export const cloudflareServiceRefreshOAuth = defineInvokeEventa<CloudflareRefreshOAuthResult, CloudflareRefreshOAuthPayload>(
+  'eventa:invoke:electron:cloudflare:refresh-oauth',
+)
+
 // ── Event Contracts (Main → Renderer, push-based) ──────────────────────────────
 
 /** Emitted when the service connection state changes. */
