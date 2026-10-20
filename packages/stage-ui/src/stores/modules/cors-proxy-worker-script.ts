@@ -1,0 +1,85 @@
+/**
+ * Minimal standalone Web CORS Reverse-Proxy Worker source.
+ *
+ * Uploaded as `airi-cors-proxy` when deploying from web/mobile, where there is
+ * no bundler (esbuild) or Electron IPC to ship the full stage-edge worker.
+ * Route parity with the proxy subset of `apps/stage-edge/src/index.ts`:
+ * OPTIONS preflight, `GET /health`, `/cors-proxy` + `/proxy` forwarding with
+ * `Access-Control-Allow-Origin: *` on every response.
+ *
+ * No KV bindings, secrets, or imports — a single self-contained module.
+ */
+
+// NOTICE: plain string concatenation inside the worker source (no backticks or
+// ${} interpolations) so this outer template literal needs no escaping.
+export const CORS_PROXY_WORKER_SCRIPT = `export default {
+  async fetch(request) {
+    var url = new URL(request.url);
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
+    if (url.pathname === '/health') {
+      return corsJson({ status: 'ok', worker: 'airi-cors-proxy' }, 200);
+    }
+
+    if (url.pathname === '/cors-proxy' || url.pathname === '/proxy') {
+      var targetUrl = url.searchParams.get('url') || request.headers.get('x-target-url');
+      if (!targetUrl) {
+        return corsJson({ error: 'Missing target URL parameter. Example: /cors-proxy?url=https://api.cloudflare.com/client/v4/user' }, 400);
+      }
+      try {
+        var parsedTarget = new URL(targetUrl);
+        var forwardHeaders = new Headers(request.headers);
+        forwardHeaders.delete('host');
+        forwardHeaders.delete('referer');
+        forwardHeaders.delete('origin');
+        forwardHeaders.delete('x-target-url');
+        var customAuth = request.headers.get('x-target-authorization');
+        if (customAuth) {
+          forwardHeaders.set('Authorization', customAuth);
+          forwardHeaders.delete('x-target-authorization');
+        }
+        var upstreamRes = await fetch(parsedTarget.toString(), {
+          method: request.method,
+          headers: forwardHeaders,
+          body: (request.method !== 'GET' && request.method !== 'HEAD') ? request.body : undefined,
+          redirect: 'follow'
+        });
+        var responseHeaders = new Headers(upstreamRes.headers);
+        responseHeaders.set('Access-Control-Allow-Origin', '*');
+        responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+        responseHeaders.set('Access-Control-Allow-Headers', '*');
+        return new Response(upstreamRes.body, {
+          status: upstreamRes.status,
+          statusText: upstreamRes.statusText,
+          headers: responseHeaders
+        });
+      } catch (err) {
+        return corsJson({ error: 'Upstream fetch failed: ' + (err && err.message ? err.message : String(err)) }, 502);
+      }
+    }
+
+    return corsJson({ error: 'Not found' }, 404);
+  }
+};
+
+function corsJson(body, status) {
+  return new Response(JSON.stringify(body), {
+    status: status || 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
+}
+`

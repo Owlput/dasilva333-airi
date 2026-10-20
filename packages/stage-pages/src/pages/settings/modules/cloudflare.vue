@@ -64,9 +64,14 @@ async function handleDeployCors() {
   isDeployingCors.value = true
   try {
     toast.info('Deploying CORS Reverse-Proxy worker to Cloudflare...')
-    await cloudflareStore.deployCorsProxy()
+    const ok = await cloudflareStore.deployCorsProxy()
+    if (!ok)
+      throw new Error('CORS proxy deployment failed.')
     toast.success('CORS Reverse-Proxy worker deployed successfully!')
     await testCorsHealth()
+    if (corsHealth.value === 'offline') {
+      toast.info('Worker uploaded — workers.dev DNS may take a moment. Hit Ping Test to re-check.')
+    }
   }
   catch (err: any) {
     toast.error(err?.message || 'Failed to deploy CORS Proxy worker')

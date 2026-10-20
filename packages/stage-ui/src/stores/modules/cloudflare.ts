@@ -32,6 +32,7 @@ import {
   resolveAccountId,
   sanitizeWorkersSubdomain,
 } from './cloudflare-auth'
+import { CORS_PROXY_WORKER_SCRIPT } from './cors-proxy-worker-script'
 
 export interface CloudflareOAuthTokens {
   accessToken: string
@@ -648,24 +649,77 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return cleanSubdomain
   }
 
-  async function deployCorsProxy(): Promise<boolean> {
+  async function deployCorsProxy(options?: { scriptName?: string }): Promise<boolean> {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
-      return false
+      throw new Error('Not authenticated with Cloudflare')
 
     if (isElectron && invokeDeployCorsProxy) {
       try {
         const res = await invokeDeployCorsProxy({ apiToken, accountId })
-        return Boolean(res.success)
+        if (!res.success)
+          throw new Error(res.error || 'CORS proxy deployment failed.')
+        return true
       }
-      catch (e) {
+      catch (e: any) {
         console.warn('[useCloudflareStore] Failed to deploy CORS proxy via Electron:', e)
-        return false
+        throw e instanceof Error ? e : new Error(String(e))
       }
     }
 
+    // Web / mobile: no bundler or IPC here, so upload the self-contained
+    // standalone proxy script directly via REST (routed through fetchWithCfProxy).
+    const scriptName = options?.scriptName || 'airi-cors-proxy'
+
+    const metadata = {
+      main_module: 'index.js',
+      compatibility_date: '2025-02-04',
+      compatibility_flags: ['nodejs_compat'],
+      bindings: [],
+    }
+    const formData = new FormData()
+    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+    formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
+
+    const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${apiToken}` },
+      body: formData,
+    })
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => '')
+      throw new Error(`CORS proxy upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
+    }
+    const uploadData: any = await uploadRes.json().catch(() => null)
+    if (uploadData && uploadData.success === false) {
+      throw new Error(`CORS proxy upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
+    }
+
+    // Enable the workers.dev route for the script (best-effort: already on if re-deploying).
+    await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => null)
+
     return true
+  }
+
+  function parseCfApiError(raw: string): string {
+    if (!raw)
+      return 'Unknown error'
+    try {
+      const parsed = JSON.parse(raw)
+      const first = parsed?.errors?.[0]
+      if (first?.message)
+        return `${first.message}${first.code ? ` (code ${first.code})` : ''}`
+    }
+    catch {}
+    return raw.slice(0, 300)
   }
 
   async function saveToEdgeVault(vaultData: Record<string, any>, key: string = CLOUDFLARE_EDGE_VAULT_KEY, tokenOverride?: string) {
