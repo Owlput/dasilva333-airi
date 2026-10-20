@@ -35,6 +35,9 @@ const isFetchingVault = ref(false)
 const vaultStatus = ref<string>('')
 
 onMounted(async () => {
+  if (!cfSubdomain.value && isAuthenticated.value) {
+    await cloudflareStore.getCloudflareSubdomain().catch(() => null)
+  }
   if (cfSubdomain.value) {
     subdomainInput.value = cfSubdomain.value
     void testCorsHealth()
@@ -63,18 +66,18 @@ async function handleSaveSubdomain() {
 async function handleDeployCors() {
   isDeployingCors.value = true
   try {
-    toast.info('Deploying CORS Reverse-Proxy worker to Cloudflare...')
+    toast.info('Deploying Edge Workers to Cloudflare...')
     const ok = await cloudflareStore.deployCorsProxy()
     if (!ok)
-      throw new Error('CORS proxy deployment failed.')
-    toast.success('CORS Reverse-Proxy worker deployed successfully!')
+      throw new Error('Worker deployment failed.')
+    toast.success('Edge Workers deployed successfully!')
     await testCorsHealth()
     if (corsHealth.value === 'offline') {
-      toast.info('Worker uploaded — workers.dev DNS may take a moment. Hit Ping Test to re-check.')
+      toast.info('Workers uploaded — workers.dev DNS may take a moment. Hit Ping Test to re-check.')
     }
   }
   catch (err: any) {
-    toast.error(err?.message || 'Failed to deploy CORS Proxy worker')
+    toast.error(err?.message || 'Failed to deploy Edge Workers')
   }
   finally {
     isDeployingCors.value = false
@@ -229,16 +232,30 @@ function handleDisconnect() {
       <!-- Card 1: Workers Edge Subdomain -->
       <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
         <div>
-          <div class="mb-2 flex items-center gap-2">
-            <div class="size-8 flex items-center justify-center rounded-xl bg-purple-500/15 text-lg text-purple-600 dark:text-purple-400">
-              <div class="i-solar:link-circle-bold-duotone" />
+          <div class="mb-2 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="size-8 flex items-center justify-center rounded-xl bg-purple-500/15 text-lg text-purple-600 dark:text-purple-400">
+                <div class="i-solar:link-circle-bold-duotone" />
+              </div>
+              <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+                Workers Subdomain
+              </h3>
             </div>
-            <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-              Workers Subdomain
-            </h3>
+            <span
+              v-if="cfSubdomain"
+              class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700 font-bold dark:bg-emerald-950/60 dark:text-emerald-300"
+            >
+              ACTIVE
+            </span>
+            <span
+              v-else
+              class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 font-bold dark:bg-amber-950/60 dark:text-amber-300"
+            >
+              SETUP REQUIRED
+            </span>
           </div>
           <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-            Your unique Cloudflare Workers subdomain for routing reverse proxies and Discord character webhooks.
+            {{ cfSubdomain ? 'Your unique Cloudflare Workers subdomain for routing reverse proxies and companion embassy.' : 'Claim your free workers.dev handle (e.g. your username) to enable Edge Workers and Companion Embassy.' }}
           </p>
         </div>
 
@@ -259,13 +276,13 @@ function handleDisconnect() {
               class="shrink-0 font-semibold"
               @click="handleSaveSubdomain"
             >
-              {{ isSavingSubdomain ? 'Saving...' : 'Update' }}
+              {{ isSavingSubdomain ? 'Saving...' : (cfSubdomain ? 'Update' : 'Claim Subdomain') }}
             </Button>
           </div>
         </div>
       </div>
 
-      <!-- Card 2: Web CORS Reverse-Proxy Worker -->
+      <!-- Card 2: Web CORS Reverse-Proxy & Embassy Worker -->
       <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
         <div>
           <div class="mb-2 flex items-center justify-between">
@@ -274,7 +291,7 @@ function handleDisconnect() {
                 <div class="i-solar:shield-check-bold-duotone" />
               </div>
               <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-                Web CORS Proxy Worker
+                Edge Workers (Proxy & Embassy)
               </h3>
             </div>
             <span
@@ -291,7 +308,10 @@ function handleDisconnect() {
             </span>
           </div>
           <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-            A serverless V8 worker (<code>airi-cors-proxy</code>) that eliminates browser CORS blocking for REST APIs on <code>stage-web</code>.
+            Deploys <code>airi-cors-proxy</code> and <code>airi-stage-edge</code> to handle browser CORS bridging and companion embassy peer requests.
+          </p>
+          <p v-if="!cfSubdomain" class="mt-2 text-xs text-amber-600 font-medium dark:text-amber-400">
+            ⚠️ Claim a workers.dev subdomain above before deploying.
           </p>
         </div>
 
@@ -305,7 +325,7 @@ function handleDisconnect() {
           >
             <div v-if="isDeployingCors" class="i-solar:restart-circle-bold-duotone animate-spin text-sm" />
             <div v-else class="i-solar:rocket-2-bold-duotone text-sm" />
-            <span>{{ isDeployingCors ? 'Deploying...' : 'Deploy Worker' }}</span>
+            <span>{{ isDeployingCors ? 'Deploying...' : 'Deploy Workers' }}</span>
           </Button>
 
           <Button

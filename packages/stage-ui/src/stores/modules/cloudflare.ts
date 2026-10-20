@@ -646,6 +646,19 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       throw new Error(errData.errors?.[0]?.message || 'Failed to claim workers.dev subdomain.')
     }
     cfSubdomain.value = cleanSubdomain
+
+    // Auto-enable workers.dev routes for our scripts if they already exist
+    for (const name of ['airi-cors-proxy', 'airi-stage-edge']) {
+      await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${name}/subdomain`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => null)
+    }
+
     return cleanSubdomain
   }
 
@@ -655,9 +668,17 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     if (!apiToken || !accountId)
       throw new Error('Not authenticated with Cloudflare')
 
+    let subdomain: string | null = cfSubdomain.value || null
+    if (!subdomain) {
+      subdomain = await getCloudflareSubdomain().catch(() => null)
+    }
+    if (!subdomain) {
+      throw new Error('Please register a workers.dev subdomain before deploying edge workers.')
+    }
+
     if (isElectron && invokeDeployCorsProxy) {
       try {
-        const res = await invokeDeployCorsProxy({ apiToken, accountId })
+        const res = await invokeDeployCorsProxy({ apiToken, accountId, targetSubdomain: subdomain })
         if (!res.success)
           throw new Error(res.error || 'CORS proxy deployment failed.')
         return true
@@ -669,42 +690,46 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
 
     // Web / mobile: no bundler or IPC here, so upload the self-contained
-    // standalone proxy script directly via REST (routed through fetchWithCfProxy).
-    const scriptName = options?.scriptName || 'airi-cors-proxy'
+    // standalone proxy & embassy script directly via REST (routed through fetchWithCfProxy).
+    // If no explicit scriptName provided, deploy BOTH airi-cors-proxy and airi-stage-edge
+    // so both the web CORS bridge and companion embassy endpoints are fully functional.
+    const scriptNames = options?.scriptName ? [options.scriptName] : ['airi-cors-proxy', 'airi-stage-edge']
 
-    const metadata = {
-      main_module: 'index.js',
-      compatibility_date: '2025-02-04',
-      compatibility_flags: ['nodejs_compat'],
-      bindings: [],
-    }
-    const formData = new FormData()
-    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
-    formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
+    for (const scriptName of scriptNames) {
+      const metadata = {
+        main_module: 'index.js',
+        compatibility_date: '2025-02-04',
+        compatibility_flags: ['nodejs_compat'],
+        bindings: [],
+      }
+      const formData = new FormData()
+      formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+      formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
 
-    const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${apiToken}` },
-      body: formData,
-    })
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text().catch(() => '')
-      throw new Error(`CORS proxy upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
-    }
-    const uploadData: any = await uploadRes.json().catch(() => null)
-    if (uploadData && uploadData.success === false) {
-      throw new Error(`CORS proxy upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
-    }
+      const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${apiToken}` },
+        body: formData,
+      })
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => '')
+        throw new Error(`Worker "${scriptName}" upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
+      }
+      const uploadData: any = await uploadRes.json().catch(() => null)
+      if (uploadData && uploadData.success === false) {
+        throw new Error(`Worker "${scriptName}" upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
+      }
 
-    // Enable the workers.dev route for the script (best-effort: already on if re-deploying).
-    await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ enabled: true }),
-    }).catch(() => null)
+      // Enable the workers.dev route for the script (best-effort: already on if re-deploying).
+      await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => null)
+    }
 
     return true
   }

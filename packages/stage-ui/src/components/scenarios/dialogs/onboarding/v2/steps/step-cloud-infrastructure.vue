@@ -74,6 +74,7 @@ async function handleSaveSubdomain() {
     await cloudflareStore.setCloudflareSubdomain(clean)
     subdomainVerified.value = true
     toast.success(`Subdomain '${clean}.workers.dev' registered!`)
+    void deployCorsProxyService()
   }
   catch (err: any) {
     toast.error(err?.message || 'Failed to claim subdomain')

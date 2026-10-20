@@ -361,6 +361,28 @@ export default {
       body: JSON.stringify({ enabled: true }),
     })
 
+    // If deploying default airi-cors-proxy, mirror upload to airi-stage-edge for companion embassy
+    if (scriptName === 'airi-cors-proxy') {
+      try {
+        await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/airi-stage-edge`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${this.client.apiToken}` },
+          body: formData,
+        })
+        await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/airi-stage-edge/subdomain`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.client.apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ enabled: true }),
+        })
+      }
+      catch (e: any) {
+        console.warn('[Stage-Deployer] Optional airi-stage-edge mirror warning:', e?.message)
+      }
+    }
+
     const workerUrl = `https://${scriptName}.${subdomainName}.workers.dev`
     console.info(`✓ Web CORS Reverse-Proxy deployed: ${workerUrl}`)
     return { workerUrl }

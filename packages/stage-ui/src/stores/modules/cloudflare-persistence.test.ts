@@ -259,4 +259,121 @@ describe('cloudflare store persistence & corruption recovery', () => {
 
     vi.unstubAllGlobals()
   })
+
+  it('deployCorsProxy rejects when unauthenticated or when subdomain is missing', async () => {
+    const store = useCloudflareStore()
+
+    // 1. Unauthenticated
+    await expect(store.deployCorsProxy()).rejects.toThrow('Not authenticated with Cloudflare')
+
+    // 2. Authenticated but missing subdomain
+    store.cfApiToken = 'dummy_token'
+    store.cfAccountId = 'dummy_account'
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ success: false, result: null }),
+    } as any)))
+
+    await expect(store.deployCorsProxy()).rejects.toThrow('Please register a workers.dev subdomain before deploying edge workers.')
+    vi.unstubAllGlobals()
+  })
+
+  it('deployCorsProxy uploads both airi-cors-proxy and airi-stage-edge and enables their routes', async () => {
+    const store = useCloudflareStore()
+    store.cfApiToken = 'valid_token'
+    store.cfAccountId = 'valid_account'
+    store.cfSubdomain = 'alice'
+
+    const uploadedScripts: string[] = []
+    const enabledRoutes: string[] = []
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const decodedUrl = decodeURIComponent(String(url))
+
+      // Script upload
+      if (init?.method === 'PUT' && decodedUrl.includes('/workers/scripts/')) {
+        const parts = decodedUrl.split('/workers/scripts/')
+        const scriptName = parts[1].split(/[/?]/)[0]
+        uploadedScripts.push(scriptName)
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        } as any
+      }
+
+      // Route enablement
+      if (init?.method === 'POST' && decodedUrl.includes('/subdomain')) {
+        const parts = decodedUrl.split('/workers/scripts/')
+        const scriptName = parts[1].split('/')[0]
+        enabledRoutes.push(scriptName)
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        } as any
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      } as any
+    }))
+
+    const result = await store.deployCorsProxy()
+    expect(result).toBe(true)
+    expect(uploadedScripts).toContain('airi-cors-proxy')
+    expect(uploadedScripts).toContain('airi-stage-edge')
+    expect(enabledRoutes).toContain('airi-cors-proxy')
+    expect(enabledRoutes).toContain('airi-stage-edge')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('setCloudflareSubdomain registers handle and enables script routes', async () => {
+    const store = useCloudflareStore()
+    store.cfApiToken = 'valid_token'
+    store.cfAccountId = 'valid_account'
+
+    const enabledRoutes: string[] = []
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const decodedUrl = decodeURIComponent(String(url))
+
+      if (init?.method === 'PUT' && decodedUrl.includes('/workers/subdomain')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, result: { subdomain: 'bob' } }),
+        } as any
+      }
+
+      if (init?.method === 'POST' && decodedUrl.includes('/subdomain')) {
+        const parts = decodedUrl.split('/workers/scripts/')
+        const scriptName = parts[1].split('/')[0]
+        enabledRoutes.push(scriptName)
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        } as any
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      } as any
+    }))
+
+    const sub = await store.setCloudflareSubdomain('bob')
+    expect(sub).toBe('bob')
+    expect(store.cfSubdomain).toBe('bob')
+    expect(enabledRoutes).toContain('airi-cors-proxy')
+    expect(enabledRoutes).toContain('airi-stage-edge')
+
+    vi.unstubAllGlobals()
+  })
 })
