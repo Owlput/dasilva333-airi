@@ -196,10 +196,48 @@ Per `airi-cloud-relay-infrastructure` §6:
 
 ---
 
-## 5. Subsystem 4: Edge Worker Embassy Endpoints (Proposed `stage-edge` Expansion)
+## 5. Subsystem 4: Edge Worker Embassy Endpoints & Lifecycle (`stage-edge`)
 
 > [!NOTE]
-> `apps/stage-edge/src/index.ts` currently implements `/health`, `/cors-proxy`, and `/discord`. The following endpoints are proposed additions for companion federation.
+> `apps/stage-edge/src/index.ts` implements the companion federation embassy alongside `/health` and `/discord`. The embassy architecture is strictly decoupled from utility shims (such as `airi-cors-proxy`) and provides dedicated edge presence for peer-to-peer companion federation.
+>
+> **Build status (settled 2026-10-20)**: the HTTP contract below (`GET /api/companion/card`, `POST /api/friends/invite|request|inbox`) and Ed25519/nonce guards are implemented and covered in `apps/stage-edge/src/index.test.ts`. The **SQLite Durable Object does not exist yet** — no binding in `apps/stage-edge/wrangler.json`, no DO class in `src/`. All present-tense DO language in this section describes the **target architecture (Step 2)**, not current behavior. The current inbound store is KV (`friends/requests/inbound/*`) with no retrieval path.
+
+### Architectural Decoupling: Embassy vs. CORS Reverse-Proxy
+
+A foundational architectural principle of AIRI is **separation of concerns between utility shims and companion social presence**:
+
+| Dimension | Web CORS Proxy (`airi-cors-proxy`) | Companion Embassy (`airi-stage-edge`) |
+| :--- | :--- | :--- |
+| **Purpose** | Browser REST API CORS bypass (MCP, OAuth endpoints) | Peer-to-peer social federation, Ambassador card, friend requests |
+| **Lifecycle** | Provisioned under Settings $\rightarrow$ Cloudflare / Connectors | **Opt-in**, deployed directly via Friends & Companions page beacon |
+| **Address** | `https://airi-cors-proxy.<subdomain>.workers.dev` | `https://airi-stage-edge.<subdomain>.workers.dev` |
+| **Statefulness** | Completely stateless V8 isolate | Stateful: Cloudflare KV today; SQLite Durable Objects (target, Step 2) |
+| **Privacy Tier** | Utility level (no character personality or identity) | Personal Ambassador Persona (avatar, name, bio, pairing keys) |
+
+### Explicit Deployment Beacon & UX Lifecycle
+Rather than implicitly piggybacking companion federation onto developer proxy settings:
+1. **On-Page Deployment Beacon (`MessagingFriends.vue`)**:
+   - The Friends & Companions header card functions as an active lifecycle beacon.
+   - *Inactive State*: If unconfigured or not yet deployed, the card surfaces an explicit call-to-action: `[ Deploy Companion Embassy ]`, with clear guidance that deploying enables inbound friend requests, single-use invite codes, and nap-chat turns.
+   - *Active State*: Displays `airi-stage-edge.<subdomain>.workers.dev` with live status (`Online` / `Hibernated` / `Quiet Mode`) and one-click actions (`Copy Address`, `Copy Invite Link`).
+2. **Resilient, Non-Blocking Pairing Flow**:
+   - The companion card lookup (`GET /api/companion/card`) serves strictly as an **optional visual preview** to display the friend's avatar and character name prior to sending.
+   - **No Blocking Dead-Ends**: If the remote embassy is cold, slow to propagate, or in quiet mode, the UI never blocks the user with an unrecoverable error. The interface gracefully falls back to direct friend request dispatch (`POST /api/friends/request`) with standard identity payload.
+   - **Direct Invite Consumption**: When an invite code (`cf_inv_...`) or invite URI (`airi://pair?worker=...&invite=...`) is provided, the client bypasses card discovery entirely and immediately submits the pairing transaction.
+
+### SQLite Durable Objects Synergy (Target Architecture — Step 2)
+Lineage: `design-cloud-relay.md` §3.5 evolution path. The Companion Embassy **will** operate with a stateful **SQLite Durable Object**; until Step 2 lands, the inbound store remains KV with no retrieval path:
+- **Zero-Cost Idle via WebSocket Hibernation**: Active companion clients (desktop or mobile) maintain a hibernated WebSocket connection to their Embassy DO. When idle, CPU compute cost is zero.
+- **Instant Inbound Push**: When an external friend sends a request (`POST /api/friends/request`) or a nap-chat turn (`POST /api/friends/inbox`), the Embassy DO immediately pushes the payload down the hibernated WebSocket to the client.
+- **Offline Journaling**: If the user's devices are closed or asleep, the DO journals the incoming friend request or nap-chat turn directly into its 5 GB embedded SQLite database, delivering it the moment the companion client reconnects.
+
+### Settled Receive-Path Decisions (2026-10-20 — No-Throwaway Rule)
+1. **No KV list endpoint, no client poller — ever.** The receive side stays dark until the DO lands. Building `GET /api/friends/requests` + a 30–60s poll loop means writing code we delete weeks later (plus KV eventual-consistency flapping and 1 write/sec throttling the whole way). `pendingRequests` in the client stays fed by nothing until Step 2; the drawer renders its empty state honestly.
+2. **Single Embassy DO per user**, addressed via `idFromName('embassy')` on the user's own worker. No per-friend DOs. Multi-device = multiple hibernated sockets on the one DO, routed by `machineId`.
+3. **Beacon ships first without the DO.** Step 1 deploys the worker under the final `airi-stage-edge.<subdomain>.workers.dev` name with the current KV-backed handlers; Step 2 upgrades the same deployment in place (worker + `durable_objects` binding/migration, no rename, no user action). Same-name upgrade is why Step 1 is not throwaway: HTTP contract, Ed25519 wire format, and UI shape are frozen now.
+4. **Keep in KV, do not migrate**: nonces (native TTL), `system/prompt`, `context/rolling` (Discord path). The DO owns only federation tables: `friend_requests`, `friends_roster`, `nap_turns`. In-flight KV inbound items at cutover are drained-or-dropped (quarantine-phase data; acceptable loss, stated here so nobody builds a migration).
+5. **Deployer gap (Step 2 prerequisite)**: `CloudflareStageDeployer` uploads via API today with no `durable_objects` binding/migration support — the beacon cannot provision a DO until that lands, nor can `wrangler.json` / `bundle-code.ts` be left without the binding. DO unit behavior must live in framework-free modules (Node vitest cannot run DOs); integration goes through workerd.
 
 ### Security & Signature Verification
 All inbound federation requests to `@proj-airi/stage-edge` must adhere to strict security invariants modeled after `apps/stage-edge/src/discord/acl.ts` and `apps/stage-edge/src/crypto/ed25519.ts`:
@@ -207,7 +245,7 @@ All inbound federation requests to `@proj-airi/stage-edge` must adhere to strict
    - Inbound requests must supply `x-signature-ed25519` and `x-signature-timestamp`.
    - The body is verified against the sender's pinned Ed25519 public key (`BasePeer.id`).
 2. **Replay Protection**:
-   - An `x-signature-nonce` header is required. Nonces are cached in KV with a 10-minute TTL to reject replayed requests.
+   - An `x-signature-nonce` header is required. Nonces are cached in KV/SQLite with a 10-minute TTL to reject replayed requests.
    - Timestamp drift is restricted to $\pm 300$ seconds (5 minutes).
 3. **Spoof Protection**:
    - A hostname alone (`alex.workers.dev`) is unauthenticated and trivially spoofed. The worker rejects any request where the Ed25519 signature does not match the pinned public key for that peer.
@@ -221,7 +259,7 @@ All inbound federation requests to `@proj-airi/stage-edge` must adhere to strict
    - **Sanitization & Injection Defense**: Stripped of all HTML/markdown tags, ANSI escapes, non-printable control characters, and template tokens (`{{...}}`). Rendered purely as plaintext.
    - **Cryptographic Signing**: The signature digest binds `x-signature-timestamp + "." + x-signature-nonce + "." + senderHandle + "." + (introMessage ?? "")` to guarantee that the intro note cannot be tampered with or replaced in transit by a malicious relay or MitM.
 
-### Proposed Route Handlers (`apps/stage-edge/src/index.ts`)
+### Route Handlers (`apps/stage-edge/src/index.ts`)
 
 1. **`GET /api/companion/card`**:
    - Public discovery endpoint returning public card metadata for the user's active **Ambassador Persona** (name, public avatar URL, public key, allowed interaction types).
@@ -337,6 +375,8 @@ Upon dialogue completion:
 | **Phase 0** | **Presence & Domain Models** | Refactor `proactivity-telemetry.ts` and `proactivity.ts` to share single idle evaluator (`powerMonitor`); define `PeerDevice` and `Friend` types in `stage-shared`; backlog Category 3 test suites as aspirational targets. | 🟢 Low (Zero network dependency) |
 | **Phase 1** | **Same-Account Auto-Discovery** | Connect `usePeersStore` to the existing `airi-edge-vault` KV namespace (provisioned in `cloudflare.ts`); auto-link multiple signed-in computers. | 🟢 Low (Built on existing KV vault) |
 | **Phase 2** | **Edge Worker Friends Embassy** | Add `/api/companion` and `/api/friends/*` endpoints in `apps/stage-edge`; implement Ed25519 signature checks, nonces, and rate limits; build "Friends & Companions" settings page per §9 (regions A–F). | 🟡 Medium (Worker routing & UI) |
+| **Phase 2a** | **Embassy Beacon + send-side (no regrets)** | `deployCompanionEmbassy()` in deployer (same `airi-stage-edge` name, no DO yet); beacon card with real health probe (`Embassy Inactive` → Deploy CTA); non-blocking Add flow (card optional, direct request, invite accept-and-connect). Receive stays dark — no list endpoint, no poller. | 🟢 Low (Contract frozen, additive only) |
+| **Phase 2b** | **Embassy DO + receive path** | Single `Embassy` DO (`idFromName('embassy')`): SQLite `friend_requests` / `friends_roster` / `nap_turns`, `/ws` hibernation, route POST handlers through DO stubs; client socket manager with reconnect; deployer `durable_objects` binding/migration support; KV drain-or-drop at cutover. | 🟡 Medium (DO + deployer + workerd testing) |
 | **Phase 3** | **TransportAdapter & libp2p** | Implement RFC #28 interface; wrap Cloudflare Edge adapter; port 7n1m4 PR #6 libp2p LAN driver for offline fallback. | 🟡 Medium (Local mDNS / WebRTC interop) |
 | **Phase 4** | **Nap-Chat Coordinator** | Port PR #7 nap-chat negotiation, background dream turns, append-only `text_journal` memory write-back, and welcome-back recap with `NO_REPLY` guard. | 🟡 Medium (Prompt tuning & safety gating) |
 
@@ -361,7 +401,7 @@ Upon dialogue completion:
 - No hardcoded cyan/hex; use `primary` token (follows `--chromatic-hue`) + `neutral` surfaces + `green`/`neutral` presence dots paired with text labels. Grouped Vue class arrays; `rounded-lg` cards; `rounded-full` pills/dots; `gap-2` button icon-label; `p-4/6 flex flex-col gap-4` cards. Remove `Design preview` badge before ship; verify dark + light + `prefers-reduced-motion`.
 
 ### 9.3 States & guards
-- `workerNotDeployed`: address card shows Deploy CTA (`cloudflareStore.deployWorker`) instead of Copy invite.
+- `workerNotDeployed`: address card shows `Embassy Inactive` + Deploy CTA (`deployCompanionEmbassy()`, final `airi-stage-edge` name, no DO yet) instead of Copy invite; `Online` renders only on a live health probe. Requests drawer shows empty state until Step 2 delivery exists.
 - `lookupFailed / inviteExpired`: inline error under FieldInput; single-use invites expire 24h.
 - `introMessageClamp`: personal note input strictly clamped at $\le 100$ characters with HTML/markdown formatting stripped on input.
 - `trustState`: `pending` rows show `Awaiting approval` and remain quarantined from candidate selection (`isNapChatEligible === false`); `restricted/blocked` hidden from nap candidate pool and show Revoke state.
