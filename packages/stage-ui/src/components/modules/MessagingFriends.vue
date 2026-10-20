@@ -106,7 +106,12 @@ async function handleDeployEmbassy() {
     const res = await cloudflareStore.deployCompanionEmbassy()
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
-      await probeEmbassyHealth()
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await probeEmbassyHealth()
+        if (isEmbassyOnline.value)
+          break
+        await new Promise(r => setTimeout(r, 1500))
+      }
     }
   }
   catch (err: any) {
