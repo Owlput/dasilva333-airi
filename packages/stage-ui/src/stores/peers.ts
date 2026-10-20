@@ -124,6 +124,13 @@ export const usePeersStore = defineStore('peers', () => {
     await persist()
   }
 
+  async function removePeer(id: string) {
+    if (!isInitialized.value)
+      await init()
+    roster.value = roster.value.filter(p => p.id !== id && (p as any).machineId !== id)
+    await persist()
+  }
+
   function toVaultDeviceMapForSync(): VaultDeviceMap {
     return toVaultDeviceMap(roster.value.filter(p => p.relationship === 'same-account') as SameAccountDevice[])
   }
@@ -146,6 +153,7 @@ export const usePeersStore = defineStore('peers', () => {
     currentMachineId,
     init,
     upsertPeer,
+    removePeer,
     toVaultDeviceMapForSync,
     mergeVaultDevices,
   }

@@ -7,6 +7,13 @@ import { isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui'
 import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot } from 'vaul-vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -366,6 +373,19 @@ async function handleAcceptRequest(req: InboundRequestItem) {
     showRequestsDrawer.value = false
 }
 
+async function handleRemoveDevice(device: any) {
+  await peersStore.removePeer(device.id)
+  if (cloudflareStore.isAuthenticated) {
+    void cloudflareStore.syncVaultDevices().catch(() => {})
+  }
+  toast.success(`Removed ${device.alias} from devices.`)
+}
+
+async function handleRemoveFriend(friend: ExternalFriend) {
+  await peersStore.removePeer(friend.id)
+  toast.success(`Removed ${friend.characterName} from friends.`)
+}
+
 // UI Design Tokens
 const surfaceCardClass = computed(() => [
   'rounded-2xl',
@@ -663,9 +683,64 @@ const surfaceCardClass = computed(() => [
                       Messages can wait in their inbox.
                     </div>
                   </div>
-                  <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
-                    <div class="i-solar:menu-dots-bold text-base" />
-                  </button>
+                  <DropdownMenuRoot>
+                    <DropdownMenuTrigger as-child aria-label="Friend options">
+                      <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
+                        <div class="i-solar:menu-dots-bold text-base" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuContent
+                        :class="[
+                          'z-50 min-w-40 rounded-xl p-1 outline-none',
+                          'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
+                          'shadow-xl backdrop-blur-md',
+                        ]"
+                        :side-offset="6"
+                        align="end"
+                      >
+                        <DropdownMenuItem
+                          :class="[
+                            'relative flex cursor-pointer select-none items-center gap-2',
+                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                            'text-neutral-700 dark:text-neutral-200',
+                            'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                          ]"
+                          @click="openPermissions(friend)"
+                        >
+                          <div class="i-solar:shield-check-bold text-xs" />
+                          <span>Permissions</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          v-if="friend.shareHandle"
+                          :class="[
+                            'relative flex cursor-pointer select-none items-center gap-2',
+                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                            'text-neutral-700 dark:text-neutral-200',
+                            'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                          ]"
+                          @click="copyToClipboard(friend.shareHandle); toast.success('Address copied!')"
+                        >
+                          <div class="i-solar:copy-bold-duotone text-xs" />
+                          <span>Copy address</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          :class="[
+                            'relative flex cursor-pointer select-none items-center gap-2',
+                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                            'text-red-600 dark:text-red-400',
+                            'hover:bg-red-50 dark:hover:bg-red-950/40',
+                          ]"
+                          @click="handleRemoveFriend(friend)"
+                        >
+                          <div class="i-solar:user-cross-bold-duotone text-xs" />
+                          <span>Remove friend</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuRoot>
                 </div>
               </div>
 
@@ -767,9 +842,51 @@ const surfaceCardClass = computed(() => [
                 </div>
               </div>
 
-              <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
-                <div class="i-solar:menu-dots-bold text-sm" />
-              </button>
+              <DropdownMenuRoot>
+                <DropdownMenuTrigger as-child aria-label="Device options">
+                  <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
+                    <div class="i-solar:menu-dots-bold text-sm" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent
+                    :class="[
+                      'z-50 min-w-40 rounded-xl p-1 outline-none',
+                      'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
+                      'shadow-xl backdrop-blur-md',
+                    ]"
+                    :side-offset="6"
+                    align="end"
+                  >
+                    <DropdownMenuItem
+                      :class="[
+                        'relative flex cursor-pointer select-none items-center gap-2',
+                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                        'text-neutral-700 dark:text-neutral-200',
+                        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      ]"
+                      @click="copyToClipboard(device.machineId); toast.success('Machine ID copied to clipboard!')"
+                    >
+                      <div class="i-solar:copy-bold-duotone text-xs" />
+                      <span>Copy machine ID</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      v-if="!isCurrentDevice(device)"
+                      :class="[
+                        'relative flex cursor-pointer select-none items-center gap-2',
+                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                        'text-red-600 dark:text-red-400',
+                        'hover:bg-red-50 dark:hover:bg-red-950/40',
+                      ]"
+                      @click="handleRemoveDevice(device)"
+                    >
+                      <div class="i-solar:trash-bin-trash-bold-duotone text-xs" />
+                      <span>Forget device</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenuRoot>
             </div>
           </div>
         </div>
