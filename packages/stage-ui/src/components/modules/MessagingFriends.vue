@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AmbassadorCard, ExternalFriend, Peer } from '@proj-airi/stage-shared'
+import type { AmbassadorCard, ExternalFriend, FriendRequest, Peer } from '@proj-airi/stage-shared'
 
 import type { NapTurn } from '../../stores/nap-chat'
 
@@ -15,13 +15,14 @@ import {
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot } from 'vaul-vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
 import { normalizeAddress, usePeerEmbassy } from '../../composables/use-peer-embassy'
+import { useEmbassyInboxStore } from '../../stores/embassy-inbox'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useNapChatStore } from '../../stores/nap-chat'
@@ -44,6 +45,7 @@ const {
   socialPromptGuidance,
 } = storeToRefs(napChatStore)
 const embassy = usePeerEmbassy()
+const embassyInboxStore = useEmbassyInboxStore()
 const router = useRouter()
 
 // NOTICE: Stable empty reference — never allocate `[]` inside a computed.
@@ -68,6 +70,25 @@ const myAddress = computed(() => {
   return `airi-stage-edge.${sub}.workers.dev`
 })
 const hasAddress = computed(() => Boolean(myAddress.value))
+
+async function initEmbassySocket() {
+  const address = myAddress.value
+  const ownerId = cloudflareStore.activeAccountId
+  if (!address || !ownerId)
+    return
+
+  const workerUrl = address.startsWith('http') ? address : `https://${address}`
+  try {
+    await embassyInboxStore.connect({
+      workerUrl,
+      ownerId,
+      machineId: currentMachineId.value,
+    })
+  }
+  catch (err) {
+    console.warn('[MessagingFriends] Failed to connect embassy socket:', err)
+  }
+}
 
 async function probeEmbassyHealth() {
   if (!myAddress.value) {
@@ -103,7 +124,7 @@ async function handleDeployEmbassy() {
   isDeployingEmbassy.value = true
   try {
     toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
-    const res = await cloudflareStore.deployCompanionEmbassy()
+    const res = await cloudflareStore.deployCompanionEmbassy({ enableEmbassyDO: true })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -111,6 +132,9 @@ async function handleDeployEmbassy() {
         if (isEmbassyOnline.value)
           break
         await new Promise(r => setTimeout(r, 1500))
+      }
+      if (isEmbassyOnline.value) {
+        void initEmbassySocket()
       }
     }
   }
@@ -127,11 +151,17 @@ onMounted(async () => {
   if (cloudflareStore.isAuthenticated) {
     void cloudflareStore.syncVaultDevices().catch(() => {})
     void probeEmbassyHealth()
+    void initEmbassySocket()
   }
 })
 
-watch(cfSubdomain, () => {
+onUnmounted(() => {
+  embassyInboxStore.disconnect()
+})
+
+watch([myAddress, () => cloudflareStore.activeAccountId], () => {
   void probeEmbassyHealth()
+  void initEmbassySocket()
 })
 
 async function handleManualDeviceSync() {
@@ -202,8 +232,37 @@ export interface InboundRequestItem {
   senderPubkey?: string
 }
 
-// Live inbound requests
-const pendingRequests = ref<InboundRequestItem[]>([])
+function toInboundRequestItem(req: FriendRequest): InboundRequestItem {
+  return {
+    id: req.id,
+    characterName: req.fromCharacterName,
+    alias: req.fromHandle.split('.')[0] || req.fromCharacterName,
+    shareHandle: req.fromHandle,
+    introMessage: req.introMessage,
+    senderPubkey: req.fromPubkey,
+  }
+}
+
+// Live inbound requests from embassy inbox store
+const pendingRequests = computed<InboundRequestItem[]>(() => {
+  return embassyInboxStore.pendingRequests.map(toInboundRequestItem)
+})
+
+watch(() => pendingRequests.value.length, (newLen, oldLen) => {
+  if (newLen > (oldLen ?? 0)) {
+    const latest = pendingRequests.value[pendingRequests.value.length - 1]
+    if (latest) {
+      toast.info(`New friend request from ${latest.characterName}!`, {
+        action: {
+          label: 'View',
+          onClick: () => {
+            showRequestsDrawer.value = true
+          },
+        },
+      })
+    }
+  }
+})
 
 const availableLocalCompanions = computed(() => {
   const list: Array<{ id: string, name: string }> = []
@@ -468,20 +527,41 @@ async function savePermissions() {
 }
 
 async function handleAcceptRequest(req: InboundRequestItem) {
-  await peersStore.upsertPeer({
-    id: req.senderPubkey || `ed25519-${req.characterName.toLowerCase()}-${req.alias.toLowerCase()}`,
-    alias: req.alias,
-    characterName: req.characterName,
-    relationship: 'external-friend',
-    trustState: 'trusted',
-    lastSeenTimestamp: Date.now(),
-    endpoints: { cloudflareWorkerUrl: `https://${req.shareHandle}` },
-    shareHandle: req.shareHandle,
-    allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
-    introMessage: req.introMessage,
-  })
-  pendingRequests.value = pendingRequests.value.filter(r => r.id !== req.id)
-  toast.success(`Accepted ${req.characterName}! Added to friends.`)
+  try {
+    const res = await embassyInboxStore.acceptRequest(req.id)
+    if (!res.ok) {
+      toast.error(`Failed to accept ${req.characterName}: ${res.error || 'Server error'}`)
+      return
+    }
+
+    const peer = (peersStore.roster as Peer[]).find(p => p.id === req.senderPubkey)
+    if (peer && isExternalFriend(peer)) {
+      await peersStore.upsertPeer({
+        ...peer,
+        endpoints: {
+          cloudflareWorkerUrl: req.shareHandle.startsWith('http') ? req.shareHandle : `https://${req.shareHandle}`,
+        },
+        allowedCapabilities: {
+          canNapChat: true,
+          canShareMemories: false,
+          canStreamSensory: false,
+        },
+        introMessage: req.introMessage,
+      })
+    }
+
+    toast.success(`Accepted ${req.characterName}! Added to friends.`)
+    if (pendingRequests.value.length === 0)
+      showRequestsDrawer.value = false
+  }
+  catch (err: any) {
+    toast.error(`Failed to accept ${req.characterName}: ${err?.message || 'Unknown error'}`)
+  }
+}
+
+function handleIgnoreRequest(req: InboundRequestItem) {
+  embassyInboxStore.ignoreRequest(req.id)
+  toast.info(`Ignored friend request from ${req.characterName}`)
   if (pendingRequests.value.length === 0)
     showRequestsDrawer.value = false
 }
@@ -1386,7 +1466,7 @@ const surfaceCardClass = computed(() => [
                     variant="secondary"
                     size="sm"
                     label="Ignore"
-                    @click="pendingRequests = pendingRequests.filter(r => r.id !== req.id)"
+                    @click="handleIgnoreRequest(req)"
                   />
                 </div>
               </div>

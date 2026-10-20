@@ -308,6 +308,16 @@ export interface TransportAdapter {
   - Ports the era-2 stack from 7n1m4 PR #6 (`@libp2p/crypto`, `@multiformats/multiaddr`).
   - Discovers local LAN peers over mDNS and establishes direct TCP/WebSocket sessions when offline.
 
+### 7n1m4 Port Strategy: Take the Protocol, Leave the Runtime (Settled 2026-10-20)
+
+Researched against `7n1m4/main` local refs (PR #6 `feat/libp2p-local-mesh-foundation`, PR #7 `feat/agentic-os-companion-nap-chat`; no remote fetch). Their nap-chat splits into three layers with sharply different portability — so the strategy is selective port, not wholesale adoption and not ground-up rebuild:
+
+1. **The abstraction is already the right size.** Their nap-chat consumes exactly `publish(topic, bytes)` plus "is there a publisher" — a surface our 4-method `TransportAdapter` covers 1:1. There is no "entire deep transport layer" to abstract: libp2p node lifecycle (identity, mDNS, DHT, connection manager) stays encapsulated inside a future `libp2p-mesh` driver and never leaks into the interface. No parallel systems: single roster (`local:peers/roster`), single consent (`ExternalFriend.allowedCapabilities`), single presence engine. Two peer identities, two consent stores, or two presence loops are permanent anti-goals.
+2. **Take the wire contract.** Their valibot strict-variant envelopes (5 message kinds), topic `airi/companion.chat`, protocol id `airi.nap-chat/1`, and `parseNapChatMessage` enforcing staleness, turn-cap, and length bounds *in the parser* are stricter than our per-handler validation. Port the envelope discipline and parser-enforced bounds; keep our two-topic split (`airi/nap-chat/session`, `airi/nap-chat/turn`), which maps cleanly onto subscribe-per-topic and inbox routing. Recorded here for reference; cross-fork wire interop is explicitly a non-goal (their network requires their node identity anyway).
+3. **Take the session mechanics, rehomed.** Nonce mint/consume with idempotency, consent-check-before-first-turn, and recap composition move into the renderer-side coordinator (`nap-chat-coordinator.ts`) as pure, tested functions keyed by our peer ids — never as their Electron-main service, which would break the in-process (web/mobile parity) invariant.
+4. **Leave behind.** Their presence/agentic stores (conflict with heartbeat/dream-state decoupling), Electron-main companion service and Eventa plumbing (conflict with renderer-side architecture), pairing trust flow (conflict with Ed25519-pinned identities + invite flow), and their settings pages.
+5. **Quality gate.** Per `docs/7N1M4_RADAR.md`, their code is unproven end-to-end. Anything ported under this strategy must pass the same bar as native work: targeted vitest plus a live proof (cf. the Embassy DO workerd proof), before it counts as landed.
+
 ---
 
 ## 7. Subsystem 6: Autonomous Companion Nap-Chat & Memory Contracts

@@ -734,7 +734,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return true
   }
 
-  async function deployCompanionEmbassy(options?: { enableEmbassyDO?: boolean }): Promise<{ success: boolean, workerUrl: string }> {
+  async function deployCompanionEmbassy(options: { enableEmbassyDO?: boolean } = { enableEmbassyDO: true }): Promise<{ success: boolean, workerUrl: string }> {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
@@ -750,6 +750,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
 
     const scriptName = 'airi-stage-edge'
     const workerUrl = `https://${scriptName}.${subdomain}.workers.dev`
+    const enableDO = options.enableEmbassyDO ?? true
 
     if (isElectron && invokeDeployCorsProxy) {
       try {
@@ -760,7 +761,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           scriptName,
           ownerId: accountId,
           characterName: 'AIRI',
-          enableEmbassyDO: Boolean(options?.enableEmbassyDO),
+          enableEmbassyDO: enableDO,
         })
         if (!res.success)
           throw new Error(res.error || 'Companion embassy deployment failed.')
@@ -811,7 +812,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     bindings.push({ type: 'plain_text', name: 'OWNER_ID', text: accountId })
     bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: 'AIRI' })
 
-    if (options?.enableEmbassyDO) {
+    if (enableDO) {
       bindings.push({
         type: 'durable_object_namespace',
         name: 'EMBASSY',
@@ -824,6 +825,13 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       compatibility_date: '2025-02-04',
       compatibility_flags: ['nodejs_compat'],
       bindings,
+    }
+
+    if (enableDO) {
+      metadata.migrations = {
+        tag: 'v1',
+        new_sqlite_classes: ['EmbassyDO'],
+      }
     }
 
     const formData = new FormData()

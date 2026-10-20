@@ -281,6 +281,31 @@ export function usePeerEmbassy() {
     }
   }
 
+  async function acceptFriendRequest(
+    myWorkerUrl: string,
+    ownerId: string,
+    payload: { pubkey: string, handle: string },
+  ): Promise<{ ok: boolean, error?: string }> {
+    try {
+      const res = await fetch(`${myWorkerUrl}/api/friends/accept`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-owner-id': ownerId,
+        },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        return { ok: true }
+      }
+      const data = await res.json().catch(() => ({}))
+      return { ok: false, error: data?.error || `HTTP ${res.status}` }
+    }
+    catch (e: any) {
+      return { ok: false, error: e?.message || 'Network error' }
+    }
+  }
+
   async function mintInviteToken(options: { myWorkerUrl?: string, ownerId?: string } = {}): Promise<{ invite: string, uri: string, expiresAt: number, verified?: boolean }> {
     const { myWorkerUrl, ownerId } = options
     if (myWorkerUrl && ownerId) {
@@ -324,6 +349,7 @@ export function usePeerEmbassy() {
     error,
     fetchCompanionCard,
     sendFriendRequest,
+    acceptFriendRequest,
     mintInviteToken,
     normalizeAddress,
     getOrCreateDeviceKeypair,
