@@ -87,13 +87,14 @@ export interface EmbassyStorage {
   sql: {
     exec: <T>(query: string, ...bindings: unknown[]) => { toArray: () => T[] }
   }
-  getWebSockets: (tag?: string) => WebSocket[]
 }
 
 export interface EmbassyState {
   storage: EmbassyStorage
   acceptWebSocket: (ws: WebSocket, tags?: string[]) => void
   blockConcurrencyWhile: <T>(callback: () => Promise<T>) => Promise<T>
+  /** NOTE: socket listing lives on the DO state, not on storage. */
+  getWebSockets: (tag?: string) => WebSocket[]
 }
 
 export interface EmbassyEnv {
@@ -124,7 +125,7 @@ function listPendingRequests(storage: EmbassyStorage): InboundFriendRequest[] {
 function pushToSockets(state: EmbassyState, event: EmbassyPushEvent): number {
   const text = buildPushEvent(event)
   let delivered = 0
-  for (const ws of state.storage.getWebSockets()) {
+  for (const ws of state.getWebSockets()) {
     try {
       ws.send(text)
       delivered += 1
