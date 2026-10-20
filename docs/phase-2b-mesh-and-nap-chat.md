@@ -271,6 +271,8 @@ All inbound federation requests to `@proj-airi/stage-edge` must adhere to strict
    - Validates invite token, enforces rate limits, sanitizes optional `introMessage` ($\le 100$ characters), validates Ed25519 signature, and registers the applicant into `friends/requests/inbound` quarantined with `trustState: 'pending'`.
 4. **`POST /api/friends/inbox`**:
    - Authenticated peer-to-peer message relay. Dispatches nap-chat session proposals, turn messages, and memory echo chips. Blocked if the sender is not in `trustState: 'trusted'`.
+5. **`POST /api/friends/accept`** (owner-only):
+   - Trust grant that moves a pending applicant to `trusted`, unblocking their inbox. DO path writes `trusted_peers` + flips `friend_requests`; KV fallback writes `friends/accepted/{pubkey}`. Required: without it the inbox stays quarantined forever.
 
 ---
 

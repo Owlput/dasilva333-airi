@@ -351,6 +351,110 @@ describe('apps/stage-edge worker index', () => {
     })
   })
 
+  describe('pOST /api/friends/accept trust grant', () => {
+    const acceptBody = (pubkey: string, handle = 'alex.workers.dev') => ({
+      method: 'POST',
+      headers: { 'x-owner-id': 'owner-1' },
+      body: JSON.stringify({ pubkey, handle }),
+    })
+
+    it('rejects unauthenticated, malformed, and KV-less calls', async () => {
+      const { publicKeyHex } = await generateEdKey()
+
+      const noKv = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', acceptBody(publicKeyHex)),
+        { ...baseEnv, OWNER_ID: 'owner-1' },
+      )
+      expect(noKv.status).toBe(503)
+
+      const kv = createKv()
+      const noOwner = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', {
+          method: 'POST',
+          body: JSON.stringify({ pubkey: publicKeyHex }),
+        }),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any },
+      )
+      expect(noOwner.status).toBe(403)
+
+      const badKey = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', {
+          method: 'POST',
+          headers: { 'x-owner-id': 'owner-1' },
+          body: JSON.stringify({ pubkey: 'not-a-key' }),
+        }),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any },
+      )
+      expect(badKey.status).toBe(400)
+    })
+
+    it('routes trust grants through the DO when bound', async () => {
+      const { publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const seen: string[] = []
+      const ns = {
+        idFromName: vi.fn(() => ({ toString: () => 'embassy-id' })),
+        get: vi.fn(() => ({
+          fetch: vi.fn(async (url: string) => {
+            seen.push(url)
+            return new Response(JSON.stringify({ trusted: true }), { status: 200 })
+          }),
+        })),
+      }
+      const res = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', acceptBody(publicKeyHex)),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any, EMBASSY: ns as any },
+      )
+      expect(res.status).toBe(200)
+      expect((await res.json() as any).trusted).toBe(true)
+      expect(seen).toEqual(['https://embassy/internal/accept'])
+
+      const downNs = {
+        idFromName: () => ({ toString: () => 'embassy-id' }),
+        get: () => ({ fetch: async () => { throw new Error('boom') } }),
+      }
+      const down = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', acceptBody(publicKeyHex)),
+        { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any, EMBASSY: downNs as any },
+      )
+      expect(down.status).toBe(502)
+    })
+
+    it('kV fallback closes the loop: accept then inbox queues', async () => {
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const env: Env = { ...baseEnv, OWNER_ID: 'owner-1', MEMORY: kv as any }
+
+      const accept = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/accept', acceptBody(publicKeyHex)),
+        env,
+      )
+      expect(accept.status).toBe(200)
+      expect(kv.store.has(`friends/accepted/${publicKeyHex}`)).toBe(true)
+
+      const bodyText = JSON.stringify({ topic: 'airi/nap-chat/turn', payload: {} })
+      const timestamp = Date.now()
+      const nonce = 'accept-loop-nonce-1'
+      const sigData = new TextEncoder().encode(`${timestamp}:${nonce}:${bodyText}`)
+      const sig = uint8ArrayToHex(new Uint8Array(await crypto.subtle.sign('Ed25519', keyPair.privateKey, sigData)))
+      const inbox = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/inbox', {
+          method: 'POST',
+          headers: {
+            'x-sender-pubkey': publicKeyHex,
+            'x-signature-ed25519': sig,
+            'x-signature-timestamp': String(timestamp),
+            'x-signature-nonce': nonce,
+          },
+          body: bodyText,
+        }),
+        env,
+      )
+      expect(inbox.status).toBe(200)
+      expect((await inbox.json() as any).queued).toBe(true)
+    })
+  })
+
   describe('unmatched routes', () => {
     it('returns 404 Not Found for unrecognized path', async () => {
       const req = new Request('https://edge.airi.moeru.ai/unknown-route')

@@ -507,6 +507,49 @@ export default {
       return jsonResponse({ queued: true }, { headers: { 'Access-Control-Allow-Origin': '*' } })
     }
 
+    // Companion embassy: owner-only trust grant. Moves a pending applicant to
+    // `trusted`, unblocking their inbox. DO path writes trusted_peers + flips
+    // friend_requests; KV fallback writes friends/accepted/{pubkey}.
+    if (request.method === 'POST' && url.pathname === '/api/friends/accept') {
+      if (!env.MEMORY) {
+        return jsonResponse({ error: 'kv_not_configured' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const ownerId = request.headers.get('x-owner-id')
+      if (!env.OWNER_ID || !ownerId || ownerId !== env.OWNER_ID) {
+        return jsonResponse({ error: 'forbidden' }, { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      let body: any = null
+      try {
+        body = await request.json()
+      }
+      catch {
+        return jsonResponse({ error: 'invalid_json' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      if (!isHex64(body?.pubkey)) {
+        return jsonResponse({ error: 'invalid_identity' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const acceptStub = getEmbassyStub(env)
+      if (acceptStub) {
+        const routed = await callEmbassy('/internal/accept', acceptStub, {
+          pubkey: body.pubkey,
+          handle: typeof body.handle === 'string' ? body.handle : '',
+        })
+        if (!routed.ok)
+          return jsonResponse(routed.data ?? { error: 'embassy_unreachable' }, { status: 502, headers: { 'Access-Control-Allow-Origin': '*' } })
+        return jsonResponse({ trusted: true }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      try {
+        await env.MEMORY.put(`friends/accepted/${body.pubkey}`, JSON.stringify({
+          handle: typeof body.handle === 'string' ? body.handle : '',
+          acceptedAt: Date.now(),
+        }))
+      }
+      catch {
+        return jsonResponse({ error: 'kv_write_failed' }, { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      return jsonResponse({ trusted: true }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+
     return new Response('Not Found', { status: 404 })
   },
 }
