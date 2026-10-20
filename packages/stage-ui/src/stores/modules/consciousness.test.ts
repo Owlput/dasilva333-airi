@@ -9,7 +9,7 @@ vi.mock('../../libs/native-ai', () => ({
   NativeAI: {
     isNative: vi.fn(() => false),
     isModelCached: vi.fn(async () => true),
-    downloadModel: vi.fn(async () => undefined),
+    downloadModel: vi.fn(async () => ({ modelId: '', status: 'downloaded' })),
   },
 }))
 const onboardingState = vi.hoisted(() => ({ needsOnboarding: false }))
@@ -178,7 +178,7 @@ describe('consciousness store', () => {
     expect(NativeAI.downloadModel).toHaveBeenCalled()
     warn.mockRestore()
     vi.mocked(NativeAI.isNative).mockReturnValue(false)
-    vi.mocked(NativeAI.downloadModel).mockResolvedValue(undefined)
+    vi.mocked(NativeAI.downloadModel).mockResolvedValue({ modelId: 'model-z', status: 'downloaded' })
   })
   it('getModelsForProvider returns models for listing provider', async () => {
     const store = useConsciousnessStore()
