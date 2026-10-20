@@ -478,12 +478,18 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       return new Promise((resolve, reject) => {
         let isResolved = false
         const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('airi_cf_oauth_channel') : null
+        let checkInterval: ReturnType<typeof setInterval> | undefined
+        let handleMessage: ((event: MessageEvent) => void) | undefined
+        let handleStorage: ((event: StorageEvent) => void) | undefined
 
         const cleanup = () => {
-          clearInterval(checkInterval)
+          if (checkInterval)
+            clearInterval(checkInterval)
           if (typeof window !== 'undefined') {
-            window.removeEventListener('message', handleMessage)
-            window.removeEventListener('storage', handleStorage)
+            if (handleMessage)
+              window.removeEventListener('message', handleMessage)
+            if (handleStorage)
+              window.removeEventListener('storage', handleStorage)
           }
           if (channel) {
             channel.close()
@@ -494,7 +500,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           catch {}
         }
 
-        const checkInterval = setInterval(() => {
+        checkInterval = setInterval(() => {
           if (popup?.closed) {
             cleanup()
             isAuthenticating.value = false
@@ -520,13 +526,13 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           }
         }
 
-        const handleMessage = (event: MessageEvent) => {
+        handleMessage = (event: MessageEvent) => {
           if (event.data?.type === 'CLOUDFLARE_OAUTH_CODE' || event.data?.type === 'CLOUDFLARE_AUTH_CALLBACK') {
             handleAuthCode(event.data.code)
           }
         }
 
-        const handleStorage = (event: StorageEvent) => {
+        handleStorage = (event: StorageEvent) => {
           if (event.key === 'airi_cf_oauth_callback' && event.newValue) {
             try {
               const parsed = JSON.parse(event.newValue)
@@ -676,6 +682,8 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       throw new Error('Please register a workers.dev subdomain before deploying edge workers.')
     }
 
+    const scriptName = options?.scriptName || 'airi-cors-proxy'
+
     if (isElectron && invokeDeployCorsProxy) {
       try {
         const res = await invokeDeployCorsProxy({ apiToken, accountId, targetSubdomain: subdomain })
@@ -689,49 +697,127 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       }
     }
 
-    // Web / mobile: no bundler or IPC here, so upload the self-contained
-    // standalone proxy & embassy script directly via REST (routed through fetchWithCfProxy).
-    // If no explicit scriptName provided, deploy BOTH airi-cors-proxy and airi-stage-edge
-    // so both the web CORS bridge and companion embassy endpoints are fully functional.
-    const scriptNames = options?.scriptName ? [options.scriptName] : ['airi-cors-proxy', 'airi-stage-edge']
+    const metadata = {
+      main_module: 'index.js',
+      compatibility_date: '2025-02-04',
+      compatibility_flags: ['nodejs_compat'],
+      bindings: [],
+    }
+    const formData = new FormData()
+    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+    formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
 
-    for (const scriptName of scriptNames) {
-      const metadata = {
-        main_module: 'index.js',
-        compatibility_date: '2025-02-04',
-        compatibility_flags: ['nodejs_compat'],
-        bindings: [],
-      }
-      const formData = new FormData()
-      formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
-      formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
-
-      const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${apiToken}` },
-        body: formData,
-      })
-      if (!uploadRes.ok) {
-        const errText = await uploadRes.text().catch(() => '')
-        throw new Error(`Worker "${scriptName}" upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
-      }
-      const uploadData: any = await uploadRes.json().catch(() => null)
-      if (uploadData && uploadData.success === false) {
-        throw new Error(`Worker "${scriptName}" upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
-      }
-
-      // Enable the workers.dev route for the script (best-effort: already on if re-deploying).
-      await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ enabled: true }),
-      }).catch(() => null)
+    const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${apiToken}` },
+      body: formData,
+    })
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => '')
+      throw new Error(`Worker "${scriptName}" upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
+    }
+    const uploadData: any = await uploadRes.json().catch(() => null)
+    if (uploadData && uploadData.success === false) {
+      throw new Error(`Worker "${scriptName}" upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
     }
 
+    // Enable the workers.dev route for the script
+    await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => null)
+
     return true
+  }
+
+  async function deployCompanionEmbassy(options?: { enableEmbassyDO?: boolean }): Promise<{ success: boolean, workerUrl: string }> {
+    const apiToken = activeAccessToken.value
+    const accountId = activeAccountId.value
+    if (!apiToken || !accountId)
+      throw new Error('Not authenticated with Cloudflare')
+
+    let subdomain: string | null = cfSubdomain.value || null
+    if (!subdomain) {
+      subdomain = await getCloudflareSubdomain().catch(() => null)
+    }
+    if (!subdomain) {
+      throw new Error('Please register a workers.dev subdomain before deploying companion embassy.')
+    }
+
+    const scriptName = 'airi-stage-edge'
+    const workerUrl = `https://${scriptName}.${subdomain}.workers.dev`
+
+    if (isElectron && invokeDeployCorsProxy) {
+      try {
+        const res = await invokeDeployCorsProxy({
+          apiToken,
+          accountId,
+          targetSubdomain: subdomain,
+          enableEmbassyDO: Boolean(options?.enableEmbassyDO),
+        })
+        if (!res.success)
+          throw new Error(res.error || 'Companion embassy deployment failed.')
+        return { success: true, workerUrl }
+      }
+      catch (e: any) {
+        console.warn('[useCloudflareStore] Failed to deploy companion embassy via Electron:', e)
+        throw e instanceof Error ? e : new Error(String(e))
+      }
+    }
+
+    // Web / mobile REST upload for airi-stage-edge
+    const metadata: Record<string, unknown> = {
+      main_module: 'index.js',
+      compatibility_date: '2025-02-04',
+      compatibility_flags: ['nodejs_compat'],
+      bindings: [],
+    }
+
+    if (options?.enableEmbassyDO) {
+      (metadata.bindings as unknown[]).push({
+        type: 'durable_object_namespace',
+        name: 'EMBASSY',
+        class_name: 'EmbassyDO',
+      })
+      metadata.migrations = {
+        tag: 'v1',
+        new_sqlite_classes: ['EmbassyDO'],
+      }
+    }
+
+    const formData = new FormData()
+    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+    formData.append('index.js', new Blob([CORS_PROXY_WORKER_SCRIPT], { type: 'application/javascript+module' }), 'index.js')
+
+    const uploadRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${apiToken}` },
+      body: formData,
+    })
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => '')
+      throw new Error(`Embassy worker upload failed (HTTP ${uploadRes.status}): ${parseCfApiError(errText)}`)
+    }
+    const uploadData: any = await uploadRes.json().catch(() => null)
+    if (uploadData && uploadData.success === false) {
+      throw new Error(`Embassy worker upload rejected: ${parseCfApiError(JSON.stringify(uploadData))}`)
+    }
+
+    // Enable workers.dev subdomain route for airi-stage-edge
+    await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => null)
+
+    return { success: true, workerUrl }
   }
 
   function parseCfApiError(raw: string): string {
@@ -1217,6 +1303,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     getCloudflareSubdomain,
     setCloudflareSubdomain,
     deployCorsProxy,
+    deployCompanionEmbassy,
     saveToEdgeVault,
     fetchFromEdgeVault,
     autoRestoreEdgeVault,

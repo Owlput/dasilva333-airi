@@ -15,13 +15,13 @@ import {
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot } from 'vaul-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
-import { usePeerEmbassy } from '../../composables/use-peer-embassy'
+import { normalizeAddress, usePeerEmbassy } from '../../composables/use-peer-embassy'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useNapChatStore } from '../../stores/nap-chat'
@@ -50,12 +50,83 @@ const router = useRouter()
 const EMPTY_TURNS: NapTurn[] = Object.freeze([]) as unknown as NapTurn[]
 
 const isSyncingDevices = ref(false)
+const isEmbassyOnline = ref<boolean | null>(null)
+const isDeployingEmbassy = ref(false)
+
+// Companion address derived from user's claimed Cloudflare subdomain
+const myAddress = computed(() => {
+  const sub = cfSubdomain.value?.trim()
+  if (!sub)
+    return ''
+  if (sub.includes('workers.dev')) {
+    const parts = sub.split('.')
+    if (parts.length === 3) {
+      return `airi-stage-edge.${sub}`
+    }
+    return sub
+  }
+  return `airi-stage-edge.${sub}.workers.dev`
+})
+const hasAddress = computed(() => Boolean(myAddress.value))
+
+async function probeEmbassyHealth() {
+  if (!myAddress.value) {
+    isEmbassyOnline.value = false
+    return
+  }
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    let res = await fetch(`https://${myAddress.value}/health`, { signal: controller.signal })
+    if (!res.ok) {
+      res = await fetch(`https://${myAddress.value}/api/companion/card`, { signal: controller.signal })
+    }
+    clearTimeout(timeout)
+    isEmbassyOnline.value = res.ok
+  }
+  catch {
+    isEmbassyOnline.value = false
+  }
+}
+
+async function handleDeployEmbassy() {
+  if (!cloudflareStore.isAuthenticated) {
+    toast.error('Sign in to Cloudflare first in Settings.')
+    router.push('/settings/modules/cloudflare')
+    return
+  }
+  if (!cfSubdomain.value) {
+    toast.error('Claim a workers.dev subdomain first in Cloudflare settings.')
+    router.push('/settings/modules/cloudflare')
+    return
+  }
+  isDeployingEmbassy.value = true
+  try {
+    toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
+    const res = await cloudflareStore.deployCompanionEmbassy()
+    if (res.success) {
+      toast.success('Companion Embassy deployed successfully!')
+      await probeEmbassyHealth()
+    }
+  }
+  catch (err: any) {
+    toast.error(err?.message || 'Failed to deploy Companion Embassy')
+  }
+  finally {
+    isDeployingEmbassy.value = false
+  }
+}
 
 onMounted(async () => {
   await peersStore.init()
   if (cloudflareStore.isAuthenticated) {
     void cloudflareStore.syncVaultDevices().catch(() => {})
+    void probeEmbassyHealth()
   }
+})
+
+watch(cfSubdomain, () => {
+  void probeEmbassyHealth()
 })
 
 async function handleManualDeviceSync() {
@@ -81,22 +152,6 @@ async function handleManualDeviceSync() {
 // Strongly-typed lists
 const externalFriends = computed(() => (friends.value as Peer[]).filter(isExternalFriend))
 const sameAccountDevices = computed(() => (devices.value as Peer[]).filter(isSameAccountDevice))
-
-// Companion address derived from user's claimed Cloudflare subdomain
-const myAddress = computed(() => {
-  const sub = cfSubdomain.value?.trim()
-  if (!sub)
-    return ''
-  if (sub.includes('workers.dev')) {
-    const parts = sub.split('.')
-    if (parts.length === 3) {
-      return `airi-stage-edge.${sub}`
-    }
-    return sub
-  }
-  return `airi-stage-edge.${sub}.workers.dev`
-})
-const hasAddress = computed(() => Boolean(myAddress.value))
 
 const afkThreshold = computed({
   get: () => String(afkThresholdMinutes.value),
@@ -278,16 +333,38 @@ function toggleAddCompanion() {
   }
 }
 
+const isInviteCode = computed(() => {
+  const val = lookupInput.value.trim()
+  return Boolean(val.match(/^(cf_inv_|airi:\/\/pair)/))
+})
+
 async function handleLookup() {
   lookupError.value = ''
   isRequestSent.value = false
-  if (!lookupInput.value.trim()) {
+  const input = lookupInput.value.trim()
+  if (!input) {
     lookupError.value = 'Please enter a valid companion address or invite code.'
     showLookupResult.value = false
     return
   }
 
-  const result = await embassy.fetchCompanionCard(lookupInput.value)
+  // Direct invite handling: immediate ready-to-connect state without requiring card preview
+  if (isInviteCode.value) {
+    const norm = normalizeAddress(input)
+    lookedUpHandle.value = norm.handle || input
+    lookedUpInviteToken.value = norm.invite || (input.startsWith('cf_inv_') ? input : undefined)
+    lookedUpCard.value = {
+      name: norm.handle.split('.')[0] || 'Friend',
+      tagline: 'Ready to connect via invite code.',
+      avatarUrl: null,
+      publicKey: null,
+    }
+    showLookupResult.value = true
+    return
+  }
+
+  // Attempt companion card preview
+  const result = await embassy.fetchCompanionCard(input)
   if (result) {
     lookedUpCard.value = result.card
     lookedUpHandle.value = result.normalized.handle
@@ -295,13 +372,29 @@ async function handleLookup() {
     showLookupResult.value = true
   }
   else {
-    lookupError.value = embassy.error.value || 'Could not find a companion at that address.'
-    showLookupResult.value = false
+    // Non-blocking graceful fallback: allow direct friend request even if preview failed
+    const norm = normalizeAddress(input)
+    if (norm.handle) {
+      lookedUpCard.value = {
+        name: norm.handle.split('.')[0] || 'Companion',
+        tagline: 'Profile preview unavailable (worker quiet or offline).',
+        avatarUrl: null,
+        publicKey: null,
+      }
+      lookedUpHandle.value = norm.handle
+      lookedUpInviteToken.value = norm.invite
+      showLookupResult.value = true
+      lookupError.value = 'Note: Profile preview unreachable, but you can still send your friend request directly below.'
+    }
+    else {
+      lookupError.value = embassy.error.value || 'Invalid companion address.'
+      showLookupResult.value = false
+    }
   }
 }
 
 async function handleSendRequest() {
-  if (!lookedUpCard.value)
+  if (!lookedUpHandle.value)
     return
 
   isRequestSent.value = true
@@ -312,11 +405,12 @@ async function handleSendRequest() {
     inviteToken: lookedUpInviteToken.value,
   })
 
+  const targetName = lookedUpCard.value?.name || lookedUpHandle.value.split('.')[0] || 'Friend'
   await peersStore.upsertPeer({
-    id: lookedUpCard.value.publicKey || `ed25519-${lookedUpCard.value.name.toLowerCase()}-${Date.now().toString(36)}`,
+    id: lookedUpCard.value?.publicKey || `ed25519-${targetName.toLowerCase()}-${Date.now().toString(36)}`,
     alias: lookedUpHandle.value.split('.')[0] || 'Friend',
-    characterName: lookedUpCard.value.name,
-    avatarUrl: lookedUpCard.value.avatarUrl || undefined,
+    characterName: targetName,
+    avatarUrl: lookedUpCard.value?.avatarUrl || undefined,
     relationship: 'external-friend',
     trustState: 'pending',
     lastSeenTimestamp: Date.now(),
@@ -328,10 +422,10 @@ async function handleSendRequest() {
   })
 
   if (res.ok) {
-    toast.success(`Friend request sent to ${lookedUpCard.value.name}!`)
+    toast.success(`Friend request sent to ${targetName}!`)
   }
   else {
-    toast.info(`Request queued locally for ${lookedUpCard.value.name} (${res.error})`)
+    toast.info(`Request queued locally for ${targetName} (${res.error})`)
   }
   lookupIntroNote.value = ''
 }
@@ -439,7 +533,7 @@ const surfaceCardClass = computed(() => [
         <div :class="['flex', 'items-center', 'gap-3.5']">
           <div :class="['relative', 'size-14', 'shrink-0', 'overflow-hidden', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-neutral-100', 'dark:bg-neutral-800']">
             <img :src="affectionateSticker" alt="AIRI Avatar" class="size-full object-cover">
-            <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', hasAddress ? 'bg-green-500' : 'bg-amber-500']" />
+            <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', isEmbassyOnline ? 'bg-green-500' : 'bg-amber-500']" />
           </div>
           <div>
             <div :class="['text-[11px]', 'font-medium', 'text-neutral-500', 'dark:text-neutral-400']">
@@ -458,33 +552,49 @@ const surfaceCardClass = computed(() => [
                 <div class="i-solar:copy-bold-duotone text-base" />
               </button>
             </div>
-            <div v-if="hasAddress" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
+            <div v-if="isEmbassyOnline" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
               <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
               Online
             </div>
+            <div v-else-if="hasAddress" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
+              <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
+              Embassy Inactive
+            </div>
             <div v-else :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
               <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
-              Deploy Worker in Connectors to claim an address
+              Claim a workers.dev subdomain in Settings to enable
             </div>
           </div>
         </div>
 
         <div :class="['flex', 'flex-col', 'items-start', 'gap-1.5', 'sm:items-end']">
           <div :class="['flex', 'items-center', 'gap-2']">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="i-solar:copy-bold-duotone"
-              label="Copy invite"
-              @click="handleCopyInvite"
-            />
-            <button
-              :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-              title="Show QR Code"
-              @click="showQrModal = true"
-            >
-              <div class="i-solar:qr-code-bold-duotone text-base" />
-            </button>
+            <template v-if="isEmbassyOnline">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="i-solar:copy-bold-duotone"
+                label="Copy invite"
+                @click="handleCopyInvite"
+              />
+              <button
+                :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                title="Show QR Code"
+                @click="showQrModal = true"
+              >
+                <div class="i-solar:qr-code-bold-duotone text-base" />
+              </button>
+            </template>
+            <template v-else>
+              <Button
+                variant="primary"
+                size="sm"
+                icon="i-solar:cloud-upload-bold"
+                :label="isDeployingEmbassy ? 'Deploying...' : 'Deploy Companion Embassy'"
+                :disabled="isDeployingEmbassy"
+                @click="handleDeployEmbassy"
+              />
+            </template>
           </div>
           <button
             :class="['flex', 'items-center', 'gap-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'transition', 'hover:text-primary-600', 'dark:hover:text-primary-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
@@ -565,13 +675,13 @@ const surfaceCardClass = computed(() => [
               </div>
               <Button
                 variant="secondary"
-                :label="embassy.isLookingUp.value ? 'Looking up...' : 'Look up'"
+                :label="embassy.isLookingUp.value ? 'Looking up...' : (isInviteCode ? 'Accept & Connect' : 'Look up')"
                 :disabled="embassy.isLookingUp.value"
                 @click="handleLookup"
               />
             </div>
 
-            <p v-if="lookupError" :class="['mt-1.5', 'text-xs', 'text-red-500']">
+            <p v-if="lookupError" :class="['mt-1.5', 'text-xs', lookupError.startsWith('Note:') ? 'text-amber-600 dark:text-amber-400' : 'text-red-500']">
               {{ lookupError }}
             </p>
 
@@ -607,7 +717,7 @@ const surfaceCardClass = computed(() => [
                 <Button
                   variant="primary"
                   size="sm"
-                  :label="isRequestSent ? 'Request sent' : (embassy.isSending.value ? 'Sending...' : 'Send request')"
+                  :label="isRequestSent ? 'Request sent' : (embassy.isSending.value ? 'Sending...' : (lookedUpInviteToken ? 'Accept & Connect' : 'Send request'))"
                   :disabled="isRequestSent || embassy.isSending.value"
                   @click="handleSendRequest"
                 />

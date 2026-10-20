@@ -279,7 +279,7 @@ describe('cloudflare store persistence & corruption recovery', () => {
     vi.unstubAllGlobals()
   })
 
-  it('deployCorsProxy uploads both airi-cors-proxy and airi-stage-edge and enables their routes', async () => {
+  it('deployCorsProxy and deployCompanionEmbassy upload their respective workers and enable routes', async () => {
     const store = useCloudflareStore()
     store.cfApiToken = 'valid_token'
     store.cfAccountId = 'valid_account'
@@ -325,8 +325,12 @@ describe('cloudflare store persistence & corruption recovery', () => {
     const result = await store.deployCorsProxy()
     expect(result).toBe(true)
     expect(uploadedScripts).toContain('airi-cors-proxy')
-    expect(uploadedScripts).toContain('airi-stage-edge')
     expect(enabledRoutes).toContain('airi-cors-proxy')
+
+    const embassyResult = await store.deployCompanionEmbassy()
+    expect(embassyResult.success).toBe(true)
+    expect(embassyResult.workerUrl).toContain('airi-stage-edge')
+    expect(uploadedScripts).toContain('airi-stage-edge')
     expect(enabledRoutes).toContain('airi-stage-edge')
 
     vi.unstubAllGlobals()
