@@ -183,8 +183,10 @@ Per `airi-cloud-relay-infrastructure` §6:
 1. **Cloudflare KV for Persistent State & Roster**:
    - Used exclusively for static/semi-static data: authorized peer public keys, friend invite tokens, inbound pending requests (`friends/requests/inbound`), and system configuration (`system/prompt` pattern).
    - Backed by the pre-provisioned `airi-edge-vault` namespace (managed in `packages/stage-ui/src/stores/modules/cloudflare.ts`).
-2. **Durable Objects / WebSocket Hibernation for Real-Time Liveness**:
-   - Active device liveness and real-time signalling utilize Cloudflare Durable Objects with WebSocket Hibernation, or lightweight inbox long-polling when the desktop app is foregrounded.
+2. **Durable Objects / WebSocket Hibernation for Real-Time Liveness (Free Plan Parity)**:
+   - Active device liveness and real-time signalling utilize Cloudflare **SQLite-backed Durable Objects** with **WebSocket Hibernation**.
+   - *Free Tier Viability*: SQLite DOs are natively available on the Cloudflare Workers Free plan (100k requests/day, 13k GB-seconds/day of compute, 5 GB storage, 50M reads/day, 100k writes/day), requiring zero paid subscription for users.
+   - *Instant Push & Native Presence*: The companion client maintains a hibernated WebSocket with the user's Edge Worker embassy. Cloudflare bills zero idle CPU while sockets sit quiet; disconnections immediately trigger offline presence without false-offline flapping or KV write throttling. Inbound friend requests and nap-chat messages push down the open socket instantaneously rather than waiting for inbox polling.
 3. **Reconciler Layer**:
    - `packages/stage-ui/src/stores/sync-engine.ts` currently synchronizes `local:*` keys with S3/R2 storage.
    - The proposed Peer Reconciler will bridge `local:peers/roster` with the `airi-edge-vault` KV namespace during regular sync passes, using timestamp Last-Write-Wins (LWW) with array merge semantics.

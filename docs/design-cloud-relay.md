@@ -99,6 +99,43 @@ The Worker is designed to be **connector-agnostic**:
 | Telegram | Bot webhook to Worker URL | Roadmap |
 | SMS / WhatsApp | Twilio webhook forwarded to Worker | Roadmap |
 
+### 3.5 Evolution Path: SQLite Durable Objects & WebSocket Hibernation (Free Tier Parity)
+
+While the initial Phase 1 release of `stage-edge` utilizes stateless Workers + Cloudflare KV for Discord HTTP Interactions, the runtime roadmap establishes a first-class evolution path toward **Cloudflare Durable Objects** with **WebSocket Hibernation**.
+
+#### A. Free Tier Availability & Quota Realities
+Historically, Durable Objects required a paid Workers plan ($5/mo), forcing zero-cost community deployments to rely strictly on stateless V8 isolates and KV. Cloudflare has since made **SQLite-backed Durable Objects available on the Workers Free plan**, eliminating the subscription barrier for AIRI users:
+
+| Metric | Workers Free Plan Daily Quota | Monthly Equivalent |
+| :--- | :--- | :--- |
+| **Requests** | 100,000 requests / day | ~3,000,000 requests / month |
+| **Compute Duration** | 13,000 GB-seconds / day | ~390,000 GB-seconds / month |
+| **Embedded Storage** | 5 GB included | 5 GB persistent SQLite |
+| **Database Reads** | 50,000,000 row reads / day | ~1.5 billion row reads / month |
+| **Database Writes** | 100,000 row writes / day | ~3,000,000 row writes / month |
+| **WebSocket Hibernation** | ✅ Supported natively | Zero idle CPU billing while hibernated |
+
+#### B. Architectural Comparison: Stateless Cron/KV vs. Stateful DO/WebSockets
+
+The architectural advantages of migrating stateful relay sessions and peer embassies to Durable Objects include:
+
+1. **Zero-Cost Idle via WebSocket Hibernation**:
+   Standard long-running server processes (e.g. EC2, Fly.io, or persistent containers) consume continuous CPU billing simply keeping TCP sockets open. With the Cloudflare **WebSocket Hibernation API**, Cloudflare suspends the V8 isolate in memory when no frames are in transit. CPU compute time is billed strictly for the microsecond duration of active message handlers (`webSocketMessage`, `webSocketClose`), allowing companions to stay connected 24/7 within free-tier compute budgets.
+
+2. **Instant Push vs. Cron & Polling Latency**:
+   - *Cron Triggers*: Have a 1-minute minimum scheduling resolution (typically configured to 15–60 minutes to conserve invocations).
+   - *Client Polling*: Desktop or mobile clients repeatedly hitting KV endpoints waste daily request quotas and introduce sync lag.
+   - *Durable Objects*: Open a bidirectional channel that pushes incoming relay events, proactivity notifications, or friend messages downstream to active desktop/mobile apps with sub-millisecond latency.
+
+3. **Deterministic Connection Presence vs. Flapping KV Heartbeats**:
+   Attempting to track device or companion online/offline state via periodic 60-second KV writes suffers from KV's single-key write rate limit (1 write/sec) and global edge cache replication delays, causing false-offline state flapping. A Durable Object acts as a single-point-of-coordination actor: when a client's WebSocket drops or reconnects, the DO detects the lifecycle event immediately without synthetic timestamp polling.
+
+4. **Strong Linear Consistency**:
+   Cloudflare KV is eventually consistent across global points of presence (PoPs), occasionally serving stale context snapshots during rapid message exchanges. In contrast, a Durable Object guarantees single-threaded transactional execution backed by embedded, ACID-compliant SQLite.
+
+5. **Cross-Subsystem Synergy: The Friends & Peers Embassy**:
+   This architecture directly powers the companion federation layer defined in [`phase-2b-mesh-and-nap-chat.md`](./phase-2b-mesh-and-nap-chat.md). Rather than relying on store-and-forward polling for inbound friend requests (`POST /api/friends/request`) and nap-chat turns, an edge-deployed Durable Object acts as a real-time embassy, pushing incoming interactions directly into the user's active desktop/mobile session when connected, or safely journaling them into the 5 GB SQLite database when offline.
+
 ---
 
 ## 4. AIRI as Control Plane: Unified 3-Tab Discord Control Plane UI
@@ -239,60 +276,71 @@ Recommendation: surface as **"Always-On Presence"** in UI copy, use **"Cloud Rel
 
 ---
 
-## 7.5 Future Exploration: Multi-Host Deployment Viability & `/togglebot` On-Demand Gateway Gating
+## 7.5 Stateful Channel Presence: Organic Wake-on-First-Turn & 15-Minute Idle Sleep Architecture
 
-While Cloudflare Workers provide an ideal 100% free edge layer for HTTP `/slash` commands and webhook interactions, they cannot maintain long-lived WebSocket connections (`wss://gateway.discord.gg`) for raw chat message listening (`MESSAGE_CREATE`) due to serverless execution limits.
+Earlier drafts assumed Cloudflare was strictly limited to stateless HTTP webhooks, requiring external Docker container hosts (like Fly.io or Railway) to connect to Discord's Gateway WebSocket (`wss://gateway.discord.gg`) for raw chat message listening (`MESSAGE_CREATE`).
 
-To assess multi-hosting options for users who want continuous channel listening without sacrificing zero-cost edge defaults or exhausting monthly usage limits, we evaluate three persistent container platforms:
+With **SQLite-backed Durable Objects on the Free tier**, Cloudflare natively supports outbound WebSockets via `fetch(gatewayUrl, { headers: { Upgrade: 'websocket' } })`. An open outbound WebSocket keeps the Durable Object alive, and native **Durable Object Alarms (`ctx.storage.setAlarm`)** provide zero-overhead scheduled wakeups.
 
-### A. Multi-Host Platform Viability Matrix
+Therefore, **Cloudflare Durable Objects is the preferred canonical architecture** for natural channel dialogue. External container platforms remain only as an optional footnote.
 
-| Platform | Architecture Type | 24/7 `MESSAGE_CREATE` WebSocket Support | Monthly Free Allowance / Cost | Integration Assessment |
-| :--- | :--- | :---: | :--- | :--- |
-| **Fly.io** | Firecracker Micro-VMs (Docker) | ✅ **Native (24/7 background VM)** | $5 monthly credit / trial (~$1.94–$3.19/mo for 256MB micro-VM) | 🌟 **Top Candidate** (Instant edge micro-VM start) |
-| **Railway.app** | Container Micro-VMs | ✅ **Native** | $5 monthly credit / usage-based | 🌟 **Strong Alternative** (Zero-config Docker deployment) |
-| **Render.com** | Container Web Services | ⚠️ **Limited** (Free tier sleeps after 15m idle) | 750 free hours/mo (Sleeps on idle) | ⚠️ **Requires wake ping** |
+### A. Preferred Canonical Architecture: Cloudflare Durable Object Gateway
 
----
-
-### B. Organic `/chat` Wake-on-First-Turn & 15-Minute Idle Sleep Architecture
-
-Rather than forcing users to micromanage manual `/togglebot` commands, the system uses **Organic Wake-on-First-Turn**:
+Rather than forcing users to type `/chat` before every single turn or maintaining an expensive 24/7 server, the system uses **Organic Wake-on-First-Turn**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│             Organic /chat Wake-on-First-Turn & 15m Idle Timeout             │
+│       Preferred Architecture: Cloudflare Durable Object Gateway             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 1. Free Edge Baseline (Cloudflare Workers):                                 │
-│    • Bot handles all /slash commands (/status, /imagine, /character) via   │
-│      zero-cost HTTP Interaction Webhooks.                                   │
-│    • Gateway daemon on Fly.io / Railway / Render remains DORMANT / STANDBY. │
+│    • Bot handles all global /slash commands (/status, /imagine, /character) │
+│      via zero-cost HTTP Interaction Webhooks.                               │
+│    • Durable Object Gateway remains DORMANT (0 CPU, 0 memory billed).       │
 │                                                                             │
 │ 2. Organic Wake-on-First-Turn (/chat):                                      │
 │    • User sends `/chat <message>` in a Discord text channel.                │
-│    • Cloudflare Worker processes the first turn reply AND signals the       │
-│      container daemon (Fly.io / Railway).                                   │
-│    • Container daemon wakes up, connects `wss://gateway.discord.gg`, and    │
-│      begins listening to `MESSAGE_CREATE` events in that channel.           │
+│    • Cloudflare Worker processes the first turn reply and triggers the      │
+│      channel's Durable Object actor.                                        │
 │                                                                             │
-│ 3. Seamless Natural Dialogue:                                               │
-│    • User chats freely without typing /slash commands on every turn.        │
-│    • AIRI responds directly as a normal active channel participant.         │
+│ 3. Outbound WebSocket Connection & Channel Participation:                   │
+│    • DO establishes outbound WebSocket to `wss://gateway.discord.gg`.      │
+│    • DO identifies with MESSAGE_CONTENT intents for that active channel.    │
+│    • Sets inactivity alarm: `ctx.storage.setAlarm(Date.now() + 15 * 60 * 1000)`.
+│    • Active WebSocket connection prevents Cloudflare from evicting the DO.  │
 │                                                                             │
-│ 4. Automatic 15-Minute Inactivity Timeout & Sleep Notification:             │
-│    • If no new messages are received in the channel for 15 minutes, the      │
-│      daemon posts a friendly channel farewell message:                      │
+│ 4. Seamless Natural Dialogue (Zero Command Prefixes):                       │
+│    • Users in the channel chat freely without typing /slash commands.       │
+│    • DO listens to `MESSAGE_CREATE`, invokes edge LLM, and replies.         │
+│    • Every new conversation turn resets the 15-minute alarm forward.        │
+│                                                                             │
+│ 5. Native Inactivity Alarm & Sleep Notification:                            │
+│    • If no messages occur for 15 minutes, Cloudflare fires the alarm:       │
 │      "🌛 Going to sleep now zzz... wake me up when anyone needs me!          │
 │       Just use /chat <message> to get me going again."                      │
-│    • Daemon drops the `wss://` Gateway connection and returns to DORMANT.  │
-│    • Zero compute quotas wasted during idle hours!                          │
+│    • DO cleanly closes the WebSocket (`ws.close(1000)`).                   │
+│    • DO shuts down. Total compute stops, remaining 100% inside free tier!   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Protocol Details:
-- **Zero Micromanagement**: The user never needs to toggle or manage bot state. Typing `/chat` automatically initiates active listening.
-- **Sleep Channel Notification**: Posts a clear, friendly status update before disconnecting so channel members know why the bot went idle and how to re-wake it.
-- **Quota Efficiency**: Compute hours are consumed strictly while active dialogue is taking place, automatically sleeping after 15 minutes of inactivity to keep usage well within free/hobby tier limits.
+#### Protocol & Ergonomic Details:
+- **Zero Command Overhead**: Eliminates the awkward robot feel of typing `/slash` commands for every sentence. The character hangs out like a real participant in the channel during active banter.
+- **Single-Vendor Setup**: Deploys 1-click under the user's existing Cloudflare account via `CloudflareStageDeployer`. Zero secondary signups, zero credit cards, zero Dockerfiles.
+- **Deterministic Inactivity Teardown**: Powered by native Durable Object Alarms (`ctx.storage.setAlarm`), guaranteeing that the connection shuts down cleanly after 15 minutes of quiet time without external cron pinging.
+- **Budget Compliance**: Stays well within the 13,000 GB-seconds/day free compute quota of SQLite Durable Objects.
+
+---
+
+### B. Alternative Architecture Footnote: External Container Daemons (Fly.io / Railway)
+
+*Note: Retained as an architectural reference and fallback path for environments with non-V8 requirements.*
+
+| Platform | Architecture Type | Gateway WebSocket Support | Cost Model | Status & Assessment |
+| :--- | :--- | :---: | :--- | :--- |
+| **Fly.io** | Firecracker Micro-VMs (Docker) | ✅ Native background VM | $5 credit / trial (~$1.94–$3.19/mo) | ⚠️ **Fallback Only** (Requires Docker setup & external API key) |
+| **Railway.app** | Container Micro-VMs | ✅ Native | Usage-based | ⚠️ **Fallback Only** (Secondary cloud provider complexity) |
+| **Render.com** | Container Web Services | ⚠️ Limited (sleeps after 15m) | 750 free hours/mo | ⚠️ **Not Recommended** (Cold-start latency issues) |
+
+While container micro-VMs on Fly.io or Railway can run full Node.js daemons, they introduce significant friction: requiring secondary user accounts, credit card verifications, Docker image deployments, and secret synchronizations. They are reserved strictly for future edge cases where non-V8 native binaries or specialized Python sidecars might be required. For all standard AIRI presence deployments, **Cloudflare Durable Objects is the primary and recommended standard**.
 
 ---
 
