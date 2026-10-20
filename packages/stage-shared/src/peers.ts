@@ -112,3 +112,23 @@ export function isCompanionAllowedForFriend(peer: Peer, companionId: string): bo
     return true
   return allowlist.includes(companionId)
 }
+
+/**
+ * Extracts a human-readable alias/subdomain from a federation handle or URL.
+ * e.g. "airi-stage-edge.richard-pinedo.workers.dev" -> "richard-pinedo"
+ *      "airi-stage-edge.r1ch4rd.workers.dev" -> "r1ch4rd"
+ *      "https://alice.embassy.io" -> "alice"
+ */
+export function extractHandleAlias(handle?: string | null): string {
+  if (!handle || typeof handle !== 'string')
+    return ''
+  const clean = handle.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim()
+  const parts = clean.split('.')
+  if (parts.length >= 4 && clean.endsWith('.workers.dev')) {
+    return parts[1] || parts[0]
+  }
+  if (parts.length >= 2 && (parts[0].startsWith('airi-') || parts[0] === 'stage-edge')) {
+    return parts[1] || parts[0]
+  }
+  return parts[0] || clean
+}

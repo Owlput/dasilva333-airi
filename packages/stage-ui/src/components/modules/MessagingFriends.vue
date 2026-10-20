@@ -3,7 +3,7 @@ import type { AmbassadorCard, ExternalFriend, FriendRequest, Peer } from '@proj-
 
 import type { NapTurn } from '../../stores/nap-chat'
 
-import { isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
+import { extractHandleAlias, isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -27,6 +27,7 @@ import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useNapChatStore } from '../../stores/nap-chat'
 import { usePeersStore } from '../../stores/peers'
+import { useSettingsUserProfile } from '../../stores/settings/user-profile'
 
 const { copy: copyToClipboard } = useClipboard()
 
@@ -36,6 +37,10 @@ const { friends, devices, currentMachineId } = storeToRefs(peersStore)
 const cloudflareStore = useCloudflareStore()
 const { cfSubdomain } = storeToRefs(cloudflareStore)
 const airiCardStore = useAiriCardStore()
+const userProfileStore = useSettingsUserProfile()
+const activeCompanionName = computed(() => {
+  return airiCardStore.activeCard?.name || userProfileStore.name || 'AIRI'
+})
 const napChatStore = useNapChatStore()
 const {
   napEnabled: napChatEnabled,
@@ -124,7 +129,10 @@ async function handleDeployEmbassy() {
   isDeployingEmbassy.value = true
   try {
     toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
-    const res = await cloudflareStore.deployCompanionEmbassy({ enableEmbassyDO: true })
+    const res = await cloudflareStore.deployCompanionEmbassy({
+      enableEmbassyDO: true,
+      characterName: activeCompanionName.value,
+    })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -230,16 +238,18 @@ export interface InboundRequestItem {
   shareHandle: string
   introMessage?: string
   senderPubkey?: string
+  fromPubkey?: string
 }
 
 function toInboundRequestItem(req: FriendRequest): InboundRequestItem {
   return {
     id: req.id,
     characterName: req.fromCharacterName,
-    alias: req.fromHandle.split('.')[0] || req.fromCharacterName,
+    alias: extractHandleAlias(req.fromHandle) || req.fromCharacterName,
     shareHandle: req.fromHandle,
     introMessage: req.introMessage,
     senderPubkey: req.fromPubkey,
+    fromPubkey: req.fromPubkey,
   }
 }
 
@@ -280,17 +290,45 @@ const availableLocalCompanions = computed(() => {
   return list
 })
 
-function toggleAllowedCompanion(companionId: string) {
-  if (!selectedFriend.value)
+const unselectedCompanions = computed(() => {
+  const selected = selectedFriend.value?.allowedCompanionIds ?? []
+  return availableLocalCompanions.value.filter(c => !selected.includes(c.id))
+})
+
+function getCompanionName(companionId: string): string {
+  const match = availableLocalCompanions.value.find(c => c.id === companionId)
+  return match ? match.name : companionId
+}
+
+function addAllowedCompanion(companionId: string) {
+  if (!selectedFriend.value || !companionId)
     return
   if (!selectedFriend.value.allowedCompanionIds)
     selectedFriend.value.allowedCompanionIds = []
+  if (!selectedFriend.value.allowedCompanionIds.includes(companionId))
+    selectedFriend.value.allowedCompanionIds.push(companionId)
+}
 
+function removeAllowedCompanion(companionId: string) {
+  if (!selectedFriend.value?.allowedCompanionIds)
+    return
   const idx = selectedFriend.value.allowedCompanionIds.indexOf(companionId)
   if (idx >= 0)
     selectedFriend.value.allowedCompanionIds.splice(idx, 1)
-  else
-    selectedFriend.value.allowedCompanionIds.push(companionId)
+}
+
+function clearAllowedCompanions() {
+  if (!selectedFriend.value)
+    return
+  selectedFriend.value.allowedCompanionIds = []
+}
+
+function onCompanionSelectChange(event: Event) {
+  const target = event.target as HTMLSelectElement
+  if (target && target.value) {
+    addAllowedCompanion(target.value)
+    target.value = ''
+  }
 }
 
 const conversationTurns = computed(() => latestEpisode.value?.turns ?? EMPTY_TURNS)
@@ -475,17 +513,17 @@ async function handleSendRequest() {
   isRequestSent.value = true
   const res = await embassy.sendFriendRequest(lookedUpHandle.value, {
     fromHandle: myAddress.value,
-    fromCharacterName: 'AIRI',
+    fromCharacterName: activeCompanionName.value,
     introMessage: lookupIntroNote.value.trim(),
     inviteToken: lookedUpInviteToken.value,
   })
 
-  const targetName = lookedUpCard.value?.name || lookedUpHandle.value.split('.')[0] || 'Friend'
+  const targetName = lookedUpCard.value?.name || extractHandleAlias(lookedUpHandle.value) || 'Friend'
 
   if (res.ok) {
     await peersStore.upsertPeer({
       id: lookedUpCard.value?.publicKey || `ed25519-${targetName.toLowerCase()}-${Date.now().toString(36)}`,
-      alias: lookedUpHandle.value.split('.')[0] || 'Friend',
+      alias: extractHandleAlias(lookedUpHandle.value) || 'Friend',
       characterName: targetName,
       avatarUrl: lookedUpCard.value?.avatarUrl || undefined,
       relationship: 'external-friend',
@@ -494,7 +532,7 @@ async function handleSendRequest() {
       endpoints: { cloudflareWorkerUrl: `https://${lookedUpHandle.value}` },
       shareHandle: lookedUpHandle.value,
       allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
-      allowedCompanionIds: [],
+      allowedCompanionIds: airiCardStore.activeCardId ? [String(airiCardStore.activeCardId)] : [],
       introMessage: lookupIntroNote.value.trim().slice(0, 100),
     })
     toast.success(`Friend request sent to ${targetName}!`)
@@ -528,13 +566,17 @@ async function savePermissions() {
 
 async function handleAcceptRequest(req: InboundRequestItem) {
   try {
-    const res = await embassyInboxStore.acceptRequest(req.id)
+    const res = await embassyInboxStore.acceptRequest(req.id, {
+      companionName: activeCompanionName.value,
+      sendReciprocal: true,
+    })
     if (!res.ok) {
       toast.error(`Failed to accept ${req.characterName}: ${res.error || 'Server error'}`)
       return
     }
 
-    const peer = (peersStore.roster as Peer[]).find(p => p.id === req.senderPubkey)
+    const targetPubkey = req.fromPubkey || req.senderPubkey
+    const peer = (peersStore.roster as Peer[]).find(p => p.id === targetPubkey)
     if (peer && isExternalFriend(peer)) {
       await peersStore.upsertPeer({
         ...peer,
@@ -546,6 +588,7 @@ async function handleAcceptRequest(req: InboundRequestItem) {
           canShareMemories: false,
           canStreamSensory: false,
         },
+        allowedCompanionIds: airiCardStore.activeCardId ? [String(airiCardStore.activeCardId)] : peer.allowedCompanionIds || [],
         introMessage: req.introMessage,
       })
     }
@@ -1330,17 +1373,18 @@ const surfaceCardClass = computed(() => [
       <DrawerPortal>
         <DrawerOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         <DrawerContent
-          class="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg border-t border-neutral-200 rounded-t-[32px] bg-white p-6 shadow-2xl outline-none dark:border-white/15 dark:bg-neutral-900"
+          class="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[85dvh] max-w-lg flex flex-col border-t border-neutral-200 rounded-t-[32px] bg-white shadow-2xl outline-none dark:border-white/15 dark:bg-neutral-900"
         >
-          <DrawerHandle class="mx-auto mb-4" />
-          <div v-if="selectedFriend">
-            <div :class="['flex', 'items-center', 'justify-between', 'border-b', 'border-neutral-200', 'dark:border-white/10', 'pb-3']">
-              <h3 :class="['text-base', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+          <DrawerHandle class="mx-auto my-3 shrink-0" />
+          <div v-if="selectedFriend" class="min-h-0 flex flex-1 flex-col px-6 pb-6">
+            <div class="flex shrink-0 items-center justify-between border-b border-neutral-200 pb-3 dark:border-white/10">
+              <h3 class="text-base text-neutral-900 font-semibold dark:text-white">
                 Permissions for {{ selectedFriend.characterName }}
               </h3>
             </div>
 
-            <div :class="['my-4', 'space-y-4', 'text-xs']">
+            <!-- Scrollable content body -->
+            <div class="my-4 flex-1 overflow-y-auto pr-1 text-xs space-y-4">
               <FieldCheckbox
                 v-model="selectedFriend.allowedCapabilities.canNapChat"
                 label="Allow Nap-Chat"
@@ -1353,47 +1397,92 @@ const surfaceCardClass = computed(() => [
                 description="Allow peer to read public episodic memory tags."
               />
 
-              <div :class="['space-y-1.5', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
-                <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                  Allowed Local Companions
+              <!-- Allowed Local Companions: Accumulated chips + Dropdown -->
+              <div class="border-t border-neutral-200/60 pt-3 space-y-2 dark:border-white/5">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-neutral-900 font-semibold dark:text-white">
+                    Allowed Local Companions
+                  </div>
+                  <span class="text-[11px] text-neutral-500">
+                    {{ selectedFriend.allowedCompanionIds?.length ? `${selectedFriend.allowedCompanionIds.length} restricted` : 'All allowed' }}
+                  </span>
                 </div>
-                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
-                  Select which local companions may converse with {{ selectedFriend.characterName }}.
+                <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Select which local companions may converse with {{ selectedFriend.characterName }}. If none are selected, all companions are allowed.
                 </p>
-                <div :class="['mt-2', 'flex', 'flex-wrap', 'gap-2']">
-                  <button
-                    v-for="comp in availableLocalCompanions"
-                    :key="comp.id"
-                    type="button"
-                    :class="[
-                      'rounded-lg px-2.5 py-1 text-xs font-medium border transition-colors',
-                      selectedFriend.allowedCompanionIds?.includes(comp.id)
-                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                        : 'border-neutral-200 dark:border-white/10 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
-                    ]"
-                    @click="toggleAllowedCompanion(comp.id)"
+
+                <!-- Accumulated chips -->
+                <div v-if="selectedFriend.allowedCompanionIds && selectedFriend.allowedCompanionIds.length > 0" class="max-h-32 flex flex-wrap items-center gap-1.5 overflow-y-auto border border-neutral-200 rounded-xl bg-neutral-100/80 p-2 dark:border-white/5 dark:bg-neutral-800/60">
+                  <span
+                    v-for="id in selectedFriend.allowedCompanionIds"
+                    :key="id"
+                    class="inline-flex items-center gap-1.5 border border-primary-500/30 rounded-lg bg-primary-500/15 px-2.5 py-1 text-xs text-primary-600 font-medium dark:text-primary-300"
                   >
-                    {{ comp.name }}
+                    <span>{{ getCompanionName(id) }}</span>
+                    <button
+                      type="button"
+                      class="cursor-pointer transition-colors hover:text-primary-800 dark:hover:text-white"
+                      aria-label="Remove companion"
+                      @click="removeAllowedCompanion(id)"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    class="ml-auto cursor-pointer px-1 py-0.5 text-[11px] text-neutral-500 underline hover:text-neutral-800 dark:hover:text-neutral-200"
+                    @click="clearAllowedCompanions"
+                  >
+                    Clear all
                   </button>
+                </div>
+                <div v-else class="px-1 text-[11px] text-neutral-500 italic dark:text-neutral-400">
+                  All local companions are currently allowed. Pick from the dropdown below to restrict.
+                </div>
+
+                <!-- Dropdown selector -->
+                <div class="pt-1">
+                  <select
+                    class="w-full cursor-pointer border border-neutral-200 rounded-xl bg-neutral-100/70 px-3 py-2 text-xs text-neutral-900 outline-none transition dark:border-white/10 focus:border-primary-500 dark:bg-neutral-800/80 dark:text-neutral-100 focus:ring-1 focus:ring-primary-500"
+                    @change="onCompanionSelectChange"
+                  >
+                    <option value="" disabled selected>
+                      + Add a companion to allowlist... ({{ unselectedCompanions.length }} available)
+                    </option>
+                    <option
+                      v-for="comp in unselectedCompanions"
+                      :key="comp.id"
+                      :value="comp.id"
+                    >
+                      {{ comp.name }}
+                    </option>
+                  </select>
                 </div>
               </div>
 
               <!-- Friend topic guidance -->
-              <div :class="['space-y-1.5', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
-                <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              <div class="border-t border-neutral-200/60 pt-3 space-y-1.5 dark:border-white/5">
+                <div class="text-xs text-neutral-900 font-semibold dark:text-white">
                   Friend topic guidance (optional)
                 </div>
                 <FieldInput
                   v-model="selectedFriend.allowedCapabilities.customPromptGuidance"
                   placeholder="e.g. Talk about 3D shaders and game dev, keep inside jokes playful."
                 />
-                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
                   Specific topics or conversational style tailored for {{ selectedFriend.characterName }}.
                 </p>
               </div>
             </div>
 
-            <div :class="['flex', 'justify-end', 'border-t', 'border-neutral-200', 'dark:border-white/10', 'pt-3']">
+            <!-- Footer (pinned bottom, always reachable!) -->
+            <div class="flex shrink-0 justify-end gap-2 border-t border-neutral-200 pt-3 dark:border-white/10">
+              <Button
+                variant="secondary"
+                size="sm"
+                label="Cancel"
+                @click="showPermissionsDrawer = false"
+              />
               <Button
                 variant="primary"
                 size="sm"
@@ -1411,83 +1500,85 @@ const surfaceCardClass = computed(() => [
       <DrawerPortal>
         <DrawerOverlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         <DrawerContent
-          class="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg border-t border-neutral-200 rounded-t-[32px] bg-white p-6 shadow-2xl outline-none dark:border-white/15 dark:bg-neutral-900"
+          class="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[85dvh] max-w-lg flex flex-col border-t border-neutral-200 rounded-t-[32px] bg-white shadow-2xl outline-none dark:border-white/15 dark:bg-neutral-900"
         >
-          <DrawerHandle class="mx-auto mb-4" />
-          <div :class="['flex', 'items-center', 'justify-between', 'border-b', 'border-neutral-200', 'dark:border-white/10', 'pb-3']">
-            <h3 :class="['text-base', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-              Inbound Companion Requests
-            </h3>
-          </div>
-
-          <div :class="['my-4', 'space-y-3']">
-            <div
-              v-if="pendingRequests.length === 0"
-              :class="['rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
-            >
-              <div class="i-solar:users-group-rounded-bold-duotone mx-auto text-2xl text-neutral-400" />
-              <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
-                No pending requests
-              </div>
-              <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
-                When someone sends your companion a request, it will appear here for approval.
-              </div>
+          <DrawerHandle class="mx-auto my-3 shrink-0" />
+          <div class="min-h-0 flex flex-1 flex-col px-6 pb-6">
+            <div class="flex shrink-0 items-center justify-between border-b border-neutral-200 pb-3 dark:border-white/10">
+              <h3 class="text-base text-neutral-900 font-semibold dark:text-white">
+                Inbound Companion Requests
+              </h3>
             </div>
 
-            <div
-              v-for="req in pendingRequests"
-              v-else
-              :key="req.id"
-              :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']"
-            >
-              <div :class="['flex', 'items-center', 'justify-between']">
-                <div :class="['flex', 'items-center', 'gap-3']">
-                  <!-- Distinct Initial Avatar for Nan0 -->
-                  <div :class="['flex', 'size-9', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-xs', 'shadow-sm', getPeerAvatarGradient(req.characterName)]">
-                    {{ req.characterName.charAt(0) }}
-                  </div>
-                  <div>
-                    <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                      {{ req.characterName }} <span :class="['text-[11px]', 'font-normal', 'text-neutral-500', 'dark:text-neutral-400']">· {{ req.alias }}</span>
-                    </div>
-                    <div :class="['text-[11px]', 'font-mono', 'text-neutral-600', 'dark:text-neutral-300']">
-                      {{ req.shareHandle }}
-                    </div>
-                  </div>
-                </div>
-                <div :class="['flex', 'items-center', 'gap-2']">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    label="Accept"
-                    @click="handleAcceptRequest(req)"
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    label="Ignore"
-                    @click="handleIgnoreRequest(req)"
-                  />
-                </div>
-              </div>
-
-              <!-- Attached 100-character personal note quote bubble -->
+            <div class="my-4 flex-1 overflow-y-auto pr-1 space-y-3">
               <div
-                v-if="req.introMessage"
-                :class="['mt-2.5', 'rounded-lg', 'border-l-2', 'border-primary-500', 'bg-white/80', 'dark:bg-neutral-800/80', 'px-3', 'py-1.5', 'text-xs', 'text-neutral-700', 'dark:text-neutral-300', 'italic']"
+                v-if="pendingRequests.length === 0"
+                class="border border-neutral-200 rounded-xl border-dashed p-6 text-center dark:border-white/10"
               >
-                "{{ req.introMessage }}"
+                <div class="i-solar:users-group-rounded-bold-duotone mx-auto text-2xl text-neutral-400" />
+                <div class="mt-1 text-xs text-neutral-700 font-medium dark:text-neutral-300">
+                  No pending requests
+                </div>
+                <div class="mt-0.5 text-[11px] text-neutral-500">
+                  When someone sends your companion a request, it will appear here for approval.
+                </div>
+              </div>
+
+              <div
+                v-for="req in pendingRequests"
+                v-else
+                :key="req.id"
+                class="border border-neutral-200 rounded-xl bg-neutral-50 p-3 dark:border-white/10 dark:bg-neutral-800/40"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <!-- Distinct Initial Avatar for Nan0 -->
+                    <div :class="['flex', 'size-9', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-xs', 'shadow-sm', getPeerAvatarGradient(req.characterName)]">
+                      {{ req.characterName.charAt(0) }}
+                    </div>
+                    <div>
+                      <div class="text-xs text-neutral-900 font-semibold dark:text-white">
+                        {{ req.characterName }} <span class="text-[11px] text-neutral-500 font-normal dark:text-neutral-400">· {{ req.alias }}</span>
+                      </div>
+                      <div class="text-[11px] text-neutral-600 font-mono dark:text-neutral-300">
+                        {{ req.shareHandle }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      label="Accept"
+                      @click="handleAcceptRequest(req)"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      label="Ignore"
+                      @click="handleIgnoreRequest(req)"
+                    />
+                  </div>
+                </div>
+
+                <!-- Attached 100-character personal note quote bubble -->
+                <div
+                  v-if="req.introMessage"
+                  class="mt-2.5 border-l-2 border-primary-500 rounded-lg bg-white/80 px-3 py-1.5 text-xs text-neutral-700 italic dark:bg-neutral-800/80 dark:text-neutral-300"
+                >
+                  "{{ req.introMessage }}"
+                </div>
               </div>
             </div>
-          </div>
 
-          <div :class="['flex', 'justify-end', 'border-t', 'border-neutral-200', 'dark:border-white/10', 'pt-3']">
-            <Button
-              variant="secondary"
-              size="sm"
-              label="Close"
-              @click="showRequestsDrawer = false"
-            />
+            <div class="flex shrink-0 justify-end border-t border-neutral-200 pt-3 dark:border-white/10">
+              <Button
+                variant="secondary"
+                size="sm"
+                label="Close"
+                @click="showRequestsDrawer = false"
+              />
+            </div>
           </div>
         </DrawerContent>
       </DrawerPortal>

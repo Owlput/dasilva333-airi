@@ -151,4 +151,104 @@ describe('useEmbassyInboxStore', () => {
     expect(store.pendingRequests).toHaveLength(0)
     store.disconnect()
   })
+
+  it('auto-accepts inbound request if an outbound request is pending for that peer (mutual accept)', async () => {
+    const { store } = setup()
+    await connect(store)
+
+    const { usePeersStore } = await import('./peers')
+    const peers = usePeersStore()
+    await peers.upsertPeer({
+      id: 'placeholder-temp-id',
+      alias: 'bob',
+      characterName: 'Bob Companion',
+      relationship: 'external-friend',
+      trustState: 'pending',
+      lastSeenTimestamp: Date.now(),
+      endpoints: { cloudflareWorkerUrl: 'https://bob.workers.dev' },
+      shareHandle: 'bob.workers.dev',
+      allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+      allowedCompanionIds: ['card-123'],
+    })
+
+    const calls: Array<{ url: string, init: any }> = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      calls.push({ url, init })
+      return new Response(JSON.stringify({ trusted: true }), { status: 200 })
+    }))
+
+    const ws = FakeSocket.instances[0]
+    ws.simulateMessage(JSON.stringify({
+      type: 'inbound_request',
+      request: {
+        id: 'r-reciprocal',
+        fromHandle: 'airi-stage-edge.bob.workers.dev',
+        fromPubkey: '11'.repeat(32),
+        fromCharacterName: 'Bob Real Companion',
+        timestamp: Date.now(),
+        nonce: 'nonce-reciprocal',
+        status: 'pending',
+      },
+    }))
+
+    await store.waitForMutualResolutions()
+
+    // Inbound request should be marked accepted and not appear in pendingRequests
+    expect(store.pendingRequests).toHaveLength(0)
+
+    // Worker accept endpoint was called with Bob's pubkey
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('https://airi-stage-edge.test.workers.dev/api/friends/accept')
+    expect(JSON.parse(calls[0].init.body)).toEqual({ pubkey: '11'.repeat(32), handle: 'airi-stage-edge.bob.workers.dev' })
+
+    // Peer record was updated to trusted with new pubkey and preserved capabilities
+    const entry = peers.roster.find(p => p.id === '11'.repeat(32))
+    expect(entry).toBeDefined()
+    expect(entry?.trustState).toBe('trusted')
+    expect(entry?.characterName).toBe('Bob Companion')
+    expect(entry?.allowedCompanionIds).toEqual(['card-123'])
+
+    // Old placeholder peer ID was removed
+    expect(peers.roster.find(p => p.id === 'placeholder-temp-id')).toBeUndefined()
+
+    store.disconnect()
+  })
+
+  it('dispatches reciprocal friend request when acceptRequest is called with sendReciprocal', async () => {
+    const { store } = setup()
+    await connect(store)
+
+    const ws = FakeSocket.instances[0]
+    ws.simulateMessage(JSON.stringify({
+      type: 'inbound_request',
+      request: { id: 'r-manual', fromHandle: 'charlie.workers.dev', fromPubkey: '22'.repeat(32), fromCharacterName: 'Charlie', timestamp: 1, nonce: 'n-c', status: 'pending' },
+    }))
+
+    const calls: Array<{ url: string, init: any }> = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      calls.push({ url, init })
+      return new Response(JSON.stringify({ ok: true, status: 'pending', id: 'reciprocal-id' }), { status: 200 })
+    }))
+
+    const res = await store.acceptRequest('r-manual', {
+      companionName: 'My Custom AIRI',
+      sendReciprocal: true,
+    })
+    expect(res).toEqual({ ok: true })
+
+    // Call 1: local worker /api/friends/accept
+    expect(calls[0].url).toBe('https://airi-stage-edge.test.workers.dev/api/friends/accept')
+    expect(JSON.parse(calls[0].init.body)).toEqual({ pubkey: '22'.repeat(32), handle: 'charlie.workers.dev' })
+
+    // Call 2: reciprocal request sent to charlie's worker /api/friends/request
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    const reciprocalCall = calls.find(c => c.url.includes('charlie.workers.dev/api/friends/request'))
+    expect(reciprocalCall).toBeDefined()
+    const reciprocalBody = JSON.parse(reciprocalCall!.init.body)
+    expect(reciprocalBody.fromCharacterName).toBe('My Custom AIRI')
+    expect(reciprocalBody.fromHandle).toBe('airi-stage-edge.test.workers.dev')
+    expect(reciprocalBody.introMessage).toBe('[AIRI_MUTUAL_ACCEPT]')
+
+    store.disconnect()
+  })
 })

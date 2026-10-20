@@ -1,11 +1,13 @@
-import type { FriendRequest, Peer } from '@proj-airi/stage-shared'
+import type { ExternalFriend, FriendRequest, Peer } from '@proj-airi/stage-shared'
 
 import type { EmbassySocketRequest } from '../libs/transport/embassy-socket'
 
+import { extractHandleAlias } from '@proj-airi/stage-shared'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { toast } from 'vue-sonner'
 
-import { getOrCreateDeviceKeypair, uint8ArrayToHex } from '../composables/use-peer-embassy'
+import { getOrCreateDeviceKeypair, uint8ArrayToHex, usePeerEmbassy } from '../composables/use-peer-embassy'
 import { createCloudflareEdgeTransport, NAP_CHAT_TOPICS } from '../libs/transport/cloudflare-edge-transport'
 import { createEmbassySocket } from '../libs/transport/embassy-socket'
 import { usePeersStore } from './peers'
@@ -53,7 +55,71 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
 
   const pendingRequests = computed(() => inboundRequests.value.filter(r => r.status === 'pending' && !ignoredIds.value.has(r.id)))
 
+  const activeMutualResolutions: Promise<void>[] = []
+
+  async function resolveMutualAccept(request: FriendRequest, matchingPeer: ExternalFriend) {
+    if (workerUrl.value && ownerId.value) {
+      try {
+        const fetchFn = (globalThis.fetch ?? fetch).bind(globalThis)
+        await fetchFn(`${workerUrl.value.replace(/\/$/, '')}/api/friends/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-owner-id': ownerId.value },
+          body: JSON.stringify({ pubkey: request.fromPubkey, handle: request.fromHandle }),
+        })
+      }
+      catch (e) {
+        console.warn('[embassyInboxStore] Failed to auto-authorize mutual peer on worker:', e)
+      }
+    }
+
+    const peersStore = usePeersStore()
+    if (matchingPeer.id !== request.fromPubkey) {
+      await peersStore.removePeer(matchingPeer.id)
+    }
+
+    await peersStore.upsertPeer({
+      ...matchingPeer,
+      id: request.fromPubkey,
+      alias: matchingPeer.alias || extractHandleAlias(request.fromHandle) || request.fromCharacterName,
+      characterName: matchingPeer.characterName && matchingPeer.characterName !== 'Friend' ? matchingPeer.characterName : request.fromCharacterName,
+      relationship: 'external-friend',
+      trustState: 'trusted',
+      lastSeenTimestamp: Date.now(),
+      endpoints: {
+        ...matchingPeer.endpoints,
+        cloudflareWorkerUrl: request.fromHandle.startsWith('http') ? request.fromHandle : `https://${request.fromHandle}`,
+      },
+      shareHandle: request.fromHandle,
+      allowedCapabilities: matchingPeer.allowedCapabilities || { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+      allowedCompanionIds: matchingPeer.allowedCompanionIds || [],
+    })
+
+    try {
+      const friendName = request.fromCharacterName || matchingPeer.characterName || 'Friend'
+      toast.success(`${friendName} accepted your friend request! You are now connected.`)
+    }
+    catch {}
+  }
+
   function upsertRequest(request: FriendRequest | (EmbassySocketRequest & { status?: FriendRequest['status'] })) {
+    const peersStore = usePeersStore()
+    const reqAlias = extractHandleAlias(request.fromHandle)?.toLowerCase()
+
+    const matchingPendingPeer = (peersStore.friends as ExternalFriend[]).find((p) => {
+      if (p.trustState !== 'pending')
+        return false
+      if (p.id === request.fromPubkey)
+        return true
+      if (p.shareHandle && (p.shareHandle === request.fromHandle || request.fromHandle.includes(p.shareHandle) || p.shareHandle.includes(request.fromHandle)))
+        return true
+      const pAlias = extractHandleAlias(p.shareHandle || p.endpoints?.cloudflareWorkerUrl || '')?.toLowerCase()
+      if (pAlias && reqAlias && pAlias === reqAlias)
+        return true
+      return false
+    })
+
+    const isMutual = Boolean(matchingPendingPeer)
+
     const idx = inboundRequests.value.findIndex(r => r.id === request.id)
     const normalized: FriendRequest = {
       id: request.id,
@@ -63,11 +129,25 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       introMessage: request.introMessage,
       timestamp: request.timestamp ?? Date.now(),
       nonce: request.nonce ?? request.id,
-      status: request.status ?? 'pending',
+      status: isMutual ? 'accepted' : (request.status ?? 'pending'),
     }
     if (idx >= 0)
       inboundRequests.value[idx] = normalized
     else inboundRequests.value.push(normalized)
+
+    if (matchingPendingPeer) {
+      const p = resolveMutualAccept(normalized, matchingPendingPeer)
+      activeMutualResolutions.push(p)
+      void p.finally(() => {
+        const i = activeMutualResolutions.indexOf(p)
+        if (i >= 0)
+          activeMutualResolutions.splice(i, 1)
+      })
+    }
+  }
+
+  async function waitForMutualResolutions() {
+    await Promise.allSettled(activeMutualResolutions)
   }
 
   async function connect(options: EmbassyInboxConnectOptions) {
@@ -138,7 +218,10 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
     inboundRequests.value = inboundRequests.value.filter(r => r.id !== id)
   }
 
-  async function acceptRequest(id: string): Promise<{ ok: boolean, error?: string }> {
+  async function acceptRequest(
+    id: string,
+    options?: { companionName?: string, sendReciprocal?: boolean },
+  ): Promise<{ ok: boolean, error?: string }> {
     const request = inboundRequests.value.find(r => r.id === id)
     if (!request)
       return { ok: false, error: 'Unknown request.' }
@@ -169,7 +252,7 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
     const peersStore = usePeersStore()
     await peersStore.upsertPeer({
       id: request.fromPubkey,
-      alias: request.fromHandle.split('.')[0] || request.fromCharacterName,
+      alias: extractHandleAlias(request.fromHandle) || request.fromCharacterName,
       characterName: request.fromCharacterName,
       relationship: 'external-friend',
       trustState: 'trusted',
@@ -181,6 +264,25 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       allowedCapabilities: { canNapChat: false, canShareMemories: false, canStreamSensory: false },
       allowedCompanionIds: [],
     })
+
+    if (options?.sendReciprocal && workerUrl.value) {
+      try {
+        const fromHandle = new URL(workerUrl.value).host
+        const fromCharacterName = options?.companionName || 'AIRI'
+        const { sendFriendRequest } = usePeerEmbassy()
+        await sendFriendRequest(request.fromHandle, {
+          fromHandle,
+          fromCharacterName,
+          introMessage: '[AIRI_MUTUAL_ACCEPT]',
+        }).catch((err) => {
+          console.warn('[embassyInboxStore] Reciprocal friend request failed:', err)
+        })
+      }
+      catch (e) {
+        console.warn('[embassyInboxStore] Failed to dispatch reciprocal friend request:', e)
+      }
+    }
+
     return { ok: true }
   }
 
@@ -200,5 +302,6 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
     ignoreRequest,
     acceptRequest,
     getTransport,
+    waitForMutualResolutions,
   }
 })
