@@ -13,7 +13,7 @@
     "airi-edge": "./bin/airi-edge.js"
   },
   "scripts": {
-    "build": "tsdown --entry src/index.ts && node -e \"const fs=require('fs'); const code=fs.readFileSync('dist/index.mjs','utf8'); fs.writeFileSync('src/bundle-code.ts', 'export const BUNDLED_WORKER_SCRIPT = ' + JSON.stringify(code) + ';\\n');\" && tsdown",
+    "build": "node -e \"const esbuild=require('esbuild'); const fs=require('fs'); const code=esbuild.buildSync({entryPoints:['src/index.ts'],bundle:true,write:false,format:'esm',target:'es2022',platform:'browser'}).outputFiles[0].text; fs.writeFileSync('src/bundle-code.ts', 'export const BUNDLED_WORKER_SCRIPT = ' + JSON.stringify(code) + ';\\n');\" && tsdown",
     "dev": "wrangler dev",
     "deploy": "tsx src/cli.ts deploy",
     "typecheck": "node -e \"const fs=require('fs'); if(!fs.existsSync('src/bundle-code.ts')) fs.writeFileSync('src/bundle-code.ts', 'export const BUNDLED_WORKER_SCRIPT = \\'\\';\\n');\" && vue-tsc --noEmit"

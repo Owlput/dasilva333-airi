@@ -261,6 +261,7 @@ export interface CloudflareDeployCorsProxyPayload {
   apiToken: string
   accountId: string
   targetSubdomain?: string
+  scriptName?: string
 }
 
 export interface CloudflareDeployCorsProxyResult {

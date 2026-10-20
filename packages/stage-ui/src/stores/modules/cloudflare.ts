@@ -686,7 +686,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
 
     if (isElectron && invokeDeployCorsProxy) {
       try {
-        const res = await invokeDeployCorsProxy({ apiToken, accountId, targetSubdomain: subdomain })
+        const res = await invokeDeployCorsProxy({ apiToken, accountId, targetSubdomain: subdomain, scriptName })
         if (!res.success)
           throw new Error(res.error || 'CORS proxy deployment failed.')
         return true
@@ -757,6 +757,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           apiToken,
           accountId,
           targetSubdomain: subdomain,
+          scriptName,
           enableEmbassyDO: Boolean(options?.enableEmbassyDO),
         })
         if (!res.success)
