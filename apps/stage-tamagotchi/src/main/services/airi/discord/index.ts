@@ -536,8 +536,10 @@ export function setupDiscordService() {
         accountId: payload.accountId,
       })
       const namespaceId = await deployer.ensureKvNamespace('airi-edge-vault')
-      await deployer.setKvValue(namespaceId, 'vault/credentials', JSON.stringify(payload.vaultData))
-      pushLog('DEPLOY', `Saved credentials to Cloudflare KV namespace "${namespaceId}"`)
+      const targetKey = payload.key || 'vault/credentials'
+      const serialized = typeof payload.vaultData === 'string' ? payload.vaultData : JSON.stringify(payload.vaultData)
+      await deployer.setKvValue(namespaceId, targetKey, serialized)
+      pushLog('DEPLOY', `Saved "${targetKey}" to Cloudflare KV namespace "${namespaceId}"`)
       return { success: true, namespaceId }
     }
     catch (err: any) {
@@ -554,7 +556,8 @@ export function setupDiscordService() {
         accountId: payload.accountId,
       })
       const namespaceId = await deployer.ensureKvNamespace('airi-edge-vault')
-      const raw = await deployer.getKvValue(namespaceId, 'vault/credentials')
+      const targetKey = payload.key || 'vault/credentials'
+      const raw = await deployer.getKvValue(namespaceId, targetKey)
       const vaultData = typeof raw === 'string' ? JSON.parse(raw) : raw
       return { success: true, vaultData }
     }

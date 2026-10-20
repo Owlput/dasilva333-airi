@@ -42,9 +42,34 @@ const router = useRouter()
 // NOTICE: Stable empty reference — never allocate `[]` inside a computed.
 const EMPTY_TURNS: NapTurn[] = Object.freeze([]) as unknown as NapTurn[]
 
+const isSyncingDevices = ref(false)
+
 onMounted(async () => {
   await peersStore.init()
+  if (cloudflareStore.isAuthenticated) {
+    void cloudflareStore.syncVaultDevices().catch(() => {})
+  }
 })
+
+async function handleManualDeviceSync() {
+  if (!cloudflareStore.isAuthenticated) {
+    toast.error('Sign into Cloudflare first to synchronize devices.')
+    return
+  }
+  isSyncingDevices.value = true
+  try {
+    const res = await cloudflareStore.syncVaultDevices()
+    if (res.success) {
+      toast.success(`Synced ${res.count || 0} device(s) via Edge Vault!`)
+    }
+    else {
+      toast.error(res.error || 'Failed to sync devices.')
+    }
+  }
+  finally {
+    isSyncingDevices.value = false
+  }
+}
 
 // Strongly-typed lists
 const externalFriends = computed(() => (friends.value as Peer[]).filter(isExternalFriend))
@@ -53,7 +78,16 @@ const sameAccountDevices = computed(() => (devices.value as Peer[]).filter(isSam
 // Companion address derived from user's claimed Cloudflare subdomain
 const myAddress = computed(() => {
   const sub = cfSubdomain.value?.trim()
-  return sub ? `${sub}.workers.dev` : ''
+  if (!sub)
+    return ''
+  if (sub.includes('workers.dev')) {
+    const parts = sub.split('.')
+    if (parts.length === 3) {
+      return `airi-stage-edge.${sub}`
+    }
+    return sub
+  }
+  return `airi-stage-edge.${sub}.workers.dev`
 })
 const hasAddress = computed(() => Boolean(myAddress.value))
 
@@ -191,8 +225,8 @@ function isCurrentDevice(device: any): boolean {
 function getDeviceStatus(device: any): string {
   if (isCurrentDevice(device))
     return 'This device · Active now'
-  if (device.deviceType === 'pocket-mobile')
-    return `Last synced ${formatSeenTime(device.lastSeenTimestamp || Date.now() - 3600000)}`
+  if (isPeerOnline(device.lastSeenTimestamp))
+    return `Active now · seen ${formatSeenTime(device.lastSeenTimestamp)}`
   return `Idle · seen ${formatSeenTime(device.lastSeenTimestamp)}`
 }
 
@@ -682,6 +716,13 @@ const surfaceCardClass = computed(() => [
                 </p>
               </div>
             </div>
+            <button
+              :class="['rounded-lg', 'p-1.5', 'text-xs', 'text-neutral-500', 'hover:text-neutral-800', 'dark:hover:text-neutral-200', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'transition', isSyncingDevices ? 'animate-spin' : '']"
+              title="Sync devices with Cloudflare Edge Vault"
+              @click="handleManualDeviceSync"
+            >
+              <div class="i-solar:restart-bold text-sm" />
+            </button>
           </div>
 
           <!-- Empty State for Devices -->
@@ -710,16 +751,16 @@ const surfaceCardClass = computed(() => [
                 </div>
                 <div>
                   <div :class="['text-xs', 'font-medium', 'text-neutral-900', 'dark:text-white']">
-                    {{ device.alias }}
+                    {{ device.alias }} <span v-if="isCurrentDevice(device)" class="text-[10px] text-neutral-400 font-normal">(This device)</span>
                   </div>
                   <div :class="['flex', 'items-center', 'gap-1.5', 'text-[11px]']">
                     <span
                       :class="[
                         'size-1.5 rounded-full',
-                        isCurrentDevice(device) ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
+                        (isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
                       ]"
                     />
-                    <span :class="isCurrentDevice(device) ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
+                    <span :class="(isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
                       {{ getDeviceStatus(device) }}
                     </span>
                   </div>

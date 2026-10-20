@@ -10,6 +10,7 @@ export const CLOUDFLARE_DEFAULT_REDIRECT_URI = 'http://localhost:8976/oauth/call
 export const CLOUDFLARE_DEFAULT_SCOPES = 'account:read user:read workers:write workers_kv:write workers_routes:write workers_scripts:write offline_access ai:read ai:write'
 export const CLOUDFLARE_EDGE_VAULT_NAMESPACE = 'airi-edge-vault'
 export const CLOUDFLARE_EDGE_VAULT_KEY = 'vault/credentials'
+export const CLOUDFLARE_EDGE_VAULT_DEVICES_KEY = 'devices/map'
 
 /**
  * Converts a Uint8Array buffer into RFC 7636 Base64URL string without padding.

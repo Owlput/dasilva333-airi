@@ -97,4 +97,74 @@ describe('cloudflare store persistence & corruption recovery', () => {
     const resolved = resolveAccountId(tokenDataWithoutAccountId, accountsApiResponse)
     expect(resolved).toBe('resolved_cf_account_id_999')
   })
+
+  it('syncVaultDevices merges remote devices from Edge Vault and writes back updated roster', async () => {
+    const store = useCloudflareStore()
+    store.cfApiToken = 'dummy_token'
+    store.cfAccountId = 'dummy_acc'
+
+    const remoteMap = {
+      'remote-laptop': {
+        machineId: 'remote-laptop',
+        deviceName: 'MacBook Air',
+        deviceType: 'desktop' as const,
+        workerUrl: 'https://airi-stage-edge.r1ch4rd.workers.dev',
+        lastSeen: Date.now() - 5000,
+        presenceState: 'active' as const,
+      },
+    }
+
+    const putCalls: Array<{ url: string, body: string }> = []
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const decodedUrl = decodeURIComponent(String(url))
+      if (decodedUrl.includes('/storage/kv/namespaces') && !decodedUrl.includes('/values/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            result: init?.method === 'POST'
+              ? { id: 'mock-edge-vault-ns', title: 'airi-edge-vault' }
+              : [{ id: 'mock-edge-vault-ns', title: 'airi-edge-vault' }],
+          }),
+        } as any
+      }
+
+      if (decodedUrl.includes('/values/devices%2Fmap') && (!init?.method || init.method === 'GET')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify(remoteMap),
+        } as any
+      }
+
+      if (decodedUrl.includes('/values/devices%2Fmap') && init?.method === 'PUT') {
+        putCalls.push({ url: decodedUrl, body: String(init.body) })
+        return {
+          ok: true,
+          status: 200,
+          text: async () => '',
+        } as any
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+        text: async () => '',
+      } as any
+    }))
+
+    const res = await store.syncVaultDevices()
+    expect(res.success).toBe(true)
+    expect(putCalls.length).toBeGreaterThan(0)
+    expect(putCalls[0].url).toContain('devices%2Fmap')
+
+    const parsedSaved = JSON.parse(putCalls[0].body)
+    expect(parsedSaved['remote-laptop']).toBeDefined()
+    expect(parsedSaved['remote-laptop'].deviceName).toBe('MacBook Air')
+
+    vi.unstubAllGlobals()
+  })
 })

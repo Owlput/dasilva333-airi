@@ -142,33 +142,51 @@ export function usePeerEmbassy() {
       return null
     }
 
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 6000)
+    const urlsToTry: string[] = [normalized.workerUrl]
+    const handleParts = normalized.handle.split('.')
+    if (handleParts.length === 3 && handleParts[1] === 'workers' && handleParts[2] === 'dev') {
+      urlsToTry.push(`https://airi-stage-edge.${normalized.handle}`)
+      urlsToTry.push(`https://airi-cors-proxy.${normalized.handle}`)
+    }
 
-      const res = await fetch(`${normalized.workerUrl}/api/companion/card`, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' },
-      })
-      clearTimeout(timeoutId)
+    let lastError: any = null
+    for (const baseUrl of urlsToTry) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 6000)
 
-      if (!res.ok) {
-        throw new Error(`Worker returned status ${res.status}`)
+        const res = await fetch(`${baseUrl}/api/companion/card`, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        })
+        clearTimeout(timeoutId)
+
+        if (res.ok) {
+          const data: AmbassadorCard = await res.json()
+          return {
+            card: data,
+            normalized: {
+              ...normalized,
+              workerUrl: baseUrl,
+              handle: new URL(baseUrl).host,
+            },
+          }
+        }
+        else {
+          lastError = new Error(`Worker returned status ${res.status}`)
+        }
       }
+      catch (err: any) {
+        lastError = err
+      }
+    }
 
-      const data: AmbassadorCard = await res.json()
-      return { card: data, normalized }
-    }
-    catch (err: any) {
-      const message = err?.name === 'AbortError'
-        ? 'Request timed out. Please check that the worker is online.'
-        : `Could not reach ${normalized.handle}: ${err?.message || 'Network error'}`
-      error.value = message
-      return null
-    }
-    finally {
-      isLookingUp.value = false
-    }
+    const message = lastError?.name === 'AbortError'
+      ? 'Request timed out. Please check that the worker is online.'
+      : `Could not reach ${normalized.handle}: ${lastError?.message || 'Network error'}`
+    error.value = message
+    isLookingUp.value = false
+    return null
   }
 
   async function sendFriendRequest(
@@ -217,26 +235,41 @@ export function usePeerEmbassy() {
         invite: options.inviteToken || normalized.invite,
       }
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
-
-      const res = await fetch(`${normalized.workerUrl}/api/friends/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      })
-      clearTimeout(timeoutId)
-
-      const data = await res.json()
-      if (!res.ok) {
-        return { ok: false, error: data?.error || `Request failed with HTTP ${res.status}` }
+      const urlsToTry: string[] = [normalized.workerUrl]
+      const handleParts = normalized.handle.split('.')
+      if (handleParts.length === 3 && handleParts[1] === 'workers' && handleParts[2] === 'dev') {
+        urlsToTry.push(`https://airi-stage-edge.${normalized.handle}`)
+        urlsToTry.push(`https://airi-cors-proxy.${normalized.handle}`)
       }
 
-      return { ok: true, id: data.id }
-    }
-    catch (err: any) {
-      const message = err?.name === 'AbortError' ? 'Friend request timed out.' : (err?.message || 'Network error')
+      let lastError: any = null
+      for (const baseUrl of urlsToTry) {
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+          const res = await fetch(`${baseUrl}/api/friends/request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          })
+          clearTimeout(timeoutId)
+
+          const data = await res.json()
+          if (!res.ok) {
+            lastError = new Error(data?.error || `Request failed with HTTP ${res.status}`)
+            continue
+          }
+
+          return { ok: true, id: data.id }
+        }
+        catch (err: any) {
+          lastError = err
+        }
+      }
+
+      const message = lastError?.name === 'AbortError' ? 'Friend request timed out.' : (lastError?.message || 'Network error')
       error.value = message
       return { ok: false, error: message }
     }

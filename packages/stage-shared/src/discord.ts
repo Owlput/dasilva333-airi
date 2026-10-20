@@ -228,6 +228,7 @@ export interface CloudflareSaveEdgeVaultPayload {
   apiToken: string
   accountId: string
   vaultData: Record<string, any>
+  key?: string
 }
 
 export interface CloudflareSaveEdgeVaultResult {
@@ -239,6 +240,7 @@ export interface CloudflareSaveEdgeVaultResult {
 export interface CloudflareFetchEdgeVaultPayload {
   apiToken: string
   accountId: string
+  key?: string
 }
 
 export interface CloudflareFetchEdgeVaultResult {

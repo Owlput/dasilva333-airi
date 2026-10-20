@@ -21,18 +21,45 @@ export function getLocalMachineId(): string {
   return id
 }
 
+export function getLocalDeviceAlias(): string {
+  if (typeof window === 'undefined')
+    return 'Desktop'
+
+  const isElectron = Boolean((window as any).electron)
+  const ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || ''
+
+  if (isElectron) {
+    if (ua.includes('Macintosh') || ua.includes('Mac OS'))
+      return 'Mac Desktop'
+    if (ua.includes('Windows'))
+      return 'Windows PC'
+    return 'Desktop App'
+  }
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(ua)
+  if (isMobile)
+    return 'Mobile Web'
+  if (ua.includes('Macintosh') || ua.includes('Mac OS'))
+    return 'Mac (Web Stage)'
+  if (ua.includes('Windows'))
+    return 'Windows (Web Stage)'
+  return 'Web Stage'
+}
+
 export function createLocalDevice(): SameAccountDevice {
   const machineId = getLocalMachineId()
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
+
   return {
     id: `peer-${machineId}`,
-    alias: 'This device',
+    alias: getLocalDeviceAlias(),
     characterName: 'AIRI',
     relationship: 'same-account',
     trustState: 'trusted',
     lastSeenTimestamp: Date.now(),
     endpoints: {},
     machineId,
-    deviceType: 'desktop',
+    deviceType: isMobile ? 'pocket-mobile' : 'desktop',
   }
 }
 
@@ -55,9 +82,15 @@ export const usePeersStore = defineStore('peers', () => {
 
       // Ensure local machine device is registered in the roster
       const machineId = getLocalMachineId()
-      const hasCurrent = cleaned.some(p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === machineId)
-      if (!hasCurrent) {
+      const existingIdx = cleaned.findIndex(p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === machineId)
+      if (existingIdx < 0) {
         cleaned.unshift(createLocalDevice())
+      }
+      else {
+        const local = cleaned[existingIdx] as SameAccountDevice
+        if (!local.alias || local.alias === 'This device') {
+          local.alias = getLocalDeviceAlias()
+        }
       }
 
       roster.value = cleaned

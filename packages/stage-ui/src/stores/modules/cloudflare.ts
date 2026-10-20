@@ -1,3 +1,5 @@
+import type { SameAccountDevice, VaultDeviceMap } from '@proj-airi/stage-shared'
+
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import {
   cloudflareServiceDeployCorsProxy,
@@ -11,10 +13,12 @@ import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { usePeersStore } from '../peers'
 import { useSyncEngineStore } from '../sync-engine'
 import {
   base64UrlEncode,
   buildCloudflareOAuthUrl,
+  CLOUDFLARE_EDGE_VAULT_DEVICES_KEY,
   CLOUDFLARE_EDGE_VAULT_KEY,
   CLOUDFLARE_EDGE_VAULT_NAMESPACE,
   CLOUDFLARE_OAUTH_CLIENT_ID,
@@ -222,8 +226,10 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         syncStore.activeProvider = 's3'
         syncStore.syncEnabled = true
         console.info('[useCloudflareStore] Auto-restored Edge Vault credentials into SyncEngineStore, bucket:', vault.s3Bucket)
+        void syncVaultDevices().catch(() => {})
         return { success: true, bucket: vault.s3Bucket }
       }
+      void syncVaultDevices().catch(() => {})
       return { success: false, error: 'No Edge Vault credentials found in Cloudflare KV' }
     }
     catch (err: any) {
@@ -653,14 +659,14 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return true
   }
 
-  async function saveToEdgeVault(vaultData: Record<string, any>) {
+  async function saveToEdgeVault(vaultData: Record<string, any>, key: string = CLOUDFLARE_EDGE_VAULT_KEY) {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
       throw new Error('Cloudflare access token missing.')
 
     if (isElectron && invokeSaveEdgeVault) {
-      const res = await invokeSaveEdgeVault({ apiToken, accountId, vaultData })
+      const res = await invokeSaveEdgeVault({ apiToken, accountId, vaultData, key })
       if (!res.success) {
         throw new Error(res.error || 'Failed to save to Edge Key Vault.')
       }
@@ -695,13 +701,17 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         }
       }
       if (nsId) {
-        await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${nsId}/values/${CLOUDFLARE_EDGE_VAULT_KEY}`, {
+        const payloadBody = key === CLOUDFLARE_EDGE_VAULT_KEY
+          ? formatEdgeVaultPayload(vaultData)
+          : (typeof vaultData === 'string' ? vaultData : JSON.stringify(vaultData))
+
+        await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${nsId}/values/${encodeURIComponent(key)}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${apiToken}`,
             'Content-Type': 'text/plain',
           },
-          body: formatEdgeVaultPayload(vaultData),
+          body: payloadBody,
         })
       }
       return { success: true }
@@ -712,7 +722,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
   }
 
-  async function fetchFromEdgeVault(): Promise<Record<string, any> | null> {
+  async function fetchFromEdgeVault(key: string = CLOUDFLARE_EDGE_VAULT_KEY): Promise<Record<string, any> | null> {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
@@ -720,7 +730,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
 
     if (isElectron && invokeFetchEdgeVault) {
       try {
-        const res = await invokeFetchEdgeVault({ apiToken, accountId })
+        const res = await invokeFetchEdgeVault({ apiToken, accountId, key })
         return res.success && res.vaultData ? res.vaultData : null
       }
       catch {
@@ -737,12 +747,20 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         const listData: any = await listRes.json()
         const vaultNs = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
         if (vaultNs?.id) {
-          const valRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${vaultNs.id}/values/${CLOUDFLARE_EDGE_VAULT_KEY}`, {
+          const valRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${vaultNs.id}/values/${encodeURIComponent(key)}`, {
             headers: { Authorization: `Bearer ${apiToken}` },
           })
           if (valRes.ok) {
             const raw = await valRes.text()
-            return parseEdgeVaultPayload(raw)
+            if (key === CLOUDFLARE_EDGE_VAULT_KEY) {
+              return parseEdgeVaultPayload(raw)
+            }
+            try {
+              return JSON.parse(raw)
+            }
+            catch {
+              return parseEdgeVaultPayload(raw)
+            }
           }
         }
       }
@@ -752,6 +770,58 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
 
     return null
+  }
+
+  async function syncVaultDevices(): Promise<{ success: boolean, count?: number, error?: string }> {
+    const apiToken = activeAccessToken.value
+    const accountId = activeAccountId.value
+    if (!apiToken || !accountId) {
+      return { success: false, error: 'Not authenticated with Cloudflare' }
+    }
+
+    try {
+      const peersStore = usePeersStore()
+      if (!peersStore.isInitialized) {
+        await peersStore.init()
+      }
+
+      // 1. Fetch remote devices map from KV
+      const remoteMap = await fetchFromEdgeVault(CLOUDFLARE_EDGE_VAULT_DEVICES_KEY) as VaultDeviceMap | null
+
+      // 2. Merge remote devices into local peers store
+      if (remoteMap && typeof remoteMap === 'object') {
+        await peersStore.mergeVaultDevices(remoteMap)
+      }
+
+      // 3. Update current device heartbeat with latest timestamp
+      const currentId = peersStore.currentMachineId
+      const localDevice = peersStore.roster.find(
+        p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === currentId,
+      ) as SameAccountDevice | undefined
+
+      if (localDevice) {
+        localDevice.lastSeenTimestamp = Date.now()
+        localDevice.edgeVaultSyncedAt = Date.now()
+        if (cfSubdomain.value) {
+          localDevice.endpoints = {
+            ...localDevice.endpoints,
+            cloudflareWorkerUrl: `https://${cfSubdomain.value}.workers.dev`,
+          }
+        }
+      }
+
+      // 4. Export fresh local + merged map and push back to KV
+      const updatedMap = peersStore.toVaultDeviceMapForSync()
+      await saveToEdgeVault(updatedMap, CLOUDFLARE_EDGE_VAULT_DEVICES_KEY)
+
+      const deviceCount = peersStore.devices.length
+      console.info(`[useCloudflareStore] Synchronized ${deviceCount} device(s) with Edge Vault.`)
+      return { success: true, count: deviceCount }
+    }
+    catch (err: any) {
+      console.warn('[useCloudflareStore] syncVaultDevices failed:', err)
+      return { success: false, error: err?.message || String(err) }
+    }
   }
 
   async function verifyAndSetApiToken(token: string): Promise<string> {
@@ -924,6 +994,21 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
   }
 
+  // Periodic heartbeat sync for same-account device discovery
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      if (isAuthenticated.value) {
+        void syncVaultDevices().catch(() => {})
+      }
+    }, 1500)
+
+    setInterval(() => {
+      if (isAuthenticated.value) {
+        void syncVaultDevices().catch(() => {})
+      }
+    }, 60000)
+  }
+
   return {
     cfOAuthTokens,
     cfAccountId,
@@ -947,6 +1032,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     saveToEdgeVault,
     fetchFromEdgeVault,
     autoRestoreEdgeVault,
+    syncVaultDevices,
     logout,
   }
 })
