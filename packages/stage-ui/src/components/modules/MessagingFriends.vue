@@ -153,7 +153,7 @@ const availableLocalCompanions = computed(() => {
     }
   }
   if (list.length === 0 && airiCardStore.activeCard) {
-    list.push({ id: airiCardStore.activeCard.id || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
+    list.push({ id: (airiCardStore.activeCardId as string) || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
   }
   if (list.length === 0) {
     list.push({ id: 'airi', name: 'AIRI' })
