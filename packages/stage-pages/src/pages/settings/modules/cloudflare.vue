@@ -454,100 +454,92 @@ function handleDisconnect() {
           </Button>
         </div>
       </div>
-      :disabled="isTestingCors || !cfSubdomain"
-      class="text-xs font-semibold"
-      @click="testCorsHealth"
-      >
-      {{ isTestingCors ? 'Pinging...' : 'Ping Test' }}
-      </Button>
-    </div>
-  </div>
 
-  <!-- Card 3: Edge Key Vault (airi-edge-vault) -->
-  <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
-    <div>
-      <div class="mb-2 flex items-center gap-2">
-        <div class="size-8 flex items-center justify-center rounded-xl bg-amber-500/15 text-lg text-amber-600 dark:text-amber-400">
-          <div class="i-solar:key-bold-duotone" />
+      <!-- Card 4: Edge Key Vault (airi-edge-vault) -->
+      <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
+        <div>
+          <div class="mb-2 flex items-center gap-2">
+            <div class="size-8 flex items-center justify-center rounded-xl bg-amber-500/15 text-lg text-amber-600 dark:text-amber-400">
+              <div class="i-solar:key-bold-duotone" />
+            </div>
+            <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+              Edge Key Vault (KV)
+            </h3>
+          </div>
+          <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
+            Encrypted Cloudflare KV namespace (<code>airi-edge-vault</code>) that synchronizes R2/S3 credentials so any device can restore cloud sync with 1 click.
+          </p>
+          <p v-if="vaultStatus" class="mt-2 text-xs text-emerald-600 font-semibold dark:text-emerald-400">
+            {{ vaultStatus }}
+          </p>
         </div>
-        <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-          Edge Key Vault (KV)
-        </h3>
-      </div>
-      <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-        Encrypted Cloudflare KV namespace (<code>airi-edge-vault</code>) that synchronizes R2/S3 credentials so any device can restore cloud sync with 1 click.
-      </p>
-      <p v-if="vaultStatus" class="mt-2 text-xs text-emerald-600 font-semibold dark:text-emerald-400">
-        {{ vaultStatus }}
-      </p>
-    </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <Button
-        size="sm"
-        variant="primary"
-        :disabled="isSavingVault || !syncStore.s3Bucket"
-        class="flex items-center gap-1.5 text-xs font-bold"
-        @click="handleSaveToVault"
-      >
-        <div class="i-solar:lock-bold text-xs" />
-        <span>Save to Vault</span>
-      </Button>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            :disabled="isSavingVault || !syncStore.s3Bucket"
+            class="flex items-center gap-1.5 text-xs font-bold"
+            @click="handleSaveToVault"
+          >
+            <div class="i-solar:lock-bold text-xs" />
+            <span>Save to Vault</span>
+          </Button>
 
-      <Button
-        size="sm"
-        variant="secondary"
-        :disabled="isFetchingVault"
-        class="text-xs font-semibold"
-        @click="handleRestoreFromVault"
-      >
-        {{ isFetchingVault ? 'Fetching...' : 'Restore from Vault' }}
-      </Button>
-    </div>
-  </div>
-
-  <!-- Card 4: BYOS Cloud Storage Link -->
-  <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
-    <div>
-      <div class="mb-2 flex items-center gap-2">
-        <div class="size-8 flex items-center justify-center rounded-xl bg-primary-500/15 text-lg text-primary-600 dark:text-primary-400">
-          <div class="i-solar:cloud-storage-bold-duotone" />
+          <Button
+            size="sm"
+            variant="secondary"
+            :disabled="isFetchingVault"
+            class="text-xs font-semibold"
+            @click="handleRestoreFromVault"
+          >
+            {{ isFetchingVault ? 'Fetching...' : 'Restore from Vault' }}
+          </Button>
         </div>
-        <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
-          Cloud Storage & Sync
-        </h3>
       </div>
-      <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
-        Configure automated multi-device synchronization using Cloudflare R2 or Amazon S3.
-      </p>
-      <div class="mt-2 text-xs text-neutral-600 font-mono dark:text-neutral-300">
-        Bucket: <strong>{{ syncStore.s3Bucket || 'None' }}</strong> ({{ syncStore.syncEnabled ? 'Active' : 'Paused' }})
+
+      <!-- Card 4: BYOS Cloud Storage Link -->
+      <div class="shadow-xs flex flex-col justify-between gap-4 border border-neutral-200/80 rounded-3xl bg-white/70 p-5 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/60">
+        <div>
+          <div class="mb-2 flex items-center gap-2">
+            <div class="size-8 flex items-center justify-center rounded-xl bg-primary-500/15 text-lg text-primary-600 dark:text-primary-400">
+              <div class="i-solar:cloud-storage-bold-duotone" />
+            </div>
+            <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
+              Cloud Storage & Sync
+            </h3>
+          </div>
+          <p class="text-xs text-neutral-500 leading-relaxed dark:text-neutral-400">
+            Configure automated multi-device synchronization using Cloudflare R2 or Amazon S3.
+          </p>
+          <div class="mt-2 text-xs text-neutral-600 font-mono dark:text-neutral-300">
+            Bucket: <strong>{{ syncStore.s3Bucket || 'None' }}</strong> ({{ syncStore.syncEnabled ? 'Active' : 'Paused' }})
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            class="text-xs font-semibold"
+            @click="router.push('/settings/modules/cloud-sync')"
+          >
+            Manage Cloud Sync &rarr;
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            class="text-xs font-semibold"
+            @click="router.push('/settings/providers/cloud/s3')"
+          >
+            S3/R2 Keys &rarr;
+          </Button>
+        </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="secondary"
-        class="text-xs font-semibold"
-        @click="router.push('/settings/modules/cloud-sync')"
-      >
-        Manage Cloud Sync &rarr;
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        class="text-xs font-semibold"
-        @click="router.push('/settings/providers/cloud/s3')"
-      >
-        S3/R2 Keys &rarr;
-      </Button>
-    </div>
-  </div>
-  </div>
-
-  <!-- Connect Dialog Modal -->
-  <CloudflareConnectDialog v-model="isConnectModalOpen" />
+    <!-- Connect Dialog Modal -->
+    <CloudflareConnectDialog v-model="isConnectModalOpen" />
   </div>
 </template>
 
