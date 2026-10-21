@@ -26,7 +26,10 @@ export async function setupWidgetsWindowInvokes(params: {
 
   const context = params.context ?? createContext(ipcMain, params.widgetWindow, { onlySameWindow: true }).context
 
-  setupBaseWindowElectronInvokes({ context, window: params.widgetWindow, i18n: params.i18n, serverChannel: params.serverChannel })
+  await setupBaseWindowElectronInvokes({ context, window: params.widgetWindow, i18n: params.i18n, serverChannel: params.serverChannel })
+
+  if (params.widgetWindow.isDestroyed())
+    return { context }
 
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.widgetWindow })
 
