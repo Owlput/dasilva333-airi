@@ -199,8 +199,28 @@ async function handleManualDeviceSync() {
   }
 }
 
-// Strongly-typed lists
-const externalFriends = computed(() => (friends.value as Peer[]).filter(isExternalFriend))
+// Strongly-typed lists with pending deduplication against trusted friends
+const externalFriends = computed(() => {
+  const list = (friends.value as Peer[]).filter(isExternalFriend)
+  const trustedHandles = new Set(
+    list.filter(p => p.trustState === 'trusted' && p.shareHandle).map(p => p.shareHandle.toLowerCase()),
+  )
+  const trustedAliases = new Set(
+    list.filter(p => p.trustState === 'trusted').map(p => (p.alias || extractHandleAlias(p.shareHandle || ''))?.toLowerCase()).filter(Boolean),
+  )
+
+  return list.filter((p) => {
+    if (p.trustState === 'pending') {
+      const handle = p.shareHandle?.toLowerCase()
+      const alias = (p.alias || extractHandleAlias(handle || ''))?.toLowerCase()
+      if (handle && (trustedHandles.has(handle) || Array.from(trustedHandles).some(th => th.includes(handle) || handle.includes(th))))
+        return false
+      if (alias && trustedAliases.has(alias))
+        return false
+    }
+    return true
+  })
+})
 const sameAccountDevices = computed(() => (devices.value as Peer[]).filter(isSameAccountDevice))
 
 const afkThreshold = computed({
@@ -441,15 +461,23 @@ async function handleCopyInvite() {
   }
 }
 
+function resetAddCompanionForm() {
+  showAddCompanion.value = false
+  lookupInput.value = ''
+  lookupIntroNote.value = ''
+  lookedUpCard.value = null
+  showLookupResult.value = false
+  isRequestSent.value = false
+  lookupError.value = ''
+  lookedUpHandle.value = ''
+  lookedUpInviteToken.value = undefined
+}
+
 function toggleAddCompanion() {
   showAddCompanion.value = !showAddCompanion.value
   lookupError.value = ''
   if (!showAddCompanion.value) {
-    lookupInput.value = ''
-    lookupIntroNote.value = ''
-    lookedUpCard.value = null
-    showLookupResult.value = false
-    isRequestSent.value = false
+    resetAddCompanionForm()
   }
 }
 
@@ -544,12 +572,40 @@ async function handleSendRequest() {
     })
     toast.success(`Friend request sent to ${targetName}!`)
     lookupIntroNote.value = ''
+    setTimeout(() => {
+      if (isRequestSent.value) {
+        resetAddCompanionForm()
+      }
+    }, 1500)
   }
   else {
     isRequestSent.value = false
     toast.error(`Failed to send friend request to ${targetName}: ${res.error || 'Server error'}`)
   }
 }
+
+watch(externalFriends, (friendsList) => {
+  if (!showAddCompanion.value && !isRequestSent.value)
+    return
+  const targetHandle = lookedUpHandle.value?.toLowerCase()
+  const targetPubkey = lookedUpCard.value?.publicKey
+  if (!targetHandle && !targetPubkey)
+    return
+  const isNowConnected = friendsList.some((f) => {
+    if (f.trustState !== 'trusted')
+      return false
+    if (targetPubkey && f.id === targetPubkey)
+      return true
+    if (f.shareHandle && targetHandle && (f.shareHandle.toLowerCase().includes(targetHandle) || targetHandle.includes(f.shareHandle.toLowerCase())))
+      return true
+    const alias = extractHandleAlias(f.shareHandle || f.endpoints?.cloudflareWorkerUrl || '')?.toLowerCase()
+    const targetAlias = extractHandleAlias(targetHandle)?.toLowerCase()
+    return Boolean(alias && targetAlias && alias === targetAlias)
+  })
+  if (isNowConnected) {
+    resetAddCompanionForm()
+  }
+}, { deep: true })
 
 function openPermissions(friend: ExternalFriend) {
   selectedFriend.value = JSON.parse(JSON.stringify(friend))
@@ -813,7 +869,7 @@ const surfaceCardClass = computed(() => [
               </div>
               <button
                 :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'text-xs']"
-                @click="showAddCompanion = false"
+                @click="resetAddCompanionForm"
               >
                 ✕
               </button>

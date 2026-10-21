@@ -1,6 +1,6 @@
-import type { Peer, SameAccountDevice, VaultDeviceMap } from '@proj-airi/stage-shared'
+import type { ExternalFriend, Peer, SameAccountDevice, VaultDeviceMap } from '@proj-airi/stage-shared'
 
-import { mergeSameAccountDevices, toVaultDeviceMap } from '@proj-airi/stage-shared'
+import { extractHandleAlias, mergeSameAccountDevices, toVaultDeviceMap } from '@proj-airi/stage-shared'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -117,6 +117,28 @@ export const usePeersStore = defineStore('peers', () => {
   async function upsertPeer(peer: Peer) {
     if (!isInitialized.value)
       await init()
+
+    // If upserting a trusted external friend, clean up any placeholder/pending peer with matching handle/alias
+    if (peer.relationship === 'external-friend' && peer.trustState === 'trusted') {
+      const peerHandle = (peer as ExternalFriend).shareHandle?.toLowerCase()
+      const peerAlias = (peer.alias || extractHandleAlias(peerHandle || ''))?.toLowerCase()
+
+      roster.value = roster.value.filter((p) => {
+        if (p.id === peer.id)
+          return true
+        if (p.relationship === 'external-friend' && p.trustState === 'pending') {
+          const pFriend = p as ExternalFriend
+          const pHandle = pFriend.shareHandle?.toLowerCase()
+          const pAlias = (pFriend.alias || extractHandleAlias(pHandle || ''))?.toLowerCase()
+          if (peerHandle && pHandle && (peerHandle === pHandle || peerHandle.includes(pHandle) || pHandle.includes(peerHandle)))
+            return false
+          if (peerAlias && pAlias && peerAlias === pAlias)
+            return false
+        }
+        return true
+      })
+    }
+
     const idx = roster.value.findIndex(p => p.id === peer.id)
     if (idx >= 0)
       roster.value[idx] = peer

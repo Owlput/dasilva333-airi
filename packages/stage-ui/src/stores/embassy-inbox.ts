@@ -53,7 +53,22 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
   let transport: ReturnType<typeof createCloudflareEdgeTransport> | null = null
   let unsubscribeTurns: (() => void) | null = null
 
-  const pendingRequests = computed(() => inboundRequests.value.filter(r => r.status === 'pending' && !ignoredIds.value.has(r.id)))
+  const pendingRequests = computed(() => {
+    const peersStore = usePeersStore()
+    const trustedPubkeys = new Set((peersStore.friends as ExternalFriend[]).filter(p => p.trustState === 'trusted').map(p => p.id))
+    const trustedHandles = (peersStore.friends as ExternalFriend[]).filter(p => p.trustState === 'trusted' && p.shareHandle).map(p => p.shareHandle.toLowerCase())
+
+    return inboundRequests.value.filter((r) => {
+      if (r.status !== 'pending' || ignoredIds.value.has(r.id))
+        return false
+      if (trustedPubkeys.has(r.fromPubkey))
+        return false
+      const reqHandle = r.fromHandle?.toLowerCase()
+      if (reqHandle && trustedHandles.some(th => th === reqHandle || th.includes(reqHandle) || reqHandle.includes(th)))
+        return false
+      return true
+    })
+  })
 
   const activeMutualResolutions: Promise<void>[] = []
 
@@ -94,6 +109,11 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       allowedCompanionIds: matchingPeer.allowedCompanionIds || [],
     })
 
+    const inReq = inboundRequests.value.find(r => r.id === request.id || r.fromPubkey === request.fromPubkey)
+    if (inReq) {
+      inReq.status = 'accepted'
+    }
+
     try {
       const friendName = request.fromCharacterName || matchingPeer.characterName || 'Friend'
       toast.success(`${friendName} accepted your friend request! You are now connected.`)
@@ -118,7 +138,22 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       return false
     })
 
+    const matchingTrustedPeer = (peersStore.friends as ExternalFriend[]).find((p) => {
+      if (p.trustState !== 'trusted')
+        return false
+      if (p.id === request.fromPubkey)
+        return true
+      if (p.shareHandle && (p.shareHandle === request.fromHandle || request.fromHandle.includes(p.shareHandle) || p.shareHandle.includes(request.fromHandle)))
+        return true
+      const pAlias = extractHandleAlias(p.shareHandle || p.endpoints?.cloudflareWorkerUrl || '')?.toLowerCase()
+      if (pAlias && reqAlias && pAlias === reqAlias)
+        return true
+      return false
+    })
+
     const isMutual = Boolean(matchingPendingPeer)
+    const isAlreadyTrusted = Boolean(matchingTrustedPeer)
+    const isResolved = isMutual || isAlreadyTrusted || request.status === 'accepted'
 
     const idx = inboundRequests.value.findIndex(r => r.id === request.id)
     const normalized: FriendRequest = {
@@ -129,7 +164,7 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       introMessage: request.introMessage,
       timestamp: request.timestamp ?? Date.now(),
       nonce: request.nonce ?? request.id,
-      status: isMutual ? 'accepted' : (request.status ?? 'pending'),
+      status: isResolved ? 'accepted' : (request.status ?? 'pending'),
     }
     if (idx >= 0)
       inboundRequests.value[idx] = normalized

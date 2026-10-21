@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PEERS_ROSTER_KEY } from '../database/repos/peers.repo'
+import { storage } from '../database/storage'
 import { useEmbassyInboxStore } from './embassy-inbox'
 
 class FakeSocket {
@@ -48,8 +50,9 @@ async function connect(store: ReturnType<typeof useEmbassyInboxStore>) {
 }
 
 describe('useEmbassyInboxStore', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.unstubAllGlobals()
+    await storage.removeItem(PEERS_ROSTER_KEY)
   })
 
   it('opens the embassy socket and requests a sync catch-up', async () => {
@@ -248,6 +251,49 @@ describe('useEmbassyInboxStore', () => {
     expect(reciprocalBody.fromCharacterName).toBe('My Custom AIRI')
     expect(reciprocalBody.fromHandle).toBe('airi-stage-edge.test.workers.dev')
     expect(reciprocalBody.introMessage).toBe('[AIRI_MUTUAL_ACCEPT]')
+
+    store.disconnect()
+  })
+
+  it('marks inbound request as accepted and excludes from pendingRequests if peer is already trusted', async () => {
+    const { store } = setup()
+    await connect(store)
+
+    const { usePeersStore } = await import('./peers')
+    const peers = usePeersStore()
+    await peers.upsertPeer({
+      id: '99'.repeat(32),
+      alias: 'dave',
+      characterName: 'Dave Companion',
+      relationship: 'external-friend',
+      trustState: 'trusted',
+      lastSeenTimestamp: Date.now(),
+      endpoints: { cloudflareWorkerUrl: 'https://dave.workers.dev' },
+      shareHandle: 'dave.workers.dev',
+      allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+      allowedCompanionIds: [],
+    })
+
+    const ws = FakeSocket.instances[0]
+    ws.simulateMessage(JSON.stringify({
+      type: 'inbound_request',
+      request: {
+        id: 'r-already-trusted',
+        fromHandle: 'dave.workers.dev',
+        fromPubkey: '99'.repeat(32),
+        fromCharacterName: 'Dave Companion',
+        timestamp: Date.now(),
+        nonce: 'nonce-already-trusted',
+        status: 'pending',
+      },
+    }))
+
+    // Should NOT appear in pendingRequests
+    expect(store.pendingRequests).toHaveLength(0)
+    // The internal inbound request should be marked accepted
+    const req = store.inboundRequests.find(r => r.id === 'r-already-trusted')
+    expect(req).toBeDefined()
+    expect(req?.status).toBe('accepted')
 
     store.disconnect()
   })
