@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { resolveAmbassadorTagline } from '@proj-airi/stage-shared'
+import { resolveAmbassadorTagline, resolveEmbassyCompanionId } from '@proj-airi/stage-shared'
 import { CloudflareConnectDialog } from '@proj-airi/stage-ui/components'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useCloudflareStore } from '@proj-airi/stage-ui/stores/modules/cloudflare'
+import { useNapChatStore } from '@proj-airi/stage-ui/stores/nap-chat'
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -14,6 +15,7 @@ const router = useRouter()
 const cloudflareStore = useCloudflareStore()
 const syncStore = useSyncEngineStore()
 const airiCardStore = useAiriCardStore()
+const napChatStore = useNapChatStore()
 
 const {
   cfAccountId,
@@ -146,9 +148,13 @@ async function handleDeployEmbassy() {
   isDeployingEmbassy.value = true
   try {
     toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
+    const companionIds = airiCardStore.cards ? [...airiCardStore.cards.keys()].map(String) : []
+    const embassyId = resolveEmbassyCompanionId(companionIds, airiCardStore.activeCardId as string | undefined, napChatStore.ambassadorCompanionId)
+    const embassyCard = airiCardStore.getCard(embassyId) ?? airiCardStore.activeCard
     const res = await cloudflareStore.deployCompanionEmbassy({
       enableEmbassyDO: true,
-      tagline: resolveAmbassadorTagline(airiCardStore.activeCard),
+      characterName: embassyCard?.name || 'AIRI',
+      tagline: resolveAmbassadorTagline(embassyCard),
     })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')

@@ -3,7 +3,7 @@ import type { AmbassadorCard, ExternalFriend, FriendRequest, Peer } from '@proj-
 
 import type { NapTurn } from '../../stores/nap-chat'
 
-import { extractHandleAlias, isCompanionAllowedForFriend, isExternalFriend, isNapChatEligible, isSameAccountDevice, resolveAmbassadorTagline } from '@proj-airi/stage-shared'
+import { extractHandleAlias, isCompanionAllowedForFriend, isExternalFriend, isNapChatEligible, isSameAccountDevice, resolveAmbassadorTagline, resolveEmbassyCompanionId } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -45,12 +45,6 @@ const cloudflareStore = useCloudflareStore()
 const { cfSubdomain } = storeToRefs(cloudflareStore)
 const airiCardStore = useAiriCardStore()
 const userProfileStore = useSettingsUserProfile()
-const activeCompanionName = computed(() => {
-  return airiCardStore.activeCard?.name || userProfileStore.name || 'AIRI'
-})
-// Public ambassador blurb for the active card — tagline first, first
-// greeting as fallback, blank when neither exists (surfaced, never silent).
-const ambassadorTagline = computed(() => resolveAmbassadorTagline(airiCardStore.activeCard))
 const napChatStore = useNapChatStore()
 const {
   napEnabled: napChatEnabled,
@@ -59,7 +53,51 @@ const {
   latestEpisode,
   socialPromptGuidance,
   napHistoryWindow,
+  ambassadorCompanionId,
 } = storeToRefs(napChatStore)
+
+// Public ambassador identity: explicit override first, else the active card,
+// else the first library companion. This — not the ambient active card —
+// defines who "we" are to friends: deploy identity, draft persona, dialog
+// ownership, and the Region A card.
+const availableLocalCompanions = computed(() => {
+  const list: Array<{ id: string, name: string }> = []
+  if (airiCardStore.cards && airiCardStore.cards.size > 0) {
+    for (const [id, card] of airiCardStore.cards.entries()) {
+      list.push({ id, name: card.name || id })
+    }
+  }
+  if (list.length === 0 && airiCardStore.activeCard) {
+    list.push({ id: (airiCardStore.activeCardId as string) || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
+  }
+  if (list.length === 0) {
+    list.push({ id: 'airi', name: 'AIRI' })
+  }
+  return list
+})
+const embassyCompanionId = computed(() => resolveEmbassyCompanionId(
+  availableLocalCompanions.value.map(c => c.id),
+  airiCardStore.activeCardId as string | undefined,
+  ambassadorCompanionId.value,
+))
+const embassyCompanionCard = computed(() => {
+  try {
+    return airiCardStore.getCard(embassyCompanionId.value) ?? null
+  }
+  catch {
+    return null
+  }
+})
+const embassyCompanionName = computed(() => {
+  return embassyCompanionCard.value?.name || airiCardStore.activeCard?.name || userProfileStore.name || 'AIRI'
+})
+const embassyCompanionNickname = computed(() => {
+  const nick = (embassyCompanionCard.value as { nickname?: string } | null)?.nickname?.trim()
+  return nick && nick !== embassyCompanionName.value ? nick : ''
+})
+// Public ambassador blurb for the embassy companion — tagline first, first
+// greeting as fallback, blank when neither exists (surfaced, never silent).
+const ambassadorTagline = computed(() => resolveAmbassadorTagline(embassyCompanionCard.value ?? airiCardStore.activeCard))
 const embassy = usePeerEmbassy()
 const embassyInboxStore = useEmbassyInboxStore()
 const napChatCoordinatorStore = useNapChatCoordinatorStore()
@@ -155,7 +193,7 @@ async function handleDeployEmbassy() {
     toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
     const res = await cloudflareStore.deployCompanionEmbassy({
       enableEmbassyDO: true,
-      characterName: activeCompanionName.value,
+      characterName: embassyCompanionName.value,
       tagline: resolveAmbassadorTagline(airiCardStore.activeCard),
     })
     if (res.success) {
@@ -299,36 +337,16 @@ const simShowEligibility = ref(false)
 // Live eligibility: simulated absence + real roster + coordinator gate.
 // Uses the same `evaluateTrigger` the autonomous loop uses, so the preview
 // checklist cannot drift from production behavior.
-const availableLocalCompanions = computed(() => {
-  const list: Array<{ id: string, name: string }> = []
-  if (airiCardStore.cards && airiCardStore.cards.size > 0) {
-    for (const [id, card] of airiCardStore.cards.entries()) {
-      list.push({ id, name: card.name || id })
-    }
-  }
-  if (list.length === 0 && airiCardStore.activeCard) {
-    list.push({ id: (airiCardStore.activeCardId as string) || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
-  }
-  if (list.length === 0) {
-    list.push({ id: 'airi', name: 'AIRI' })
-  }
-  return list
-})
+// (Companion pool + ambassador identity live above, next to the stores.)
 const simCompanionKey = computed(() => {
   if (simCompanionId.value !== 'current')
     return simCompanionId.value
-  const activeId = airiCardStore.activeCardId as string | undefined
-  if (activeId)
-    return String(activeId)
-  return availableLocalCompanions.value[0]?.id || 'current'
+  return embassyCompanionId.value
 })
 const simCharacterId = computed(() => {
   if (simCompanionId.value !== 'current')
     return simCompanionId.value
-  const activeId = airiCardStore.activeCardId as string | undefined
-  if (activeId)
-    return String(activeId)
-  return availableLocalCompanions.value[0]?.id || 'airi'
+  return embassyCompanionId.value
 })
 const simIdleSec = computed(() => (Number.parseInt(simAbsence.value, 10) || 15) * 60)
 const napHistoryWindowOption = computed({
@@ -375,7 +393,7 @@ const eligibilitySingleFire = computed(() => {
 })
 
 const companionOptions = computed(() => [
-  { label: `${activeCompanionName.value} · current card`, value: 'current' },
+  { label: `${embassyCompanionName.value} · ambassador`, value: 'current' },
 ])
 
 const simAbsenceOptions = [
@@ -518,6 +536,12 @@ function extractProse(raw: string): string {
     .trim()
 }
 
+// Display form of the ambassador tagline: marker tokens stripped (greeting
+// fallbacks often carry ACTOR cues) and capped so a scene-setter greeting
+// renders as a blurb, not a wall of text. Deploy/prompt paths keep the full
+// resolved value; this is presentation-only.
+const ambassadorTaglineDisplay = computed(() => extractProse(ambassadorTagline.value).slice(0, 280))
+
 async function handleGeneratePreview() {
   if (simIsGenerating.value)
     return
@@ -526,7 +550,7 @@ async function handleGeneratePreview() {
     toast.info('No eligible friends yet — add a friend to preview nap-chat drafts.')
     return
   }
-  const companionName = activeCompanionName.value
+  const companionName = embassyCompanionName.value
   const recipientName = peer.characterName
   const perFriendGuidance = peer.allowedCapabilities?.customPromptGuidance?.trim() || ''
 
@@ -1036,7 +1060,7 @@ async function handleSendRequest() {
   isRequestSent.value = true
   const res = await embassy.sendFriendRequest(lookedUpHandle.value, {
     fromHandle: myAddress.value,
-    fromCharacterName: activeCompanionName.value,
+    fromCharacterName: embassyCompanionName.value,
     introMessage: lookupIntroNote.value.trim(),
     inviteToken: lookedUpInviteToken.value,
     senderTagline: lookupShareTagline.value ? (resolveAmbassadorTagline(airiCardStore.activeCard) || undefined) : undefined,
@@ -1120,7 +1144,7 @@ async function savePermissions() {
 async function handleAcceptRequest(req: InboundRequestItem, shareBack = false) {
   try {
     const res = await embassyInboxStore.acceptRequest(req.id, {
-      companionName: activeCompanionName.value,
+      companionName: embassyCompanionName.value,
       sendReciprocal: true,
       shareTagline: shareBack,
       senderTagline: shareBack ? (resolveAmbassadorTagline(airiCardStore.activeCard) || undefined) : undefined,
@@ -1294,6 +1318,36 @@ const surfaceCardClass = computed(() => [
               <div :class="['text-[11px]', 'font-medium', 'text-neutral-500', 'dark:text-neutral-400']">
                 Your companion address
               </div>
+              <div :class="['mt-0.5', 'flex', 'flex-wrap', 'items-center', 'gap-x-2', 'gap-y-1']">
+                <span :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  {{ embassyCompanionName }}
+                </span>
+                <span v-if="embassyCompanionNickname" :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                  "{{ embassyCompanionNickname }}"
+                </span>
+                <select
+                  v-model="ambassadorCompanionId"
+                  title="Which companion speaks to friends"
+                  :class="['cursor-pointer', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-1.5', 'py-0.5', 'text-[11px]', 'text-neutral-600', 'dark:text-neutral-300', 'outline-none', 'transition', 'focus:border-primary-500']"
+                >
+                  <option value="">
+                    Follow active card
+                  </option>
+                  <option
+                    v-for="comp in availableLocalCompanions"
+                    :key="comp.id"
+                    :value="comp.id"
+                  >
+                    {{ comp.name }}
+                  </option>
+                </select>
+                <button
+                  :class="['text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  @click="handleEditTagline"
+                >
+                  Edit card
+                </button>
+              </div>
               <div :class="['mt-0.5', 'flex', 'items-center', 'gap-2']">
                 <span :class="['font-mono', 'text-lg', 'font-bold', 'tracking-tight', 'text-neutral-900', 'dark:text-white', 'sm:text-xl']">
                   {{ hasAddress ? myAddress : 'Not configured' }}
@@ -1319,8 +1373,8 @@ const surfaceCardClass = computed(() => [
                 <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
                 Claim a workers.dev subdomain in Settings to enable
               </div>
-              <div v-if="ambassadorTagline" :class="['mt-1', 'max-w-xs', 'text-xs', 'italic', 'text-neutral-500', 'dark:text-neutral-400']">
-                "{{ ambassadorTagline }}"
+              <div v-if="ambassadorTagline" :title="ambassadorTagline" :class="['mt-1', 'max-w-xs', 'text-xs', 'italic', 'text-neutral-500', 'dark:text-neutral-400', 'line-clamp-3']">
+                "{{ ambassadorTaglineDisplay }}"
               </div>
               <button
                 v-else
@@ -1680,6 +1734,84 @@ const surfaceCardClass = computed(() => [
                 </div>
               </div>
             </div>
+
+            <!-- Region F: While you were away (under-roster glanceable) -->
+            <div :class="[...surfaceCardClass, 'p-4']">
+              <div :class="['flex', 'items-center', 'justify-between']">
+                <div :class="['flex', 'items-center', 'gap-2']">
+                  <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+                  <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    While you were away
+                  </h2>
+                </div>
+                <button
+                  :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  @click="activeTab = 'activity'"
+                >
+                  Details <div class="i-solar:arrow-right-linear text-xs" />
+                </button>
+              </div>
+
+              <!-- Empty State if no episode recorded -->
+              <div
+                v-if="!latestEpisode"
+                :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+              >
+                <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
+                <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                  No background conversations yet
+                </div>
+                <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+                  Companions will autonomously chat and exchange thoughts while you're away from your desk.
+                </div>
+              </div>
+
+              <!-- Active Episode Card -->
+              <div
+                v-else
+                :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
+              >
+                <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
+                  <div :class="['flex', 'items-center', 'gap-3']">
+                    <!-- Distinct Initial Avatar for Partner in History -->
+                    <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
+                      {{ latestEpisode.with.characterName.charAt(0) }}
+                    </div>
+                    <div>
+                      <div :class="['flex', 'items-center', 'gap-2']">
+                        <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                          {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
+                        </span>
+                        <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
+                          {{ latestEpisode.turnCount }} turns
+                        </span>
+                        <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
+                      </div>
+                      <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
+                        "{{ latestEpisode.summary }}"
+                      </p>
+                    </div>
+                  </div>
+
+                  <div :class="['flex', 'items-center', 'gap-2', 'self-end', 'sm:self-auto']">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="i-solar:chat-round-line-bold"
+                      label="Read conversation"
+                      @click="showConversationModal = true"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="i-solar:book-bookmark-bold"
+                      label="Open journal ↗"
+                      @click="handleOpenJournal"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1883,84 +2015,6 @@ const surfaceCardClass = computed(() => [
                 <span>Activity & connection details</span>
                 <div class="i-solar:alt-arrow-down-linear text-xs" />
               </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Region F: Bottom Full-Width Card: While you were away -->
-      <div :class="[...surfaceCardClass, 'p-4']">
-        <div :class="['flex', 'items-center', 'justify-between']">
-          <div :class="['flex', 'items-center', 'gap-2']">
-            <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
-            <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-              While you were away
-            </h2>
-          </div>
-          <button
-            :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-            @click="handleViewHistory"
-          >
-            View history <div class="i-solar:arrow-right-linear text-xs" />
-          </button>
-        </div>
-
-        <!-- Empty State if no episode recorded -->
-        <div
-          v-if="!latestEpisode"
-          :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
-        >
-          <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
-          <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
-            No background conversations yet
-          </div>
-          <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
-            Companions will autonomously chat and exchange thoughts while you're away from your desk.
-          </div>
-        </div>
-
-        <!-- Active Episode Card -->
-        <div
-          v-else
-          :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
-        >
-          <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
-            <div :class="['flex', 'items-center', 'gap-3']">
-              <!-- Distinct Initial Avatar for Partner in History -->
-              <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
-                {{ latestEpisode.with.characterName.charAt(0) }}
-              </div>
-              <div>
-                <div :class="['flex', 'items-center', 'gap-2']">
-                  <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                    {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
-                  </span>
-                  <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
-                    {{ latestEpisode.turnCount }} turns
-                  </span>
-                  <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
-                </div>
-                <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
-                  "{{ latestEpisode.summary }}"
-                </p>
-              </div>
-            </div>
-
-            <div :class="['flex', 'items-center', 'gap-2', 'self-end', 'sm:self-auto']">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="i-solar:chat-round-line-bold"
-                label="Read conversation"
-                @click="showConversationModal = true"
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="i-solar:book-bookmark-bold"
-                label="Open journal ↗"
-                @click="handleOpenJournal"
-              />
             </div>
           </div>
         </div>
@@ -2242,10 +2296,10 @@ const surfaceCardClass = computed(() => [
                 <div :class="['flex', 'items-center', 'justify-between']">
                   <div :class="['flex', 'items-center', 'gap-2.5']">
                     <div :class="['flex', 'size-7', 'items-center', 'justify-center', 'rounded-full', 'bg-gradient-to-tr', 'from-pink-500', 'to-purple-500', 'text-white', 'text-xs', 'font-bold']">
-                      {{ activeCompanionName.charAt(0) }}
+                      {{ embassyCompanionName.charAt(0) }}
                     </div>
                     <div :class="['flex', 'items-center', 'gap-1.5', 'text-xs']">
-                      <span :class="['font-semibold', 'text-neutral-900', 'dark:text-white']">{{ activeCompanionName }}</span>
+                      <span :class="['font-semibold', 'text-neutral-900', 'dark:text-white']">{{ embassyCompanionName }}</span>
                       <span :class="['text-neutral-400']">→</span>
                       <span :class="['text-neutral-600', 'dark:text-neutral-300']">{{ draftRecipient }}</span>
                     </div>

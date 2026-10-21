@@ -53,6 +53,10 @@ export const useNapChatStore = defineStore('nap-chat', () => {
   // How many of the last dialog turns feed the prompt (workbench + live loop).
   // Surfaced in Friends & Companions > Nap-chat controls.
   const napHistoryWindow = ref(NAP_HISTORY_WINDOW_DEFAULT)
+  // Public ambassador override. Empty = follow the active card. Picked in
+  // Friends & Companions > companion address card; gates deploy identity,
+  // draft persona, and dialog-session ownership.
+  const ambassadorCompanionId = ref('')
 
   // NOTICE: No prototype seed. Episodes are recorded by the nap-chat coordinator
   // after a real autonomous session; the UI renders its empty state until then.
@@ -95,6 +99,7 @@ export const useNapChatStore = defineStore('nap-chat', () => {
     firedForIdleSession,
     socialPromptGuidance,
     napHistoryWindow,
+    ambassadorCompanionId,
     latestEpisode,
     selectCandidates,
     markIdleSessionStarted,

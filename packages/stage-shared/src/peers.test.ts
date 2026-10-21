@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractHandleAlias, isCompanionAllowedForFriend, MAX_TAGLINE_LENGTH, resolveAmbassadorTagline, sanitizeTaglineMessage } from './peers'
+import { extractHandleAlias, isCompanionAllowedForFriend, MAX_TAGLINE_LENGTH, resolveAmbassadorTagline, resolveEmbassyCompanionId, sanitizeTaglineMessage } from './peers'
 
 describe('extractHandleAlias', () => {
   it('extracts subdomain from 4-part workers.dev handles', () => {
@@ -50,6 +50,20 @@ describe('sanitizeTaglineMessage', () => {
     expect(sanitizeTaglineMessage('x'.repeat(200))).toHaveLength(MAX_TAGLINE_LENGTH)
     expect(sanitizeTaglineMessage(null)).toBe('')
     expect(sanitizeTaglineMessage(undefined)).toBe('')
+  })
+})
+
+describe('resolveEmbassyCompanionId', () => {
+  const ids = ['card-a', 'card-b']
+  it('prefers an override that names a known companion', () => {
+    expect(resolveEmbassyCompanionId(ids, 'card-a', 'card-b')).toBe('card-b')
+  })
+  it('ignores unknown overrides and falls back to the active card', () => {
+    expect(resolveEmbassyCompanionId(ids, 'card-a', 'nope')).toBe('card-a')
+  })
+  it('falls back to the first companion, then to airi', () => {
+    expect(resolveEmbassyCompanionId(ids, undefined, '')).toBe('card-a')
+    expect(resolveEmbassyCompanionId([], undefined, '')).toBe('airi')
   })
 })
 

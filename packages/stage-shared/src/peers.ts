@@ -97,6 +97,20 @@ export function buildRequestSignaturePayload(timestamp: number, nonce: string, i
 export type Peer = SameAccountDevice | ExternalFriend
 
 /**
+ * Public ambassador resolution: explicit override first (when it names a
+ * known companion), then the active card, then the first companion.
+ * Callers pass their own companion-id list — the roster-wide pool lives in
+ * the card library, not in this helper.
+ */
+export function resolveEmbassyCompanionId(companionIds: string[], activeId: string | undefined, overrideId: string): string {
+  if (overrideId && companionIds.includes(overrideId))
+    return overrideId
+  if (activeId && companionIds.includes(activeId))
+    return activeId
+  return companionIds[0] || 'airi'
+}
+
+/**
  * Ambassador tagline resolution: explicit tagline first, then the card's
  * first greeting (already a public-facing opener), then blank.
  * Callers surface a set-your-tagline affordance instead of sending a
