@@ -37,6 +37,13 @@ steps:
       trayItem: 컴패니언 설정 및 로그인 (V3)
       continue: 설정 계속하기
       closeToTray: 트레이로 최소화
+      comebackLead: 나중에 다시 설정하려면,
+      desktopInstruction: AIRI 시스템 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 컴패니언 마법사를 클릭하세요.
+      desktopAlternative: 또는 설정 → 캐릭터 마법사 → 컴패니언 마법사를 여세요.
+      webInstruction: 오른쪽 상단의 톱니바퀴 아이콘을 눌러 설정을 연 다음,
+        캐릭터 마법사 → 컴패니언 마법사로 이동하세요.
+      webSettingsPath: 설정 → 캐릭터 마법사 → 컴패니언 마법사
+      close: 닫기
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

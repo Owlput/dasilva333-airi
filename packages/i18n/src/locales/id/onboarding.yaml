@@ -41,6 +41,13 @@ steps:
       trayItem: Penyiapan & Masuk Pendamping (V3)
       continue: Lanjutkan Penyiapan
       closeToTray: Tutup ke Baki Sistem
+      comebackLead: Jika Anda ingin kembali lagi nanti, cukup
+      desktopInstruction: klik kanan ikon baki sistem AIRI dan klik Panduan Pendamping.
+      desktopAlternative: Atau buka Pengaturan → Panduan Karakter → Panduan Pendamping.
+      webInstruction: ketuk ikon roda gigi di kanan atas untuk membuka Pengaturan, lalu buka
+        Panduan Karakter → Panduan Pendamping.
+      webSettingsPath: Pengaturan → Panduan Karakter → Panduan Pendamping
+      close: Tutup
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

@@ -41,6 +41,13 @@ steps:
       trayItem: Thiết lập & Đăng nhập bạn đồng hành (V3)
       continue: Tiếp tục thiết lập
       closeToTray: Thu nhỏ vào khay
+      comebackLead: Nếu bạn muốn quay lại sau, chỉ cần
+      desktopInstruction: nhấp chuột phải vào biểu tượng khay hệ thống AIRI và chọn Trình hướng dẫn đồng hành.
+      desktopAlternative: Hoặc mở Cài đặt → Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành.
+      webInstruction: nhấn vào biểu tượng bánh răng ở góc trên bên phải để mở Cài đặt, sau đó đi tới
+        Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành.
+      webSettingsPath: Cài đặt → Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành
+      close: Đóng
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

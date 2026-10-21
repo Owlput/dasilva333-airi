@@ -36,6 +36,13 @@ steps:
       trayItem: パートナー設定とサインイン (V3)
       continue: 設定を続ける
       closeToTray: トレイに格納
+      comebackLead: 後でこの設定に戻りたい場合は、
+      desktopInstruction: AIRIのシステムトレイアイコンを右クリックし、「コンパニオンウィザード」をクリックしてください。
+      desktopAlternative: または、設定 → キャラクターウィザード → コンパニオンウィザードを開きます。
+      webInstruction: 右上の歯車アイコンをタップして設定を開き、
+        キャラクターウィザード → コンパニオンウィザードへ進んでください。
+      webSettingsPath: 設定 → キャラクターウィザード → コンパニオンウィザード
+      close: 閉じる
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

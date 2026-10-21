@@ -36,6 +36,13 @@ steps:
       trayItem: 伴侶設定與登入 (V3)
       continue: 繼續設定
       closeToTray: 最小化至系統匣
+      comebackLead: 如果你想稍後再返回設定，只需
+      desktopInstruction: 右鍵點擊 AIRI 系統匣圖示並點擊「伴侶精靈」。
+      desktopAlternative: 或開啟 設定 → 角色精靈 → 伴侶精靈。
+      webInstruction: 點擊右上角的齒輪圖示開啟設定，然後前往
+        角色精靈 → 伴侶精靈。
+      webSettingsPath: 設定 → 角色精靈 → 伴侶精靈
+      close: 關閉
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

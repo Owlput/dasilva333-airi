@@ -42,6 +42,13 @@ steps:
       trayItem: Configuración de acompañante e inicio de sesión (V3)
       continue: Continuar configuración
       closeToTray: Minimizar a la bandeja
+      comebackLead: Si quieres volver a esto más tarde, solo
+      desktopInstruction: haz clic derecho en el icono de la bandeja del sistema de AIRI y selecciona Asistente de Acompañante.
+      desktopAlternative: O abre Ajustes → Asistente de Personaje → Asistente de Acompañante.
+      webInstruction: toca el icono de engranaje en la esquina superior derecha para abrir Ajustes, luego ve a
+        Asistente de Personaje → Asistente de Acompañante.
+      webSettingsPath: Ajustes → Asistente de Personaje → Asistente de Acompañante
+      close: Cerrar
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

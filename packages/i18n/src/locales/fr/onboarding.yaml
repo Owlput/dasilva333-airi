@@ -43,6 +43,13 @@ steps:
       trayItem: Configuration et connexion du compagnon (V3)
       continue: Poursuivre la configuration
       closeToTray: Réduire dans la barre d'état
+      comebackLead: Si vous souhaitez y revenir plus tard, il vous suffit de
+      desktopInstruction: faire un clic droit sur l'icône de la barre d'état système d'AIRI et de cliquer sur Assistant de compagnon.
+      desktopAlternative: Ou ouvrez Paramètres → Assistant de personnage → Assistant de compagnon.
+      webInstruction: appuyez sur l'icône d'engrenage en haut à droite pour ouvrir les Paramètres, puis accédez à
+        Assistant de personnage → Assistant de compagnon.
+      webSettingsPath: Paramètres → Assistant de personnage → Assistant de compagnon
+      close: Fermer
     quickStartButton: Quick start
     quickStartDuration: ≈ 1 min
   triage:

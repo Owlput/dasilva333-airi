@@ -36,6 +36,13 @@ steps:
       trayItem: 伴侣设置与登录 (V3)
       continue: 继续设置
       closeToTray: 最小化到托盘
+      comebackLead: 如果你想稍后再返回设置，只需
+      desktopInstruction: 右键点击 AIRI 系统托盘图标并点击“伴侣向导”。
+      desktopAlternative: 或打开 设置 → 角色向导 → 伴侣向导。
+      webInstruction: 点击右上角的齿轮图标打开设置，然后前往
+        角色向导 → 伴侣向导。
+      webSettingsPath: 设置 → 角色向导 → 伴侣向导
+      close: 关闭
     quickStartButton: 极速启动
     quickStartDuration: 约 1 分钟
   triage:
