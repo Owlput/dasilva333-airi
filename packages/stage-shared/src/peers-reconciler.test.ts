@@ -33,7 +33,7 @@ describe('mergeSameAccountDevices', () => {
     const remote: VaultDeviceMap = {
       'old-laptop': { machineId: 'old-laptop', deviceType: 'laptop', lastSeen: 0 },
     }
-    const merged = mergeSameAccountDevices([device()], remote, 10_000_000)
+    const merged = mergeSameAccountDevices([device()], remote, 35 * 24 * 60 * 60 * 1000)
     expect(merged.map(d => d.machineId)).toEqual(['studio-mac'])
   })
 

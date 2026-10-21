@@ -186,7 +186,7 @@ async function handleManualDeviceSync() {
   }
   isSyncingDevices.value = true
   try {
-    const res = await cloudflareStore.syncVaultDevices()
+    const res = await cloudflareStore.syncVaultDevices({ forceWrite: true })
     if (res.success) {
       toast.success(`Synced ${res.count || 0} device(s) via Edge Vault!`)
     }
@@ -619,7 +619,7 @@ function handleIgnoreRequest(req: InboundRequestItem) {
 async function handleRemoveDevice(device: any) {
   await peersStore.removePeer(device.id)
   if (cloudflareStore.isAuthenticated) {
-    void cloudflareStore.syncVaultDevices().catch(() => {})
+    void cloudflareStore.syncVaultDevices({ forceWrite: true }).catch(() => {})
   }
   toast.success(`Removed ${device.alias} from devices.`)
 }
@@ -636,7 +636,7 @@ async function handleSaveRename() {
   await peersStore.renameLocalDevice(newName)
   showRenameModal.value = false
   if (cloudflareStore.isAuthenticated) {
-    void cloudflareStore.syncVaultDevices().catch(() => {})
+    void cloudflareStore.syncVaultDevices({ forceWrite: true }).catch(() => {})
   }
   toast.success(`Renamed device to "${newName}"`)
 }

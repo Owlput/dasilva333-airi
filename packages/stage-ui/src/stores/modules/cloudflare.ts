@@ -897,6 +897,31 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return raw.slice(0, 300)
   }
 
+  const VAULT_NS_CACHE_PREFIX = 'airi:cf:vault_ns:'
+
+  function getCachedVaultNsId(accountId: string): string {
+    if (typeof window === 'undefined' || !window.localStorage)
+      return ''
+    try {
+      return localStorage.getItem(`${VAULT_NS_CACHE_PREFIX}${accountId}`) || ''
+    }
+    catch {
+      return ''
+    }
+  }
+
+  function setCachedVaultNsId(accountId: string, nsId: string): void {
+    if (typeof window === 'undefined' || !window.localStorage)
+      return
+    try {
+      if (nsId)
+        localStorage.setItem(`${VAULT_NS_CACHE_PREFIX}${accountId}`, nsId)
+      else
+        localStorage.removeItem(`${VAULT_NS_CACHE_PREFIX}${accountId}`)
+    }
+    catch {}
+  }
+
   async function saveToEdgeVault(vaultData: Record<string, any>, key: string = CLOUDFLARE_EDGE_VAULT_KEY, tokenOverride?: string) {
     const apiToken = tokenOverride || activeAccessToken.value
     const accountId = activeAccountId.value
@@ -913,37 +938,43 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       }
 
       // Non-Electron (Web & Mobile) REST API with CORS proxy
-      const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (listRes.status === 401) {
-        const errText = await listRes.text().catch(() => '')
-        throw new Error(`401 ${errText || 'Authentication error'}`)
-      }
-      let nsId = ''
-      if (listRes.ok) {
-        const listData: any = await listRes.json()
-        const existing = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
-        if (existing?.id) {
-          nsId = existing.id
-        }
-      }
+      let nsId = getCachedVaultNsId(accountId)
       if (!nsId) {
-        const createRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ title: CLOUDFLARE_EDGE_VAULT_NAMESPACE }),
+        const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
+          headers: { Authorization: `Bearer ${token}` },
         })
-        if (createRes.status === 401) {
-          const errText = await createRes.text().catch(() => '')
+        if (listRes.status === 401) {
+          const errText = await listRes.text().catch(() => '')
           throw new Error(`401 ${errText || 'Authentication error'}`)
         }
-        if (createRes.ok) {
-          const createData: any = await createRes.json()
-          nsId = createData.result?.id
+        if (listRes.ok) {
+          const listData: any = await listRes.json()
+          const existing = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
+          if (existing?.id) {
+            nsId = existing.id
+            setCachedVaultNsId(accountId, nsId)
+          }
+        }
+        if (!nsId) {
+          const createRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title: CLOUDFLARE_EDGE_VAULT_NAMESPACE }),
+          })
+          if (createRes.status === 401) {
+            const errText = await createRes.text().catch(() => '')
+            throw new Error(`401 ${errText || 'Authentication error'}`)
+          }
+          if (createRes.ok) {
+            const createData: any = await createRes.json()
+            nsId = createData.result?.id
+            if (nsId) {
+              setCachedVaultNsId(accountId, nsId)
+            }
+          }
         }
       }
       if (!nsId) {
@@ -1004,35 +1035,46 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       }
 
       // Non-Electron (Web & Mobile) REST fetch with CORS proxy
-      const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (listRes.status === 401) {
-        const errText = await listRes.text().catch(() => '')
-        throw new Error(`401 ${errText || 'Authentication error'}`)
-      }
-      if (listRes.ok) {
-        const listData: any = await listRes.json()
-        const vaultNs = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
-        if (vaultNs?.id) {
-          const valRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${vaultNs.id}/values/${encodeURIComponent(key)}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          if (valRes.status === 401) {
-            const errText = await valRes.text().catch(() => '')
-            throw new Error(`401 ${errText || 'Authentication error'}`)
+      let nsId = getCachedVaultNsId(accountId)
+      if (!nsId) {
+        const listRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (listRes.status === 401) {
+          const errText = await listRes.text().catch(() => '')
+          throw new Error(`401 ${errText || 'Authentication error'}`)
+        }
+        if (listRes.ok) {
+          const listData: any = await listRes.json()
+          const vaultNs = listData.result?.find((n: any) => n.title === CLOUDFLARE_EDGE_VAULT_NAMESPACE)
+          if (vaultNs?.id) {
+            nsId = vaultNs.id
+            setCachedVaultNsId(accountId, nsId)
           }
-          if (valRes.ok) {
-            const raw = await valRes.text()
-            if (key === CLOUDFLARE_EDGE_VAULT_KEY) {
-              return parseEdgeVaultPayload(raw)
-            }
-            try {
-              return JSON.parse(raw)
-            }
-            catch {
-              return parseEdgeVaultPayload(raw)
-            }
+        }
+      }
+
+      if (nsId) {
+        const valRes = await fetchWithCfProxy(`https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${nsId}/values/${encodeURIComponent(key)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (valRes.status === 401) {
+          const errText = await valRes.text().catch(() => '')
+          throw new Error(`401 ${errText || 'Authentication error'}`)
+        }
+        if (valRes.status === 404) {
+          return null
+        }
+        if (valRes.ok) {
+          const raw = await valRes.text()
+          if (key === CLOUDFLARE_EDGE_VAULT_KEY) {
+            return parseEdgeVaultPayload(raw)
+          }
+          try {
+            return JSON.parse(raw)
+          }
+          catch {
+            return parseEdgeVaultPayload(raw)
           }
         }
       }
@@ -1059,7 +1101,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
   }
 
-  async function syncVaultDevices(): Promise<{ success: boolean, count?: number, error?: string }> {
+  async function syncVaultDevices(options?: { forceWrite?: boolean }): Promise<{ success: boolean, count?: number, error?: string }> {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId) {
@@ -1072,7 +1114,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         await peersStore.init()
       }
 
-      // 1. Fetch remote devices map from KV
+      // 1. Fetch remote devices map from KV (Read-only: 100,000 free operations/day)
       const remoteMap = await fetchFromEdgeVault(CLOUDFLARE_EDGE_VAULT_DEVICES_KEY, token) as VaultDeviceMap | null
 
       // 2. Merge remote devices into local peers store
@@ -1080,29 +1122,42 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         await peersStore.mergeVaultDevices(remoteMap)
       }
 
-      // 3. Update current device heartbeat with latest timestamp
+      // 3. Inspect local device registration status
       const currentId = peersStore.currentMachineId
       const localDevice = peersStore.roster.find(
         p => p.relationship === 'same-account' && (p as SameAccountDevice).machineId === currentId,
       ) as SameAccountDevice | undefined
 
+      const expectedWorkerUrl = cfSubdomain.value ? `https://${cfSubdomain.value}.workers.dev` : undefined
+      const remoteEntry = remoteMap ? remoteMap[currentId] : null
+
+      // Write-gating: only write if device is missing from remote vault, or configuration actually changed, or forced
+      const isMissing = !remoteEntry
+      const aliasChanged = Boolean(remoteEntry && localDevice && remoteEntry.deviceName !== localDevice.alias)
+      const workerUrlChanged = Boolean(remoteEntry && expectedWorkerUrl && remoteEntry.workerUrl !== expectedWorkerUrl)
+      const shouldWrite = Boolean(options?.forceWrite || isMissing || aliasChanged || workerUrlChanged)
+
       if (localDevice) {
-        localDevice.lastSeenTimestamp = Date.now()
         localDevice.edgeVaultSyncedAt = Date.now()
-        if (cfSubdomain.value) {
+        if (expectedWorkerUrl) {
           localDevice.endpoints = {
             ...localDevice.endpoints,
-            cloudflareWorkerUrl: `https://${cfSubdomain.value}.workers.dev`,
+            cloudflareWorkerUrl: expectedWorkerUrl,
           }
+        }
+        if (shouldWrite) {
+          localDevice.lastSeenTimestamp = Date.now()
         }
       }
 
-      // 4. Export fresh local + merged map and push back to KV
-      const updatedMap = peersStore.toVaultDeviceMapForSync()
-      await saveToEdgeVault(updatedMap, CLOUDFLARE_EDGE_VAULT_DEVICES_KEY, token)
+      // 4. Export fresh local + merged map and push back to KV ONLY when necessary
+      if (shouldWrite) {
+        const updatedMap = peersStore.toVaultDeviceMapForSync()
+        await saveToEdgeVault(updatedMap, CLOUDFLARE_EDGE_VAULT_DEVICES_KEY, token)
+      }
 
       const deviceCount = peersStore.devices.length
-      console.info(`[useCloudflareStore] Synchronized ${deviceCount} device(s) with Edge Vault.`)
+      console.info(`[useCloudflareStore] Synchronized ${deviceCount} device(s) with Edge Vault (wrote: ${shouldWrite}).`)
       return { success: true, count: deviceCount }
     }
 
@@ -1317,6 +1372,10 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
       localStorage.removeItem('settings/discord/cfSubdomain')
     }
 
+    if (activeAccountId.value) {
+      setCachedVaultNsId(activeAccountId.value, '')
+    }
+
     try {
       const syncStore = useSyncEngineStore()
       if (syncStore.activeProvider === 's3' && (syncStore.s3Endpoint.includes('cloudflarestorage.com') || syncStore.s3Endpoint.includes('r2.cloudflarestorage.com'))) {
@@ -1332,19 +1391,29 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
   }
 
-  // Periodic heartbeat sync for same-account device discovery
+  // Periodic background device sync (reads only, never writes unless metadata changed)
   if (typeof window !== 'undefined') {
     setTimeout(() => {
       if (isAuthenticated.value) {
         void syncVaultDevices().catch(() => {})
       }
-    }, 1500)
+    }, 2500)
 
+    // Relaxed 15-minute background poll (96 reads/day max vs 100,000 free tier limit)
     setInterval(() => {
-      if (isAuthenticated.value) {
+      if (isAuthenticated.value && (typeof document === 'undefined' || document.visibilityState === 'visible')) {
         void syncVaultDevices().catch(() => {})
       }
-    }, 60000)
+    }, 15 * 60 * 1000)
+
+    // Re-check when user switches back to this tab/window
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && isAuthenticated.value) {
+          void syncVaultDevices().catch(() => {})
+        }
+      })
+    }
   }
 
   return {

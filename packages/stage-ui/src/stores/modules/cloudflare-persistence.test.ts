@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { usePeersStore } from '../peers'
 import { useCloudflareStore } from './cloudflare'
 import { resolveAccountId } from './cloudflare-auth'
 
@@ -256,6 +257,76 @@ describe('cloudflare store persistence & corruption recovery', () => {
     expect(res.success).toBe(true)
     expect(refreshCalled).toBe(true)
     expect(store.activeAccessToken).toBe('freshly_minted_access_token')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('syncVaultDevices write-gates and skips KV PUT when local device is already registered', async () => {
+    const store = useCloudflareStore()
+    const peersStore = usePeersStore()
+    await peersStore.init()
+
+    store.cfOAuthTokens = {
+      accessToken: 'valid_access_token',
+      accountId: 'mock-account-id',
+    }
+
+    const currentId = peersStore.currentMachineId
+    const localDevice = peersStore.roster.find(
+      p => p.relationship === 'same-account' && (p as any).machineId === currentId,
+    ) as any
+
+    const remoteMap = {
+      [currentId]: {
+        machineId: currentId,
+        deviceName: localDevice?.alias || currentId,
+        deviceType: localDevice?.deviceType || 'desktop',
+        workerUrl: undefined,
+        lastSeen: Date.now() - 10000,
+        presenceState: 'active' as const,
+      },
+    }
+
+    const putCalls: string[] = []
+
+    vi.stubGlobal('fetch', vi.fn(async (url: any, init?: any) => {
+      const decodedUrl = decodeURIComponent(String(url))
+      if (decodedUrl.includes('/storage/kv/namespaces') && !decodedUrl.includes('/values/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            result: [{ id: 'mock-edge-vault-ns', title: 'airi-edge-vault' }],
+          }),
+        } as any
+      }
+
+      if (decodedUrl.includes('/values/devices%2Fmap') && (!init?.method || init.method === 'GET')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify(remoteMap),
+        } as any
+      }
+
+      if (decodedUrl.includes('/values/devices%2Fmap') && init?.method === 'PUT') {
+        putCalls.push(decodedUrl)
+        return { ok: true, status: 200, text: async () => '' } as any
+      }
+
+      return { ok: true, status: 200, json: async () => ({ success: true }) } as any
+    }))
+
+    // First call: device is already registered and configuration matches -> 0 PUT calls (no quota wasted)
+    const res = await store.syncVaultDevices()
+    expect(res.success).toBe(true)
+    expect(putCalls.length).toBe(0)
+
+    // Second call with forceWrite: true -> 1 PUT call
+    const resForced = await store.syncVaultDevices({ forceWrite: true })
+    expect(resForced.success).toBe(true)
+    expect(putCalls.length).toBe(1)
 
     vi.unstubAllGlobals()
   })

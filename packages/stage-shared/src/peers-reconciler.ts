@@ -11,7 +11,7 @@ export interface DeviceHeartbeat {
 
 export type VaultDeviceMap = Record<string, DeviceHeartbeat>
 
-export const DEVICE_STALE_MS = 15 * 60 * 1000
+export const DEVICE_STALE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 export function toVaultDevice(device: SameAccountDevice): DeviceHeartbeat {
   return {
