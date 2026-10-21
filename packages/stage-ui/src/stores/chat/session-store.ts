@@ -648,7 +648,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     loadingSessions.delete(sessionId)
   }
 
-  async function createSession(characterId: string, options?: { setActive?: boolean, messages?: ChatHistoryItem[], title?: string, universeId?: string }) {
+  async function createSession(characterId: string, options?: { setActive?: boolean, messages?: ChatHistoryItem[], title?: string, universeId?: string, napPeerId?: string }) {
     const currentUserId = getCurrentUserId()
     const sessionId = nanoid()
     const now = Date.now()
@@ -660,6 +660,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       title: options?.title,
       messageCount: initialMessages.length,
       universeId: options?.universeId || 'global',
+      ...(options?.napPeerId ? { napPeerId: options.napPeerId } : {}),
       createdAt: now,
       updatedAt: now,
     }

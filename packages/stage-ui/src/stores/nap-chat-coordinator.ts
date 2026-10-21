@@ -5,7 +5,8 @@ import type { NapEpisode, NapTurn } from './nap-chat'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { useNapChatStore } from './nap-chat'
+import { useChatSessionStore } from './chat/session-store'
+import { NAPCHAT_UNIVERSE_ID, useNapChatStore } from './nap-chat'
 import { isUserAway } from './proactivity-telemetry'
 
 export const NAP_COORDINATOR_MAX_TURNS = 5
@@ -101,6 +102,75 @@ export const useNapChatCoordinatorStore = defineStore('nap-chat-coordinator', ()
     return episode
   }
 
+  /**
+   * Per-pair dialog session in the `napchat` universe (one session per
+   * companion↔peer pair; group chat can later key `napPeerId` by group id).
+   * Created with `setActive: false` so nap traffic never hijacks the user's
+   * active chat; universe scoping keeps it out of `global` memory grounding
+   * until the user explicitly moves it. Best-effort: returns null when the
+   * session layer is unavailable so previews keep working session-less.
+   */
+  async function ensureDialogSessionId(characterId: string, peerId: string, peerName: string): Promise<string | null> {
+    try {
+      const sessionStore = useChatSessionStore()
+      const characterIndex = sessionStore.getCharacterIndex(characterId)
+      const existing = characterIndex
+        ? Object.values(characterIndex.sessions).find(s => s.universeId === NAPCHAT_UNIVERSE_ID && (s as { napPeerId?: string }).napPeerId === peerId)
+        : undefined
+      if (existing)
+        return existing.sessionId
+      return await sessionStore.createSession(characterId, {
+        setActive: false,
+        universeId: NAPCHAT_UNIVERSE_ID,
+        napPeerId: peerId,
+        title: `Nap-chat with ${peerName}`,
+        messages: [{ role: 'system', content: `Nap-chat dialog with ${peerName}. Turns are inscribed automatically; only user/assistant turns count as dialog history.` } as any],
+      })
+    }
+    catch {
+      return null
+    }
+  }
+
+  /**
+   * Last `limit` dialog turns (user/assistant with text content only —
+   * system notes, errors, and director messages are excluded).
+   */
+  function getDialogTurns(sessionId: string | null, limit: number): Array<{ role: 'user' | 'assistant', content: string }> {
+    if (!sessionId)
+      return []
+    try {
+      const sessionStore = useChatSessionStore()
+      const messages = sessionStore.getSessionMessages(sessionId) as Array<{ role?: string, content?: unknown }>
+      return messages
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+        .slice(-Math.max(1, limit))
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: (m.content as string).slice(0, 500) }))
+    }
+    catch {
+      return []
+    }
+  }
+
+  async function inscribeDialogTurn(sessionId: string | null, role: 'user' | 'assistant', text: string, peerId: string): Promise<void> {
+    if (!sessionId || !text.trim())
+      return
+    try {
+      const { nanoid } = await import('nanoid')
+      const sessionStore = useChatSessionStore()
+      sessionStore.inscribeTurn({
+        id: nanoid(),
+        role,
+        content: text.slice(0, 2000),
+        createdAt: Date.now(),
+        slices: [],
+        tool_results: [],
+        metadata: { source: 'napchat', peerId },
+      } as any, sessionId)
+    }
+    catch {}
+  }
+
   function abortSession(): void {
     activePeerId.value = null
     activeCompanionId.value = null
@@ -134,5 +204,8 @@ export const useNapChatCoordinatorStore = defineStore('nap-chat-coordinator', ()
     finishSession,
     abortSession,
     resetSession,
+    ensureDialogSessionId,
+    getDialogTurns,
+    inscribeDialogTurn,
   }
 })

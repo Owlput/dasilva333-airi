@@ -8,8 +8,21 @@ import { isUserAway } from './proactivity-telemetry'
 
 export const NAP_CHAT_DEFAULT_THRESHOLD_MIN = 15
 
+export const NAPCHAT_UNIVERSE_ID = 'napchat'
+
+export const NAP_HISTORY_WINDOW_DEFAULT = 6
+
+/**
+ * Stable dialog-state markers. The prompt builder renders exactly one of
+ * these fact lines per turn (never an empty `[]`); the guidance clauses
+ * below key off them. Keep the marker strings in sync if either side changes.
+ */
+export const NAP_DIALOG_NO_HISTORY_MARKER = 'No prior episodes with this peer.'
+
 export const DEFAULT_SOCIAL_PROMPT_GUIDANCE
-  = 'Be casual, friendly, and enthusiastic. Discuss our shared creative and coding projects while keeping private user personal details confidential.'
+  = 'Be casual, friendly, and enthusiastic. Discuss our shared creative and coding projects while keeping private user personal details confidential.\n'
+    + 'If the dialog state says "No prior episodes with this peer", this is first contact: generate a friendly greeting mentioning them by name and probing for shared interests. Do not pretend a history you do not have.\n'
+    + 'If prior dialog turns exist, continue the ongoing conversation naturally — do not re-greet or re-introduce yourself.'
 
 export interface NapTurn {
   speaker: string
@@ -37,6 +50,9 @@ export const useNapChatStore = defineStore('nap-chat', () => {
   const welcomeBackRecapEnabled = ref(true)
   const firedForIdleSession = ref(false)
   const socialPromptGuidance = ref(DEFAULT_SOCIAL_PROMPT_GUIDANCE)
+  // How many of the last dialog turns feed the prompt (workbench + live loop).
+  // Surfaced in Friends & Companions > Nap-chat controls.
+  const napHistoryWindow = ref(NAP_HISTORY_WINDOW_DEFAULT)
 
   // NOTICE: No prototype seed. Episodes are recorded by the nap-chat coordinator
   // after a real autonomous session; the UI renders its empty state until then.
@@ -78,6 +94,7 @@ export const useNapChatStore = defineStore('nap-chat', () => {
     welcomeBackRecapEnabled,
     firedForIdleSession,
     socialPromptGuidance,
+    napHistoryWindow,
     latestEpisode,
     selectCandidates,
     markIdleSessionStarted,

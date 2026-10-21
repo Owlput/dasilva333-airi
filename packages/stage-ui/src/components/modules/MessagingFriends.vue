@@ -29,7 +29,7 @@ import { useTextJournalStore } from '../../stores/memory-text-journal'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useConsciousnessStore } from '../../stores/modules/consciousness'
-import { DEFAULT_SOCIAL_PROMPT_GUIDANCE, useNapChatStore } from '../../stores/nap-chat'
+import { DEFAULT_SOCIAL_PROMPT_GUIDANCE, NAP_DIALOG_NO_HISTORY_MARKER, NAP_HISTORY_WINDOW_DEFAULT, useNapChatStore } from '../../stores/nap-chat'
 import { NAP_COORDINATOR_MAX_TURNS, useNapChatCoordinatorStore } from '../../stores/nap-chat-coordinator'
 import { usePeersStore } from '../../stores/peers'
 import { isUserAway } from '../../stores/proactivity-telemetry'
@@ -55,6 +55,7 @@ const {
   welcomeBackRecapEnabled: welcomeBackEnabled,
   latestEpisode,
   socialPromptGuidance,
+  napHistoryWindow,
 } = storeToRefs(napChatStore)
 const embassy = usePeerEmbassy()
 const embassyInboxStore = useEmbassyInboxStore()
@@ -309,7 +310,27 @@ const simCompanionKey = computed(() => {
     return String(activeId)
   return availableLocalCompanions.value[0]?.id || 'current'
 })
+const simCharacterId = computed(() => {
+  if (simCompanionId.value !== 'current')
+    return simCompanionId.value
+  const activeId = airiCardStore.activeCardId as string | undefined
+  if (activeId)
+    return String(activeId)
+  return availableLocalCompanions.value[0]?.id || 'airi'
+})
 const simIdleSec = computed(() => (Number.parseInt(simAbsence.value, 10) || 15) * 60)
+const napHistoryWindowOption = computed({
+  get: () => String(napHistoryWindow.value),
+  set: (val: string) => {
+    napHistoryWindow.value = Number.parseInt(val, 10) || NAP_HISTORY_WINDOW_DEFAULT
+  },
+})
+const napHistoryWindowOptions = [
+  { label: 'Last 2 turns', value: '2' },
+  { label: 'Last 4 turns', value: '4' },
+  { label: 'Last 6 turns', value: '6' },
+  { label: 'Last 10 turns', value: '10' },
+]
 const simEvaluation = computed(() => {
   return napChatCoordinatorStore.evaluateTrigger(simIdleSec.value, peersStore.roster, simCompanionKey.value)
 })
@@ -499,11 +520,12 @@ async function handleGeneratePreview() {
 
   simIsGenerating.value = true
   try {
+    const windowSize = napHistoryWindow.value
     // Real context extracts: recent turns + journal highlights + guidance layers.
     let recentTurns: Array<{ role: string, content: string }> = []
     try {
       const history = chatSessionStore.messages as Array<{ role?: string, content?: unknown }>
-      recentTurns = (history || []).slice(-6).map((m) => {
+      recentTurns = (history || []).slice(-windowSize).map((m) => {
         const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')
         return { role: m.role || 'user', content: content.slice(0, 200) }
       }).filter(m => m.content.trim().length > 0)
@@ -517,21 +539,44 @@ async function handleGeneratePreview() {
     }
     catch {}
 
+    // Per-pair dialog history from the napchat-universe session (last N turns).
+    // A zero-length dialog renders as the stable no-history marker — never `[]`.
+    let dialogTurns: Array<{ role: 'user' | 'assistant', content: string }> = []
+    let dialogTotalTurns = 0
+    try {
+      const dialogSessionId = await napChatCoordinatorStore.ensureDialogSessionId(simCharacterId.value, peer.id, recipientName)
+      const allDialogTurns = napChatCoordinatorStore.getDialogTurns(dialogSessionId, 10000)
+      dialogTotalTurns = allDialogTurns.length
+      dialogTurns = allDialogTurns.slice(-windowSize)
+    }
+    catch {}
+    const hasPriorEpisode = latestEpisode.value?.with?.characterName === recipientName
+    const dialogStateLine = dialogTotalTurns > 0
+      ? `priorTurns: ${dialogTotalTurns}, priorEpisodesWithPeer: ${hasPriorEpisode ? 1 : 0}. Continue the ongoing conversation.`
+      : NAP_DIALOG_NO_HISTORY_MARKER
+
     const recentSummary = recentTurns.length > 0
       ? recentTurns.map(t => `${t.role}: ${t.content}`).join('\n')
       : '(no recent chat turns in the active session)'
     const journalSummary = journalHighlights.length > 0
       ? journalHighlights.map(j => `- ${j.text}`).join('\n')
       : '(no journal highlights matched)'
+    const dialogSummary = dialogTurns.length > 0
+      ? dialogTurns.map(t => `${t.role === 'assistant' ? companionName : recipientName}: ${t.content}`).join('\n')
+      : NAP_DIALOG_NO_HISTORY_MARKER
 
     const systemPrompt = [
       `[SYSTEM / IDENTITY]\nYou are ${companionName}, an AI companion representing the user. You are drafting an autonomous background chat opener to ${recipientName}.`,
       `[GLOBAL SOCIAL GUIDANCE]\n${simGuidance.value.trim() || socialPromptGuidance.value}`,
       perFriendGuidance ? `[PER-FRIEND TOPIC STEERING]\n${perFriendGuidance}` : '',
+      `[DIALOG STATE]\n${dialogStateLine}`,
+      `[NAP DIALOG HISTORY — last ${dialogTurns.length}]\n${dialogSummary}`,
       `[RECENT RELEVANT HIGHLIGHTS & SHARED CONTEXT]\nRecent turns:\n${recentSummary}\nJournal highlights:\n${journalSummary}`,
       `[BOUNDARIES & SAFETY INVARIANTS]\n- Keep responses concise and natural (1-3 sentences per turn).\n- NEVER disclose private credentials, API tokens, or hidden persona data.\n- Output MUST be conversational prose only. No tools, no commands, no stage directions.`,
     ].filter(Boolean).join('\n\n')
-    const userPrompt = `Draft a warm 1-3 sentence opener from ${companionName} to ${recipientName} for a nap-chat preview. Reference at most one shared highlight; keep it casual.`
+    const userPrompt = dialogTurns.length > 0
+      ? `Draft the next warm 1-3 sentence turn from ${companionName} to ${recipientName}, continuing the dialog above. Reference at most one shared highlight; keep it casual.`
+      : `Draft a warm 1-3 sentence opener from ${companionName} to ${recipientName} for a nap-chat preview. Reference at most one shared highlight; keep it casual.`
 
     const model = consciousnessStore.activeModel
     const providerId = consciousnessStore.activeProvider
@@ -563,8 +608,10 @@ async function handleGeneratePreview() {
 
     const prose = extractProse(rawText)
     draftMessage.value = prose
-    draftSource.value = `Source: recent turns (${recentTurns.length}) + journal (${journalHighlights.length}) + social guidance → ${model}`
+    draftSource.value = `Source: dialog (${dialogTurns.length}) + recent turns (${recentTurns.length}) + journal (${journalHighlights.length}) + social guidance → ${model}`
     draftContextUsed.value = [
+      { type: 'Dialog state', text: dialogStateLine, age: 'napchat universe' },
+      { type: 'Nap dialog history', text: dialogSummary.slice(0, 500), age: dialogTurns.length > 0 ? 'napchat universe' : 'no history' },
       { type: 'Recent turns', text: recentSummary.slice(0, 500), age: recentTurns.length > 0 ? 'active session' : 'empty' },
       ...(journalHighlights.length > 0 ? [{ type: 'Journal highlights', text: journalSummary.slice(0, 500), age: 'text-journal' }] : []),
       { type: 'Global guidance', text: (simGuidance.value.trim() || socialPromptGuidance.value).slice(0, 500), age: 'sandbox' },
@@ -644,8 +691,37 @@ async function handleApprovePendingMessage() {
   if (res.ok)
     toast.success(`Message to ${selected.peerName} sent via Edge transport!`)
   else toast.info(res.error || `Staged for delivery to ${selected.peerName}.`)
+  // The turn is committed: inscribe it into the per-pair napchat session so
+  // the next draft continues this dialog instead of starting over.
+  try {
+    if (selected.peerId && typeof selected.text === 'string') {
+      const dialogSessionId = await napChatCoordinatorStore.ensureDialogSessionId(simCharacterId.value, selected.peerId, selected.peerName)
+      await napChatCoordinatorStore.inscribeDialogTurn(dialogSessionId, 'assistant', selected.text, selected.peerId)
+    }
+  }
+  catch {}
   showReviewModal.value = false
 }
+
+// Inbound nap turns land in the per-pair napchat session as user turns, so the
+// dialog history (and the [DIALOG STATE] facts) reflect both sides.
+const inscribedInboundKeys = new Set<string>()
+watch(() => embassyInboxStore.recentTurns, async (turns) => {
+  for (const t of turns || []) {
+    const key = `${t.senderId}-${t.timestamp}`
+    if (inscribedInboundKeys.has(key))
+      continue
+    inscribedInboundKeys.add(key)
+    try {
+      const text = turnText(t.payload)
+      if (!text.trim())
+        continue
+      const dialogSessionId = await napChatCoordinatorStore.ensureDialogSessionId(simCharacterId.value, t.senderId, peerNameFor(t.senderId))
+      await napChatCoordinatorStore.inscribeDialogTurn(dialogSessionId, 'user', text, t.senderId)
+    }
+    catch {}
+  }
+}, { deep: true })
 
 function handleDiscardPendingMessage() {
   const selected = selectedPendingMessage.value
@@ -1732,6 +1808,17 @@ const surfaceCardClass = computed(() => [
                 label="Welcome-back recap"
                 description="Hear what happened when you return."
               />
+
+              <!-- Dialog history window -->
+              <div>
+                <FieldSelect
+                  v-model="napHistoryWindowOption"
+                  label="Dialog history"
+                  description="How many of the last nap-chat turns feed each draft."
+                  :options="napHistoryWindowOptions"
+                  layout="horizontal"
+                />
+              </div>
 
               <!-- Companion social guidance -->
               <div :class="['space-y-1', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">

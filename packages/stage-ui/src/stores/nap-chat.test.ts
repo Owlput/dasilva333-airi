@@ -91,3 +91,20 @@ describe('useNapChatStore.selectCandidates', () => {
     expect(peerWithGuidance.allowedCapabilities.customPromptGuidance).toBe('Discuss local LLM benchmarks and quantization.')
   })
 })
+
+describe('useNapChatStore dialog defaults', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('defaults the history window to 6 turns', async () => {
+    const { NAP_HISTORY_WINDOW_DEFAULT, useNapChatStore } = await import('./nap-chat')
+    expect(NAP_HISTORY_WINDOW_DEFAULT).toBe(6)
+    expect(useNapChatStore().napHistoryWindow).toBe(6)
+  })
+
+  it('ships conditional first-contact/continuation clauses keyed on the stable marker', async () => {
+    const { DEFAULT_SOCIAL_PROMPT_GUIDANCE, NAP_DIALOG_NO_HISTORY_MARKER } = await import('./nap-chat')
+    expect(NAP_DIALOG_NO_HISTORY_MARKER).toBe('No prior episodes with this peer.')
+    expect(DEFAULT_SOCIAL_PROMPT_GUIDANCE).toContain('No prior episodes with this peer')
+    expect(DEFAULT_SOCIAL_PROMPT_GUIDANCE).toContain('do not re-greet')
+  })
+})
