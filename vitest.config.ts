@@ -6,6 +6,7 @@ export default defineConfig({
       'apps/server',
       'apps/stage-tamagotchi',
       'apps/stage-edge',
+      'apps/stage-edge-discord-do',
       'packages/stage-ui',
       'packages/stage-pages',
       'packages/stage-shared',

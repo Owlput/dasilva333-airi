@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stage-edge-discord-do",
+  "account_id": "be20bd1c779b9eb5ea7127d80081c2d5",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-04",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "AUTO_CONNECT": "true"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DISCORD_HOST",
+        "class_name": "DiscordHostDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "DiscordHostDO"
+      ]
+    }
+  ]
+}
