@@ -7,6 +7,7 @@
 > - [PR #3021](https://github.com/moeru-ai/airi/pull/3021): `feat(stage-ui,agents): make cards for tool calls without a widget` (Author: `@chiba233` / `蓝莓🫐`)
 > - [PR #3040](https://github.com/moeru-ai/airi/pull/3040): `feat(stage-ui,agents): show what each tool call does and why` (Author: `@chiba233` / `蓝莓🫐`)
 > - [PR #3051](https://github.com/moeru-ai/airi/pull/3051): `feat(stage-ui,agents,core-agent): let the model pick a Tabler icon for each tool call` (Author: `@chiba233` / `蓝莓🫐`)
+> - [PR #3060](https://github.com/moeru-ai/airi/pull/3060): `feat(stage-tamagotchi): rework the floating chat dock and its styles` (Author: `@chiba233` / `蓝莓🫐`)
 > **Target Subsystems**: Desktop Shell (`apps/stage-tamagotchi`), Chat & Generative Presentation (`packages/stage-ui`), Tools Architecture (`packages/stage-ui/src/tools`, `@proj-airi/mcp`)
 
 ---
@@ -136,20 +137,40 @@ In upstream, PR #3051 directly modified `stores/chat.ts`, `stores/ai/chat-llm/ll
 
 ---
 
-## 5. Integration Roadmap for dasilva333/airi
+## 5. Pillar IV: Floating Dock Ergonomics & Dynamic Backdrop Gating (PR #3060)
+
+### 5.1 Problem & Upstream Breakthrough
+In **PR #3060**, `@chiba233` (`蓝莓🫐`) addresses usability friction and visual polish in the desktop floating chat shell:
+- **Dynamic Backdrop Gating (`useWindowBackdrop` with `enabled` toggle)**: Previously, once a surface mounted with `useWindowBackdrop`, its native blur region remained static. When a transient message feed or hover overlay faded out, the blur rectangle persisted over the wallpaper, creating an unsightly "ghost smudge". PR #3060 adds an `enabled` reactive switch to `useWindowBackdrop`, dynamically deregistering the native backdrop region when the message feed is disabled or hidden.
+- **Floating Dock Unification & Hourglass Island**: Consolidates disparate floating styles into a unified dock. The message feed becomes an integrated toggle within the dock rather than an awkward window placement mode. When enabled, a spring-animated "hourglass island" pops out beside the dock, exposing message hiding controls and auto-fade preferences.
+- **Edge-Border Resizing (`window-resize-border.vue`)**: Replaces the bulky floating resize grip corner with edge and corner resize handles across the window boundary, complete with a visual border flash animation on window focus/drag.
+- **Pointer Click-Through Coordination (`data-takes-pointer`)**: Ensures click-through transparency over unpainted glass while reliably intercepting pointer events over interactive dock controls.
+
+### 5.2 Architectural Seam & Fork Decoupling Adaptation
+- **Decoupled Stage Invariant**: In upstream, PR #3060 introduces an "attached to character" mode that docks the chat window to upstream's monolithic character window. In `dasilva333/airi`, the desktop is cleanly decoupled into the **Actor Stage** (`windows/stage`) and the **Control Strip** (`windows/main`).
+- **Selective Porting Strategy**:
+  1. **Adopt Dynamic Backdrop Gating**: The `useWindowBackdrop({ enabled })` toggle is immediately valuable for our Control Strip floating palettes and contextual transcript windows to ensure faded overlays cleanly clear their native blur layers.
+  2. **Adopt Edge Resizing & Visual Borders**: `window-resize-border.vue` and edge resize event handling provide clean utility for any desktop sub-windows without cluttering the UI with corner drag handles.
+  3. **Reject Monolithic Window Attachment**: Do not couple floating chat positions to `RendererStage.vue`. The Actor Stage remains purely an avatar presentation surface.
+
+---
+
+## 6. Integration Roadmap for dasilva333/airi
 
 | Phase | Milestone | Scope / Target Files | Risk / Divergence Guard |
 | :--- | :--- | :--- | :--- |
 | **Phase 1: Native Backdrop Layer** | Port `@proj-airi/electron-native-backdrop` and desktop Eventa bridge | `packages/electron-native-backdrop/`, `apps/stage-tamagotchi/src/main/services/electron/window-backdrop.ts` | Strictly isolate to desktop main process. Ensure `RendererStage.vue` is excluded from backdrop blur. |
-| **Phase 2: Floating UI Vibrancy** | Wire `useWindowBackdrop` into Control Strip and floating chat shell | `apps/stage-tamagotchi/src/renderer/composables/use-window-backdrop.ts`, `ControlStripHost.vue`, `chat-floating.vue` | Maintain graceful CSS fallback when native module is unavailable. |
+| **Phase 2: Floating UI Vibrancy & Gating** | Wire `useWindowBackdrop` with `enabled` gating into Control Strip and floating chat shell (PR #3060) | `apps/stage-tamagotchi/src/renderer/composables/use-window-backdrop.ts`, `ControlStripHost.vue`, `chat-floating.vue` | Maintain graceful CSS fallback when native module is unavailable; dynamically disable blur when feeds fade. |
 | **Phase 3: OpenUI Core & Card Catalog** | Add `@openuidev/lang-core` and card presentation primitives | `packages/stage-ui/src/libs/cards/`, `card-view.vue`, `catalog.ts` | Ensure zero telemetry in `@openuidev/lang-core` (verify `allowBuilds: false` in pnpm). |
 | **Phase 4: Tool Intent Summaries** | Implement `tool-call-summary.ts` and upgrade chat hit-pills | `packages/stage-ui/src/components/scenarios/chat/components/hit-pill.vue`, `tool-call-summary.ts` | Keep pure: no direct mutations to Pinia `chat.ts` store state. |
 | **Phase 5: Dynamic Tabler Tool Icons** | Add `@iconify-json/tabler`, implement `libs/tabler-icons.ts` and `--un-icon` mask replacement | `packages/stage-ui/src/libs/tabler-icons.ts`, `tool-call-group.vue`, `hit-pill.vue`, `tools/search-icons.ts` | Strip `call_icon` before tool dispatch; confine dynamic icon masking strictly to presentation components. |
+| **Phase 6: Edge Resizing & Dock Ergonomics** | Port `window-resize-border.vue` and edge handle coordination (PR #3060) | `apps/stage-tamagotchi/src/renderer/components/window-resize-border.vue`, `use-chat-floating-click-through.ts` | Keep decoupled from Actor Stage; preserve independent Control Strip ribbon positioning. |
 
 ---
 
-## 6. Architectural Verification & Invariants
+## 7. Architectural Verification & Invariants
 
 1. **Window-Stage Purity Invariant**: `RendererStage.vue` must remain 100% transparent. Native blur must never sample behind the 3D/Live2D model's mesh or avatar bounds.
 2. **Cognitive Seam Invariant**: Card rendering must be presentation-only. Do not inject artificial `card` message slices into IndexedDB chat session transcripts; transcripts store standard tool call events, which are rendered on the fly.
 3. **MCP Parity**: Any MCP tool called via `airi-mcp-integration` should automatically benefit from generative card rendering without authoring bespoke Vue components.
+4. **Zero-Smudge Invariant (PR #3060)**: When a translucent or floating overlay is hidden or fades to opacity 0, its native backdrop blur region must be immediately disabled via `useWindowBackdrop({ enabled: false })` to avoid ghost blur artifacts on the desktop.

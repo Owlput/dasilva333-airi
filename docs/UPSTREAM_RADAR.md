@@ -22,11 +22,378 @@
 | [#3021](https://github.com/moeru-ai/airi/pull/3021) / [#3040](https://github.com/moeru-ai/airi/pull/3040) / [#3051](https://github.com/moeru-ai/airi/pull/3051) | `feat(stage-ui,agents): make cards for tool calls without a widget` | `@chiba233` | `Merged` | 🟢 **Generative UI & Tool Transparency** | Generative OpenUI cards, real-time intent summaries, and dynamic Tabler icon selection. **Directive**: Design spec in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md); adapt strictly as presentation seam. |
 | [#3044](https://github.com/moeru-ai/airi/pull/3044) | `fix(stage-ui): link only parsed web URLs in citations and search results` | `@nekomeowww` | `Merged` | 🟢 **Security & Sanitization** | Hardens web URL parsing against pseudo-protocols (`javascript:`, `data:`, `file:`) and hostless inputs. **Directive**: **Ported & Tested in Fork (#3044)** via `isWebUrl()` and modernized `isUrl()` in `@proj-airi/stage-shared`. |
 | [#3053](https://github.com/moeru-ai/airi/pull/3053) | `fix(stage-ui): avoid splitting surrogate pairs in chat reply preview` | `@keeponlight` | `Open` | 🟢 **Text Encoding & Reliability** | Prevents bisecting UTF-16 surrogate pairs (emojis/astral-plane code points) during string truncation. **Directive**: **Ported & Tested in Fork (#3053)** via universal `safeTruncate()` in `@proj-airi/stage-shared` and applied to chat tool summaries. |
+| [#3057](https://github.com/moeru-ai/airi/pull/3057) | `fix(repo): stop VS Code Java extensions from scanning node_modules` | `@nekomeowww` | `Merged` | 🟢 **Developer Tooling** | **Ported in Fork (#3057)** via commit `23ab0d011` in `.vscode/settings.json`. |
+| [#2932](https://github.com/moeru-ai/airi/pull/2932) | `fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup` | `@bitxwolf` | `Open` (25 comments) | 🟢 **Desktop Stability** | **Ported & Typechecked in Fork (#2932)** via commit `9e12e1f35` in `apps/stage-tamagotchi/src/main/windows/widgets/rpc/index.electron.ts`. |
+| [#3054](https://github.com/moeru-ai/airi/pull/3054) / [#3058](https://github.com/moeru-ai/airi/pull/3058) | `feat(core-agent,stage-ui): now speech formula, math, chem correctly` | `@nekomeowww` | `Merged` | 🟢 **Acoustic Intelligence** | **Planned for Fork UST** in [`docs/blueprint-tts-universal-speech-transformer.md`](./blueprint-tts-universal-speech-transformer.md) as optional toggles (Currency default ON; Math/Chem default OFF). |
+| [#3060](https://github.com/moeru-ai/airi/pull/3060) | `feat(stage-tamagotchi): rework the floating chat dock and its styles` | `@chiba233` | `Open` (3 comments) | 🟢 **Visual & Desktop Ergonomics** | **Incorporated into Blueprint** in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md) (Pillar IV: dynamic backdrop gating, edge resizing). |
 
 ---
 
 <!-- RADAR_ENTRIES -->
 
+## [2026-10-21] Upstream Delta: `bc41885f..de5844c3` (9 commits, 234 files, 29 update(s))
+
+### 🎯 Executive Highlights
+#### Upstream Trajectory & Key Highlights
+- **TTS & Formula / Math / Chemistry Speech Normalization (#3054, #3058, #3061, Commits `464d15ceb`, `5588946fb`)**: Authored by @nekomeowww (`Neko`), upstream merged a major cross-cutting speech enhancement across `packages/core-agent`, `packages/stage-ui`, and `packages/pipelines-audio`. Introduces new packages `packages/speech-transformer-math`, `packages/speech-transformer-chem`, and `packages/mathjson` along with comprehensive evaluation suites in `evals/tts-speech-formula` and an ADR (`docs/ai/adr/2026-10-20-speech-text-preprocessor.md`). This enables TTS engines to verbalize mathematical equations, currency/prices, and chemical formulas across languages (English, Japanese, Korean, Chinese) before audio chunking.
+- **Workspace Tests Migrated to Turbo (#3048, Commit `de5844c3f`)**: Authored by @nayounsang, upstream migrated monorepo workspace testing to Turborepo (`turbo run test`), standardizing `"test": "vitest run"` across all packages and optimizing CI caching.
+- **Floating Chat Dock & Style Consolidation (#3060)**: Opened by @chiba233 (`蓝莓🫐`), overhauling desktop floating chat (`apps/stage-tamagotchi/src/renderer/pages/chat-floating.vue`), unifying floating modes into a single style, introducing "Beside the character" attachment, an hourglass feed island, edge/corner resizing, and standardized header buttons.
+- **Local Data Export & Import Controls (#3059)**: Opened in draft by @nayounsang (closing #1254), introducing unified JSON/ZIP import-export adapters with Valibot schema validation for chat sessions, app settings, display models, and Sherpaw speech models with sensitive credential confirmation.
+- **Pre-PR Test Enforcement in Agents Workflow (#3037, Commit `17357da13`)**: Authored by @luoling8192 (`RainbowBird`), mandates running tests of branch changes (`vitest run --changed <merge base>`) and browser tests before opening PRs; folds in and closes PR #2871.
+- **Upstream PR Lifecycle Transitions**: Upstream closed PR #2120 (card editor rebuild) and PR #2852 (device card sync), while merging cloud chat character assignment (#2874, Commit `7a0f5bc39`).
+
+#### 💬 Discussion & Community Buzz
+- **#3000: `feat(memory-eval): add identity-continuity evaluation package`** by @RUI-debug769 (**+1 new comments, 120 total!**): Ongoing high-volume discussion on mathematical persona continuity metrics (Wasserstein-1 distance, GMM BIC bimodality, and fixed-point convergence).
+- **Tamagotchi Electron Bugfix Velocity by @bitxwolf**: Active review and high comment volume on desktop stability patches:
+  - `#2937: fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache` (+8 new comments, 33 total)
+  - `#2934: fix(tamagotchi): use showWindowOnAllWorkspaces to prevent Dock icon restoring on macOS` (+8 new comments, 29 total)
+  - `#2935: fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction` (+7 new comments, 48 total)
+  - `#2932: fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup` (+5 new comments, 25 total)
+  - `#2936: fix(tamagotchi): guard payload.url access in artistryTestComfyUIConnection to prevent TypeError` (+3 new comments, 17 total)
+- **#2541: `Telltworose/feat/drop in plugins`** by @telltworose (59 comments total): Tracking author rebase on MCP stdio child processes.
+- **#2290: `feat(server): stream official ASR over WebSocket`** by @luoling8192 (59 comments total): Streaming ASR transport discussion.
+- **#2672: `refactor(stage-ui): bind conversations to window-local characters`** by @luoling8192 (48 comments total): Window-local character scoping.
+- **#2552: `add bilingual subtitles`** by @phx3334 (36 comments total): Overlay subtitle rendering.
+- **#3052: `fix(provider-inference): prefer current MiniMax chat models`** (+3 new comments, 6 total): Provider model identifier maintenance.
+- **#3048: `test: run workspace tests through Turbo`** (+2 new comments, 8 total, MERGED).
+
+#### 🍒 Cherry-Pick Candidates & Triage Decisions
+- **`feat(core-agent,stage-ui): now speech formula, math, chem correctly (#3054, Commits 464d15ceb, 5588946fb)`**: High-value acoustic enhancement. Planned for ingestion as modular UST transformers in [`docs/blueprint-tts-universal-speech-transformer.md`](./blueprint-tts-universal-speech-transformer.md) with optional UI checkboxes (Currency default ON; Math & Chem default OFF).
+- **`fix(repo): stop VS Code Java extensions from scanning node_modules (#3057, Commit 6876b0dcd)`**: **Ported & Committed** in `dasilva333/airi` (`23ab0d011`) updating `.vscode/settings.json`.
+- **`fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup (#2932)`**: **Ported, Typechecked & Committed** in `dasilva333/airi` (`9e12e1f35`) resolving the unhandled promise race during widget RPC startup.
+- **`feat(stage-tamagotchi): rework the floating chat dock and its styles (#3060)`**: **Integrated into Blueprint** in [`docs/design-native-glass-and-generative-tool-cards.md`](./design-native-glass-and-generative-tool-cards.md) (Pillar IV: adopting dynamic backdrop gating and edge resizing while maintaining decoupled stage architecture).
+- **`fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction (#2935)`**: **Audited & Skipped** (pre-verified; does not apply).
+- **`feat(stage-ui): add data export and import controls (#3059)`**: **Skipped** as non-applicable.
+- **`chore(repo): remove obsolete files and configuration (#3055, Commit 3f98bb613)`**: Safe repository clean-up available for future housekeeping.
+
+#### ⚠️ Divergence & Collision Warnings
+- **Cloud Chat Sync (#2874, Commit `7a0f5bc39`)**: Touched `packages/stage-ui/src/stores/chat/session-store.ts`, `cloud-mapper.ts`, and `server/apps/api/src/services/domain/chats.ts`. **REJECT / COLLISION RISK**: This fork is strictly local-first desktop with BYOS (S3/R2/Google Drive backup) and local IndexedDB session repositories. Our `session-store.ts` intentionally does not contain cloud chat sync or remote chat reassignment logic.
+- **Floating Chat Dock Rework (#3060)**: Modifies `apps/stage-tamagotchi/src/renderer/pages/chat-floating.vue`, `floating.ts`, and window placement logic. **REJECT / DIVERGENCE**: This fork cleanly decoupled desktop surfaces into Actor Stage (`RendererStage.vue`) and the floating Control Strip (`ControlStrip.vue`, `ControlStripHost.vue`). Upstream's floating chat dock changes are tightly coupled to their monolithic window architecture and do not map to our decoupled Control Strip.
+- **Device Card Sync (#2852)**: Closed by upstream, reinforcing that cloud-based device syncing remains fraught with complexity. Our local BYOS model remains the superior local-first approach.
+
+### 📋 Upstream Commits
+- `de5844c3f` test: run workspace tests through Turbo (#3048) [#3048](https://github.com/moeru-ai/airi/pull/3048) _(Younsang Na, 2026-10-21)_
+- `5588946fb` chore(evals,core-agent): clean up the formula speech eval (#3058) [#3058](https://github.com/moeru-ai/airi/pull/3058) _(Neko, 2026-10-21)_
+- `17357da13` docs(agents): run the tests of branch changes before a PR (#3037) [#3037](https://github.com/moeru-ai/airi/pull/3037) _(RainbowBird, 2026-10-21)_
+- `6876b0dcd` fix(repo): stop VS Code Java extensions from scanning node_modules (#3057) [#3057](https://github.com/moeru-ai/airi/pull/3057) _(Neko, 2026-10-21)_
+- `77ff45825` chore(nix): update pnpmDeps hash (#3056) [#3056](https://github.com/moeru-ai/airi/pull/3056) _(Weathercold, 2026-10-21)_
+- `3f98bb613` chore(repo): remove obsolete files and configuration (#3055) [#3055](https://github.com/moeru-ai/airi/pull/3055) _(jim139129, 2026-10-21)_
+- `464d15ceb` feat(core-agent,stage-ui): now speech formula, math, chem correctly (#3054) [#3054](https://github.com/moeru-ai/airi/pull/3054) _(Neko, 2026-10-21)_
+- `063acf07b` chore(i18n): update translations (#2991) [#2991](https://github.com/moeru-ai/airi/pull/2991) _(github-actions[bot], 2026-10-20)_
+- `7a0f5bc39` fix(api,stage-ui): keep the character of synchronized chats (#2874) [#2874](https://github.com/moeru-ai/airi/pull/2874) _(RainbowBird, 2026-10-21)_
+
+### 🔬 Subsystem Breakdown
+#### Documentation & Scaffolding (`⚪ ignore`) — 15 file(s) (+968/-14)
+- `.agents/skills/create-pr/SKILL.md` *(+1/-1)*
+- `.github/workflows/ci.yml` *(+21/-5)*
+- `.github/workflows/release-docker.yaml` *(+0/-4)*
+- `.github/workflows/release-tamagotchi.yml` *(+0/-4)*
+- `AGENTS.md` *(+14/-0)*
+- `docs/ai/adr/2026-10-09-character-as-chat-member.md` *(+112/-0)*
+- `docs/ai/adr/2026-10-20-speech-text-preprocessor.md` *(+293/-0)*
+- `evals/tts-speech-formula/README.md` *(+202/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/judge.velin.md` *(+57/-0)*
+- `evals/tts-speech-formula/eval/evaluators/listener/listener.velin.md` *(+73/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/src/rewrite.velin.md` *(+24/-0)*
+- `packages/mathjson/README.md` *(+30/-0)*
+- `packages/speech-transformer-chem/README.md` *(+47/-0)*
+- `packages/speech-transformer-math/README.md` *(+65/-0)*
+- `packages/testing-audio/README.md` *(+29/-0)*
+
+#### Other / Uncategorized (`🔍 inspect`) — 132 file(s) (+13013/-180)
+- `.dockerignore` *(+0/-1)*
+- `.editorconfig` *(+0/-6)*
+- `.gitignore` *(+0/-4)*
+- `.vscode/settings.json` *(+23/-0)*
+- `cspell.config.yaml` *(+1/-0)*
+- `evals/tts-speech-formula/.env.example` *(+41/-0)*
+- `evals/tts-speech-formula/eval/cases/formula-speech/cases.ts` *(+697/-0)*
+- `evals/tts-speech-formula/eval/cases/formula-speech/index.ts` *(+2/-0)*
+- `evals/tts-speech-formula/eval/cases/formula-speech/languages.ts` *(+24/-0)*
+- `evals/tts-speech-formula/eval/cases/math-bridge/fetch.ts` *(+206/-0)*
+- `evals/tts-speech-formula/eval/cases/math-bridge/index.test.ts` *(+30/-0)*
+- `evals/tts-speech-formula/eval/cases/math-bridge/index.ts` *(+44/-0)*
+- `evals/tts-speech-formula/eval/cases/math-bridge/sample.json` *(+1448/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/chem.ts` *(+136/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/currency.ts` *(+31/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/index.test.ts` *(+87/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/index.ts` *(+63/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/normalize.ts` *(+166/-0)*
+- `evals/tts-speech-formula/eval/evaluators/grader/symbolic.ts` *(+95/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/calibration/calibration.json` *(+845/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/calibration/collect.ts` *(+178/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/calibration/types.ts` *(+25/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/index.test.ts` *(+32/-0)*
+- `evals/tts-speech-formula/eval/evaluators/judge/index.ts` *(+107/-0)*
+- `evals/tts-speech-formula/eval/evaluators/listener/index.test.ts` *(+21/-0)*
+- `evals/tts-speech-formula/eval/evaluators/listener/index.ts` *(+164/-0)*
+- `evals/tts-speech-formula/eval/evaluators/notation/index.test.ts` *(+25/-0)*
+- `evals/tts-speech-formula/eval/evaluators/notation/index.ts` *(+67/-0)*
+- `evals/tts-speech-formula/eval/evaluators/speech/gemini-transcription.test.ts` *(+49/-0)*
+- `evals/tts-speech-formula/eval/evaluators/speech/gemini-transcription.ts` *(+102/-0)*
+- `evals/tts-speech-formula/eval/evaluators/speech/index.ts` *(+86/-0)*
+- `evals/tts-speech-formula/eval/evaluators/speech/speech-models.test.ts` *(+157/-0)*
+- `evals/tts-speech-formula/eval/evaluators/speech/speech-models.ts` *(+486/-0)*
+- `evals/tts-speech-formula/eval/index.ts` *(+16/-0)*
+- `evals/tts-speech-formula/eval/shared/cache-key.ts` *(+12/-0)*
+- `evals/tts-speech-formula/eval/shared/velin.ts` *(+27/-0)*
+- `evals/tts-speech-formula/eval/tasks/read-aloud/config.ts` *(+214/-0)*
+- `evals/tts-speech-formula/eval/tasks/read-aloud/index.ts` *(+300/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/src/read-aloud.test.ts` *(+9/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/src/read-aloud.ts` *(+40/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/tasks/read-aloud/formula-speech/en.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/tasks/read-aloud/formula-speech/ja.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/tasks/read-aloud/formula-speech/ko.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/tasks/read-aloud/formula-speech/zh.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/llm/vieval.config.ts` *(+30/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/src/read-aloud.ts` *(+4/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/tasks/read-aloud/formula-speech/en.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/tasks/read-aloud/formula-speech/ja.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/tasks/read-aloud/formula-speech/ko.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/tasks/read-aloud/formula-speech/zh.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/raw/vieval.config.ts` *(+3/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/src/read-aloud.test.ts` *(+23/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/src/read-aloud.ts` *(+7/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/src/structure.test.ts` *(+123/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/tasks/read-aloud/formula-speech/en.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/tasks/read-aloud/formula-speech/ja.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/tasks/read-aloud/formula-speech/ko.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/tasks/read-aloud/formula-speech/zh.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/rule/vieval.config.ts` *(+3/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/src/read-aloud.ts` *(+55/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/tasks/read-aloud/formula-speech/en.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/tasks/read-aloud/formula-speech/ja.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/tasks/read-aloud/formula-speech/ko.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/tasks/read-aloud/formula-speech/zh.eval.ts` *(+5/-0)*
+- `evals/tts-speech-formula/eval/test-objects/sre/vieval.config.ts` *(+3/-0)*
+- `evals/tts-speech-formula/vieval.config.ts` *(+14/-0)*
+- `evals/tts-speech-formula/vitest.config.ts` *(+8/-0)*
+- `nix/pnpm-deps-hash.txt` *(+1/-1)*
+- `packages/mathjson/src/index.ts` *(+58/-0)*
+- `packages/mathjson/tsdown.config.ts` *(+6/-0)*
+- `packages/pipelines-audio/src/processors/tts-chunker.test.ts` *(+14/-0)*
+- `packages/pipelines-audio/src/processors/tts-chunker.ts` *(+23/-14)*
+- `packages/speech-transformer-chem/src/chem.test.ts` *(+20/-0)*
+- `packages/speech-transformer-chem/src/chem.ts` *(+287/-0)*
+- `packages/speech-transformer-chem/src/index.ts` *(+50/-0)*
+- `packages/speech-transformer-chem/src/locale.ts` *(+49/-0)*
+- `packages/speech-transformer-chem/src/locales/en.test.ts` *(+44/-0)*
+- `packages/speech-transformer-chem/src/locales/en.ts` *(+29/-0)*
+- `packages/speech-transformer-chem/src/locales/ja.test.ts` *(+51/-0)*
+- `packages/speech-transformer-chem/src/locales/ja.ts` *(+31/-0)*
+- `packages/speech-transformer-chem/src/locales/ko.test.ts` *(+39/-0)*
+- `packages/speech-transformer-chem/src/locales/ko.ts` *(+31/-0)*
+- `packages/speech-transformer-chem/src/locales/names-ja.ts` *(+134/-0)*
+- `packages/speech-transformer-chem/src/locales/names-ko.ts` *(+134/-0)*
+- `packages/speech-transformer-chem/src/locales/names-zh.ts` *(+133/-0)*
+- `packages/speech-transformer-chem/src/locales/names.test.ts` *(+12/-0)*
+- `packages/speech-transformer-chem/src/locales/zh.test.ts` *(+50/-0)*
+- `packages/speech-transformer-chem/src/locales/zh.ts` *(+29/-0)*
+- `packages/speech-transformer-chem/tsdown.config.ts` *(+6/-0)*
+- `packages/speech-transformer-chem/vitest.config.ts` *(+8/-0)*
+- `packages/speech-transformer-math/src/extension.ts` *(+44/-0)*
+- `packages/speech-transformer-math/src/heads.ts` *(+67/-0)*
+- `packages/speech-transformer-math/src/index.ts` *(+17/-0)*
+- `packages/speech-transformer-math/src/locale.ts` *(+389/-0)*
+- `packages/speech-transformer-math/src/locales/en.test.ts` *(+263/-0)*
+- `packages/speech-transformer-math/src/locales/en.ts` *(+219/-0)*
+- `packages/speech-transformer-math/src/locales/ja.test.ts` *(+151/-0)*
+- `packages/speech-transformer-math/src/locales/ja.ts` *(+214/-0)*
+- `packages/speech-transformer-math/src/locales/ko.test.ts` *(+161/-0)*
+- `packages/speech-transformer-math/src/locales/ko.ts` *(+217/-0)*
+- `packages/speech-transformer-math/src/locales/zh.test.ts` *(+190/-0)*
+- `packages/speech-transformer-math/src/locales/zh.ts` *(+218/-0)*
+- `packages/speech-transformer-math/src/lower.test.ts` *(+112/-0)*
+- `packages/speech-transformer-math/src/lower.ts` *(+1104/-0)*
+- `packages/speech-transformer-math/src/numbers.test.ts` *(+25/-0)*
+- `packages/speech-transformer-math/src/numbers.ts` *(+132/-0)*
+- `packages/speech-transformer-math/src/parse.test.ts` *(+45/-0)*
+- `packages/speech-transformer-math/src/parse.ts` *(+431/-0)*
+- `packages/speech-transformer-math/src/render.test.ts` *(+77/-0)*
+- `packages/speech-transformer-math/src/render.ts` *(+462/-0)*
+- `packages/speech-transformer-math/src/speech.bench.ts` *(+49/-0)*
+- `packages/speech-transformer-math/src/speech.test.ts` *(+70/-0)*
+- `packages/speech-transformer-math/src/speech.ts` *(+141/-0)*
+- `packages/speech-transformer-math/src/tex.ts` *(+83/-0)*
+- `packages/speech-transformer-math/src/units.test.ts` *(+62/-0)*
+- `packages/speech-transformer-math/src/units.ts` *(+62/-0)*
+- `packages/speech-transformer-math/tsdown.config.ts` *(+6/-0)*
+- `packages/speech-transformer-math/vitest.config.ts` *(+8/-0)*
+- `packages/stage-ui/src/components/markdown/markdown-renderer.vue` *(+5/-2)*
+- `packages/stage-ui/src/components/scenarios/chat/components/assistant-item.vue` *(+1/-1)*
+- `packages/stage-ui/src/composables/chat-math.test.ts` *(+30/-0)*
+- `packages/stage-ui/src/composables/chat-math.ts` *(+37/-0)*
+- `packages/stage-ui/src/libs/chat-sync/cloud-mapper.test.ts` *(+90/-5)*
+- `packages/stage-ui/src/libs/chat-sync/cloud-mapper.ts` *(+47/-10)*
+- `packages/stage-ui/src/libs/chat-sync/index.ts` *(+2/-0)*
+- `packages/stage-ui/src/stores/modules/speech.ts` *(+3/-2)*
+- `packages/testing-audio/cases/formula-speech/case.audio.test.ts` *(+108/-0)*
+- `packages/testing-audio/src/describe.ts` *(+7/-0)*
+- `patches/mineflayer@4.37.0.patch` *(+0/-75)*
+- `pnpm-workspace.yaml` *(+16/-2)*
+- `rustfmt.toml` *(+0/-26)*
+- `vitest.config.ts` *(+0/-31)*
+
+#### Electron Desktop Shell (`⚠️ hand-merge`) — 2 file(s) (+1/-20)
+- `apps/stage-tamagotchi/package.json` *(+1/-0)*
+- `apps/stage-tamagotchi/vitest.node.config.ts` *(+0/-20)*
+
+#### Mobile & Web Platforms (`⚪ ignore / low-priority`) — 3 file(s) (+7/-4)
+- `apps/stage-web/src/pages/devtools/vrm-model-position.browser.test.ts` *(+1/-1)*
+- `apps/stage-web/src/pages/official-provider-speech-streaming.browser.test.ts` *(+3/-3)*
+- `apps/stage-web/vitest.config.ts` *(+3/-0)*
+
+#### Root Build & Tooling (`🔍 inspect`) — 30 file(s) (+1266/-697)
+- `apps/ui-server-auth/package.json` *(+1/-0)*
+- `evals/tts-speech-formula/package.json` *(+59/-0)*
+- `evals/tts-speech-formula/tsconfig.json` *(+24/-0)*
+- `package.json` *(+2/-6)*
+- `packages/agents/package.json` *(+1/-0)*
+- `packages/better-ws/package.json` *(+1/-0)*
+- `packages/cap-vite/package.json` *(+1/-0)*
+- `packages/ccc/package.json` *(+1/-0)*
+- `packages/electron-screen-capture/package.json` *(+1/-1)*
+- `packages/input-gamepad-vueuse/package.json` *(+1/-0)*
+- `packages/input-gamepad/package.json` *(+1/-0)*
+- `packages/input-playstation-dualsense-5/package.json` *(+1/-0)*
+- `packages/mathjson/package.json` *(+35/-0)*
+- `packages/mathjson/tsconfig.json` *(+14/-0)*
+- `packages/model-driver-lipsync/package.json` *(+1/-0)*
+- `packages/plugin-sdk-tamagotchi/package.json` *(+1/-0)*
+- `packages/plugin-sdk/package.json` *(+1/-0)*
+- `packages/scenarios-stage-tamagotchi-browser/package.json` *(+1/-0)*
+- `packages/server-runtime/package.json` *(+1/-0)*
+- `packages/server-sdk/package.json` *(+1/-0)*
+- `packages/speech-transformer-chem/package.json` *(+45/-0)*
+- `packages/speech-transformer-chem/tsconfig.json` *(+14/-0)*
+- `packages/speech-transformer-math/package.json` *(+39/-0)*
+- `packages/speech-transformer-math/tsconfig.json` *(+14/-0)*
+- `packages/stage-shared/package.json` *(+1/-0)*
+- `packages/stream-kit/package.json` *(+1/-0)*
+- `packages/vite-plugin-sherpaw/package.json` *(+1/-0)*
+- `packages/vitest-plugin-fakemic/package.json` *(+1/-0)*
+- `pnpm-lock.yaml` *(+992/-690)*
+- `turbo.json` *(+9/-0)*
+
+#### Telemetry & Analytics (`⚪ ignore / rejected in fork`) — 2 file(s) (+53/-0)
+- `evals/tts-speech-formula/eval/shared/telemetry.test.ts` *(+9/-0)*
+- `evals/tts-speech-formula/eval/shared/telemetry.ts` *(+44/-0)*
+
+#### Core Agent Runtime (`🔍 inspect`) — 27 file(s) (+1314/-211)
+- `packages/core-agent/README.md` *(+24/-1)*
+- `packages/core-agent/package.json` *(+5/-0)*
+- `packages/core-agent/src/voice/index.ts` *(+4/-0)*
+- `packages/core-agent/src/voice/output/response.test.ts` *(+41/-0)*
+- `packages/core-agent/src/voice/output/response.ts` *(+83/-56)*
+- `packages/core-agent/src/voice/output/speech-text.test.ts` *(+0/-41)*
+- `packages/core-agent/src/voice/output/speech-text.ts` *(+0/-113)*
+- `packages/core-agent/src/voice/output/speech-transformation/index.test.ts` *(+143/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/index.ts` *(+223/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/language.test.ts` *(+25/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/language.ts` *(+27/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/markdown.test.ts` *(+11/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/markdown.ts` *(+18/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/index.test.ts` *(+54/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/index.ts` *(+3/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/math/bare-latex.test.ts` *(+21/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/math/bare-latex.ts` *(+89/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/math/index.ts` *(+33/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/math/speech.test.ts` *(+12/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/math/speech.ts` *(+20/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/money/index.ts` *(+19/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/money/locales.ts` *(+24/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/money/prices.test.ts` *(+22/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/money/prices.ts` *(+76/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/preprocessor/types.ts` *(+37/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/segmenter.test.ts` *(+60/-0)*
+- `packages/core-agent/src/voice/output/speech-transformation/segmenter.ts` *(+240/-0)*
+
+#### Localization (i18n) (`📦 import (additive only)`) — 12 file(s) (+8/-91)
+- `packages/i18n/package.json` *(+1/-0)*
+- `packages/i18n/src/locales/es/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/fr/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/ja/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/ko/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/ru/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/th/settings.yaml` *(+0/-10)*
+- `packages/i18n/src/locales/vi/settings.yaml` *(+0/-9)*
+- `packages/i18n/src/locales/zh-Hans/settings.yaml` *(+5/-12)*
+- `packages/i18n/src/locales/zh-Hans/stage.yaml` *(+2/-3)*
+- `packages/i18n/src/locales/zh-Hans/tamagotchi/stage.yaml` *(+0/-3)*
+- `packages/i18n/src/locales/zh-Hant/settings.yaml` *(+0/-9)*
+
+#### 3D, Live2D & Motion (`🔍 inspect`) — 3 file(s) (+3/-11)
+- `packages/stage-ui-live2d/package.json` *(+2/-1)*
+- `packages/stage-ui-live2d/vitest.node.config.ts` *(+0/-10)*
+- `packages/stage-ui-three/package.json` *(+1/-0)*
+
+#### Cognitive & Consciousness (`⚠️ hand-merge`) — 2 file(s) (+141/-1)
+- `packages/stage-ui/src/stores/chat/session-store-lifecycle.browser.test.ts` *(+98/-0)*
+- `packages/stage-ui/src/stores/chat/session-store.ts` *(+43/-1)*
+
+#### Cloud Services, Billing & Auth (`⚪ ignore / rejected in fork (offline-first architecture)`) — 6 file(s) (+131/-1)
+- `server/apps/api/package.json` *(+1/-0)*
+- `server/apps/api/src/services/domain/chats.test.ts` *(+29/-0)*
+- `server/apps/api/src/services/domain/chats.ts` *(+12/-1)*
+- `server/apps/auth/package.json` *(+1/-0)*
+- `server/docs/ai/adr/2026-10-09-chat-list-members.md` *(+87/-0)*
+- `server/packages/http-error-shared/package.json` *(+1/-0)*
+
+### 📬 Upstream Activity Radar
+#### 🆕 New Items Opened (8)
+- [PR] [#3060](https://github.com/moeru-ai/airi/pull/3060) `feat(stage-tamagotchi): rework the floating chat dock and its styles` by **@chiba233** *(3 comments)*
+- [PR] [#3061](https://github.com/moeru-ai/airi/pull/3061) `docs(evals): add datasets, results, and conclusion to the formula speech eval` by **@nekomeowww** *(3 comments)*
+- [PR] [#3059](https://github.com/moeru-ai/airi/pull/3059) `feat(stage-ui): add data export and import controls` by **@nayounsang** *(Draft)* *(1 comments)*
+- [PR] [#3058](https://github.com/moeru-ai/airi/pull/3058) `chore(evals,core-agent): clean up the formula speech eval` by **@nekomeowww** *(3 comments)*
+- [PR] [#3057](https://github.com/moeru-ai/airi/pull/3057) `fix(repo): stop VS Code Java extensions from scanning node_modules` by **@nekomeowww** *(3 comments)*
+- [PR] [#3056](https://github.com/moeru-ai/airi/pull/3056) `chore(nix): update pnpmDeps hash` by **@Weathercold** *(3 comments)*
+- [PR] [#3055](https://github.com/moeru-ai/airi/pull/3055) `chore(repo): remove obsolete files and configuration` by **@jim139129** *(3 comments)*
+- [PR] [#3054](https://github.com/moeru-ai/airi/pull/3054) `feat(core-agent,stage-ui): now speech formula, math, chem correctly` by **@nekomeowww** *(3 comments)*
+
+#### 🔄 Status & Lifecycle Changes (7)
+- [PR] [#3048](https://github.com/moeru-ai/airi/pull/3048) `test: run workspace tests through Turbo` — `OPEN` ➔ `MERGED`
+- [PR] [#3037](https://github.com/moeru-ai/airi/pull/3037) `docs(agents): run the tests of branch changes before a PR` — `OPEN` ➔ `MERGED`
+- [PR] [#2871](https://github.com/moeru-ai/airi/pull/2871) `docs(agents): require UI test review on the final commit` — `OPEN` ➔ `CLOSED`
+- [PR] [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` — `OPEN` ➔ `CLOSED`
+- [PR] [#2852](https://github.com/moeru-ai/airi/pull/2852) `feat(server,stage-ui,stage-pages): sync character cards between devices` — `OPEN` ➔ `CLOSED`
+- [PR] [#2991](https://github.com/moeru-ai/airi/pull/2991) `chore(i18n): update translations` — `OPEN` ➔ `MERGED`
+- [PR] [#2874](https://github.com/moeru-ai/airi/pull/2874) `fix(api,stage-ui): keep the character of synchronized chats` — `OPEN` ➔ `MERGED`, `Draft` ➔ `Ready`
+
+#### 💬 Discussion Activity (14)
+- [PR] [#2856](https://github.com/moeru-ai/airi/pull/2856) `refactor(ui): unify audited business controls` — *+1 comments (1 ➔ 2 total)*
+- [PR] [#3048](https://github.com/moeru-ai/airi/pull/3048) `test: run workspace tests through Turbo` — *+2 comments (6 ➔ 8 total)*
+- [PR] [#2964](https://github.com/moeru-ai/airi/pull/2964) `feat(stage-ui): record one span for each chat request and each tool call` — *+1 comments (5 ➔ 6 total)*
+- [PR] [#3000](https://github.com/moeru-ai/airi/pull/3000) `feat(memory-eval): add identity-continuity evaluation package` — *+1 comments (119 ➔ 120 total)*
+- [PR] [#3037](https://github.com/moeru-ai/airi/pull/3037) `docs(agents): run the tests of branch changes before a PR` — *+1 comments (3 ➔ 4 total)*
+- [PR] [#2935](https://github.com/moeru-ai/airi/pull/2935) `fix(tamagotchi): clamp ttlMs to prevent 32-bit setTimeout overflow in widget destruction` — *+7 comments (41 ➔ 48 total)*
+- [PR] [#2937](https://github.com/moeru-ai/airi/pull/2937) `fix(tamagotchi): replace invalid app.getPath('cache') with app.getPath('userData')/cache` — *+8 comments (25 ➔ 33 total)*
+- [PR] [#2936](https://github.com/moeru-ai/airi/pull/2936) `fix(tamagotchi): guard payload.url access in artistryTestComfyUIConnection to prevent TypeError` — *+3 comments (14 ➔ 17 total)*
+- [PR] [#2932](https://github.com/moeru-ai/airi/pull/2932) `fix(tamagotchi): await setupBaseWindowElectronInvokes in widgets RPC setup` — *+5 comments (20 ➔ 25 total)*
+- [PR] [#3052](https://github.com/moeru-ai/airi/pull/3052) `fix(provider-inference): prefer current MiniMax chat models` — *+3 comments (3 ➔ 6 total)*
+- [PR] [#2934](https://github.com/moeru-ai/airi/pull/2934) `fix(tamagotchi): use showWindowOnAllWorkspaces to prevent Dock icon restoring on macOS` — *+8 comments (21 ➔ 29 total)*
+- [PR] [#2991](https://github.com/moeru-ai/airi/pull/2991) `chore(i18n): update translations` — *+2 comments (10 ➔ 12 total)*
+- [PR] [#2874](https://github.com/moeru-ai/airi/pull/2874) `fix(api,stage-ui): keep the character of synchronized chats` — *+2 comments (1 ➔ 3 total)*
+- [PR] [#3022](https://github.com/moeru-ai/airi/pull/3022) `feat(api,ui,stage-ui,stage-layouts,stage-tamagotchi): show account Notifications from AIRI Cloud` — *+1 comments (3 ➔ 4 total)*
+
+### 👁️ Watched Upstream Monitor
+- [#2634](https://github.com/moeru-ai/airi/pull/2634) `[WIP] feat(cortico-bridge): embed Cortico persona core as AIRI's brain` [Draft] — *(1 comments)*
+  - *Focus*: External Cortico daemon vs in-process native memory; track maintainer reaction to 2-process / web breakage
+- [#2672](https://github.com/moeru-ai/airi/pull/2672) `refactor(stage-ui): bind conversations to window-local characters` [Draft] — *(48 comments)*
+  - *Focus*: Window-local character selection, conversation scoping, standalone card profile page, shared CharacterCard
+- [#2541](https://github.com/moeru-ai/airi/pull/2541) `Telltworose/feat/drop in plugins` [OPEN] — *(59 comments)*
+  - *Focus*: MCP stdio child processes & card-level tool scoping; track author rebase and explanation to maintainers regarding deleted in-process loader
+- [#2290](https://github.com/moeru-ai/airi/pull/2290) `feat(server): stream official ASR over WebSocket` [OPEN] — *(59 comments)*
+  - *Focus*: Official ASR streaming over WebSocket vs OpenAI-compatible HTTP SSE; track rebase and backend transport decisions
+- [PR] [#2120](https://github.com/moeru-ai/airi/pull/2120) `refactor(stage-pages): rebuild AIRI Card editor` [CLOSED] — *(41 comments)*
+  - *Focus*: Card editor overhaul in stage-pages, dirty draft protection, route vs modal lifecycles
+- [PR] [#2980](https://github.com/moeru-ai/airi/pull/2980) `feat(stage-ui,stage-pages): add voiceprint enrollment` [MERGED] — *(15 comments)*
+  - *Focus*: Local speaker diarization & CAM++ voiceprint enrollment; track worker bundling, enrollment UX, and WASM performance for fork port
+- [PR] [#2552](https://github.com/moeru-ai/airi/pull/2552) ` add bilingual subtitles` [OPEN] — *(36 comments)*
+  - *Focus*: Bilingual subtitle rendering in stage overlays; monitor for closure/merge to evaluate for fork adoption
+- [PR] [#3000](https://github.com/moeru-ai/airi/pull/3000) `feat(memory-eval): add identity-continuity evaluation package` [OPEN] — 🚨 **+1 comments** (120 total)
+  - *Focus*: Mathematical metrics (Wasserstein-1, GMM BIC bimodality, fixed-point operator) for persona continuity during long-turn memory compression; monitor maintainer triage and package boundary placement
+
+---
 ## [2026-10-20] Upstream Delta: `7858795f..bc41885f` (12 commits, 119 files, 21 update(s))
 
 ### 🎯 Executive Highlights

@@ -75,6 +75,35 @@ The following rules can be independently toggled by the user:
 - **Location**: Append a new section to the **Left Column** (`md:w-[40%]`) titled "Universal Transformers".
 - **Interaction**: Uses `FieldCheckbox` for toggles and `FieldInput` for the Tilde replacement string.
 
+## 6. Planned Extension: Mathematical, Chemical & Currency Spoken Normalization (PR #3054, #3058)
+
+> **Originating Upstream PRs**:
+> - [PR #3054](https://github.com/moeru-ai/airi/pull/3054): `feat(core-agent,stage-ui): now speech formula, math, chem correctly` (Author: `@nekomeowww`)
+> - [PR #3058](https://github.com/moeru-ai/airi/pull/3058): `chore(evals,core-agent): clean up the formula speech eval` (Author: `@nekomeowww`)
+
+### A. Architectural Overview & Modular Packages
+Standard TTS engines frequently stumble, spell out raw LaTeX markup character-by-character (e.g. `\frac{a}{b}` -> *"backslash frac open-brace a close-brace..."*), or pronounce chemical formulas like random acronyms. Upstream solved this by introducing three self-contained packages that convert TeX and chemical notation into natural spoken words across English, Japanese, Korean, and Chinese prior to synthesis.
+
+In `dasilva333/airi`, these capabilities will be imported as modular UST transformers rather than baked into core agent runtimes:
+- `@proj-airi/mathjson`: MathJSON AST definition and speech heads.
+- `@proj-airi/speech-transformer-math`: TeX formula parser, lowerer, and spoken language renderer (`en`, `ja`, `ko`, `zh`).
+- `@proj-airi/speech-transformer-chem`: `mhchem` chemical formula verbalizer.
+
+### B. Optional Features & Default Policy
+These transformations must **never be forced globally or unconditionally**. They will be exposed in the Speech Settings panel alongside existing UST checkboxes with explicit default policies:
+
+| Feature / Transformer | Description | Proposed Default | Rationale |
+| :--- | :--- | :--- | :--- |
+| **Currency & Price Normalization** | Verbalizes currency symbols and decimal amounts (e.g. `$25.50` -> *"twenty-five dollars and fifty cents"*, `¥1200` -> *"one thousand two hundred yen"*). | **ON (Opt-Out)** | Universal expectation for natural conversational speech; minimal false positive risk. |
+| **Mathematical Equation Speech** | Parses inline and block TeX math (`$...$`, `$$...$$`, `\begin{equation}`) into spoken language via MathJSON. | **OFF (Opt-In)** | Complex math substantially expands spoken utterance length; users in technical or programming contexts may prefer reading raw notation or skipping math speech. |
+| **Chemical Notation Speech** | Verbalizes chemical formulas and reactions (e.g. `\ce{H2O}` -> *"water"* or *"H two O"*). | **OFF (Opt-In)** | Specialized scientific domain; should only activate when intentionally desired by the user. |
+
+### C. Implementation & Pipeline Integration Strategy
+1. **Packages Import**: Bring `@proj-airi/mathjson`, `@proj-airi/speech-transformer-math`, and `@proj-airi/speech-transformer-chem` into `packages/`. Omit the 17,000+ line `evals/tts-speech-formula` evaluation dataset to keep repository footprint lean.
+2. **UST State**: Add `transformerMathEnabled`, `transformerChemEnabled`, and `transformerCurrencyEnabled` to `packages/stage-ui/src/stores/modules/speech.ts` using `useLocalStorageManualReset`.
+3. **Execution Hook**: Integrate into `transformTextForSpeech(input, options)` in `packages/stage-ui/src/stores/modules/speech.ts` after bracket/ACT stripping and before final TTS audio chunking.
+4. **Boundary Guard**: Ensure `packages/pipelines-audio/src/processors/tts-chunker.ts` respects formula span boundaries to prevent splitting mathematical or chemical expressions mid-token across audio synthesis requests.
+
 ## Relevant Skills
 
 - [[airi-audio-pipeline]]
