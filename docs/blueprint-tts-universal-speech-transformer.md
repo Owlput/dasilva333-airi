@@ -104,6 +104,79 @@ These transformations must **never be forced globally or unconditionally**. They
 3. **Execution Hook**: Integrate into `transformTextForSpeech(input, options)` in `packages/stage-ui/src/stores/modules/speech.ts` after bracket/ACT stripping and before final TTS audio chunking.
 4. **Boundary Guard**: Ensure `packages/pipelines-audio/src/processors/tts-chunker.ts` respects formula span boundaries to prevent splitting mathematical or chemical expressions mid-token across audio synthesis requests.
 
+## 7. Next-Generation Audio Studio: 2-Column Split-Screen & Sticky Voice Playground
+
+### A. Layout Paradigm: 2-Column Studio vs. Legacy 1-Column
+The legacy 1-column layout placed the transformation preview and audio test button at the bottom of the page. This forced users to repeatedly scroll down to preview transformations and scroll back up to tweak settings, introducing heavy interaction friction.
+
+The next-generation design establishes a **2-Column Split-Screen Studio**:
+- **Left Column (`w-full lg:w-[58%]`)**: The structured configuration stream organized into three distinct cards.
+- **Right Column (`w-full lg:w-[42%]`)**: The **Sticky Voice Playground** (`Follows scroll`), remaining pinned in view as the user scrolls, providing instantaneous visual transformation feedback and audio playback.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ <  Providers > Speech > [ Audio Studio ]                                                               │
+│ Audio Studio                                    [ juewa · Deepgram / aura-2-amalthea-en v ] [+ New] [···]│
+│ Shape how your companion sounds — and what gets spoken.                                                │
+│                                                                                                        │
+│ [ Profile ]   [ Audio Effects ]   [ Speech Cleanup (active) ]                                          │
+├──────────────────────────────────────────────────────┬─────────────────────────────────────────────────┤
+│ CONFIGURATION STREAM (Left Column)                   │ STICKY VOICE PLAYGROUND (Right Column)          │
+│                                                      │                                                 │
+│ ┌─ Card 1: Universal Speech Transformer ──────────┐  │ ┌─ Voice Playground ────────── [📌 Follows scroll]┐│
+│ │ Clean and transform text before voice provider. (o)│  │ │ Test this profile as you tune.               ││
+│ │                                                 │  │ │ [ juewa · Deepgram · amalthea · English ]     ││
+│ │ Brackets & stage directions:                    │  │ │                                               ││
+│ │  Asterisks *...*      [Mute] [Flatten] [Pass thru]│  │ │ Test text:                                   ││
+│ │  Square brackets [...] [Mute] [Flatten] [Pass thru]│  │ │  ┌───────────────────────────────────────┐   ││
+│ │                                    [To token]   │  │ │  │ *smiles* Your total is $19.99 😊        │   ││
+│ │  Parentheses (...)    [Mute] [Flatten] [Pass thru]│  │ │  │ Let's try a softer voice.              │   ││
+│ │  Angle brackets <...> [Mute] [Flatten] [Pass thru]│  │ │  └───────────────────────────────────────┘   ││
+│ │  + Custom bracket     Mute: skip · Flatten: keep │  │ │  [ Everyday dialogue v ]  [✨ Transform text]││
+│ └─────────────────────────────────────────────────┘  │ │                                               ││
+│                                                      │ │ Text sent to TTS:                             ││
+│ ┌─ Card 2: Notation & technical speech ───────────┐  │ │  ┌───────────────────────────────────────┐   ││
+│ │ Choose how technical content is spoken.         │  │ │  │ smiles Your total is nineteen dollars  │   ││
+│ │  Math formulas        [Verbalize] [Mute] [Pass th]│  │ │  │ and ninety-nine cents. Let's try a     │   ││
+│ │  Chemical notation    [Verbalize] [Mute] [Pass th]│  │ │  │ softer voice.                          │   ││
+│ │  Code blocks                      [Mute] [Pass th]│  │ │  └───────────────────────────────────────┘   ││
+│ │  [x] Read currency naturally ($19.99 → words)   │  │ │  Text preview · no speech request             ││
+│ │  Formula language: [ Auto · Voice profile     v ]│  │ │                                               ││
+│ └─────────────────────────────────────────────────┘  │ │ Listen with current settings:                 ││
+│                                                      │ │  🔊 |||||||||||||||||||||||||||||||| 0:00/0:06││
+│ ┌─ Card 3: Symbols & replacements ────────────────┐  │ │  [ ▶ Generate & play ]                 [⏹]   ││
+│ │  [x] Strip emojis    [x] Strip symbols & kaomoji│  │ │  Uses your TTS provider. Includes audio FX.││
+│ │  Tilde replacement: [ nyan ] Leave empty to purge│  │ │  ✓ Up to date    Test text stays on tab switch││
+│ │  > Custom replacement rules (2)       [+ Add rule]│  │ └───────────────────────────────────────────────┘│
+│ └─────────────────────────────────────────────────┘  │                                                 │
+│ ✓ Changes saved                                      │                                                 │
+└──────────────────────────────────────────────────────┴─────────────────────────────────────────────────┘
+```
+
+### B. Form Refinements & Terminology Synthesis
+Synthesizing both designs delivers critical ergonomic and cognitive upgrades:
+1. **"Pass through" Terminology**: Replaces ambiguous "Ignore" with "Pass through". "Ignore" left users wondering whether text is muted or spoken; "Pass through" explicitly denotes that markers and text are passed unaltered to the voice provider.
+2. **"To token" Terminology**: Streamlines "Convert To Token" to "To token", cleanly accommodating square brackets (`[...]`) for ACT emotion token routing.
+3. **Inline Syntax Legend**: Embeds `Mute: skip contents · Flatten: keep text, remove markers · Pass through: unchanged` below the bracket table, removing guesswork without requiring modal help dialogs.
+4. **Three-Tier Card Hierarchy**:
+   - **Card 1: Brackets & stage directions**: Roleplay formatting, actions, emotion cues, whispered aside markers, and extensible custom brackets.
+   - **Card 2: Notation & technical speech**: MathJSON TeX equation verbalization, `mhchem` chemical formulas, code block suppression, currency expansion, and formula locale selection.
+   - **Card 3: Symbols & replacements**: Pictograph stripping, kaomoji cleaning, tilde reading, and user-defined regex/plain text substitution rules.
+5. **Autosave State Feedback**: Displays `✓ Changes saved` in the lower-left corner upon reactive update, eliminating manual save buttons while confirming persistence.
+
+### C. Sticky Voice Playground Architecture
+The Voice Playground serves as an all-in-one testing harness:
+- **Sticky Viewport Pinning**: Uses UnoCSS `sticky top-6` so the testing harness remains visible regardless of vertical scroll depth on the left.
+- **Preset Test Dialogues**: Includes quick-pick sample prompts (`Everyday dialogue`, `Technical / Math`, `Roleplay emotes`, `Code & markdown`) allowing instant verification of active transformation rules.
+- **Dual Verification Modes**:
+  1. **Instant Offline Preview (`✨ Transform text`)**: Runs `transformTextForSpeech` client-side in sub-millisecond time, immediately populating the `Text sent to TTS` preview box without spending provider API credits or audio compute.
+  2. **End-to-End Audio Synthesis (`▶ Generate & play`)**: Renders full audio using the active voice profile and passes the stream through Web Audio DSP effects (pitch, rate, ASMR filter, radio filter, cathedral reverb).
+- **Tab State Persistence**: Test inputs remain cached in memory when switching between `Profile`, `Audio Effects`, and `Speech Cleanup` tabs.
+
+### D. Header & Voice Profile Navigation
+- **Searchable Profile Popover**: The header voice profile selector opens a search-filtered dropdown (`Filter profiles...`) showing configured voices (`juewa`, `sofi`, `asuka`) with active checks, `+ New profile` creation, and secondary options (`···` duplicate/delete).
+- **Semantic Tab Labeling**: Organizes Audio Studio into `Profile` (provider/model/voice binding), `Audio Effects` (DSP Web Audio filters), and `Speech Cleanup` (Universal Speech Transformer).
+
 ## Relevant Skills
 
 - [[airi-audio-pipeline]]

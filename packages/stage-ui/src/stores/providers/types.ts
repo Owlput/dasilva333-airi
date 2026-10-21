@@ -147,7 +147,10 @@ export interface ProviderRuntimeState {
   models: ModelInfo[]
 }
 
-export type BracketAction = 'mute' | 'flatten' | 'ignore' | 'token'
+export type BracketAction = 'mute' | 'flatten' | 'passThrough' | 'ignore' | 'token'
+export type NotationAction = 'verbalize' | 'mute' | 'passThrough' | 'ignore'
+export type CodeBlockAction = 'mute' | 'passThrough' | 'ignore'
+export type FormulaLanguage = 'auto' | 'en' | 'ja' | 'ko' | 'zh'
 
 export interface ProviderInstanceConfig {
   /** Globally unique storage key: `${providerId}:${id}`. */
@@ -211,6 +214,13 @@ export interface VoiceProfile {
     customBracketStart: string
     customBracketEnd: string
     customBracketAction: BracketAction
+
+    // Notation & Technical Speech (UST V3 / PR #3054)
+    mathFormulas?: NotationAction
+    chemicalNotation?: NotationAction
+    codeBlocks?: CodeBlockAction
+    readCurrencyNaturally?: boolean
+    formulaLanguage?: FormulaLanguage
 
     stripEmojis: boolean
     stripSymbols: boolean
