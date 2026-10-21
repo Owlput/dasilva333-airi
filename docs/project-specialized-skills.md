@@ -89,9 +89,9 @@ The catalog contains 73 discoverable skills. Desktop chatbox and interaction pip
 - **Content**: `AiriCard` and `AiriExtension` structure, Valibot schema validation, PNG `tEXt` chunk writing (`chara` keyword → base64 UTF-8 JSON → zlib CRC-32 per PNG tEXt chunk rules), and Electron webview `will-download` interception for `.png` card imports.
 
 #### 1.7 `airi-cloud-relay-infrastructure`
-- **Target Domain**: Serverless Edge Workers, BYOS Cloud Sync & Remote Proxy Infrastructure.
-- **Key Paths**: `apps/stage-edge/`, `docs/design-cloud-relay.md`, `docs/project-byos-cloud-sync.md`, `docs/project-audit-cloudsync.md`, `docs/superpowers/specs/2026-07-04-commercial-backend-phase-1-provider-data-boundary-design.md`.
-- **Content**: Deploying and maintaining Cloudflare Workers, Edge KV memory models, BYOS cloud sync outbox queues, commercial API server proxy boundaries, and `PERSONAL_DATA_CLOUD_SYNC_ENABLED` storage guards.
+- **Target Domain**: Serverless Edge Workers, BYOS Cloud Sync, Remote Proxy Infrastructure, & Stateful Discord Gateway Durable Objects.
+- **Key Paths**: `apps/stage-edge/`, `apps/stage-edge-discord-do/`, `packages/gateway-discord/`, `docs/design-cloud-relay.md`, `docs/project-byos-cloud-sync.md`, `docs/project-audit-cloudsync.md`, `docs/superpowers/specs/2026-07-04-commercial-backend-phase-1-provider-data-boundary-design.md`.
+- **Content**: Deploying and maintaining Cloudflare Workers, Edge KV memory models, SQLite Durable Object (`DiscordHostDO`, `EmbassyDO`) stateful presence, Discord Gateway WebSocket connection lifecycles, 15-minute hardcoded idle sleep alarms, privileged `MESSAGE_CONTENT` intents, BYOS cloud sync outbox queues, commercial API server proxy boundaries, and `CloudflareStageDeployer` automation.
 
 #### 1.8 `airi-byos-cloud-sync`
 - **Target Domain**: Bring Your Own Storage (BYOS) active-state cloud backup, S3/R2/Google Drive adapters, unstorage outbox queues, IndexedDB sync reconciliations, multi-device state sync.
