@@ -255,6 +255,69 @@ describe('useEmbassyInboxStore', () => {
     store.disconnect()
   })
 
+  it('stages outbound drafts at review and edits/discards them before dispatch', async () => {
+    // ROOT CAUSE: the preview workbench queued into a local ref, so Approve
+    // never touched the transport. Staged drafts must live in this store.
+    const { store } = setup()
+    const id = store.queueOutbound('peer-yuki', 'Yuki', 'Hello from preview')
+    expect(store.stagedOutbound).toHaveLength(1)
+    expect(store.stagedOutbound[0]).toMatchObject({ id, peerId: 'peer-yuki', status: 'review' })
+    store.updateStagedText(id, 'Edited draft')
+    expect(store.stagedOutbound[0].text).toBe('Edited draft')
+    store.discardStaged(id)
+    expect(store.stagedOutbound).toHaveLength(0)
+    store.disconnect()
+  })
+
+  it('approve without transport falls back to waiting instead of dropping the draft', async () => {
+    const { store } = setup()
+    const id = store.queueOutbound('peer-yuki', 'Yuki', 'Hello')
+    const res = await store.approveStaged(id)
+    expect(res.ok).toBe(false)
+    expect(store.stagedOutbound[0].status).toBe('waiting')
+    store.disconnect()
+  })
+
+  it('approve dispatches via Edge transport and marks sent on success', async () => {
+    // NOTICE: the Edge transport binds fetchFn at connect time, so the stub
+    // must ride in via connect options — a late global stub misses it.
+    const { store } = setup()
+    const fetchCalls: string[] = []
+    await store.connect({
+      workerUrl: 'https://airi-stage-edge.test.workers.dev',
+      ownerId: 'owner-1',
+      machineId: 'test-machine',
+      socketImpl: FakeSocket as any,
+      fetchFn: (async (url: any) => {
+        fetchCalls.push(String(url))
+        return new Response('{}', { status: 200 })
+      }) as any,
+    })
+    FakeSocket.instances[0].simulateOpen()
+
+    const { usePeersStore } = await import('./peers')
+    const peers = usePeersStore()
+    await peers.upsertPeer({
+      id: 'peer-yuki',
+      alias: 'yuki',
+      characterName: 'Yuki',
+      relationship: 'external-friend',
+      trustState: 'trusted',
+      lastSeenTimestamp: Date.now(),
+      endpoints: { cloudflareWorkerUrl: 'https://yuki.workers.dev' },
+      shareHandle: 'yuki.workers.dev',
+      allowedCapabilities: { canNapChat: true, canShareMemories: false, canStreamSensory: false },
+      allowedCompanionIds: [],
+    })
+
+    const id = store.queueOutbound('peer-yuki', 'Yuki', 'Hello via Edge')
+    const res = await store.approveStaged(id)
+    expect(res).toEqual({ ok: true })
+    expect(store.stagedOutbound[0].status).toBe('sent')
+    expect(fetchCalls.some(u => u.startsWith('https://yuki.workers.dev/api/friends/inbox'))).toBe(true)
+    store.disconnect()
+  })
+
   it('marks inbound request as accepted and excludes from pendingRequests if peer is already trusted', async () => {
     const { store } = setup()
     await connect(store)

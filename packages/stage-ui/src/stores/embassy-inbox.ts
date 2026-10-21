@@ -20,6 +20,22 @@ export interface EmbassyInboxConnectOptions {
   fetchFn?: typeof fetch
 }
 
+export interface StagedOutboundMessage {
+  id: string
+  peerId: string
+  peerName: string
+  text: string
+  status: 'review' | 'waiting' | 'sending' | 'sent' | 'failed'
+  createdAt: number
+  error?: string
+}
+
+function makeStagedId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    return `staged-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
+  return `staged-${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`
+}
+
 interface EmbassySocketHandle {
   disconnect: () => void
   sendSync: () => boolean
@@ -48,6 +64,10 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
   const inboundRequests = ref<FriendRequest[]>([])
   const ignoredIds = ref<Set<string>>(new Set())
   const recentTurns = ref<Array<{ topic: string, payload: unknown, senderId: string, timestamp: number }>>([])
+  // NOTICE: human-in-the-loop staging queue for the nap-chat preview workbench.
+  // Drafts sit at `review` until the user approves; approval attempts a real
+  // `transport.sendToPeer` and lands on `sent` or falls back to `waiting`.
+  const stagedOutbound = ref<StagedOutboundMessage[]>([])
 
   let socket: EmbassySocketHandle | null = null
   let transport: ReturnType<typeof createCloudflareEdgeTransport> | null = null
@@ -325,6 +345,51 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
     return transport
   }
 
+  function queueOutbound(peerId: string, peerName: string, text: string): string {
+    const id = makeStagedId()
+    stagedOutbound.value.unshift({ id, peerId, peerName, text, status: 'review', createdAt: Date.now() })
+    return id
+  }
+
+  function updateStagedText(id: string, text: string) {
+    const entry = stagedOutbound.value.find(m => m.id === id)
+    if (entry)
+      entry.text = text
+  }
+
+  function discardStaged(id: string) {
+    stagedOutbound.value = stagedOutbound.value.filter(m => m.id !== id)
+  }
+
+  function dismissTurn(senderId: string, timestamp: number) {
+    recentTurns.value = recentTurns.value.filter(t => t.senderId !== senderId || t.timestamp !== timestamp)
+  }
+
+  async function approveStaged(id: string): Promise<{ ok: boolean, error?: string }> {
+    const entry = stagedOutbound.value.find(m => m.id === id)
+    if (!entry)
+      return { ok: false, error: 'Unknown staged message.' }
+    entry.status = 'sending'
+    entry.error = undefined
+    if (!transport) {
+      entry.status = 'waiting'
+      entry.error = 'Transport offline — staged for delivery.'
+      return { ok: false, error: entry.error }
+    }
+    try {
+      const ok = await transport.sendToPeer(entry.peerId, NAP_CHAT_TOPICS.turn, { text: entry.text })
+      entry.status = ok ? 'sent' : 'waiting'
+      if (!ok)
+        entry.error = 'Recipient unreachable — staged for delivery.'
+      return ok ? { ok: true } : { ok: false, error: entry.error }
+    }
+    catch (err: any) {
+      entry.status = 'waiting'
+      entry.error = err?.message || 'Send failed — staged for delivery.'
+      return { ok: false, error: entry.error }
+    }
+  }
+
   return {
     connected,
     socketStatus,
@@ -332,11 +397,17 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
     inboundRequests,
     pendingRequests,
     recentTurns,
+    stagedOutbound,
     connect,
     disconnect,
     ignoreRequest,
     acceptRequest,
     getTransport,
+    queueOutbound,
+    updateStagedText,
+    discardStaged,
+    dismissTurn,
+    approveStaged,
     waitForMutualResolutions,
   }
 })

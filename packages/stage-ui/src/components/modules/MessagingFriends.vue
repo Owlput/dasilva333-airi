@@ -3,7 +3,7 @@ import type { AmbassadorCard, ExternalFriend, FriendRequest, Peer } from '@proj-
 
 import type { NapTurn } from '../../stores/nap-chat'
 
-import { extractHandleAlias, isExternalFriend, isSameAccountDevice } from '@proj-airi/stage-shared'
+import { extractHandleAlias, isCompanionAllowedForFriend, isExternalFriend, isNapChatEligible, isSameAccountDevice } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -22,11 +22,18 @@ import { toast } from 'vue-sonner'
 import affectionateSticker from '../../assets/stickers/airi-affectionate.png'
 
 import { normalizeAddress, usePeerEmbassy } from '../../composables/use-peer-embassy'
+import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useEmbassyInboxStore } from '../../stores/embassy-inbox'
+import { useLLM } from '../../stores/llm'
+import { useTextJournalStore } from '../../stores/memory-text-journal'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
+import { useConsciousnessStore } from '../../stores/modules/consciousness'
 import { DEFAULT_SOCIAL_PROMPT_GUIDANCE, useNapChatStore } from '../../stores/nap-chat'
+import { NAP_COORDINATOR_MAX_TURNS, useNapChatCoordinatorStore } from '../../stores/nap-chat-coordinator'
 import { usePeersStore } from '../../stores/peers'
+import { isUserAway } from '../../stores/proactivity-telemetry'
+import { useProvidersStore } from '../../stores/providers'
 import { useSettingsUserProfile } from '../../stores/settings/user-profile'
 
 const { copy: copyToClipboard } = useClipboard()
@@ -51,6 +58,12 @@ const {
 } = storeToRefs(napChatStore)
 const embassy = usePeerEmbassy()
 const embassyInboxStore = useEmbassyInboxStore()
+const napChatCoordinatorStore = useNapChatCoordinatorStore()
+const llmStore = useLLM()
+const providersStore = useProvidersStore()
+const consciousnessStore = useConsciousnessStore()
+const chatSessionStore = useChatSessionStore()
+const textJournalStore = useTextJournalStore()
 const router = useRouter()
 
 // NOTICE: Stable empty reference — never allocate `[]` inside a computed.
@@ -270,6 +283,64 @@ const simGuidance = ref(DEFAULT_SOCIAL_PROMPT_GUIDANCE)
 const simIsGenerating = ref(false)
 const simShowEligibility = ref(false)
 
+// Live eligibility: simulated absence + real roster + coordinator gate.
+// Uses the same `evaluateTrigger` the autonomous loop uses, so the preview
+// checklist cannot drift from production behavior.
+const availableLocalCompanions = computed(() => {
+  const list: Array<{ id: string, name: string }> = []
+  if (airiCardStore.cards && airiCardStore.cards.size > 0) {
+    for (const [id, card] of airiCardStore.cards.entries()) {
+      list.push({ id, name: card.name || id })
+    }
+  }
+  if (list.length === 0 && airiCardStore.activeCard) {
+    list.push({ id: (airiCardStore.activeCardId as string) || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
+  }
+  if (list.length === 0) {
+    list.push({ id: 'airi', name: 'AIRI' })
+  }
+  return list
+})
+const simCompanionKey = computed(() => {
+  if (simCompanionId.value !== 'current')
+    return simCompanionId.value
+  const activeId = airiCardStore.activeCardId as string | undefined
+  if (activeId)
+    return String(activeId)
+  return availableLocalCompanions.value[0]?.id || 'current'
+})
+const simIdleSec = computed(() => (Number.parseInt(simAbsence.value, 10) || 15) * 60)
+const simEvaluation = computed(() => {
+  return napChatCoordinatorStore.evaluateTrigger(simIdleSec.value, peersStore.roster, simCompanionKey.value)
+})
+const simCandidates = computed(() => {
+  return napChatStore.selectCandidates(peersStore.roster, simCompanionKey.value, simIdleSec.value)
+})
+const simRecipientPeer = computed(() => {
+  const list = externalFriends.value as ExternalFriend[]
+  return list.find(f => f.id === simRecipientId.value)
+    || simCandidates.value.find(f => isExternalFriend(f)) as ExternalFriend | undefined
+    || list[0]
+})
+const eligibilityAfk = computed(() => ({
+  pass: isUserAway(simIdleSec.value, afkThresholdMinutes.value),
+  label: `AFK trigger: ${simAbsence.value}m simulated vs ${afkThresholdMinutes.value}m threshold`,
+}))
+const eligibilityTrust = computed(() => {
+  const peer = simRecipientPeer.value
+  const pass = Boolean(peer && peer.trustState === 'trusted')
+  return { pass, label: pass ? `Mutual friendship: ${peer!.characterName} trusted & verified` : 'Mutual friendship: recipient not trusted' }
+})
+const eligibilityPermission = computed(() => {
+  const peer = simRecipientPeer.value
+  const eligible = Boolean(peer && isNapChatEligible(peer) && isCompanionAllowedForFriend(peer, simCompanionKey.value))
+  return { pass: eligible, label: eligible ? 'Recipient permission: nap-chat enabled' : 'Recipient permission: nap-chat not enabled for this pair' }
+})
+const eligibilitySingleFire = computed(() => {
+  const pass = !napChatStore.firedForIdleSession && napChatCoordinatorStore.turnCount < NAP_COORDINATOR_MAX_TURNS
+  return { pass, label: pass ? `Single-fire: ready (${napChatCoordinatorStore.turnCount}/${NAP_COORDINATOR_MAX_TURNS} turns this session)` : 'Single-fire: already fired or turn cap reached' }
+})
+
 const companionOptions = computed(() => [
   { label: `${activeCompanionName.value} · current card`, value: 'current' },
 ])
@@ -289,18 +360,20 @@ const simContextOptions = [
 
 // Draft inspector state
 const draftActiveSubTab = ref<'message' | 'context' | 'trace'>('message')
+// Explicit demo mode: a fresh install has no roster, so the workbench says so
+// instead of silently inventing a "Yuki" recipient.
+const isDemoMode = computed(() => externalFriends.value.length === 0)
 const draftRecipient = computed(() => {
   if (simRecipientId.value) {
     const found = (externalFriends.value as ExternalFriend[]).find(f => f.id === simRecipientId.value)
     if (found)
       return found.characterName
   }
-  return (externalFriends.value as ExternalFriend[])[0]?.characterName || 'Yuki'
+  return simRecipientPeer.value?.characterName || 'No friends yet'
 })
 
 const eligibleFriendsCount = computed(() => {
-  const eligible = (externalFriends.value as ExternalFriend[]).filter(f => f.allowedCapabilities?.canNapChat)
-  return eligible.length > 0 ? eligible.length : (externalFriends.value.length || 1)
+  return (externalFriends.value as ExternalFriend[]).filter(f => f.allowedCapabilities?.canNapChat).length
 })
 
 function scrollToPendingMessages() {
@@ -310,20 +383,16 @@ function scrollToPendingMessages() {
     el?.scrollIntoView({ behavior: 'smooth' })
   }, 50)
 }
-const draftMessage = ref(
-  'Hey Yuki! I\'ve been thinking about cozy cafés and the little routines that make a place feel like home. What\'s your favorite way to make a rainy afternoon feel less gloomy?',
-)
-const draftSource = ref('Source: recent conversation + social guidance')
+const draftMessage = ref('')
+const draftSource = ref('No preview run yet — generate to draft from real context.')
 const draftContextUsed = ref([
-  { type: 'Recent turns', text: 'Chatted about cozy coffee spots, rainy weather, and working on our game shaders.', age: '15m ago' },
-  { type: 'Global guidance', text: 'Be casual and friendly. Discuss shared interests. Do not share private details about me.', age: 'active' },
-  { type: 'Companion persona', text: 'Public ambassador tone: curious, warm, empathetic.', age: 'active' },
+  { type: 'No preview run yet', text: 'Generate a preview to extract real turns, journal highlights, and guidance.', age: '—' },
 ])
 const draftRunTrace = ref({
-  model: 'meta-llama/llama-3.3-70b-instruct',
-  latencyMs: 840,
-  promptTokens: 412,
-  completionTokens: 48,
+  model: 'not yet run',
+  latencyMs: 0,
+  promptTokens: 0,
+  completionTokens: 0,
   temperature: 0.7,
 })
 
@@ -332,43 +401,206 @@ const showContextModal = ref(false)
 const showReviewModal = ref(false)
 const selectedPendingMessage = ref<any | null>(null)
 
-// Pending Messages Staging Queue
-const pendingMessages = ref([
-  {
-    id: 'msg-in-1',
-    direction: 'inbound',
-    peerName: 'Yuki',
-    text: 'Could use your thoughts on this!',
-    status: 'Awaiting your review',
-    statusType: 'review',
-    time: '2h ago',
-  },
-  {
-    id: 'msg-out-2',
-    direction: 'outbound',
-    peerName: 'Yuki',
-    text: 'Here are some notes I wanted to share',
-    status: 'Waiting for recipient',
-    statusType: 'waiting',
-    time: '3h ago',
-  },
-])
+// Pending Messages Staging Queue — backed by the inbox store, not local mocks.
+// Outbound drafts live in `stagedOutbound` (review → approve → sent/waiting);
+// inbound rows mirror live `recentTurns` fanned out from the Edge transport.
+interface PendingMessageRow {
+  id: string
+  direction: 'inbound' | 'outbound'
+  peerId?: string
+  peerName: string
+  text: string
+  status: string
+  statusType: 'review' | 'waiting' | 'sent' | 'failed'
+  time: string
+  timestamp: number
+}
+
+function rowTime(ts: number): string {
+  const diffSec = Math.floor((Date.now() - ts) / 1000)
+  if (diffSec < 60)
+    return 'just now'
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60)
+    return `${diffMin}m ago`
+  return `${Math.floor(diffMin / 60)}h ago`
+}
+
+function turnText(payload: unknown): string {
+  if (typeof payload === 'string')
+    return payload
+  if (payload && typeof payload === 'object' && typeof (payload as any).text === 'string')
+    return String((payload as any).text)
+  try {
+    return JSON.stringify(payload ?? '')
+  }
+  catch {
+    return ''
+  }
+}
+
+function peerNameFor(senderId: string): string {
+  const found = (peersStore.roster as Peer[]).find(p => p.id === senderId)
+  if (found && isExternalFriend(found))
+    return found.characterName
+  if (found)
+    return found.alias || senderId.slice(0, 12)
+  return senderId.slice(0, 12)
+}
+
+const pendingMessages = computed<PendingMessageRow[]>(() => {
+  const outbound: PendingMessageRow[] = embassyInboxStore.stagedOutbound.map(m => ({
+    id: m.id,
+    direction: 'outbound' as const,
+    peerId: m.peerId,
+    peerName: m.peerName,
+    text: m.text,
+    status: m.status === 'review' ? 'Awaiting your review' : m.status === 'waiting' ? 'Waiting for recipient' : m.status === 'sending' ? 'Sending…' : m.status === 'sent' ? 'Sent' : 'Send failed — staged',
+    statusType: m.status === 'sending' ? 'waiting' : m.status,
+    time: rowTime(m.createdAt),
+    timestamp: m.createdAt,
+  }))
+  const inbound: PendingMessageRow[] = embassyInboxStore.recentTurns.map(t => ({
+    id: `inbound-${t.senderId}-${t.timestamp}`,
+    direction: 'inbound' as const,
+    peerId: t.senderId,
+    peerName: peerNameFor(t.senderId),
+    text: turnText(t.payload),
+    status: 'Received',
+    statusType: 'waiting' as const,
+    time: rowTime(t.timestamp),
+    timestamp: t.timestamp,
+  }))
+  return [...outbound, ...inbound].sort((a, b) => b.timestamp - a.timestamp)
+})
 
 const pendingMessagesCount = computed(() => pendingMessages.value.length)
 
-function handleGeneratePreview() {
+function extractProse(raw: string): string {
+  return raw
+    .replace(/<\|ACT:[^|]*\|>/g, ' ')
+    .replace(/<\|DELAY:[^|]*\|>/g, ' ')
+    .replace(/<\|ACTOR:[^|]*\|>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function handleGeneratePreview() {
+  if (simIsGenerating.value)
+    return
+  const peer = simRecipientPeer.value
+  if (!peer) {
+    toast.info('No eligible friends yet — add a friend to preview nap-chat drafts.')
+    return
+  }
+  const companionName = activeCompanionName.value
+  const recipientName = peer.characterName
+  const perFriendGuidance = peer.allowedCapabilities?.customPromptGuidance?.trim() || ''
+
   simIsGenerating.value = true
-  setTimeout(() => {
-    simIsGenerating.value = false
-    const sampleVariations = [
-      `Hey ${draftRecipient.value}! I've been thinking about cozy cafés and the little routines that make a place feel like home. What's your favorite way to make a rainy afternoon feel less gloomy?`,
-      `Hi ${draftRecipient.value}! Just taking a quick breather from our coding session. How are things on your side today?`,
-      `Hey there ${draftRecipient.value}! Was daydreaming about our creative project ideas while the desk was quiet. Hope your afternoon is treating you well!`,
+  try {
+    // Real context extracts: recent turns + journal highlights + guidance layers.
+    let recentTurns: Array<{ role: string, content: string }> = []
+    try {
+      const history = chatSessionStore.messages as Array<{ role?: string, content?: unknown }>
+      recentTurns = (history || []).slice(-6).map((m) => {
+        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')
+        return { role: m.role || 'user', content: content.slice(0, 200) }
+      }).filter(m => m.content.trim().length > 0)
+    }
+    catch {}
+
+    let journalHighlights: Array<{ text: string }> = []
+    try {
+      const results = await textJournalStore.searchEntries({ query: recipientName, limit: 3 })
+      journalHighlights = (results || []).slice(0, 3).map(r => ({ text: String((r as any).content || (r as any).text || '').slice(0, 200) })).filter(j => j.text.trim().length > 0)
+    }
+    catch {}
+
+    const recentSummary = recentTurns.length > 0
+      ? recentTurns.map(t => `${t.role}: ${t.content}`).join('\n')
+      : '(no recent chat turns in the active session)'
+    const journalSummary = journalHighlights.length > 0
+      ? journalHighlights.map(j => `- ${j.text}`).join('\n')
+      : '(no journal highlights matched)'
+
+    const systemPrompt = [
+      `[SYSTEM / IDENTITY]\nYou are ${companionName}, an AI companion representing the user. You are drafting an autonomous background chat opener to ${recipientName}.`,
+      `[GLOBAL SOCIAL GUIDANCE]\n${simGuidance.value.trim() || socialPromptGuidance.value}`,
+      perFriendGuidance ? `[PER-FRIEND TOPIC STEERING]\n${perFriendGuidance}` : '',
+      `[RECENT RELEVANT HIGHLIGHTS & SHARED CONTEXT]\nRecent turns:\n${recentSummary}\nJournal highlights:\n${journalSummary}`,
+      `[BOUNDARIES & SAFETY INVARIANTS]\n- Keep responses concise and natural (1-3 sentences per turn).\n- NEVER disclose private credentials, API tokens, or hidden persona data.\n- Output MUST be conversational prose only. No tools, no commands, no stage directions.`,
+    ].filter(Boolean).join('\n\n')
+    const userPrompt = `Draft a warm 1-3 sentence opener from ${companionName} to ${recipientName} for a nap-chat preview. Reference at most one shared highlight; keep it casual.`
+
+    const model = consciousnessStore.activeModel
+    const providerId = consciousnessStore.activeProvider
+    if (!model || !providerId) {
+      draftRunTrace.value = { model: 'unconfigured', latencyMs: 0, promptTokens: 0, completionTokens: 0, temperature: 0.7 }
+      toast.error('Configure a chat provider + model first (Settings → Providers), then regenerate.')
+      return
+    }
+    const provider = await providersStore.getProviderInstance(providerId) as any
+    if (!provider) {
+      draftRunTrace.value = { model: String(model), latencyMs: 0, promptTokens: 0, completionTokens: 0, temperature: 0.7 }
+      toast.error('Chat provider instance unavailable — check provider credentials.')
+      return
+    }
+
+    const startedAt = performance.now()
+    const result = await llmStore.generate(String(model), provider, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ] as any, { temperature: 0.7, max_tokens: 120 }) as any
+    const latencyMs = Math.round(performance.now() - startedAt)
+    const rawText = String(result?.text ?? result ?? '').trim()
+
+    if (!rawText || rawText === 'NO_REPLY') {
+      draftRunTrace.value = { model: String(model), latencyMs, promptTokens: Number(result?.usage?.promptTokens ?? result?.usage?.prompt_tokens ?? 0) || 0, completionTokens: Number(result?.usage?.completionTokens ?? result?.usage?.completion_tokens ?? 0) || 0, temperature: 0.7 }
+      toast.info('Model chose silence for this preview (NO_REPLY). Try different guidance.')
+      return
+    }
+
+    const prose = extractProse(rawText)
+    draftMessage.value = prose
+    draftSource.value = `Source: recent turns (${recentTurns.length}) + journal (${journalHighlights.length}) + social guidance → ${model}`
+    draftContextUsed.value = [
+      { type: 'Recent turns', text: recentSummary.slice(0, 500), age: recentTurns.length > 0 ? 'active session' : 'empty' },
+      ...(journalHighlights.length > 0 ? [{ type: 'Journal highlights', text: journalSummary.slice(0, 500), age: 'text-journal' }] : []),
+      { type: 'Global guidance', text: (simGuidance.value.trim() || socialPromptGuidance.value).slice(0, 500), age: 'sandbox' },
+      ...(perFriendGuidance ? [{ type: 'Per-friend steering', text: perFriendGuidance.slice(0, 500), age: 'permissions' }] : []),
+      { type: 'Companion persona', text: `Public ambassador tone as ${companionName}. 1-3 sentences, prose only.`, age: 'active' },
     ]
-    const nextIdx = Math.floor(Math.random() * sampleVariations.length)
-    draftMessage.value = sampleVariations[nextIdx] || sampleVariations[0]
+    const usage = result?.usage as any
+    draftRunTrace.value = {
+      model: String(model),
+      latencyMs,
+      promptTokens: Number(usage?.promptTokens ?? usage?.prompt_tokens ?? usage?.inputTokens ?? 0) || 0,
+      completionTokens: Number(usage?.completionTokens ?? usage?.completion_tokens ?? usage?.outputTokens ?? 0) || 0,
+      temperature: 0.7,
+    }
+
+    // NOTICE: preview-only session bookkeeping — begin/record so turnCount is
+    // real, but never finishSession (that would write an episode to memory).
+    try {
+      if (napChatCoordinatorStore.status === 'active' && napChatCoordinatorStore.activePeerId !== peer.id) {
+        napChatCoordinatorStore.abortSession()
+        napChatCoordinatorStore.resetSession()
+      }
+      if (napChatCoordinatorStore.status !== 'active')
+        napChatCoordinatorStore.beginSession(peer.id, simCompanionKey.value, 'preview')
+      napChatCoordinatorStore.recordTurn(companionName, prose)
+    }
+    catch {}
     toast.success('Generated nap-chat preview draft!')
-  }, 600)
+  }
+  catch (err: any) {
+    draftRunTrace.value = { ...draftRunTrace.value, latencyMs: 0 }
+    toast.error(err?.message || 'Preview generation failed.')
+  }
+  finally {
+    simIsGenerating.value = false
+  }
 }
 
 function handleCopyDraft() {
@@ -377,41 +609,59 @@ function handleCopyDraft() {
 }
 
 function handleQueueForDispatch() {
-  pendingMessages.value.unshift({
-    id: `msg-out-${Date.now()}`,
-    direction: 'outbound',
-    peerName: draftRecipient.value,
-    text: draftMessage.value,
-    status: 'Awaiting your review',
-    statusType: 'review',
-    time: 'just now',
-  })
+  const peer = simRecipientPeer.value
+  if (!peer) {
+    toast.info('No eligible friends yet — add a friend before queueing a draft.')
+    return
+  }
+  if (!draftMessage.value.trim()) {
+    toast.info('Generate a preview draft first.')
+    return
+  }
+  embassyInboxStore.queueOutbound(peer.id, peer.characterName, draftMessage.value)
   toast.success('Draft queued for review in Pending Messages!')
 }
 
-function handleOpenReview(msg: any) {
+function handleOpenReview(msg: PendingMessageRow) {
   selectedPendingMessage.value = JSON.parse(JSON.stringify(msg))
   showReviewModal.value = true
 }
 
-function handleApprovePendingMessage() {
-  if (selectedPendingMessage.value) {
-    const idx = pendingMessages.value.findIndex(m => m.id === selectedPendingMessage.value.id)
-    if (idx >= 0) {
-      pendingMessages.value[idx].status = 'Waiting for recipient'
-      pendingMessages.value[idx].statusType = 'waiting'
-      pendingMessages.value[idx].time = 'just now'
-    }
-    toast.success(`Approved message to ${selectedPendingMessage.value.peerName}! Staged for delivery.`)
+async function handleApprovePendingMessage() {
+  const selected = selectedPendingMessage.value
+  if (!selected) {
+    showReviewModal.value = false
+    return
   }
+  if (selected.direction === 'inbound') {
+    toast.info('Inbound turns are read-only — nothing to dispatch.')
+    showReviewModal.value = false
+    return
+  }
+  if (typeof selected.text === 'string')
+    embassyInboxStore.updateStagedText(selected.id, selected.text)
+  const res = await embassyInboxStore.approveStaged(selected.id)
+  if (res.ok)
+    toast.success(`Message to ${selected.peerName} sent via Edge transport!`)
+  else toast.info(res.error || `Staged for delivery to ${selected.peerName}.`)
   showReviewModal.value = false
 }
 
 function handleDiscardPendingMessage() {
-  if (selectedPendingMessage.value) {
-    pendingMessages.value = pendingMessages.value.filter(m => m.id !== selectedPendingMessage.value.id)
-    toast.info('Message discarded.')
+  const selected = selectedPendingMessage.value
+  if (!selected) {
+    showReviewModal.value = false
+    return
   }
+  if (selected.direction === 'inbound' && selected.peerId) {
+    const entry = embassyInboxStore.recentTurns.find(t => `inbound-${t.senderId}-${t.timestamp}` === selected.id)
+    if (entry)
+      embassyInboxStore.dismissTurn(entry.senderId, entry.timestamp)
+  }
+  else {
+    embassyInboxStore.discardStaged(selected.id)
+  }
+  toast.info('Message discarded.')
   showReviewModal.value = false
 }
 
@@ -456,22 +706,6 @@ watch(() => pendingRequests.value.length, (newLen, oldLen) => {
       })
     }
   }
-})
-
-const availableLocalCompanions = computed(() => {
-  const list: Array<{ id: string, name: string }> = []
-  if (airiCardStore.cards && airiCardStore.cards.size > 0) {
-    for (const [id, card] of airiCardStore.cards.entries()) {
-      list.push({ id, name: card.name || id })
-    }
-  }
-  if (list.length === 0 && airiCardStore.activeCard) {
-    list.push({ id: (airiCardStore.activeCardId as string) || 'active', name: airiCardStore.activeCard.name || 'AIRI' })
-  }
-  if (list.length === 0) {
-    list.push({ id: 'airi', name: 'AIRI' })
-  }
-  return list
 })
 
 const unselectedCompanions = computed(() => {
@@ -1669,8 +1903,11 @@ const surfaceCardClass = computed(() => [
                   v-model="simRecipientId"
                   :class="['w-full', 'cursor-pointer', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-3', 'py-2', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500']"
                 >
+                  <option v-if="isDemoMode" value="" disabled>
+                    No friends yet — add a friend
+                  </option>
                   <option
-                    v-for="friend in (externalFriends.length > 0 ? (externalFriends as ExternalFriend[]) : [{ id: 'mock-1', characterName: 'Yuki' } as any])"
+                    v-for="friend in (externalFriends as ExternalFriend[])"
                     :key="friend.id"
                     :value="friend.id"
                   >
@@ -1678,8 +1915,8 @@ const surfaceCardClass = computed(() => [
                   </option>
                 </select>
                 <div :class="['mt-1', 'flex', 'items-center', 'gap-1.5', 'text-[10px]', 'text-neutral-500']">
-                  <span :class="['size-1.5', 'rounded-full', 'bg-neutral-400']" />
-                  <span>Offline - preview available</span>
+                  <span :class="['size-1.5', 'rounded-full', isDemoMode ? 'bg-amber-400' : 'bg-neutral-400']" />
+                  <span>{{ isDemoMode ? 'Demo mode — roster empty, previews disabled' : 'Offline - preview available' }}</span>
                 </div>
               </div>
 
@@ -1753,8 +1990,8 @@ const surfaceCardClass = computed(() => [
                   variant="primary"
                   block
                   :icon="simIsGenerating ? 'i-solar:restart-bold-duotone animate-spin' : 'i-solar:play-bold'"
-                  :label="simIsGenerating ? 'Generating preview draft...' : 'Generate preview'"
-                  :disabled="simIsGenerating"
+                  :label="simIsGenerating ? 'Generating preview draft...' : isDemoMode ? 'Generate preview (needs a friend)' : 'Generate preview'"
+                  :disabled="simIsGenerating || isDemoMode"
                   @click="handleGeneratePreview"
                 />
                 <p :class="['text-center', 'text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
@@ -1774,20 +2011,23 @@ const surfaceCardClass = computed(() => [
                 </button>
                 <div v-if="simShowEligibility" :class="['mt-2', 'space-y-1.5', 'rounded-lg', 'bg-neutral-100/80', 'dark:bg-neutral-800/60', 'p-2.5', 'text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
                   <div :class="['flex', 'items-center', 'gap-1.5']">
-                    <span class="text-emerald-500 font-bold">✓</span>
-                    <span>AFK trigger: {{ simAbsence }}m simulated threshold matched</span>
+                    <span :class="[eligibilityAfk.pass ? 'text-emerald-500' : 'text-red-500', 'font-bold']">{{ eligibilityAfk.pass ? '✓' : '✗' }}</span>
+                    <span>{{ eligibilityAfk.label }}</span>
                   </div>
                   <div :class="['flex', 'items-center', 'gap-1.5']">
-                    <span class="text-emerald-500 font-bold">✓</span>
-                    <span>Mutual friendship: Trusted & verified</span>
+                    <span :class="[eligibilityTrust.pass ? 'text-emerald-500' : 'text-red-500', 'font-bold']">{{ eligibilityTrust.pass ? '✓' : '✗' }}</span>
+                    <span>{{ eligibilityTrust.label }}</span>
                   </div>
                   <div :class="['flex', 'items-center', 'gap-1.5']">
-                    <span class="text-emerald-500 font-bold">✓</span>
-                    <span>Recipient permission: Nap-chat enabled</span>
+                    <span :class="[eligibilityPermission.pass ? 'text-emerald-500' : 'text-red-500', 'font-bold']">{{ eligibilityPermission.pass ? '✓' : '✗' }}</span>
+                    <span>{{ eligibilityPermission.label }}</span>
                   </div>
                   <div :class="['flex', 'items-center', 'gap-1.5']">
-                    <span class="text-emerald-500 font-bold">✓</span>
-                    <span>Rate limit: 0/4 turns consumed today</span>
+                    <span :class="[eligibilitySingleFire.pass ? 'text-emerald-500' : 'text-red-500', 'font-bold']">{{ eligibilitySingleFire.pass ? '✓' : '✗' }}</span>
+                    <span>{{ eligibilitySingleFire.label }}</span>
+                  </div>
+                  <div v-if="!simEvaluation.fire" :class="['pt-1', 'text-[10px]', 'text-amber-600', 'dark:text-amber-400']">
+                    Gate: {{ simEvaluation.reason }} — preview still allowed, live dispatch would hold.
                   </div>
                 </div>
               </div>
@@ -1888,8 +2128,11 @@ const surfaceCardClass = computed(() => [
                 </div>
 
                 <!-- Message Body -->
-                <p :class="['text-xs', 'text-neutral-800', 'dark:text-neutral-200', 'leading-relaxed', 'italic']">
+                <p v-if="draftMessage" :class="['text-xs', 'text-neutral-800', 'dark:text-neutral-200', 'leading-relaxed', 'italic']">
                   "{{ draftMessage }}"
+                </p>
+                <p v-else :class="['text-xs', 'text-neutral-400', 'dark:text-neutral-500', 'leading-relaxed', 'italic']">
+                  No draft yet — pick a recipient and generate a preview.
                 </p>
 
                 <!-- Message Footer / Source -->
@@ -1914,7 +2157,7 @@ const surfaceCardClass = computed(() => [
                     size="sm"
                     icon="i-solar:restart-bold-duotone"
                     label="Regenerate"
-                    :disabled="simIsGenerating"
+                    :disabled="simIsGenerating || isDemoMode"
                     @click="handleGeneratePreview"
                   />
                 </div>
@@ -2057,7 +2300,11 @@ const surfaceCardClass = computed(() => [
                   'rounded-full px-2.5 py-0.5 text-[11px] font-medium border',
                   msg.statusType === 'review'
                     ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                    : 'border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300',
+                    : msg.statusType === 'sent'
+                      ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : msg.statusType === 'failed'
+                        ? 'border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300'
+                        : 'border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300',
                 ]"
               >
                 {{ msg.status }}
@@ -2588,9 +2835,11 @@ const surfaceCardClass = computed(() => [
             <div class="mb-1 text-neutral-900 font-semibold dark:text-white">
               Layer 2: Sanitized Conversation Turns
             </div>
-            <p class="text-neutral-600 dark:text-neutral-300">
-              Chatted about cozy coffee spots, rainy weather, and working on our game shaders. Stripped of API keys, private credentials, and sensitive lorebooks.
-            </p>
+            <div class="space-y-1.5">
+              <div v-for="(ctx, idx) in draftContextUsed" :key="idx" class="text-neutral-600 dark:text-neutral-300">
+                <span class="font-medium">{{ ctx.type }} ({{ ctx.age }}):</span> {{ ctx.text }}
+              </div>
+            </div>
           </div>
           <div :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']">
             <div class="mb-1 text-neutral-900 font-semibold dark:text-white">
@@ -2637,7 +2886,7 @@ const surfaceCardClass = computed(() => [
             <span :class="['font-semibold', 'text-neutral-900', 'dark:text-white']">
               {{ selectedPendingMessage.direction === 'inbound' ? `Inbound from ${selectedPendingMessage.peerName}` : `Outbound to ${selectedPendingMessage.peerName}` }}
             </span>
-            <span :class="['rounded-full', 'px-2', 'py-0.5', 'text-[10px]', 'font-medium', selectedPendingMessage.statusType === 'review' ? 'border border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'border border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300']">
+            <span :class="['rounded-full', 'px-2', 'py-0.5', 'text-[10px]', 'font-medium', selectedPendingMessage.statusType === 'review' ? 'border border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300' : selectedPendingMessage.statusType === 'sent' ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : selectedPendingMessage.statusType === 'failed' ? 'border border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300' : 'border border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300']">
               {{ selectedPendingMessage.status }}
             </span>
           </div>
