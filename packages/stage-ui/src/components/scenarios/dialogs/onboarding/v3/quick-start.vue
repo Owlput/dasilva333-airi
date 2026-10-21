@@ -7,7 +7,7 @@ import { toast } from 'vue-sonner'
 import { getStarterCharacter } from '../../../../../constants/prompts/character-defaults'
 import { STARTER_VOICE_CATALOG } from '../../../../../constants/voices/starter-voice-catalog'
 import { getKokoroAdapter } from '../../../../../libs/inference/adapters/kokoro'
-import { WEB_LLM_MODELS } from '../../../../../libs/inference/constants'
+import { DEFAULT_WEB_LLM_MODEL, WEB_LLM_MODELS } from '../../../../../libs/inference/constants'
 import { NativeAI } from '../../../../../libs/native-ai'
 import { useSpeechStore } from '../../../../../stores/modules/speech'
 import { useProvidersStore } from '../../../../../stores/providers'
@@ -251,9 +251,26 @@ const llmProvider = computed({
   set: (val) => {
     draftStore.setConsciousness({ provider: val })
     // Reset model to first available for new provider
-    const models = providersStore.getModelsForProvider(val) || []
-    if (models.length > 0 && models[0]?.id) {
-      draftStore.setConsciousness({ model: models[0].id })
+    if (val === 'web-llm' || val === 'webllm') {
+      draftStore.setConsciousness({ model: DEFAULT_WEB_LLM_MODEL })
+    }
+    else if (val === 'apple-core-ai') {
+      draftStore.setConsciousness({ model: DEFAULT_APPLE_CORE_AI_MODEL })
+    }
+    else {
+      const models = providersStore.getModelsForProvider(val) || []
+      if (models.length > 0 && models[0]?.id) {
+        draftStore.setConsciousness({ model: models[0].id })
+      }
+      else if (val === 'openai') {
+        draftStore.setConsciousness({ model: 'gpt-4o' })
+      }
+      else if (val === 'gemini') {
+        draftStore.setConsciousness({ model: 'gemini-2.5-flash' })
+      }
+      else {
+        draftStore.setConsciousness({ model: '' })
+      }
     }
     // Sync baseUrl
     const persistedBaseUrl = providersStore.providers[val]?.baseUrl as string | undefined
@@ -277,22 +294,28 @@ const isLocalLlmProvider = computed(() => {
 const availableLlmModels = computed(() => {
   if (!llmProvider.value)
     return []
+  if (llmProvider.value === 'web-llm' || llmProvider.value === 'webllm') {
+    return WEB_LLM_MODELS.map(m => ({ id: m.id, name: m.name }))
+  }
   return providersStore.getModelsForProvider(llmProvider.value) || []
 })
 
 const llmModel = computed({
   get: () => {
-    if (draftStore.state.llmModel)
-      return draftStore.state.llmModel
+    const draftModel = draftStore.state.llmModel
+    if (draftModel && draftModel !== 'default')
+      return draftModel
     if (llmProvider.value === 'apple-core-ai')
       return DEFAULT_APPLE_CORE_AI_MODEL
+    if (llmProvider.value === 'web-llm' || llmProvider.value === 'webllm')
+      return DEFAULT_WEB_LLM_MODEL
     if (availableLlmModels.value.length > 0 && availableLlmModels.value[0]?.id)
       return availableLlmModels.value[0].id
     if (llmProvider.value === 'openai')
       return 'gpt-4o'
     if (llmProvider.value === 'gemini')
       return 'gemini-2.5-flash'
-    return 'default'
+    return availableLlmModels.value[0]?.id || ''
   },
   set: val => draftStore.setConsciousness({ model: val }),
 })
@@ -305,6 +328,16 @@ const apiKey = computed({
 })
 
 const showApiKey = ref(false)
+
+// ==========================================
+// Quadrant Validation State & Rules
+// ==========================================
+const validationErrors = ref<{
+  brain?: string
+  companion?: string
+  voice?: string
+  hearing?: string
+}>({})
 
 // Benchmark & Connection Test State
 const isTestingConnection = ref(false)
@@ -377,7 +410,7 @@ async function testConnection() {
     }
 
     const { generateText } = await import('@xsai/generate-text')
-    const modelToTest = llmModel.value || 'default'
+    const modelToTest = llmModel.value || (llmProvider.value === 'web-llm' || llmProvider.value === 'webllm' ? DEFAULT_WEB_LLM_MODEL : 'default')
     const result = await generateText({
       ...(providerInstance as any).chat(modelToTest),
       messages: [{ role: 'user', content: 'Say "Ready" in one word.' }],
@@ -738,7 +771,86 @@ const prepSteps = ref<PrepStep[]>([
   },
 ])
 
+function validateQuadrants(): boolean {
+  const errors: { brain?: string, companion?: string, voice?: string, hearing?: string } = {}
+
+  // 1. Brain validation
+  if (!llmProvider.value) {
+    errors.brain = t('onboarding.quickStart.validation.selectProvider')
+  }
+  else if (!isLocalLlmProvider.value && !isGenericOpenAI.value && !apiKey.value.trim()) {
+    errors.brain = t('onboarding.quickStart.validation.apiKeyRequired')
+  }
+  else if (isGenericOpenAI.value && !baseUrl.value.trim()) {
+    errors.brain = t('onboarding.quickStart.validation.baseUrlRequired')
+  }
+  else if (!llmModel.value.trim() || llmModel.value.trim().toLowerCase() === 'default') {
+    errors.brain = t('onboarding.quickStart.validation.validModelRequired')
+  }
+
+  // 2. Companion validation
+  if (!activeCompanion.value) {
+    errors.companion = t('onboarding.quickStart.validation.selectCompanion')
+  }
+
+  // 3. Voice validation
+  if (isVoiceEnabled.value && !ttsEngine.value) {
+    errors.voice = t('onboarding.quickStart.validation.selectVoiceEngine')
+  }
+
+  // 4. Hearing validation
+  if (isHearingEnabled.value && !sttEngine.value) {
+    errors.hearing = t('onboarding.quickStart.validation.selectSttEngine')
+  }
+
+  validationErrors.value = errors
+  return Object.keys(errors).length === 0
+}
+
+watch([llmProvider, apiKey, baseUrl, llmModel], () => {
+  if (validationErrors.value.brain) {
+    delete validationErrors.value.brain
+  }
+})
+
+watch(selectedCompanionId, () => {
+  if (validationErrors.value.companion) {
+    delete validationErrors.value.companion
+  }
+})
+
+watch([isVoiceEnabled, () => draftStore.state.ttsProvider, () => draftStore.state.ttsVoiceId], () => {
+  if (validationErrors.value.voice) {
+    delete validationErrors.value.voice
+  }
+})
+
+watch([isHearingEnabled, () => draftStore.state.sttProvider, selectedMicId], () => {
+  if (validationErrors.value.hearing) {
+    delete validationErrors.value.hearing
+  }
+})
+
 async function handleStartChatting() {
+  if (isPreparingModalOpen.value)
+    return
+
+  if (!validateQuadrants()) {
+    const firstErr = validationErrors.value.brain
+      || validationErrors.value.companion
+      || validationErrors.value.voice
+      || validationErrors.value.hearing
+    if (firstErr) {
+      toast.error(firstErr)
+    }
+    return
+  }
+
+  // Reset steps to pending
+  prepSteps.value.forEach((step) => {
+    step.status = 'pending'
+  })
+
   draftStore.setUserProfile({
     userName: userName.value,
     companionName: companionName.value,
@@ -780,8 +892,12 @@ async function handleStartChatting() {
           )
         }
       }
-      catch (err) {
+      catch (err: any) {
         console.warn('[QuickStart] WebLLM initialization notice:', err)
+        prepSteps.value[0].status = 'error'
+        prepSteps.value[0].desc = err?.message || t('onboarding.quickStart.preparation.webLlmFailed')
+        toast.error(err?.message || t('onboarding.quickStart.preparation.webLlmFailed'))
+        return
       }
     }
     else {
@@ -826,8 +942,12 @@ async function handleStartChatting() {
           })
           prepSteps.value[1].desc = t('onboarding.quickStart.preparation.whisperReady')
         }
-        catch (err) {
+        catch (err: any) {
           console.warn('[QuickStart] Whisper initialization notice:', err)
+          prepSteps.value[1].status = 'error'
+          prepSteps.value[1].desc = err?.message || t('onboarding.quickStart.preparation.whisperFailed')
+          toast.error(err?.message || t('onboarding.quickStart.preparation.whisperFailed'))
+          return
         }
       }
       else {
@@ -861,8 +981,12 @@ async function handleStartChatting() {
           })
           prepSteps.value[2].desc = t('onboarding.quickStart.preparation.kokoroReady', { voice: charRawVoice })
         }
-        catch (err) {
+        catch (err: any) {
           console.warn('[QuickStart] Kokoro weights loading notice:', err)
+          prepSteps.value[2].status = 'error'
+          prepSteps.value[2].desc = err?.message || t('onboarding.quickStart.preparation.kokoroFailed')
+          toast.error(err?.message || t('onboarding.quickStart.preparation.kokoroFailed'))
+          return
         }
       }
       else if (normSpeechId === 'pocket-tts-local') {
@@ -986,10 +1110,24 @@ async function handleStartChatting() {
   }
   catch (err: any) {
     console.error('[QuickStart] Pre-flight preparation error:', err)
-    toast.error(t('onboarding.quickStart.setupEncounteredAnIssueButYouCanContinueIntoStage'))
-    await new Promise(resolve => setTimeout(resolve, 500))
-    props.onComplete()
+    const activeStep = prepSteps.value.find(s => s.status === 'active')
+    if (activeStep) {
+      activeStep.status = 'error'
+      activeStep.desc = err?.message || t('onboarding.quickStart.setupEncounteredAnIssueButYouCanContinueIntoStage')
+    }
+    toast.error(err?.message || t('onboarding.quickStart.setupEncounteredAnIssueButYouCanContinueIntoStage'))
   }
+}
+
+const hasPrepError = computed(() => prepSteps.value.some(s => s.status === 'error'))
+
+function retryPrep() {
+  handleStartChatting()
+}
+
+function continueAnywayIntoStage() {
+  isPreparingModalOpen.value = false
+  props.onComplete()
 }
 </script>
 
@@ -1036,7 +1174,14 @@ async function handleStartChatting() {
     <!-- 2. Main 2x2 Infrastructure Grid -->
     <div :class="['grid grid-cols-1 md:grid-cols-2 gap-4']">
       <!-- Top-Left: Brain (LLM Provider, Models & Live Benchmark) -->
-      <div :class="['rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40 p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm']">
+      <div
+        :class="[
+          'rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm transition-all duration-200',
+          validationErrors.brain
+            ? 'border-rose-500/80 ring-2 ring-rose-500/50 bg-rose-500/[0.03] dark:bg-rose-500/[0.05]'
+            : 'border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40',
+        ]"
+      >
         <div>
           <div :class="['flex items-center justify-between mb-1']">
             <div :class="['flex items-center gap-2']">
@@ -1054,6 +1199,15 @@ async function handleStartChatting() {
           <p :class="['text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed']">
             {{ t('onboarding.quickStart.brainDescription', { companionName }) }}
           </p>
+
+          <!-- Inline Validation Alert -->
+          <div
+            v-if="validationErrors.brain"
+            :class="['mt-2 px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[11px] flex items-center gap-1.5 animate-shake']"
+          >
+            <div :class="['i-solar:danger-triangle-bold w-3.5 h-3.5 shrink-0']" />
+            <span>{{ validationErrors.brain }}</span>
+          </div>
         </div>
 
         <div :class="['space-y-2.5 text-xs']">
@@ -1187,7 +1341,14 @@ async function handleStartChatting() {
       </div>
 
       <!-- Top-Right: Companion (De-framed Triad: ReLU, Dr. Aria, Lupin) -->
-      <div :class="['rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40 p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm']">
+      <div
+        :class="[
+          'rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm transition-all duration-200',
+          validationErrors.companion
+            ? 'border-rose-500/80 ring-2 ring-rose-500/50 bg-rose-500/[0.03] dark:bg-rose-500/[0.05]'
+            : 'border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40',
+        ]"
+      >
         <div>
           <div :class="['flex items-center gap-2 mb-1']">
             <div :class="['h-7 w-7 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center text-sm']">
@@ -1200,6 +1361,15 @@ async function handleStartChatting() {
           <p :class="['text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed']">
             {{ t('onboarding.quickStart.chooseWhoWillBeByYourSide') }}
           </p>
+
+          <!-- Inline Validation Alert -->
+          <div
+            v-if="validationErrors.companion"
+            :class="['mt-2 px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[11px] flex items-center gap-1.5 animate-shake']"
+          >
+            <div :class="['i-solar:danger-triangle-bold w-3.5 h-3.5 shrink-0']" />
+            <span>{{ validationErrors.companion }}</span>
+          </div>
         </div>
 
         <!-- 3 De-framed Starter Cards Row -->
@@ -1259,7 +1429,14 @@ async function handleStartChatting() {
       </div>
 
       <!-- Bottom-Left: Voice (TTS 3-Part Tuple: Kokoro 82M Default) -->
-      <div :class="['rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40 p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm']">
+      <div
+        :class="[
+          'rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm transition-all duration-200',
+          validationErrors.voice
+            ? 'border-rose-500/80 ring-2 ring-rose-500/50 bg-rose-500/[0.03] dark:bg-rose-500/[0.05]'
+            : 'border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40',
+        ]"
+      >
         <div :class="['flex items-start justify-between gap-2']">
           <div>
             <div :class="['flex items-center gap-2 mb-1']">
@@ -1273,6 +1450,15 @@ async function handleStartChatting() {
             <p :class="['text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed']">
               {{ t('onboarding.quickStart.voiceDescription', { companionName }) }}
             </p>
+
+            <!-- Inline Validation Alert -->
+            <div
+              v-if="validationErrors.voice"
+              :class="['mt-2 px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[11px] flex items-center gap-1.5 animate-shake']"
+            >
+              <div :class="['i-solar:danger-triangle-bold w-3.5 h-3.5 shrink-0']" />
+              <span>{{ validationErrors.voice }}</span>
+            </div>
           </div>
 
           <!-- Master Toggle Switch -->
@@ -1376,7 +1562,14 @@ async function handleStartChatting() {
       </div>
 
       <!-- Bottom-Right: Hearing (STT Whisper Local + Model Picker) -->
-      <div :class="['rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40 p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm']">
+      <div
+        :class="[
+          'rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-sm backdrop-blur-sm transition-all duration-200',
+          validationErrors.hearing
+            ? 'border-rose-500/80 ring-2 ring-rose-500/50 bg-rose-500/[0.03] dark:bg-rose-500/[0.05]'
+            : 'border-neutral-200/80 dark:border-white/10 bg-white/70 dark:bg-neutral-900/40',
+        ]"
+      >
         <div :class="['flex items-start justify-between gap-2']">
           <div>
             <div :class="['flex items-center gap-2 mb-1']">
@@ -1390,6 +1583,15 @@ async function handleStartChatting() {
             <p :class="['text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed']">
               {{ t('onboarding.quickStart.hearingDescription', { companionName }) }}
             </p>
+
+            <!-- Inline Validation Alert -->
+            <div
+              v-if="validationErrors.hearing"
+              :class="['mt-2 px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[11px] flex items-center gap-1.5 animate-shake']"
+            >
+              <div :class="['i-solar:danger-triangle-bold w-3.5 h-3.5 shrink-0']" />
+              <span>{{ validationErrors.hearing }}</span>
+            </div>
           </div>
 
           <!-- Master Toggle Switch -->
@@ -1596,14 +1798,24 @@ async function handleStartChatting() {
         </button>
         <button
           type="button"
+          :disabled="isPreparingModalOpen"
           :class="[
-            'px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold text-xs',
-            'shadow-lg shadow-cyan-500/25 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5',
+            'px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 select-none',
+            isPreparingModalOpen
+              ? 'bg-cyan-500/50 text-neutral-950/60 cursor-not-allowed'
+              : 'bg-cyan-500 hover:bg-cyan-400 text-neutral-950 shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer',
           ]"
           @click="handleStartChatting"
         >
-          <span>{{ t('onboarding.quickStart.launch') }}</span>
-          <div :class="['i-solar:arrow-right-linear w-4 h-4']" />
+          <div
+            v-if="isPreparingModalOpen"
+            :class="['i-solar:restart-bold animate-spin w-4 h-4']"
+          />
+          <span>{{ isPreparingModalOpen ? t('onboarding.quickStart.launching') : t('onboarding.quickStart.launch') }}</span>
+          <div
+            v-if="!isPreparingModalOpen"
+            :class="['i-solar:arrow-right-linear w-4 h-4']"
+          />
         </button>
       </div>
     </div>
@@ -1612,7 +1824,7 @@ async function handleStartChatting() {
     <Teleport to="body">
       <div
         v-if="isPreparingModalOpen"
-        :class="['fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn select-none']"
+        :class="['fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn select-none']"
       >
         <div :class="['w-full max-w-md rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 p-6 shadow-2xl flex flex-col gap-5']">
           <!-- Header -->
@@ -1655,14 +1867,16 @@ async function handleStartChatting() {
                   ? 'border-emerald-500/30 bg-emerald-500/5 text-neutral-900 dark:text-white'
                   : step.status === 'active'
                     ? 'border-cyan-500/40 bg-cyan-500/10 text-neutral-900 dark:text-white'
-                    : 'border-neutral-200/60 dark:border-white/5 opacity-50 text-neutral-500',
+                    : step.status === 'error'
+                      ? 'border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                      : 'border-neutral-200/60 dark:border-white/5 opacity-50 text-neutral-500',
               ]"
             >
               <div :class="['flex items-center gap-2.5 min-w-0']">
                 <div :class="[step.icon, 'text-base shrink-0 text-cyan-400']" />
-                <div :class="['flex flex-col min-w-0']">
+                <div :class="['flex flex-col min-w-0 pr-2']">
                   <span :class="['font-semibold text-xs truncate']">{{ 'labelKey' in step && step.labelKey ? t(step.labelKey) : step.label }}</span>
-                  <span :class="['text-[10px] text-neutral-400 dark:text-neutral-500 truncate']">{{ step.desc }}</span>
+                  <span :class="['text-[10px] text-neutral-400 dark:text-neutral-500 break-words line-clamp-2']">{{ step.desc }}</span>
                 </div>
               </div>
 
@@ -1673,6 +1887,12 @@ async function handleStartChatting() {
                   :class="['h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold']"
                 >
                   ✓
+                </div>
+                <div
+                  v-else-if="step.status === 'error'"
+                  :class="['h-5 w-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold']"
+                >
+                  ✕
                 </div>
                 <div
                   v-else-if="step.status === 'active'"
@@ -1686,6 +1906,34 @@ async function handleStartChatting() {
                 </span>
               </div>
             </div>
+          </div>
+
+          <!-- Error Action Bar -->
+          <div
+            v-if="hasPrepError"
+            :class="['pt-3 flex items-center justify-end gap-2 border-t border-neutral-200/60 dark:border-white/10 animate-fadeIn']"
+          >
+            <button
+              type="button"
+              :class="['px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-white/20 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 cursor-pointer font-medium']"
+              @click="isPreparingModalOpen = false"
+            >
+              {{ t('onboarding.quickStart.backToSettings') }}
+            </button>
+            <button
+              type="button"
+              :class="['px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold shadow-sm cursor-pointer']"
+              @click="retryPrep"
+            >
+              {{ t('onboarding.quickStart.retry') }}
+            </button>
+            <button
+              type="button"
+              :class="['px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-white text-xs font-medium cursor-pointer']"
+              @click="continueAnywayIntoStage"
+            >
+              {{ t('onboarding.quickStart.continueAnyway') }}
+            </button>
           </div>
         </div>
       </div>

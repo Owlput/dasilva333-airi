@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { DEFAULT_WEB_LLM_MODEL, WEB_LLM_MODELS } from '../../../../../libs/inference/constants'
 import { createProviderRegistry } from '../../../../../stores/providers/registry'
 
 const mockT = ((key: string, def?: string) => def || key) as any
@@ -49,5 +50,28 @@ describe('quick start providers configuration', () => {
     expect(names).toContain('NVIDIA NIM')
     expect(names).toContain('OpenCode Go')
     expect(names).toContain('OpenAI Compatible')
+  })
+
+  it('ensures web-llm curated models exist and default is a valid curated model ID instead of "default"', () => {
+    expect(WEB_LLM_MODELS.length).toBeGreaterThan(0)
+    expect(DEFAULT_WEB_LLM_MODEL).not.toBe('default')
+    expect(DEFAULT_WEB_LLM_MODEL).toBe(WEB_LLM_MODELS[0].id)
+    expect(WEB_LLM_MODELS.some(m => m.id === DEFAULT_WEB_LLM_MODEL)).toBe(true)
+  })
+
+  it('validates that model id cannot be "default" or empty', () => {
+    function isValidModel(modelId: string | undefined | null) {
+      if (!modelId)
+        return false
+      const trimmed = modelId.trim().toLowerCase()
+      return trimmed.length > 0 && trimmed !== 'default'
+    }
+
+    expect(isValidModel('')).toBe(false)
+    expect(isValidModel('   ')).toBe(false)
+    expect(isValidModel('default')).toBe(false)
+    expect(isValidModel('DEFAULT')).toBe(false)
+    expect(isValidModel(DEFAULT_WEB_LLM_MODEL)).toBe(true)
+    expect(isValidModel('gpt-4o')).toBe(true)
   })
 })
