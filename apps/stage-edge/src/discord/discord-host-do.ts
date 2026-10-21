@@ -440,6 +440,7 @@ export class DiscordHostDO {
             model: this.env.LLM_MODEL,
             apiKey: this.env.LLM_API_KEY,
             baseUrl: this.env.LLM_BASE_URL,
+            sessionId: msg.channel_id ? `discord-channel-${msg.channel_id}` : undefined,
           })
 
           replyContent = llmReply

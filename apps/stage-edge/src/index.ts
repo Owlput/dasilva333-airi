@@ -264,6 +264,7 @@ export default {
               model: env.LLM_MODEL,
               apiKey: env.LLM_API_KEY,
               baseUrl: env.LLM_BASE_URL,
+              sessionId: interaction.channel_id ? `discord-channel-${interaction.channel_id}` : undefined,
             })
 
             // Append new turn to rolling history and save back to KV

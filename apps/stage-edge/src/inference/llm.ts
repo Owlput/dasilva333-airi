@@ -10,6 +10,25 @@ export interface LlmGenerateOptions {
   model?: string
   apiKey: string
   baseUrl?: string
+  sessionId?: string
+  headers?: Record<string, string>
+}
+
+export function isOpenCodeGoHost(targetUrl: string): boolean {
+  try {
+    const parsed = new URL(targetUrl)
+    return parsed.hostname === 'opencode.ai' || parsed.hostname.endsWith('.opencode.ai')
+  }
+  catch {
+    return targetUrl.includes('opencode.ai')
+  }
+}
+
+export function generateSessionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `airi-edge-${crypto.randomUUID()}`
+  }
+  return `airi-edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 export async function generateLlmReply(options: LlmGenerateOptions): Promise<string> {
@@ -54,6 +73,12 @@ export async function generateLlmReply(options: LlmGenerateOptions): Promise<str
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${options.apiKey}`,
+    ...options.headers,
+  }
+
+  // OpenCode Go requires x-opencode-session header for session-aware routing
+  if (isOpenCodeGoHost(url) && !headers['x-opencode-session']) {
+    headers['x-opencode-session'] = options.sessionId || generateSessionId()
   }
 
   const response = await fetch(url, {

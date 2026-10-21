@@ -212,6 +212,21 @@ export const discordServiceFetchCloudRelayMemories = defineInvokeEventa<CloudRel
   'eventa:invoke:electron:discord:fetch-cloud-relay-memories',
 )
 
+export interface CloudRelayDeletePayload {
+  apiToken: string
+  accountId: string
+  scriptName: string
+}
+
+export interface CloudRelayDeleteResult {
+  success: boolean
+  error?: string
+}
+
+export const discordServiceDeleteCloudRelay = defineInvokeEventa<CloudRelayDeleteResult, CloudRelayDeletePayload>(
+  'eventa:invoke:electron:discord:delete-cloud-relay',
+)
+
 export interface DiscordOutboundImage {
   channelId: string
   content?: string

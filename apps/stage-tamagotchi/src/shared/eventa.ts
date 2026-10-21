@@ -483,6 +483,7 @@ export {
   cloudflareServiceRefreshOAuth,
   cloudflareServiceSaveEdgeVault,
   discordServiceCloudflareOAuth,
+  discordServiceDeleteCloudRelay,
   discordServiceDeployCloudRelay,
   discordServiceEventLog,
   discordServiceFetchCloudRelayMemories,

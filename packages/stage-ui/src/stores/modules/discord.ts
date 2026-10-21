@@ -3,6 +3,7 @@ import type { DiscordCommandDefinition, DiscordEventLogEntry, DiscordInboundMess
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import {
   debug,
+  discordServiceDeleteCloudRelay,
   discordServiceDeployCloudRelay,
   discordServiceFetchCloudRelayMemories,
   discordServiceForceSync,
@@ -341,6 +342,7 @@ export const useDiscordStore = defineStore('discord', () => {
   const invokeSummon = isElectron ? useElectronEventaInvoke(discordServiceSummon) : null
   const invokeLeave = isElectron ? useElectronEventaInvoke(discordServiceLeave) : null
   const invokeDeployCloudRelay = isElectron ? useElectronEventaInvoke(discordServiceDeployCloudRelay) : null
+  const invokeDeleteCloudRelay = isElectron ? useElectronEventaInvoke(discordServiceDeleteCloudRelay) : null
   const invokeFetchCloudRelayMemories = isElectron ? useElectronEventaInvoke(discordServiceFetchCloudRelayMemories) : null
   const invokeGetCloudflareSubdomain = isElectron ? useElectronEventaInvoke(discordServiceGetCloudflareSubdomain) : null
   const invokeSetCloudflareSubdomain = isElectron ? useElectronEventaInvoke(discordServiceSetCloudflareSubdomain) : null
@@ -431,6 +433,37 @@ export const useDiscordStore = defineStore('discord', () => {
     }
 
     return res
+  }
+
+  async function teardownCloudRelay(scriptName: string): Promise<void> {
+    const apiToken = cfApiToken.value || cfOAuthTokens.value?.accessToken || ''
+    const accountId = cfAccountId.value || cfOAuthTokens.value?.accountId || ''
+
+    if (invokeDeleteCloudRelay) {
+      if (!apiToken) {
+        throw new Error('Cloudflare API Token missing. Please authenticate first.')
+      }
+
+      const res = await invokeDeleteCloudRelay({
+        apiToken,
+        accountId,
+        scriptName,
+      })
+
+      if (!res?.success) {
+        throw new Error(res?.error || `Failed to delete Worker script "${scriptName}" on Cloudflare.`)
+      }
+    }
+
+    // Remove from local persistent instances map
+    const updated = { ...cloudRelayInstances.value }
+    delete updated[scriptName]
+    cloudRelayInstances.value = updated
+
+    // If no instances remain active, revert execution mode to local
+    if (Object.keys(cloudRelayInstances.value).length === 0) {
+      executionMode.value = 'local'
+    }
   }
 
   async function fetchCloudRelayMemories(namespaceId: string, key = 'context/rolling') {
@@ -2390,6 +2423,7 @@ export const useDiscordStore = defineStore('discord', () => {
     getCloudflareSubdomain,
     setCloudflareSubdomain,
     deployCloudRelay,
+    teardownCloudRelay,
     fetchCloudRelayMemories,
     refreshStatus,
     forceCardSync,

@@ -205,7 +205,32 @@ interface ReconciliationCandidate {
 const syncModalOpen = ref(false)
 const syncTargetInstance = ref<any>(null)
 const isFetchingMemories = ref(false)
+const isTearingDown = ref<string | null>(null)
 const reconciliationCandidates = ref<ReconciliationCandidate[]>([])
+
+async function handleTeardown(instance: any) {
+  if (!instance?.scriptName)
+    return
+
+  const confirmed = window.confirm(`Are you sure you want to permanently delete "${instance.scriptName}" from Cloudflare Workers?`)
+  if (!confirmed)
+    return
+
+  isTearingDown.value = instance.scriptName
+  const toastId = toast.loading(`Tearing down Cloud Relay "${instance.scriptName}"...`)
+
+  try {
+    await discordStore.teardownCloudRelay(instance.scriptName)
+    toast.success(`✓ Cloud Relay "${instance.scriptName}" deleted from Cloudflare.`, { id: toastId })
+  }
+  catch (err: any) {
+    console.error('[DiscordControlPlane] Teardown failed:', err)
+    toast.error(`Teardown failed: ${err?.message || err}`, { id: toastId })
+  }
+  finally {
+    isTearingDown.value = null
+  }
+}
 
 function reconcileMemories(
   localMessages: ChatHistoryItem[],
@@ -954,7 +979,12 @@ function formatTimestamp(ts: number) {
                   :disabled="isFetchingMemories"
                   @click="handleSyncMemories(inst)"
                 />
-                <Button label="Teardown" variant="danger" />
+                <Button
+                  label="Teardown"
+                  variant="danger"
+                  :disabled="isTearingDown === inst.scriptName"
+                  @click="handleTeardown(inst)"
+                />
               </div>
             </div>
           </div>

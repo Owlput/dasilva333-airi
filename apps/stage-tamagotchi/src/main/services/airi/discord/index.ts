@@ -27,6 +27,7 @@ import {
   cloudflareServiceRefreshOAuth,
   cloudflareServiceSaveEdgeVault,
   discordServiceCloudflareOAuth,
+  discordServiceDeleteCloudRelay,
   discordServiceDeployCloudRelay,
   discordServiceFetchCloudRelayMemories,
   discordServiceForceSync,
@@ -477,6 +478,52 @@ export function setupDiscordService() {
     }
     catch (err: any) {
       pushLog('ERROR', `Cloudflare Edge deployment failed: ${err?.message || err}`)
+      return {
+        success: false,
+        error: err?.message || String(err),
+      }
+    }
+  })
+
+  defineInvokeHandler(context, discordServiceDeleteCloudRelay, async (payload) => {
+    pushLog('TEARDOWN', `Tearing down Cloudflare Worker script "${payload.scriptName}"...`)
+    try {
+      const { CloudflareStageDeployer } = await import('@proj-airi/stage-edge/deployer')
+
+      let targetAccountId = payload.accountId
+      if (!targetAccountId) {
+        pushLog('TEARDOWN', 'Account ID missing from payload, resolving account memberships via Cloudflare API...')
+        const tempDeployer = new CloudflareStageDeployer({
+          apiToken: payload.apiToken,
+          accountId: '',
+        })
+        const accounts = await tempDeployer.getAccounts()
+        if (accounts.length > 0) {
+          targetAccountId = accounts[0].id
+          pushLog('TEARDOWN', `Resolved Cloudflare Account: "${accounts[0].name}" (${targetAccountId})`)
+        }
+        else {
+          throw new Error('No Cloudflare accounts found for this token.')
+        }
+      }
+
+      const deployer = new CloudflareStageDeployer({
+        apiToken: payload.apiToken,
+        accountId: targetAccountId,
+      })
+
+      const ok = await deployer.deleteWorker(payload.scriptName)
+      if (!ok) {
+        throw new Error(`Failed to delete Worker script "${payload.scriptName}" from Cloudflare.`)
+      }
+
+      pushLog('TEARDOWN', `Worker script "${payload.scriptName}" successfully deleted from Cloudflare.`)
+      return {
+        success: true,
+      }
+    }
+    catch (err: any) {
+      pushLog('ERROR', `Cloudflare Worker teardown failed: ${err?.message || err}`)
       return {
         success: false,
         error: err?.message || String(err),
