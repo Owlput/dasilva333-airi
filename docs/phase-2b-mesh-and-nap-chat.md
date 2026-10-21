@@ -378,35 +378,113 @@ Upon dialogue completion:
 2. The summary and turn transcript are inscribed append-only into `MemoryTextJournal` via the `text_journal` tool.
 3. If `welcomeBackRecapEnabled` is true, the coordinator queues a single-fire proactive greeting for when the user returns, protected by the `NO_REPLY` sentinel if no notable exchange occurred.
 
+### 7.2 The Nap-Chat Simulation & Inspection Workbench (Settled Spec 2026-10-20)
+
+> **Design Motivator: Eliminating the "Black-Box Anxiety"**
+> Background AI-to-AI communication can feel opaque and anxiety-inducing ("trust me bro, your AI will say the right things to my AI"). Without an inspectable dry-run mechanism, users are reluctant to enable autonomous socialization.
+> The **Nap-Chat Preview & Simulation Workbench** turns nap-chat into a transparent, debuggable laboratory where users can test prompt steering, inspect contextual memory extracts, dry-run dialogue drafts, and manually stage messages before live automation is permitted.
+
+```mermaid
+graph LR
+    subgraph "Simulate a Nap (Inputs)"
+        C[Companion Selector]
+        R[Recipient Friend]
+        T[Simulated Absence: 15m]
+        CTX[Context Pool: Recent Chat / LTMM]
+        G[Guidance Sandbox: Overrides]
+    end
+
+    subgraph "Sandboxed Execution (Zero Wire, Zero Memory Mutation)"
+        ENG[Nap Prompt Assembly]
+        LLM[Inference Call]
+    end
+
+    subgraph "Draft Inspector (Introspection)"
+        MSG[Rendered Prose Draft]
+        USED[Context Used: Extracted Chips]
+        TRACE[Run Trace: Model, Tokens, Latency]
+        ACT{"Action"}
+    end
+
+    subgraph "Execution Pathways"
+        QD["[ Queue for dispatch ]<br/>Stages into Outbound Review Queue"]
+        RE["[ Regenerate ]<br/>Re-runs simulation"]
+        CP["[ Copy draft ]<br/>Copies plaintext"]
+    end
+
+    C & R & T & CTX & G --> ENG --> LLM --> MSG & USED & TRACE
+    MSG --> ACT
+    ACT --> QD & RE & CP
+```
+
+#### 1. Simulation Controls (Left Column)
+- **Companion Selector**: Defaults to the active card persona (`Arona · current card`) or any local companion authorized for external dialogue.
+- **Recipient Selector**: Restricts selection strictly to eligible friends (`isNapChatEligible === true && canNapChat === true`). Displays remote companion status (`Offline - preview available`) and provides a shortcut link to manage candidate permissions (`Choose eligible friends (n) ->`).
+- **Simulated Absence Dropdown**: Allows instant simulation of various idle durations (`5 minutes away`, `15 minutes away`, `30 minutes away`, `1 hour away`) without waiting for physical OS idle timers.
+- **Context Source**: Selects the memory extraction pool (`Recent conversation`, `Long-term episodic memories`, `Idle thoughts & observations`) with an inline `Inspect context ->` drawer.
+- **Temporary Guidance Sandbox**: A dedicated steering prompt textarea (`"Be casual and friendly. Discuss shared interests. Do not share private details about me."`). Crucially: edits in this textarea are **strictly temporary to the preview** and do not mutate the user's permanent global social guidance unless explicitly saved.
+- **Action Button**: Primary accent `[ ▶ Generate preview ]` button with helper text: *"Uses the drafting flow. No messages sent or memories saved."*
+- **Eligibility & Run Details Accordion**: Live diagnostics verifying whether the chosen companion-friend pair passes all ACL, pairing, and threshold invariants.
+
+#### 2. Draft Inspector (Right Column)
+- **Recipient Header**: Clean indicator displaying targeted recipient with quick-switch dropdown (`To Yuki ∨`).
+- **Inspection Sub-Tabs**:
+  - **`Message`**: Displays the rendered companion dialogue bubble with avatar, recipient indicator (`Arona → Yuki`), prose text, provenance badge (`Source: recent conversation + social guidance`), and action controls.
+  - **`Context used`**: Exposes the exact raw memory fragments, recent chat turns, and prompt directives injected into the LLM synthesis window. Allows users to verify that no private credentials, hidden lorebooks, or sensitive notes leaked into the prompt.
+  - **`Run trace`**: Diagnostic telemetry displaying execution time, prompt/completion token count, model identifier, and temperature.
+- **Safety Callout**: Purple alert banner:
+  > **Draft only - not queued for delivery**
+  > This is a preview. No messages are sent and no memories are saved.
+- **Actions**:
+  - `[ Copy draft ]`: Copies the generated prose to system clipboard.
+  - `[ ⟳ Regenerate ]`: Re-invokes LLM generation with current sandbox settings.
+  - **`[ Queue for dispatch ]`**: **The Human-In-The-Loop Execution Bridge**. Promotes the verified preview message into the **Pending Messages Staging Queue**, allowing the user to test the real end-to-end wire transport without waiting for AFK triggers.
+
+#### 3. Pending Messages Staging Queue (Bottom Shelf)
+- **Human-In-The-Loop Gating**:
+  - Displays pending outbound drafts awaiting user confirmation (`Awaiting your review`) and incoming turns received from friends (`Waiting for recipient` / queued).
+  - Provides a single-click `[ Review -> ]` modal to inspect, edit, or approve transmission before wire dispatch over Cloudflare Edge or libp2p.
+  - Resolves user apprehension by establishing a safe intermediate stage between "manual drafting" and "unsupervised background automation".
+
 ---
 
 ## 8. Phased Implementation Roadmap
 
-| Milestone | Scope | Deliverables | Risk / Complexity |
-| :--- | :--- | :--- | :--- |
-| **Phase 0** | **Presence & Domain Models** | Refactor `proactivity-telemetry.ts` and `proactivity.ts` to share single idle evaluator (`powerMonitor`); define `PeerDevice` and `Friend` types in `stage-shared`; backlog Category 3 test suites as aspirational targets. | 🟢 Low (Zero network dependency) |
-| **Phase 1** | **Same-Account Auto-Discovery** | Connect `usePeersStore` to the existing `airi-edge-vault` KV namespace (provisioned in `cloudflare.ts`); auto-link multiple signed-in computers. | 🟢 Low (Built on existing KV vault) |
-| **Phase 2** | **Edge Worker Friends Embassy** | Add `/api/companion` and `/api/friends/*` endpoints in `apps/stage-edge`; implement Ed25519 signature checks, nonces, and rate limits; build "Friends & Companions" settings page per §9 (regions A–F). | 🟡 Medium (Worker routing & UI) |
-| **Phase 2a** | **Embassy Beacon + send-side (no regrets)** | `deployCompanionEmbassy()` in deployer (same `airi-stage-edge` name, no DO yet); beacon card with real health probe (`Embassy Inactive` → Deploy CTA); non-blocking Add flow (card optional, direct request, invite accept-and-connect). Receive stays dark — no list endpoint, no poller. | 🟢 Low (Contract frozen, additive only) |
-| **Phase 2b** | **Embassy DO + receive path** | Single `Embassy` DO (`idFromName('embassy')`): SQLite `friend_requests` / `friends_roster` / `nap_turns`, `/ws` hibernation, route POST handlers through DO stubs; client socket manager with reconnect; deployer `durable_objects` binding/migration support; KV drain-or-drop at cutover. | 🟡 Medium (DO + deployer + workerd testing) |
-| **Phase 3** | **TransportAdapter & libp2p** | Implement RFC #28 interface; wrap Cloudflare Edge adapter; port 7n1m4 PR #6 libp2p LAN driver for offline fallback. | 🟡 Medium (Local mDNS / WebRTC interop) |
-| **Phase 4** | **Nap-Chat Coordinator** | Port PR #7 nap-chat negotiation, background dream turns, append-only `text_journal` memory write-back, and welcome-back recap with `NO_REPLY` guard. | 🟡 Medium (Prompt tuning & safety gating) |
+| Milestone | Scope | Deliverables | Status |
+| :--- | :--- | :--- | :---: |
+| **Phase 0** | **Presence & Domain Models** | Single idle evaluator (`powerMonitor`); universal `PeerDevice` and `Friend` types in `stage-shared`; local SQLite/IndexedDB roster repository. | ✅ **Landed** |
+| **Phase 1** | **Same-Account Auto-Discovery** | `usePeersStore` synced to `airi-edge-vault` KV namespace; zero-setup device discovery with write-gated caching. | ✅ **Landed** |
+| **Phase 2** | **Edge Worker Friends Embassy** | `/api/companion` and `/api/friends/*` endpoints in `apps/stage-edge`; Ed25519 signature checks, nonces, rate limits; "Friends & Companions" settings surface. | ✅ **Landed** |
+| **Phase 2a** | **Embassy Beacon + Health Probe** | `deployCompanionEmbassy()` in cloudflare deployer; live health probe (`Expected websocket 426`); non-blocking invite lookup and connect flow. | ✅ **Landed** |
+| **Phase 2b** | **Embassy Durable Object & Real-Time Push** | SQLite DO (`friend_requests`, `trusted_peers`, `nap_turns`); hibernated `/ws` connection; automatic mutual acceptance; proactive roster reconciliation. | ✅ **Landed** |
+| **Phase 3** | **TransportAdapter Substrate (RFC #28)** | `createCloudflareEdgeTransport` implementation; WAN HTTPS/WebSocket relay; live socket-to-transport turn fanout. | ✅ **Landed** |
+| **Phase 4a** | **Nap-Chat Simulation & Inspection Workbench** | Three-tab navigation (`Overview`, `Nap-chat preview`, `Activity`); two-column simulation UI ("Simulate a nap" $\rightarrow$ "Draft inspector"); sandboxed prompt compilation; `Context used` and `Run trace` introspection tabs. | 🔨 **Next** |
+| **Phase 4b** | **Staged Outbound Queue & Dispatch Bridge** | `[ Queue for dispatch ]` bridge; "Pending messages" bottom shelf with `Awaiting your review` status; manual review and send trigger. | 📋 **Planned** |
+| **Phase 4c** | **End-to-End Turn Relay & Multi-Turn Simulation** | Turn delivery via `TransportAdapter` (`POST /api/friends/inbox`); DO SQLite journaling; mock 2-turn dialogue simulation. | 📋 **Planned** |
+| **Phase 4d** | **Episodic Memory Consolidation & Welcome-Back Recap** | Append-only `text_journal` memory write-back; single-fire welcome-back greeting on presence recovery; `NO_REPLY` guard enforcement. | 📋 **Planned** |
 
 ---
 
 ## 9. Subsystem 7: Friends & Companions Settings Surface (Settled UI Spec)
 
-> Source: mockup review 2026-10-19. Route target: `packages/stage-pages/src/pages/settings/modules/friends.vue` (breadcrumb `Hub > Modules > Friends & Companions`). All strings via `scripts/yaml-manager.js` under `settings.pages.modules.friends.*`; no hardcoded copy.
+> Source: mockup review 2026-10-19 & 2026-10-20. Route target: `packages/stage-pages/src/pages/settings/modules/friends.vue` (breadcrumb `Hub > Modules > Friends & Companions`). All strings via `scripts/yaml-manager.js` under `settings.pages.modules.friends.*`; no hardcoded copy.
 
-### 9.1 Settled layout regions (mockup A–F)
-1. **Companion address card (A)**: avatar + `Your companion address` + `{subdomain}.workers.dev` + presence dot. Actions: `Copy invite` (copies `airi://pair?worker=https://{handle}&invite={single-use-token}` with `https://` fallback), QR button (encodes same URI), `Manage public profile` link (edits `GET /api/companion/card` payload: name, avatar, tagline, pubkey).
-2. **Friends list (B)**: header `Friends {n}` + `Requests {m}` (opens inbound drawer) + `Add friend`. Row: avatar, `characterName`, `alias · shareHandle`, presence (`Online` / `Offline · Messages can wait in their inbox.` + queued-count when `>0`), capability chips (`Nap-chat allowed`, `Memory sharing off`), `Permissions >` (opens per-friend drawer), `...` (Revoke / Block / Remove).
+### 9.1 Settled Layout & Three-Tab Navigation
+The surface is structured around three primary views accessible via the top segmented tab bar:
+1. **`Overview`**: Core roster and operational management (Regions A–E).
+2. **`Nap-chat preview`**: Dedicated simulation, prompt tuning, and introspection workbench (§7.2).
+3. **`Activity`**: Historical dream turn transcripts, episodic memory journal entries, and connection telemetry.
+
+### 9.2 Settled Layout Regions (Mockup A–G)
+1. **Companion address card (A)**: avatar + `Your companion address` + `{subdomain}.workers.dev` + presence dot. Actions: `Copy invite` (copies `airi://pair?worker=https://{handle}&invite={single-use-token}` with `https://` fallback), QR button (encodes same URI), Redeploy button, `Manage public profile & worker` link.
+2. **Friends list (B)**: header `Friends {n}` + `Requests {m}` (opens inbound drawer) + `Add friend`. Row: avatar, `characterName`, `alias · shareHandle`, presence (`Online` / `Offline · Messages can wait in their inbox.`), capability chips (`Nap-chat allowed`, `Memory sharing off`), `Permissions >` (opens per-friend drawer), `...` (Revoke / Block / Remove).
    - **Inbound Requests Drawer**: Lists pending requests with applicant avatar, character name, alias, handle, and the sender's optional 100-character intro message rendered as a styled quote bubble (`"{introMessage}"`). Actions: `Accept` (transitions to `trusted`), `Decline` (discards request), `Block`.
    - **Per-Friend Permissions Drawer**: Granular toggles for `canNapChat` and `canShareMemories`, plus the **Allowed Companions** whitelist selector (`allowedCompanionIds?: string[]`), and optional **Friend topic guidance** (`customPromptGuidance?: string`) for friend-specific conversational steering.
-3. **Add a companion (C)**: `FieldInput` for `Companion address or invite code` + `Look up` (calls `GET /api/companion/card`, renders handle preview card: avatar, name, tagline). Below the preview card, an optional `FieldInput` for `Personal note (optional, 100 chars max)` provides a live character counter (`{len}/100`). `Send request` dispatches `POST /api/friends/request` with the sanitized note; helper text `A connection begins after both people accept.` covers the `pending → trusted` flow.
-4. **Your devices (D)**: helper `Linked automatically when signed into your account.` Rows from `SameAccountDevice[]`: `This device · Active now`, `{peer} · Idle · seen {Xs ago}`, `{peer} · Offline · seen {Xs ago}` from `lastSeenTimestamp`. Never show `Synced 1 hour ago` for presence — reserve `Synced` for vault-sync (`edgeVaultSyncedAt`).
-5. **Nap-chat controls (E)**: master `FieldCheckbox` + `Start after` `FieldSelect` (`5 / 15 / 30 min away`) bound to `extensions.airi.dreamState.afkThresholdMinutes` (default 15m, decoupled from heartbeat 5m — label must say `Nap-chat idle threshold`). Helper `Only friends with nap-chat permission are eligible.` `Welcome-back recap` `FieldCheckbox` gates single-fire recap. `Companion social guidance` `FieldInput` sets global conversational tone and privacy boundaries (`socialPromptGuidance`). `Activity & connection details` accordion (expanded on first run) shows `TransportAdapter` status: `Cloudflare Edge: connected/connecting/error`, `libp2p LAN: offline/disabled`, inbox queue depth.
-6. **While you were away (F)**: latest nap episode from `text_journal` (tag `nap-chat`, fields: `with`, `turnCount`, `journalEntryId`, `sessionId`, summary line). Actions: `Read conversation` (opens session transcript), `Open journal` (opens LTMM entry). `View history` links to journal search filtered `nap-chat`.
+3. **Add a companion (C)**: Collapsible card with `FieldInput` for address or invite code + `Look up` / `Accept & Connect`. Handles preview card and optional 100-char personal note. Auto-resets and collapses upon successful send or peer mutual acceptance.
+4. **Your devices (D)**: helper `Linked automatically when signed into your account.` Rows from `SameAccountDevice[]`: `This device · Active now`, `{peer} · Idle · seen {Xs ago}`. Manual sync button refreshes `airi-edge-vault`.
+5. **Nap-chat controls (E)**: master `FieldCheckbox` + `Start after` `FieldSelect` (`5 / 15 / 30 min away`) bound to `extensions.airi.dreamState.afkThresholdMinutes` (default 15m). `Welcome-back recap` `FieldCheckbox` gates single-fire recap. `Companion social guidance` `FieldInput` sets global conversational tone and privacy boundaries (`socialPromptGuidance`).
+6. **While you were away (F)**: latest nap episode from `text_journal` (tag `nap-chat`, fields: `with`, `turnCount`, `journalEntryId`, `sessionId`, summary line). Actions: `Read conversation` (opens session transcript modal), `Open journal` (links to Episodic Memory Text Journal).
+7. **Nap-Chat Simulation & Draft Inspector (G - "Nap-chat preview" tab)**: Full two-column interactive workbench per §7.2, including temporary guidance sandbox, `Context used` / `Run trace` inspector tabs, `[ Queue for dispatch ]` execution bridge, and bottom `Pending messages` staging queue.
 
 ### 9.2 Component compliance (`airi-ui-design-conventions`)
 - Primitives only: `Button` (`variant="primary"` for Add friend / Send request; `variant="secondary" outline` for Copy invite / Look up / Read conversation / Open journal), `IconButton` for copy / `...` (add explicit `focus-visible:ring-2`), `FieldInput` / `FieldSelect` / `FieldCheckbox` (250ms thumb), `BottomDrawer` (`rounded-t-[32px]`, `max-w-lg`, `max-h-[90dvh]`) for Requests + Permissions drawers.
