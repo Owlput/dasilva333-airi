@@ -85,7 +85,7 @@ describe('speech store helpers', () => {
       expect(output).toBe('happy (whispers) <|aside|>')
     })
 
-    it('handles math formulas mute vs passThrough', () => {
+    it('handles math formulas mute vs passThrough vs verbalize', () => {
       const ustMuteMath: any = {
         enabled: true,
         mathFormulas: 'mute',
@@ -99,9 +99,25 @@ describe('speech store helpers', () => {
         readCurrencyNaturally: false,
       }
       expect(applyUSTTransformations('Formula $x^2 + y^2 = z^2$ is fun', ustPassMath)).toBe('Formula $x^2 + y^2 = z^2$ is fun')
+
+      const ustVerbalizeMath: any = {
+        enabled: true,
+        mathFormulas: 'verbalize',
+        formulaLanguage: 'en',
+        readCurrencyNaturally: false,
+      }
+      expect(applyUSTTransformations('Formula $x^2 + y^2 = z^2$ is fun', ustVerbalizeMath)).toBe('Formula x squared plus y squared equals z squared is fun')
+
+      const ustVerbalizeMathJa: any = {
+        enabled: true,
+        mathFormulas: 'verbalize',
+        formulaLanguage: 'ja',
+        readCurrencyNaturally: false,
+      }
+      expect(applyUSTTransformations('Formula $x^2 + y^2 = z^2$ is fun', ustVerbalizeMathJa)).toBe('Formula エックスの二乗プラスワイの二乗 イコール ゼットの二乗 is fun')
     })
 
-    it('handles chemical notation mute vs passThrough', () => {
+    it('handles chemical notation mute vs passThrough vs verbalize', () => {
       const ustMuteChem: any = {
         enabled: true,
         chemicalNotation: 'mute',
@@ -115,6 +131,36 @@ describe('speech store helpers', () => {
         readCurrencyNaturally: false,
       }
       expect(applyUSTTransformations('Mix \\ce{H2O} and acid', ustPassChem)).toBe('Mix \\ce{H2O} and acid')
+
+      const ustVerbalizeChem: any = {
+        enabled: true,
+        chemicalNotation: 'verbalize',
+        formulaLanguage: 'en',
+        readCurrencyNaturally: false,
+      }
+      expect(applyUSTTransformations('Mix \\ce{H2O} and acid', ustVerbalizeChem)).toBe('Mix H two O and acid')
+      expect(applyUSTTransformations('Reaction \\ce{2H2 + O2 -> 2H2O} done', ustVerbalizeChem)).toBe('Reaction two H two plus O two yields two H two O done')
+    })
+
+    it('handles complex combined playground scenario with UST transformations', () => {
+      const ustFull: any = {
+        enabled: true,
+        asterisks: 'flatten',
+        mathFormulas: 'verbalize',
+        chemicalNotation: 'verbalize',
+        readCurrencyNaturally: true,
+        formulaLanguage: 'en',
+        stripEmojis: true,
+      }
+      const input = '*smiles* In water \\ce{H2O}, $x^2 + y^2 = z^2$ costs $19.99 😊'
+      const transformed = applyUSTTransformations(input, ustFull)
+      expect(transformed).toContain('smiles')
+      expect(transformed).toContain('H two O')
+      expect(transformed).toContain('x squared plus y squared equals z squared')
+      expect(transformed).toContain('nineteen dollars and ninety-nine cents')
+      expect(transformed).not.toContain('😊')
+      expect(transformed).not.toContain('*')
+      expect(transformed).not.toContain('$')
     })
 
     it('handles code blocks mute vs passThrough', () => {

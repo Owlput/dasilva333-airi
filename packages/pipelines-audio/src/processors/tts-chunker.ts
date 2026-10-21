@@ -9,7 +9,11 @@ import { createPushStream } from '../stream'
 export const TTS_FLUSH_INSTRUCTION = '\u200B'
 export const TTS_SPECIAL_TOKEN = '\u2063'
 
-const keptPunctuations = new Set('?？!！')
+/**
+ * A chunk without a letter, a digit, or an emoji, as a lone closing quote `”`, has no sound and is not a TTS request.
+ * Emoji stay, because some providers read them.
+ */
+const regexpSound = /[\p{L}\p{N}\p{Extended_Pictographic}]/u
 const hardPunctuations = new Set('.。?？!！…⋯～~\n\t\r')
 const softPunctuations = new Set(',，、–—:：;；《》「」')
 
@@ -87,7 +91,6 @@ export async function* chunkTtsInput(
     const special = value === TTS_SPECIAL_TOKEN
     const hard = hardPunctuations.has(value)
     const soft = softPunctuations.has(value)
-    const kept = keptPunctuations.has(value)
     let next: IteratorResult<string, any> | undefined
     let afterNext: IteratorResult<string, any> | undefined
 
@@ -154,13 +157,17 @@ export async function* chunkTtsInput(
       const words = [...segmenter.segment(buffer)].filter(w => w.isWordLike)
 
       if (chunkWordsCount > minimumWords && chunkWordsCount + words.length > maximumWords) {
-        const text = kept ? chunk.trim() + value : chunk.trim()
-        yield {
-          text,
-          words: chunkWordsCount,
-          reason: 'limit',
+        // The punctuation ends the buffer, not the chunk before it, so it stays with the buffer. Adding a `？` here too
+        // read it twice, as 方向、？ and then 移动？.
+        const text = chunk.trim()
+        if (regexpSound.test(text)) {
+          yield {
+            text,
+            words: chunkWordsCount,
+            reason: 'limit',
+          }
+          yieldCount++
         }
-        yieldCount++
         chunk = ''
         chunkWordsCount = 0
       }
@@ -172,12 +179,14 @@ export async function* chunkTtsInput(
       const shouldBoost = soft && yieldCount < boost && chunkWordsCount >= minimumWords
       if (flush || hard || chunkWordsCount > maximumWords || shouldBoost) {
         const text = chunk.trim()
-        yield {
-          text,
-          words: chunkWordsCount,
-          reason: flush ? 'flush' : hard ? 'hard' : chunkWordsCount > maximumWords ? 'limit' : 'boost',
+        if (regexpSound.test(text)) {
+          yield {
+            text,
+            words: chunkWordsCount,
+            reason: flush ? 'flush' : hard ? 'hard' : chunkWordsCount > maximumWords ? 'limit' : 'boost',
+          }
+          yieldCount++
         }
-        yieldCount++
         chunk = ''
         chunkWordsCount = 0
       }
@@ -206,7 +215,7 @@ export async function* chunkTtsInput(
     current = next
   }
 
-  if (chunk.length > 0 || buffer.length > 0) {
+  if (regexpSound.test(chunk + buffer)) {
     const text = (chunk + buffer).trim()
     yield {
       text,

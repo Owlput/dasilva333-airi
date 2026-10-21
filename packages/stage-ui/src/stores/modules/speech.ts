@@ -10,6 +10,14 @@ import { computed, onMounted, watch } from 'vue'
 import { toXml } from 'xast-util-to-xml'
 import { x } from 'xastscript'
 
+import {
+  braceBareScripts,
+  detectSpeechLanguage,
+  findBareLatex,
+  replaceBalancedCommand,
+  speakMath,
+  toSpeechLanguage,
+} from '../../utils/math-speech'
 import { useOnboardingStore } from '../onboarding'
 import { useProactivityStore } from '../proactivity'
 import { useProvidersStore } from '../providers'
@@ -162,24 +170,76 @@ export function applyUSTTransformations(text: string, ust?: VoiceProfile['ust'],
     transformed = transformed.replace(/^\d+\.\s+/gm, '')
   }
 
-  // Math formulas handling (mute vs passThrough)
-  const mathAction = ust.mathFormulas ?? 'passThrough'
-  if (mathAction === 'mute') {
-    transformed = transformed.replace(/\$\$[\s\S]*?\$\$/g, '')
-    transformed = transformed.replace(/\\\[[\s\S]*?\\\]/g, '')
-    transformed = transformed.replace(/(?<!\\)\$((?:\\\$|[^$])+)(?<!\\)\$/g, '')
-    transformed = transformed.replace(/\\\([\s\S]*?\\\)/g, '')
-  }
+  // Resolve formula verbalization base language
+  const baseLanguage = ust.formulaLanguage && ust.formulaLanguage !== 'auto'
+    ? ust.formulaLanguage
+    : detectSpeechLanguage(text, toSpeechLanguage(language) || 'en')
 
-  // Chemical notation handling (mute vs passThrough)
+  // Chemical notation handling (mute vs verbalize vs passThrough)
   const chemAction = ust.chemicalNotation ?? 'passThrough'
   if (chemAction === 'mute') {
-    transformed = transformed.replace(/\\ce\{[\s\S]*?\}/g, '')
+    transformed = replaceBalancedCommand(transformed, 'ce', () => '')
+  }
+  else if (chemAction === 'verbalize') {
+    transformed = replaceBalancedCommand(transformed, 'ce', (fullMatch) => {
+      const spoken = speakMath(fullMatch, baseLanguage)
+      return spoken ? ` ${spoken.trim()} ` : ''
+    })
   }
 
   // Currency verbalization
   if (ust.readCurrencyNaturally !== false) {
-    transformed = verbalizePrices(transformed, ust.formulaLanguage || language || 'en')
+    transformed = verbalizePrices(transformed, baseLanguage)
+  }
+
+  // Math formulas handling (mute vs verbalize vs passThrough)
+  const mathAction = ust.mathFormulas ?? 'passThrough'
+  if (mathAction === 'mute') {
+    transformed = transformed.replace(/\$\$[\s\S]*?\$\$/g, '')
+    transformed = transformed.replace(/\\\[[\s\S]*?\\\]/g, '')
+    transformed = transformed.replace(/\\\([\s\S]*?\\\)/g, '')
+    transformed = transformed.replace(/(?<!\\|\$)\$((?!\s)(?:\\\$|[^$])+(?<!\s))\$(?!\$)/g, (match, inner) => {
+      return /^\d+(?:\.\d+)?$/.test(inner.trim()) ? match : ''
+    })
+  }
+  else if (mathAction === 'verbalize') {
+    // 1. Display math: $$...$$
+    transformed = transformed.replace(/\$\$([\s\S]*?)\$\$/g, (_, inner) => {
+      const spoken = speakMath(inner.trim(), baseLanguage)
+      return spoken ? ` ${spoken.trim()} ` : ''
+    })
+    // 2. Display math: \[...\]
+    transformed = transformed.replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => {
+      const spoken = speakMath(inner.trim(), baseLanguage)
+      return spoken ? ` ${spoken.trim()} ` : ''
+    })
+    // 3. Inline math: \(...\)
+    transformed = transformed.replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => {
+      const spoken = speakMath(inner.trim(), baseLanguage)
+      return spoken ? ` ${spoken.trim()} ` : ''
+    })
+    // 4. Inline math: $...$
+    transformed = transformed.replace(/(?<!\\|\$)\$((?!\s)(?:\\\$|[^$])+(?<!\s))\$(?!\$)/g, (fullMatch, inner) => {
+      if (/^\d+(?:\.\d+)?$/.test(inner.trim()))
+        return fullMatch
+      const spoken = speakMath(inner.trim(), baseLanguage)
+      return spoken ? ` ${spoken.trim()} ` : ''
+    })
+    // 5. Bare LaTeX commands (e.g. \frac{1}{2}, \alpha = \beta)
+    const bareSpans = findBareLatex(transformed)
+    if (bareSpans.length > 0) {
+      let result = ''
+      let lastIndex = 0
+      for (const span of bareSpans) {
+        result += transformed.slice(lastIndex, span.start)
+        const bareFormula = braceBareScripts(transformed.slice(span.start, span.end))
+        const spoken = speakMath(bareFormula, baseLanguage)
+        result += spoken ? ` ${spoken.trim()} ` : ''
+        lastIndex = span.end
+      }
+      result += transformed.slice(lastIndex)
+      transformed = result
+    }
   }
 
   // Protect arithmetic operators (e.g., 2 * 3, 2**10, x**2) from bracket muting/flattening
@@ -588,13 +648,22 @@ export const useSpeechStore = defineStore('speech', () => {
 
     const isVirtual = providerId === 'virtual-audio-studio' || !!voiceProfileId
     const targetVoiceId = voiceProfileId || activeSpeechVoiceId.value
-    const profile = isVirtual ? savedVoiceProfiles.value.find(p => p.id === targetVoiceId || p.name === targetVoiceId) : null
+    let profile = isVirtual ? savedVoiceProfiles.value.find(p => p.id === targetVoiceId || p.name === targetVoiceId) : null
+
+    // If no virtual profile matched, check if any saved profile matches the active voice ID and provider
+    if (!profile && savedVoiceProfiles.value.length > 0) {
+      profile = savedVoiceProfiles.value.find(p => p.baseVoice === activeSpeechVoiceId.value && p.baseProvider === activeSpeechProvider.value) || null
+    }
 
     if (!profile || !profile.ust.enabled) {
       return text
     }
 
-    return applyUSTTransformations(text, profile.ust, profile.ust.formulaLanguage || selectedLanguage.value)
+    const targetLang = profile.ust.formulaLanguage && profile.ust.formulaLanguage !== 'auto'
+      ? profile.ust.formulaLanguage
+      : (activeSpeechVoice.value?.languages[0]?.code || selectedLanguage.value)
+
+    return applyUSTTransformations(text, profile.ust, targetLang)
   }
 
   /**
