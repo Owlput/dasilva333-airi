@@ -7,8 +7,9 @@
  *
  * Scope: this is the *model renderer's* viewport, not the stage the user sees. The stage is composed
  * by AIRI and the renderer together — a Live2D model carries no background at all, and the host
- * draws the background, the overlays, the captions and the control strip around the canvas this file
- * describes. "Stage" therefore survives in this package only where it names that host-side surface
+ * draws the background, its own overlays/layers and the control strip around the canvas this file
+ * describes, while the renderer draws captions inside it. "Stage" therefore survives in this package
+ * only where it names that host-side surface
  * (`RendererMountSurfaceKind`), and the package's own name reads the same way: a *stage renderer* is
  * one that renders for the stage, not the stage itself.
  */
@@ -17,8 +18,6 @@ import type { Component } from 'vue'
 import type { CueKind, CueRejection, CueSink } from './cues'
 import type {
   ContractFailure,
-  ContractResult,
-  HeadPose,
   ModelDriverId,
   OperationNonce,
   RendererMountPoint,
@@ -73,9 +72,11 @@ export enum RendererQualityHint {
  * the host assigns to the mount itself (`modelDriverId`, `mountId`, `stateScope`, `surface`).
  * Everything else a renderer pulls out of `ModelDriverHostServices`; discrete intents arrive as cues.
  *
- * There is deliberately no per-frame value here. The one that used to be — mouth openness — is now
- * derived by the renderer from the audio it is served (`HostAudioInterface`), because a scalar the
- * host computes is a second opinion about a signal the renderer already has.
+ * There is deliberately no per-frame value here. Mouth openness used to be the exception; it is
+ * now a **plugin-level** concern (`HostSpeechAnalyzerService`), outside this contract. A renderer
+ * no longer receives an `AudioNode` (it cannot cross a realm) and the mount contract carries no
+ * mouth scalar: the plugin subscribes to the analyzer's frame stream itself and drives its own
+ * model.
  *
  * A prop carries a **value** the host can restate on every render; a stream of **events** is a
  * service a renderer subscribes to. That is why the pointer is not here: pointer input lives in
@@ -120,9 +121,10 @@ export interface RendererMountProps {
    * The state scope this mount belongs to (`persistence.ts`).
    *
    * Opaque, minted and owned by the host: mounts in one scope share one state, and a mount never
-   * chooses or invents a scope. This is deliberately the whole of what a mount is told about
-   * sharing — the policy stays on the host's side. The name is never interpreted, and never equals a
-   * `RendererMountSurfaceKind` value.
+   * chooses or invents a scope. Every non-preview mount (actor, chat, rehearsal, main stage) is
+   * handed the same shared scope; only a preview mount gets its own. This is deliberately the whole
+   * of what a mount is told about sharing — the policy stays on the host's side. The name is never
+   * interpreted, and never equals a `RendererMountSurfaceKind` value.
    */
   stateScope: string
   /** Host-decided pause. Renderers MUST honour it and never self-pause. */
@@ -243,29 +245,20 @@ export enum RendererMountDisposeStrategy {
 /**
  * Methods the host may call on a mounted renderer.
  *
- * `captureFrame` is required because the selfie/capture pipeline and stage screenshots depend on it
- * for every renderer. Everything else is optional, and whether it is there is reported in
+ * Everything here is optional, and whether it is there is reported in
  * `ModelDriverCapabilities` — the renderer's own probed answer
  * (`ModelDriverRuntime.rendererCapabilities()`), with `ModelDriverManifest.capabilities` only a
  * static hint — rather than inferred from whether the member happens to exist.
  *
  * What belongs here is settled by one rule: **a member either returns data or tears the mount down.**
  * Nothing that needs a target, an ack, a preview, or delivery to a mount the caller does not hold a
- * reference to belongs here — that is a cue. Nothing that hands the caller the renderer's viewport
- * belongs here either: text and captions travel as cues (`CaptionCue`) and the renderer draws them
- * itself.
+ * reference to belongs here — that is a cue. Capture is the clearest case: it is a discrete,
+ * refusable transaction addressed to one mount, so it travels as `CaptureCue` and returns its bytes
+ * in the ack, rather than as a method only the window holding the component reference could call.
+ * Nothing that hands the caller the renderer's viewport belongs here either: text and captions
+ * travel as cues (`CaptionCue`) and the renderer draws them itself.
  */
 export interface RendererMountExposed {
-  /**
-   * Encode the current frame as an image, for the capture/selfie pipeline and stage screenshots.
-   *
-   * Required, and required to go through the result envelope: `null` would have to be read as failure
-   * by every caller anyway, so absence and breakage are one answer here — `internal` when the render
-   * or the encode failed, `aborted` when the mount was torn down mid-capture.
-   */
-  captureFrame: () => Promise<ContractResult<Blob>>
-  /** Requires `ModelDriverCapabilities.headPose`; used to tether captions and the radial menu. */
-  getHeadPose?: () => HeadPose | null
   /**
    * Requires `ModelDriverCapabilities.occupiesPoint`.
    *
@@ -282,8 +275,8 @@ export interface RendererMountExposed {
    * Sensitivity is the renderer's own policy: how much alpha counts, or whether pixels are consulted
    * at all. It is therefore neither a parameter here nor a host setting.
    *
-   * Synchronous by design, like `getHeadPose`: the host samples it as the pointer moves, so a
-   * renderer that needs a frame to answer should cache rather than make the host await.
+   * Synchronous by design: the host samples it as the pointer moves, so a renderer that needs a
+   * frame to answer should cache rather than make the host await.
    */
   occupiesPoint?: (point: RendererMountPoint) => boolean
   /**

@@ -13,6 +13,10 @@
  * built while nothing is mounted. A renderer's whole state moves as a single opaque bundle
  * (`ModelDriverTransferBundle` in `renderer.ts`), and patching and migrating it are the renderer's own
  * business.
+ *
+ * In Electron the authoritative copy lives in the **main process**: a renderer publishes over IPC and
+ * the host broadcasts the accepted revision, so the main window can build prompts while the actor is
+ * in another window. The port description below is the same either way.
  */
 import type { CapabilityVocabularySnapshot } from './capabilities'
 import type { ModelId, ModelProfileId } from './model'
@@ -21,9 +25,15 @@ import type { ModelDriverId, RendererMountSurfaceKind } from './shared'
 /**
  * The state of one **state scope** and its model, kept by the host as an uninterpreted snapshot.
  *
- * Scope: a scope — not the model, and not the mount. A scope is AIRI's unit of sharing: every mount in
- * a scope reads and writes the same state, a scope outlives any particular mount, and one scope is one
- * record — the scope is the whole key, which is why `readSnapshot` names nothing else.
+ * Scope: a scope — not the model, and not the mount. A scope is AIRI's semantic unit of sharing:
+ * every mount in a scope reads and writes the same state, and one scope is one record — the scope is
+ * the whole key, which is why `readSnapshot` names nothing else. The model is data inside that
+ * record, not part of the key.
+ *
+ * **Every non-preview surface reuses the shared scope.** Actor, chat, rehearsal and the main stage
+ * are different mounts of one shared scope, so switching the model updates `modelId` inside the
+ * record instead of minting a new scope; all of them see the same state. A `preview` mount is the
+ * one exception: it gets its own scope so a draft cannot leak into the live stage.
  *
  * It has to be the host that defines the sharing, because the renderer may not be told the policy:
  * the renderer only ever learns the scope name it is handed, and that policy may change without
@@ -40,10 +50,10 @@ export interface ModelScopedState {
   /**
    * The surface whose mount wrote this snapshot most recently.
    *
-   * A **label, not a key**. One surface can hold several scopes (every preview mount has its own) and
-   * a scope outlives any particular mount, so this cannot identify a record. The host needs it after a
-   * restore, when it holds records but no running mounts: it is how the host tells the shared scopes —
-   * the ones AIRI may read for prompts — from the ones belonging to a single mount, which can be
+   * A **label, not a key**. One shared scope spans several surfaces (actor, chat, rehearsal), and
+   * every preview mount has a scope of its own, so a surface cannot identify a record. The host
+   * needs it after a restore, when it holds records but no running mounts: it is how the host tells
+   * the shared scope — the one AIRI may read for prompts — from a preview scope, which can be
    * discarded.
    */
   surface: RendererMountSurfaceKind
@@ -101,8 +111,11 @@ export interface ModelScopedState {
  *   - a scope's name is **stable while its state lives**. Renaming orphans the records, so the host
  *     either migrates them with the rename or discards them deliberately; it never leaves a renderer
  *     reading an empty scope and concluding the model has no state.
- *   - a scope that belongs to a **single mount** is unique to that mount and is discarded when it
- *     unmounts: nothing else can read it, and keeping it would let a later preview inherit a draft.
+ *   - every **non-preview** mount joins the one shared scope; switching the model rewrites
+ *     `modelId` in that record rather than renaming or replacing the scope.
+ *   - a scope that belongs to a **single preview mount** is unique to that mount and is discarded
+ *     when it unmounts: nothing else can read it, and keeping it would let a later preview inherit
+ *     a draft.
  *   - the **renderer is the only writer**. The host keeps the latest snapshot and never writes one back
  *     into renderer storage; restoring hands the renderer the complete snapshot the host holds, and the
  *     renderer decides what to keep.
@@ -111,10 +124,11 @@ export interface ModelScopedState {
  *     shape of what it stored.
  *   - `values` stays opaque to AIRI, so the renderer may put its per-model transform, selection and
  *     expression overrides in there under its own keys.
- *   - `vocabulary` and `profileId` are the two parts AIRI reads. For those, AIRI reads a **shared**
- *     scope — the live stage's first — and never a single-mount one: otherwise a draft the user is
- *     still trying in a preview would become what a prompt believes the model looks like. This is a
- *     host-side read, not a port method; prompts and the catalog are built while nothing is mounted.
+ *   - `vocabulary` and `profileId` are the two parts AIRI reads. For those, AIRI reads the **shared**
+ *     scope that actor, chat and the main stage publish into, never a preview scope: otherwise a
+ *     draft the user is still trying in a preview would become what a prompt believes the model looks
+ *     like. This is a host-side read, not a port method; prompts and the catalog are built while
+ *     nothing is mounted.
  */
 export interface HostStateTransferPort {
   /**

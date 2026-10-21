@@ -14,9 +14,12 @@ export type Unsubscribe = () => void
 export type MaybePromise<T> = T | Promise<T>
 
 /**
- * Monotonic counter incremented on every mount/load attempt.
+ * Monotonic counter minted by the host's cue broker.
  *
- * A renderer MUST reject an async completion whose nonce is stale.
+ * One counter covers the whole app, so a nonce is never reused across mounts. A renderer compares
+ * nonces only against other transactions it received on the **same mount**: a completion whose
+ * nonce is older than the newest one seen there is stale and must be discarded. A caller may pin a
+ * value it already tracks, but it does not mint the sequence itself.
  */
 export type OperationNonce = number
 
@@ -31,7 +34,7 @@ export interface ModelDriverContractVersion {
  *
  * Exists so the compatibility check does not require AIRI to restate the number.
  */
-export const MODEL_DRIVER_CONTRACT_VERSION: ModelDriverContractVersion = { major: 0, minor: 1 }
+export const MODEL_DRIVER_CONTRACT_VERSION: ModelDriverContractVersion = { major: 0, minor: 2 }
 
 /**
  * Readiness of one renderer mount, reported through the mount's `state-change` emit.
@@ -83,6 +86,30 @@ export enum ContractFailureCode {
   RENDERER_UNAVAILABLE = 'renderer-unavailable',
   /** A host service the renderer requires was not provided at activation. */
   HOST_SERVICE_MISSING = 'host-service-missing',
+  /**
+   * The import would replace a model that already exists under the same id.
+   *
+   * Only an explicit `overwrite` (a user "replace" action, or a migration with a marker) may
+   * bypass this; a normal import must surface the conflict instead of minting a silent duplicate.
+   *
+   * Carries no payload: the caller supplied the `modelId` it tried to import, so it already knows
+   * which id conflicted and can look up the existing record in its own catalogue. A batch import
+   * that wants to name the offender checks the ids it sent; `details` stays opaque.
+   */
+  MODEL_ID_CONFLICT = 'model-id-conflict',
+  /** The renderer could not encode its canvas for a `CaptureCue`. */
+  CAPTURE_FAILED = 'capture-failed',
+  /** The operation did not settle before the broker's deadline. */
+  TIMEOUT = 'timeout',
+  /**
+   * The envelope is not one the broker can route.
+   *
+   * Used when the transaction is malformed as a transaction rather than as a cue: a `capture`
+   * sharing its envelope with other cues (capture must be alone, because its failure is a
+   * whole-send error), a `target.stateScope` while fan-out is not implemented, or no routable
+   * target at all. Nothing is delivered, so no renderer sees a half-valid transaction.
+   */
+  INVALID_ENVELOPE = 'invalid-envelope',
   /**
    * The work was abandoned, and nothing took its place: the mount was disposed or the
    * renderer disabled while the operation was in flight, or the caller cancelled it.
@@ -155,8 +182,7 @@ export enum RendererMountSurfaceKind {
  *
  * Nothing in the contract is measured against the window, the page, or a canvas backing
  * store. This one space covers `RendererPointerEvent.point`,
- * `RendererMountExposed.occupiesPoint`, `RendererMountExposed.hitTest`, `GazeCue.point` and
- * `HeadPose.position`.
+ * `RendererMountExposed.occupiesPoint`, `RendererMountExposed.hitTest` and `GazeCue.point`.
  */
 export interface RendererMountPoint {
   x: number
@@ -179,41 +205,6 @@ export interface RendererMountViewport {
    * a `RendererMountPoint`.
    */
   devicePixelRatio?: number
-}
-
-/**
- * Head pose reported by a renderer so the host can tether overlays (captions, radial menu) to
- * the avatar's head.
- *
- * An optional capability, never an assumed one: `ModelDriverCapabilities.headPose`.
- */
-export interface HeadPose {
-  /**
-   * Where the crown of the head is, in `RendererMountPoint` space.
-   *
-   * Produced by the renderer, the only side that knows how it drew: it converts out of its own
-   * model space itself, and the host adds the canvas rectangle when it wants page coordinates.
-   */
-  position: RendererMountPoint
-  /**
-   * Head rotation in radians, as this renderer reads its own head bone.
-   *
-   * An axis this rig cannot express is `null`, never `0`: zero is a real rotation reading, so a
-   * renderer MUST NOT use it to mean "unknown". A renderer with no head bone at all answers
-   * `null` from `getHeadPose` instead of three null axes.
-   */
-  yaw: number | null
-  pitch: number | null
-  roll: number | null
-  /**
-   * Approximate visible model height in CSS pixels, in the same space as `position`, or `null`
-   * when this renderer cannot estimate it.
-   *
-   * Advisory: the host scales head-tethered overlays with it and has its own fallback for a
-   * missing or unreasonable value, so a renderer that cannot measure the model MUST say so
-   * rather than invent a fraction of the viewport.
-   */
-  modelHeightPx: number | null
 }
 
 /**

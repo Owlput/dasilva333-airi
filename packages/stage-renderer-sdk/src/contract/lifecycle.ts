@@ -6,6 +6,7 @@
  */
 import type { ModelDriverHostServices } from './host-services'
 import type { ModelDriverCapabilities, ModelDriverManifest } from './manifest'
+import type { ModelId } from './model'
 import type { ModelProvider } from './provider'
 import type {
   ModelDriverImportReport,
@@ -19,6 +20,8 @@ import type {
   ContractResult,
   MaybePromise,
   ModelDriverId,
+  RendererMountReadinessState,
+  RendererMountSurfaceKind,
   Unsubscribe,
 } from './shared'
 
@@ -82,6 +85,10 @@ export interface ModelDriverRuntime {
    * "could not determine", which is not the same as "nothing is available": the host keeps using
    * the hint rather than concluding that the renderer is useless.
    *
+   * The answer belongs to one live instance in one window; the Electron main process cannot answer
+   * it because it has no renderer, no DOM/WebGL and no `AudioContext`. A main-side registry therefore
+   * holds only the static manifest hint and the enabled flag, never this result.
+   *
    * `ModelProvider.modelCapabilities(modelId)` is the same question at model scope.
    */
   rendererCapabilities: () => MaybePromise<ContractResult<ModelDriverCapabilities>>
@@ -122,6 +129,20 @@ export interface ModelDriverRuntime {
    * with `list()` when the import reports success.
    */
   import?: (bundle: ModelDriverTransferBundle) => MaybePromise<ContractResult<ModelDriverImportReport>>
+
+  /**
+   * Delete every byte this driver persisted.
+   *
+   * Called for "delete all data" and uninstall, after the host has decided the driver's records
+   * go away. The host cannot enumerate a driver's storage itself (`HostStorageInterface.keys()`
+   * is the driver's view), so this is the only complete deletion path. Advertise it as
+   * `ModelDriverCapabilities.purge`; a driver that persists nothing answers `true` and does
+   * nothing, so the host does not have to special-case it.
+   *
+   * Models, profiles, per-model state and the driver's own settings all go. The host clears its
+   * catalogue records only after this succeeds, so a failure leaves both sides consistent.
+   */
+  purge?: () => MaybePromise<ContractResult<void>>
 
   /**
    * Inherit the settings AIRI kept for this driver before this contract existed.
@@ -169,6 +190,10 @@ export interface ModelDriverActivationReport {
  * whether it can still read or load it — is only knowable from a driver instance, so it is produced
  * at runtime (`ModelProvider.list`, a `ContractResult` failure, the mount's own `error` emit) and
  * there is no availability enum to keep in sync with those answers.
+ *
+ * This registry is **renderer-side**: `get()` returns a live `ModelDriverRuntime`, which only exists
+ * in the window that activated it. The main-process registry is a manifest/enable registry and
+ * deliberately holds no runtime and no probed capabilities.
  */
 export interface ModelDriverHostRegistry {
   list: () => ModelDriverId[]
@@ -177,4 +202,82 @@ export interface ModelDriverHostRegistry {
   /** Fired when a driver is enabled, disabled, installed or updated. */
   // TODO: pass in the change detail.
   onChange: (handler: () => void) => Unsubscribe
+}
+
+/** One live renderer mount. */
+export interface RendererMountDescriptor {
+  /**
+   * Globally unique for the app session.
+   *
+   * The mounting host mints it as a UUID before the component is mounted and never reuses it.
+   * The registry rejects a duplicate from any window; it does not generate or rewrite the value,
+   * so the id the mount registered with is the id every caller routes to.
+   */
+  mountId: string
+  modelDriverId: ModelDriverId
+  /** The model currently on this mount, when one is loaded. */
+  modelId?: ModelId
+  surface: RendererMountSurfaceKind
+  /** The snapshot/prompt scope this mount writes to. */
+  stateScope: string
+  /** The host window that owns the mount, so the broker can reject a forged ack. */
+  windowId: string
+  readiness: RendererMountReadinessState
+  /** Host clock, milliseconds; updated on every descriptor change. */
+  updatedAt: number
+}
+
+/** Query for `findBy`; every field is an AND filter. */
+export interface RendererMountQuery {
+  surface?: RendererMountSurfaceKind
+  stateScope?: string
+  windowId?: string
+  modelId?: ModelId
+  modelDriverId?: ModelDriverId
+}
+
+/**
+ * What a renderer sends when it mounts.
+ *
+ * `mountId` and `stateScope` are the host-minted values the mount received as props; `windowId`
+ * is filled by the host from the sender's `webContents`, never trusted from the payload.
+ */
+export type RendererMountRegistration = Omit<RendererMountDescriptor, 'updatedAt' | 'windowId'> & {
+  /** Optional; the host overwrites it with the sender's window identity. */
+  windowId?: string
+}
+
+/**
+ * The host's mount registry.
+ *
+ * This is the centre a multi-window host was missing: a cue, a capture request, a prompt
+ * publication or a panel all need to find "the mount on the actor window" without holding that
+ * window's component reference. AIRI implements it in the Electron main process; a single-window
+ * host may implement it in memory with the same semantics.
+ *
+ * `register` is how a mount announces itself; `unregister` is called on unmount and on window
+ * destruction. `onChanged` is an observer feed: it is not how cues are delivered, because a cue
+ * names one mount and is delivered through that mount's sink.
+ */
+export interface ModelDriverMountRegistry {
+  /**
+   * Register a mount.
+   *
+   * The registry rejects a `mountId` already registered **anywhere**, fills `windowId` from the
+   * sender, stamps `updatedAt`, and returns the complete descriptor. It never generates or
+   * rewrites the id: the mounting host mints it before mounting, so the id in the mount's props
+   * and the id in the registry are the same value.
+   */
+  register: (descriptor: RendererMountRegistration) => Promise<ContractResult<RendererMountDescriptor>>
+  /** Patch readiness/model/scope. `mountId` and `windowId` are immutable. */
+  update: (
+    mountId: string,
+    patch: Partial<Omit<RendererMountDescriptor, 'mountId' | 'windowId' | 'updatedAt'>>,
+  ) => Promise<ContractResult<RendererMountDescriptor>>
+  /** Idempotent: removing an already-removed mount is a successful no-op. */
+  unregister: (mountId: string) => Promise<ContractResult<void>>
+  list: () => Promise<RendererMountDescriptor[]>
+  findBy: (query: RendererMountQuery) => Promise<RendererMountDescriptor[]>
+  /** Fires with the complete new list whenever a descriptor is added, changed or removed. */
+  onChanged: (handler: (mounts: RendererMountDescriptor[]) => void) => Unsubscribe
 }

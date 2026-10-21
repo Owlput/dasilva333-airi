@@ -7,14 +7,17 @@
  *
  * Two rules:
  *
- * 1. **Companions are never catalogue entries.** A model file and the textures its materials
- *    reference are one thing; the companions get no id, no separate storage entry and never
- *    appear in `list()`, because AIRI must never be able to hold an unusable half of a model.
+ * 1. **AIRI imports models, never parts.** A model file and the textures it references arrive
+ *    together in `ModelProbeInput.files`; AIRI does not label one of them the main file or mint
+ *    an id for another, because a half-model is not something AIRI may ever hold. The driver
+ *    decides which files belong to which model and reports the models as `parts`.
  * 2. **AIRI only knows about models.** A model has the AIRI-minted `modelId` it was imported
  *    under; AIRI enumerates it, stores its metadata and points at it by that id. Everything else
- *    inside the renderer has no id from AIRI and therefore cannot be enumerated by AIRI: it
- *    either stays entirely inside the renderer's storage or travels in the opaque `meta` bag,
- *    which AIRI persists verbatim and never interprets.
+ *    inside the renderer — motions, presets, textures replaced after import, and every other
+ *    asset — has no id from AIRI and therefore cannot be enumerated by AIRI: it either stays
+ *    entirely inside the renderer's storage or travels in the opaque `meta` bag, which AIRI
+ *    persists verbatim and never interprets. Those assets are imported through the driver's own
+ *    panel or bridge, never through `probe`/`confirmImport`.
  */
 import type { ModelCapabilityDescriptor } from './capabilities'
 import type { ModelId, ModelProfileId } from './model'
@@ -122,11 +125,13 @@ export interface ModelProvider {
   /**
    * Store the renderer's current state as this profile.
    *
-   * `profileId` is minted by AIRI, exactly as on the import path (`ModelProbeInput.profileId`):
+   * `profileId` is minted by AIRI, exactly as on the import path (`ModelImportSelection.profileId`):
    * the renderer never invents an AIRI-facing id.
    *
-   * The content is the state the renderer is in right now, so this needs a mounted instance and
-   * fails when there is none.
+   * A **registered** driver is enough; no mount is required. When nothing is mounted the driver
+   * saves the state it last persisted, so the call also works during migration before the first
+   * mount. A driver that needs a live model to answer still has to settle the call rather than
+   * leave it pending.
    */
   saveProfile?: (modelId: ModelId, profileId: ModelProfileId, options: ModelProfileSaveOptions) => MaybePromise<ContractResult<ModelProfileDescriptor>>
 
@@ -153,30 +158,97 @@ export interface ModelProvider {
 }
 
 export interface ModelProbeInput {
-  /** The host sets exactly one of `file`, `files` or `url`. */
-  file?: File
   /**
-   * The whole set, when the import path produced several files — a directory pick, or a model
-   * together with the textures it needs.
+   * Every file of the input, in one set: a single model is `files.length === 1`, and a model plus
+   * the textures it references is the same set.
    *
-   * It has to reach `probe`, not only `confirmImport`: `probe` is the only place the input is ever
-   * handed over.
+   * AIRI deliberately has no separate `file` or companion field. Splitting the input would make
+   * AIRI decide which file is the model and which is an attachment — a driver-native distinction
+   * AIRI cannot make. It has to reach `probe`, not only `confirmImport`: `probe` is the only place
+   * the input is ever handed over. The input carries **no ids**: `probe` is a read-only
+   * inspection, and AIRI mints the ids only after the user has chosen which parts to import.
    */
   files?: File[]
+  /** The host sets exactly one of `files` or `url`. */
   url?: string
-  /** Names hint when the payload is a directory pick. */
+  /** Names aligned with `files`, when the payload came from a directory pick. */
   fileNames?: string[]
+}
+
+/** Display metadata for one model inside an import package. */
+export interface ModelImportPartMeta {
+  /** Driver-native format hint, for display only. */
+  format: string
+  /** Optional lightweight preview data URL (already encoded); never raw model bytes. */
+  previewDataUrl?: string
+  /** A name AIRI may pre-fill for the part's default profile. */
+  suggestedProfileName?: string
+  sizeBytes?: number
+}
+
+/** One model the probe found inside the input. */
+export interface ModelImportPart {
+  /** Stable within this probe result; `confirmImport` uses it to address the part. */
+  partIndex: number
+  name: string
+  meta: ModelImportPartMeta
+}
+
+/** One part the user chose to import, with the ids AIRI minted for it. */
+export interface ModelImportSelection {
+  partIndex: number
   /**
-   * The identities AIRI already minted for this model and for the profile it is being imported
-   * into (`model.ts`).
-   *
-   * AIRI mints both *before* an import happens, so the renderer can key its own storage by them
-   * from the first moment and a later `LoadCue` can address the model without either side ever
-   * holding the other's id. The renderer MUST persist the asset under exactly these values; it
-   * never invents an AIRI-facing id of its own.
+   * AIRI-minted model id. The renderer MUST persist the asset under exactly this value and MUST
+   * NOT invent or rewrite an AIRI-facing id.
    */
   modelId: ModelId
-  profileId: ModelProfileId
+  /** AIRI-minted default profile id, when the caller wants to name it explicitly. */
+  profileId?: ModelProfileId
+  /** Override the part's display name. */
+  name?: string
+}
+
+/** Where a migration-sourced import came from. */
+export type ModelImportSource = 'legacy-display-model' | 'legacy-backup' | 'legacy-preset'
+
+/**
+ * Migration provenance.
+ *
+ * The host writes a marker before the import and only sets `overwrite` for this path. Repeating
+ * the same `sourceId` + `payloadHash` after a crash is how D13 retries without turning normal
+ * imports into upserts.
+ */
+export interface ModelImportMigration {
+  source: ModelImportSource
+  sourceId: string
+  payloadHash: string
+}
+
+export interface ModelConfirmOptions {
+  /** One entry per part to import; parts not listed are not written. */
+  selections: ModelImportSelection[]
+  /**
+   * Import despite `blockingFindings`.
+   *
+   * The host sets this only after the user explicitly accepts the findings; a low `confidence`
+   * never requires it, because confidence is not a verdict on whether the input may be imported.
+   */
+  force?: boolean
+  /**
+   * Replace an existing `(modelDriverId, modelId)`.
+   *
+   * Normal imports MUST NOT set this. Only an explicit "replace this model" user action or a
+   * migration with a marker may; otherwise a duplicate id is `MODEL_ID_CONFLICT`.
+   *
+   * The conflict carries no payload: the caller supplied the `modelId`, so it already knows
+   * which id collided and looks the existing record up in its own catalogue. For a batch, it
+   * checks the ids it sent. The failure is atomic: no part of the selection is written.
+   */
+  overwrite?: boolean
+  /** Clear the stored profiles when overwriting. Default `false`: keep the user's profiles. */
+  resetProfiles?: boolean
+  /** Migration-only provenance; absent for user-initiated imports. */
+  migration?: ModelImportMigration
 }
 
 export interface ModelProbeResult {
@@ -188,7 +260,7 @@ export interface ModelProbeResult {
    * renderer, low score included.
    */
   confidence: number
-  /** Suggested display name, usually derived from the file name. */
+  /** Suggested package display name, usually derived from the file name. */
   name?: string
   /** Non-fatal findings worth showing before the user commits. */
   warnings?: string[]
@@ -205,32 +277,20 @@ export interface ModelProbeResult {
    */
   blockingFindings?: string[]
   /**
-   * Import the input this probe was given, under the ids it was given.
+   * Every model this input expands to.
    *
-   * Returns a list because one input can legitimately expand into several models (a multi-model
-   * package can be split and each part imported).
+   * A single-model package has exactly one part. `probe` writes nothing: the parts are a
+   * description, and the host only commits the ones the user selects. This is also the
+   * multi-model id boundary — the driver reports names and metadata, AIRI mints ids.
    */
-  confirmImport: (options?: ModelConfirmOptions) => MaybePromise<ContractResult<ModelDescriptor[]>>
-}
-
-export interface ModelConfirmOptions {
+  parts: ModelImportPart[]
   /**
-   * Override `ModelProbeResult.name`.
+   * Import the selected parts under the ids AIRI minted.
    *
-   * Renderer SHOULD store a human-readable name for an imported model in metadata, for display
-   * when the model is exported as a model-profile package and re-imported.
+   * Returns one descriptor per imported part. The driver MUST echo the selected `modelId` and
+   * MUST NOT return a descriptor for a part the caller did not select.
    */
-  name?: string
-  /**
-   * Import despite `blockingFindings`.
-   *
-   * The host sets this only after the user explicitly accepts the findings; a low `confidence`
-   * never requires it, because confidence is not a verdict on whether the input may be imported.
-   * Whatever a forced import then runs into is the user's to resolve: the renderer still reports
-   * the failure through the result envelope, and the host surfaces it instead of retrying or
-   * rolling back by itself.
-   */
-  force?: boolean
+  confirmImport: (options: ModelConfirmOptions) => MaybePromise<ContractResult<ModelDescriptor[]>>
 }
 
 /**
@@ -258,7 +318,7 @@ export interface ModelDescriptor {
   /** The driver that owns this model. */
   modelDriverId: ModelDriverId
   /**
-   * The identity AIRI minted before this asset was imported (`ModelProbeInput.modelId`).
+   * The identity AIRI minted before this asset was imported (`ModelImportSelection.modelId`).
    *
    * The whole identity of a model, and the only key AIRI ever holds: AIRI produces it and nothing
    * else does, so it is the same value no matter which renderer serves the model. Whatever the

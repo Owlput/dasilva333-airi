@@ -8,8 +8,15 @@
 import type { Component } from 'vue'
 
 import type { ModelDriverHostServices } from './host-services'
-import type { ModelId } from './model'
+import type { ModelId, ModelProfileId } from './model'
 import type { ModelDriverId, RendererMountReadinessState, RendererMountSurfaceKind } from './shared'
+
+/** The host chrome a driver panel can be mounted into. */
+export enum ModelDriverPanelHostSurface {
+  SETTINGS = 'settings',
+  POPOVER = 'popover',
+  INLINE = 'inline',
+}
 
 /**
  * A panel the driver contributes to the host's renderer settings surfaces.
@@ -34,6 +41,14 @@ export interface ModelDriverPanelDeclaration {
    * - OR, render an empty state explaining where the panel is available.
    */
   surfaces?: RendererMountSurfaceKind[]
+  /**
+   * Host chrome this panel can be mounted into; absent means `settings` only.
+   *
+   * `popover` is what the control strip uses: the strip supplies an anchor and a dismissable
+   * shell, and the driver supplies the whole body. A driver that omits it is not offered there;
+   * the host never falls back to a built-in picker.
+   */
+  hostSurfaces?: ModelDriverPanelHostSurface[]
   /**
    * Lazy component factory of the panel itself.
    *
@@ -75,8 +90,27 @@ export interface ModelDriverPanelProps {
    * (`HostStateTransferPort.writeSnapshot`), so two windows cannot race on `revision`.
    */
   modelId: ModelId
+  /**
+   * The snapshot/prompt scope the panel edits.
+   *
+   * A panel and its live mount may sit in different windows, so the panel needs the scope to read
+   * the snapshot it is allowed to see and to know which mount a preview belongs to.
+   */
+  stateScope: string
+  /** The mount this panel is paired with, when there is one; absent for a catalog-level panel. */
+  mountId?: string
+  /** The profile the mount currently shows, when known. */
+  currentProfileId?: ModelProfileId
   /** Which surface the panel is rendered in, so it can adapt its own layout. */
   surface: RendererMountSurfaceKind
+  /**
+   * Which host chrome the panel is rendered into.
+   *
+   * A driver that contributes a control-strip picker gets `popover` and owns the whole body; the
+   * host only supplies the anchor and shell. This is deliberately separate from `surface`, which
+   * describes the stage context, not the settings chrome.
+   */
+  hostSurface: ModelDriverPanelHostSurface
   /**
    * Readiness of the mount this panel is attached to.
    *
@@ -138,6 +172,10 @@ export interface ModelDriverImportReport {
  * The bag is deliberately untyped. Which keys exist is a fact about the host's history rather than
  * about the driver, so it is named by the host and read by the driver on the single occasion it is
  * offered.
+ *
+ * **Shape not final.** The two fields below are only the current transition shape; the per-model
+ * profile mapping has not been designed yet. A driver MUST treat this object as an input it
+ * receives once, not as a storage layout or a stable API.
  */
 export interface ModelDriverMigrationInput {
   /**

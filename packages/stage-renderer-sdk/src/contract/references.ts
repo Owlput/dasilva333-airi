@@ -29,6 +29,15 @@ export interface HostAnnotationFields {
    */
   preview?: ModelPreview & { updatedAt: number }
   /**
+   * The small icon the card/author UI shows for this model.
+   *
+   * Separate from `preview`: a model can have a large thumbnail and no author icon, or an icon
+   * that is not a crop of the thumbnail. Legacy display models carry `authorIcon` as an asset
+   * URL, so migration has to normalize it into `ModelPreview` (fetch it, or skip it with a
+   * warning) rather than storing the URL as if it were a data URL.
+   */
+  authorIcon?: ModelPreview
+  /**
    * The user's own note.
    *
    * Free text AIRI stores and displays, and never interprets. It is not part of `searchKey`

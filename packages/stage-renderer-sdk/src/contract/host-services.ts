@@ -13,6 +13,7 @@
 import type { CueChannel } from './cues'
 import type { HostStateTransferPort } from './persistence'
 import type {
+  ContractResult,
   MaybePromise,
   ModelDriverContractVersion,
   ModelDriverId,
@@ -31,6 +32,10 @@ export interface HostLogger {
  * Driver-scoped persistent storage, as primitives.
  *
  * The host owns the namespace and the medium, so a driver never writes ambient keys itself.
+ * Namespace isolation is **the host's implementation detail**: every key the driver passes is a
+ * relative key, the host adds the driver's prefix on read and write, and `keys()` only ever returns
+ * keys from that same namespace. The driver does not know the prefix and cannot reach another
+ * driver's keys by naming one.
  *
  * It deliberately stops at primitives. Which keys exist, what shape their values have, which of them
  * are worth backing up and how an older value becomes a newer one are the driver's business, and AIRI
@@ -43,53 +48,66 @@ export interface HostStorageInterface {
   set: <T>(key: string, value: T) => MaybePromise<void>
   remove: (key: string) => MaybePromise<void>
   keys: () => MaybePromise<string[]>
+  /**
+   * Observe writes to one key in this driver's namespace.
+   *
+   * The panel and the live mount may be in different windows, so a value the user changes in
+   * settings has no other way to reach a running mount. The handler receives the new value, or
+   * `undefined` when the key was removed.
+   */
+  watch: <T>(key: string, handler: (value: T | undefined) => void) => Unsubscribe
 }
 
 /**
- * The host's audio graph, for a renderer that needs to listen to it.
+ * One low-rate speech analysis result.
  *
- * The host owns playback and the graph. A renderer only taps a node to analyse it: it MUST NOT
- * connect one to the destination, and MUST NOT start or stop anything through one, because another
- * mount or the host itself may be listening to the same node.
- *
- * **One stream, and it has its own method.** The only audio a renderer may tap is the speech the host
- * is playing, so this interface names it instead of taking a `kind` with a single legal value. Audio
- * captured from outside the app is deliberately absent: it is captured in its own window, and an
- * `AudioNode` cannot cross a realm, so a `CAPTURE` stream would have been a promise no host could
- * keep. Beats stay a host feature, not a contract member (`cues.ts` has no beat cue either).
- *
- * **Absence is not silence.** `undefined` (from `getSpeechStream`) and `null` (from
- * `onSpeechStreamChange`) mean there is no speech right now; a node currently producing zeros means
- * speech is running and the signal is quiet. A renderer that conflates the two either closes the
- * mouth through a pause mid-sentence or keeps a stale node alive past the utterance that owned it.
+ * This is a **stream sample, not a cue**: it is latest-wins, carries no ack, and MUST NOT be sent
+ * through `CueChannel` (a per-frame cue would allocate an ack per frame).
  */
-export interface HostAudioInterface {
-  /** The host's shared `AudioContext`, or `undefined` when audio is unavailable. */
-  getContext: () => AudioContext | undefined
-  /** Monotonic audio clock in seconds, for speech-aligned motion. */
-  now: () => number
+export interface SpeechAnalysisFrame {
+  /** Host clock, milliseconds. */
+  at: number
+  /** Root-mean-square amplitude of the analysed window, 0..1. */
+  rms: number
   /**
-   * The node carrying the speech the host is playing, **one stream per utterance**, or `undefined`
-   * when nothing is being said.
+   * Mouth openness, 0..1, when the analyzer can produce one.
    *
-   * Each utterance is its own node: it appears when speech starts and is followed by `null` on
-   * `onSpeechStreamChange` when that utterance ends. A renderer attaches on every start rather than
-   * caching a node, and closes its mouth on the `null` rather than holding the last shape — an
-   * utterance that ended and an utterance that is quiet are different facts.
-   *
-   * The stream starting *is* the cue that speech began: a renderer derives lip movement from the
-   * signal itself, which is why mouth openness is not a prop. The node lives in `getContext()`'s
-   * graph, so a renderer attaches its own analyser to it and derives whatever it needs — envelope,
-   * pitch, vowel — without the host sending a scalar.
+   * Absent means "this analyzer has no mouth concept", which is different from `0` ("mouth
+   * closed"). A renderer MUST distinguish the two.
    */
-  getSpeechStream: () => AudioNode | undefined
+  mouthOpen?: number
+  /** Optional viseme id from the analyzer's own vocabulary. */
+  viseme?: string
+}
+
+/** What a plugin hands the host to register an analyzer. */
+export interface SpeechAnalyzerRegistration {
+  /** The plugin that owns the analyzer, for diagnostics and unregister-on-disable. */
+  pluginId: string
   /**
-   * Notified when speech begins (`node`) or stops (`null`).
+   * Module specifier resolved by the host's renderer-side loader.
    *
-   * The end matters as much as the start. A renderer that mounts mid-utterance calls
-   * `getSpeechStream` first and then subscribes.
+   * The module must export a factory the host calls with the host's audio graph; it is loaded in
+   * the window that owns that graph, never in the Electron main process.
    */
-  onSpeechStreamChange: (handler: (node: AudioNode | null) => void) => Unsubscribe
+  entry: string
+  /** Analyzer-specific options, opaque to the host. */
+  options?: Record<string, unknown>
+}
+
+/**
+ * The host's analyzer registry and result stream.
+ *
+ * A plugin registers one analyzer per audio source; the host owns the graph, the tap and the
+ * broadcast. The service is **plugin-level, not part of `ModelDriverHostServices`**: the model
+ * renderer contract no longer knows about audio or speech at all.
+ */
+export interface HostSpeechAnalyzerService {
+  register: (input: SpeechAnalyzerRegistration) => Promise<ContractResult<{ analyzerId: string }>>
+  /** Stop analysing and release the tap. Idempotent: an unknown id is a successful no-op. */
+  unregister: (analyzerId: string) => Promise<void>
+  /** Subscribe to the frames produced by the active analyzer. */
+  subscribe: (handler: (frame: SpeechAnalysisFrame) => void) => Unsubscribe
 }
 
 /** Which kind of pointer event this is. */
@@ -268,7 +286,9 @@ export interface HostRuntimeInfo {
 /**
  * Optional platform bridge (Electron IPC, webview messaging).
  *
- * Absent in plain web builds, so renderers MUST degrade instead of assuming it exists.
+ * Absent in plain web builds, so renderers MUST degrade instead of assuming it exists. Which
+ * channels exist is a host-side allowlist: a driver names a channel from the set it was granted,
+ * and the host rejects anything outside it.
  */
 export interface HostBridge {
   send: (channel: string, payload?: unknown) => void
@@ -299,8 +319,9 @@ export interface ModelDriverPromptState {
    * The state scope the publishing mount belongs to.
    *
    * The same key as the snapshot's, and the same rule: AIRI reads the **shared** scope's
-   * publication — the live stage's first — so a preview's draft never becomes what a prompt
-   * believes the model looks like. A scope that belongs to a single mount is not read at all.
+   * publication — the scope actor, chat and the main stage all publish into — so a preview's
+   * draft never becomes what a prompt believes the model looks like. A preview scope is not read
+   * at all.
    */
   stateScope: string
   /**
@@ -382,7 +403,6 @@ export interface ModelDriverHostServices {
   prompt: HostPromptService
   /** Cue bus shared by the host, all windows, and this renderer. */
   cues: CueChannel
-  audio: HostAudioInterface
   /**
    * Pointer input, delivered per mount.
    *

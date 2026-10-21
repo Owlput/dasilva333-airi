@@ -4,6 +4,13 @@ This document defines the architecture, spatial anchoring, mathematical specific
 
 The Stage Radial Menu is an in-scene, bone-tethered circular quick-action wheel that floats over the avatar's upper torso/chest. It provides instant, ergonomic access to the core stage viewport controls: window sizing presets, 9-point directional snapping, layer visibility (wallpaper vs. transparent passthrough, model toggle), stage minimization/hide, and multi-monitor routing—all structured as a **pure nested radial pie menu hierarchy**.
 
+> **Migration note (2026-10-21):** the target renderer contract removes `HeadPose` and
+> `getHeadPose`, and head-tethered caption rendering moves into a driver that opts in via the
+> optional `caption` capability. The radial menu is a
+> **host layer**, so it can still be shown anywhere over the stage, but it can no longer query a
+> driver head anchor; sections below describe the legacy bone-tethered implementation and its math,
+> not the target contract.
+
 ---
 
 ## 1. Lineage & Sourcing

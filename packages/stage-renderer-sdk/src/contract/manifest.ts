@@ -83,6 +83,13 @@ export interface ModelDriverCapabilities {
   /** Has something to release when the host disables it (`ModelDriverRuntime.deactivate`). */
   deactivate: boolean
   /**
+   * Can delete every byte it persisted (`ModelDriverRuntime.purge`).
+   *
+   * The host cannot enumerate a driver's storage itself, so "delete all data" and uninstall
+   * depend on this member. A driver that persists nothing answers `true`.
+   */
+  purge: boolean
+  /**
    * Can inherit the settings AIRI kept for it before this contract existed
    * (`ModelDriverRuntime.migrate`).
    *
@@ -101,13 +108,14 @@ export interface ModelDriverCapabilities {
    * One value settles ownership rather than only capability: declaring `'view'` means this
    * renderer owns its own camera (`ViewCue`), so the host does not write camera props for it.
    *
-   * `'caption'` is the same kind of answer for text: a renderer that can show text declares it,
-   * and one that cannot leaves it out and refuses those cues as `unsupported-cue`, so the host
-   * never has to know which renderers can draw.
+   * `'caption'` is **optional**: a driver that can show text, including head-tethered presentation,
+   * declares it and owns that rendering; one that cannot leaves it out and the host simply does not
+   * send that cue. Omitting it is a supported answer rather than a degraded one. Whether AIRI shows
+   * its own host overlay fallback is host policy, outside this contract; such a fallback cannot use
+   * a driver `HeadPose`. Sending a caption to a driver that did not declare it is
+   * `unsupported-cue`.
    */
   cues: Exclude<CueKind, CueKind.LOAD>[]
-  /** Reports head pose for head-tethered overlays (`RendererMountExposed.getHeadPose`). */
-  headPose: boolean
   /**
    * Can answer whether its own viewport has anything drawn at a point
    * (`RendererMountExposed.occupiesPoint`).
@@ -197,7 +205,7 @@ export interface ModelDriverEntryPoints {
    * `ModelDriverRuntime`.
    *
    * Required, and the only entry point there is: without it, `ModelDriverCapabilities.panels`,
-   * `deactivate` and `driverTransfer` would name members of an object nothing can obtain.
+   * `deactivate`, `purge` and `driverTransfer` would name members of an object nothing can obtain.
    */
   runtime: string
 }

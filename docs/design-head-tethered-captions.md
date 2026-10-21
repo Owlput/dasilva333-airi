@@ -1,5 +1,13 @@
 # Head-Tethered Caption Plank — Design & Cross-Model Compatibility
 
+> **Migration note (2026-10-21):** this document describes the legacy host-side implementation
+> (`HeadTetheredCanvas2D`/Live2D bubble + `getHeadPose`). The target contract removes `HeadPose` and
+> makes head-tethered caption rendering a **driver** responsibility via the optional `CaptionCue`;
+> a driver that does not declare `caption` has no driver-side head-tethered caption. AIRI may still
+> provide its own host overlay fallback, but it is host policy outside the driver contract and can
+> no longer be positioned from a driver head pose. Treat the implementation sections below as the
+> reference for moving this behavior into a driver that opts in, not as the target contract.
+
 This document outlines a design for an **in-scene caption plank**: a subtitle bubble rendered *inside* the active model renderer, anchored to a virtual point above the model's head, and skewed/scaled/rotated each frame from the model's own pose so it appears to float *with* the character instead of over a desktop overlay window.
 
 It is a **clean-room port** of an idea first seen in NekoGPT's *Live2D Accessory Renderer* (a subsystem that pins external sprites to a Live2D model's head/face/chest and applies a fake-perspective skew driven by `ParamAngleX/Y/Z`). No NekoGPT code is being ported; only the underlying geometric principle is being adapted to AIRI's existing Live2D / Spine / VRM / MMD pipelines.

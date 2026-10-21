@@ -2,17 +2,35 @@
 
 | Field                    | Value                                                                                                                          |
 | :----------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| Status                   | **Draft, for upstream review**                                                                                                 |
+| Status                   | **Draft, for upstream review — revision 0.2 (2026-10-21)**                                                                     |
 | Package                  | `@proj-airi/stage-renderer-sdk` (new, contract-only)                                                                           |
 | Vocabulary               | a **model driver** is the plugin; a *renderer* is what that driver directly drives (§4)                                        |
 | Area                     | `packages/stage-ui`, `packages/stage-ui-three`, `packages/stage-ui-live2d`, `packages/stage-ui-spine`, `packages/stage-ui-mmd` |
 | Supersedes               | the implicit arrangement "each avatar format is a scene component the host statically imports"                                 |
-| Reference implementation | the `stage-renderer-sdk` package in this fork: 13 contract files, `tsc --noEmit` + ESLint clean, **no integration yet**        |
+| Reference implementation | the `stage-renderer-sdk` package in this fork: 12 contract files, `tsc --noEmit` clean, **no integration yet**                  |
 
 > This RFC is written to be reviewed on its own. Section 2 is evidence from the
 > current tree, section 5 is the proposed contract, and section 9 lists every gap
 > the contract could not express together with its current status — most are closed
-> by a ruling, and the three that remain open are the part most worth arguing about.
+> by a ruling, and the ones that remain open are the part most worth arguing about.
+>
+> **Revision 0.2 (2026-10-20) locks the multi-window decisions:** the host keeps a
+> mount registry and cue broker in the Electron main process; capture is a cue, not an
+> exposed method; lip sync is a plugin-level analyzer capability, not a renderer
+> contract member; imports are two-phase (parts, then AIRI-minted selections) and reject
+> an existing id unless the caller explicitly overwrites; cue acks are settled
+> `resolved`/`rejected` outcomes rather than a parallel `reason` array; IPC uses
+> `@moeru/eventa`. Sections 5.2, 5.4, 5.5, 5.7, 5.8, 8 and 9.12/9.13 reflect this revision.
+>
+> **Revision 0.2 follow-up (2026-10-21):** imports carry one `files` set (no `file`/companion
+> split) and AIRI imports models only; `saveProfile` needs no mount; actor/chat share one semantic
+> `stateScope` (preview is the only private scope); the control strip picker is a driver panel;
+> head-tethered captions are driver-rendered when the driver declares `caption` and `HeadPose` is
+> removed; storage namespace isolation is AIRI-side; cue targets may name a `stateScope`, but the
+> first broker is single-mount and fan-out is deferred.
+> This release is **first-party only**; the static manifest is read before the runtime, and the
+> main-process registry holds manifest/enable state only — real capabilities come from a renderer
+> instance.
 
 ---
 
@@ -37,7 +55,7 @@ the two sides share are `modelId` and `profileId`, both minted by AIRI.
 A note on names: the plugin is called a **model driver** throughout — what it drives is a *model*, and
 what it drives directly is a *renderer* — and the types follow it (`ModelDriverManifest`,
 `ModelDriverRuntime`, `ModelProvider`, `ModelDriverHostServices`). Only the rendering side keeps the
-`Renderer*` prefix: `RendererMount*`, `RendererPointerService`, `HeadPose`.
+`Renderer*` prefix: `RendererMount*`, `RendererPointerService`.
 
 Nothing in the app changes until a renderer is migrated behind it, and each of the
 four can be migrated independently (section 8).
@@ -161,13 +179,12 @@ Three of the divergences are load-bearing for this RFC:
   normalized scalar was a fifth opinion rather than a shared meaning. The renderer taps the speech
   stream and measures it itself (5.7).
 
-- **No renderer produces a head pose in the contract's shape.** All three
-  producers return `{screenX, screenY, yaw, pitch, roll, modelHeightPx}` while the
-  proposed `HeadPose` is `{position: {x, y}, yaw, pitch, roll, modelHeightPx}` with
-  `null` for an axis a rig cannot measure. Spine's `yaw`/`pitch` are literally
-  hardcoded `0` (`spine/Model.vue:1169-1170`), which the contract must read as
-  "unknown", and VRM always fabricates `modelHeightPx`
-  (`ThreeScene.vue:476`) where the contract wants `null` when unmeasurable.
+- **Head pose is no longer a contract concept.** The three producers returned
+  `{screenX, screenY, yaw, pitch, roll, modelHeightPx}` in slightly different shapes, and the
+  proposed `HeadPose` would have had to reconcile them. The decision instead moves head-tethered
+  caption rendering into a driver that declares `caption`: `CaptionCue` carries the text and
+  timing, that driver owns the presentation, and AIRI never asks for a head position. The host may still add its own overlay
+  layers outside the renderer's canvas; those layers do not depend on a driver pose.
 - **No renderer produces a point of interest.** `ViewCue` has no address today in
   any of the four (VRM/MMD have an enumerable 10-name socket list behind
   `VrmSocketResolver`/`MmdSocketResolver`, neither of which is exposed, and the
@@ -306,7 +323,7 @@ Take model import as an example.
 | Model           | Model driver | What the model driver is ultimately driving.                                      |
 | Renderer        | Model driver | What the model driver is directly driving.                                        |
 | Profile         | Model driver | A group of named persistent states of an avatar.                                  |
-| User input      | AIRI         | Cursor, lip-sync audio, cues, ACT tokens, etc.                                    |
+| User input      | AIRI         | Cursor, cues, ACT tokens, plugin-level speech frames, etc.                         |
 | Model capability| Model driver | What kinds of inputs a model driver and its model can respond to.                 |
 | Cue             | AIRI         | A signal for model driver to perform actions with a vocabulary known at compile time. |
 | ACT token       | Model driver | A signal for model driver to perform actions with a vocabulary known at runtime.  |
@@ -418,6 +435,10 @@ knowable from an instance, so it is produced at runtime (`ModelProvider.list`, a
 failure, the mount's own `error` emit). Availability is therefore a runtime fact, not a stored one, and
 there is no enum to keep in sync with those answers.
 
+This registry is **renderer-side**: `get()` returns a live `ModelDriverRuntime`. The main process keeps
+a separate manifest/enable registry, whose information is no richer than the static manifest; it never
+holds a runtime and never answers `rendererCapabilities()`.
+
 **Why the cue sink is on the mount, not the runtime.** One renderer can be mounted on a live stage, in a
 settings preview and in a rehearsal room at once; each mount receives only the transactions addressed to
 it (5.4).
@@ -437,6 +458,10 @@ provides the frame (title, tabs, scrolling, padding) and the panel fills the bod
 unavailable gets no panel at all, only a read-only list built from its `vocabulary`; and `readOnly`
 covers the case where the driver *is* available but this mount must not edit. A panel never writes the
 snapshot itself — only the mounted instance does — so two windows cannot race on `revision`.
+`ModelDriverPanelDeclaration.hostSurfaces` (`settings`/`popover`/`inline`) lets a driver contribute
+the control strip's expression/motion/wardrobe picker; the host supplies only the popover shell and
+anchor, and a driver that does not declare `popover` is simply not offered there. Absent means
+`settings` only, so a settings panel is never pushed into the strip by default.
 
 The provider is the non-mount half:
 
@@ -458,22 +483,33 @@ interface ModelProvider {
 
 **Unified import is preserved, and it is the only import path.** The host asks
 every enabled renderer how well it can host an input and arbitrates by
-`confidence`; AIRI never carries the bytes — `probe` is handed the identities it
-just minted and answers with `confirmImport`, the callback that does the work.
-Declining unified import is expressed by omitting `probe`, not by failing:
-`unsupported-input` is a real error, so a probe that returns it is a broken probe
-rather than a verdict on whose input it was. A renderer that cannot read a
-particular input reports that as a *successful* probe with low `confidence` and
-`blockingFindings`, and the user may still overrule it with `force`.
+`confidence`; AIRI never carries the bytes. `probe` is **read-only** and is handed
+only the payload: it answers with `parts: ModelImportPart[]` — one entry per model the
+input expands to, each with a name and display metadata. The user selects which parts
+to import; AIRI then mints a `modelId` (and optional default `profileId`) for each
+selected part and calls `confirmImport({ selections })`. The renderer must persist
+under exactly those ids and must not invent one. Declining unified import is expressed
+by omitting `probe`, not by failing: `unsupported-input` is a real error, so a probe
+that returns it is a broken probe rather than a verdict on whose input it was. A
+renderer that cannot read a particular input reports that as a *successful* probe with
+low `confidence` and `blockingFindings`, and the user may still overrule it with
+`force`.
 
-**Companions are never catalogue entries.** A model file and the textures its
-materials reference are one thing: no id, no second storage entry, never listed.
-This deletes the host's `<modelId>-textures` convention, which today has to be
-excluded from enumeration, remembered at two delete sites, re-fetched before
-preview regeneration, and uploaded as a second cloud payload per model. MMD's
-`textureMap` prop is the same case in the mount contract: a texture set is required
-to use the model at all, so the renderer keeps it as part of the model's own storage
-and resolves its own relative texture paths. It must not become a prop.
+**A duplicate id is a conflict, not an upsert.** `confirmImport` answers
+`MODEL_ID_CONFLICT` when `(modelDriverId, modelId)` already exists. Only an explicit
+user "replace this model" action, or a migration carrying a `migration` marker, may set
+`overwrite: true`; the import path that a user reaches by dropping a file never does.
+The overwrite keeps the model's profiles and settings unless `resetProfiles` is also
+set, and writes the new payload atomically so a crash cannot leave a half-replaced model.
+
+**All files of a model are one import.** A model file and the textures its materials reference are
+one thing: no id, no second storage entry, never listed. AIRI has no companion category at all —
+they arrive in the same `files` array and the driver resolves which file is which. This deletes the
+host's `<modelId>-textures` convention, which today has to be excluded from enumeration, remembered
+at two delete sites, re-fetched before preview regeneration, and uploaded as a second cloud payload
+per model. MMD's `textureMap` prop is the same case in the mount contract: a texture set is required
+to use the model at all, so the renderer keeps it as part of the model's own storage and resolves
+its own relative texture paths. It must not become a prop.
 
 **AIRI only knows what has an id it minted.** A model row without a `modelId` is still enumerated by
 `list()` — a builtin the driver ships, which never went through the import path — and its absence means
@@ -503,9 +539,20 @@ its own `displayName`, so a rename never has to go back to the driver.
 caller has to say which one it means.
 
 **`files` has to reach `probe`, not only `confirmImport`.** With the payload's second round trip gone,
-`probe` is the only place the input is ever handed over — and `confirmImport` returns a list because one
-input can legitimately expand into several models (a multi-model package is split and each part
-imported).
+`probe` is the only place the input is ever handed over. It returns **all** parts in one answer — a
+single-model package has exactly one — and `confirmImport` receives the user's selection with the ids
+AIRI minted, not the original bytes again.
+
+**`files` is one set, with no companion field.** A model and the textures it references arrive
+together; `files.length === 1` is the single-file case. AIRI cannot know which file a driver treats
+as the model and which as an attachment, so it does not try. That also fixes the boundary: AIRI
+imports **models only**. Motions, VRMA, presets, replacement textures and every other non-model
+asset are imported through the driver's own panel or bridge, never through `probe`/
+`confirmImport`; AIRI mints no id for them and does not enumerate them.
+
+**A registered driver is enough to save a profile.** `saveProfile` does not require a mounted
+instance: the driver saves the state it last persisted, so migration can create profile bodies
+before the first mount.
 
 **One query object, many providers.** `ModelQuery.modelDriverId` exists so the host can hand the same
 query to every enabled driver and merge the answers: a provider replies only when the id is its own, and
@@ -540,9 +587,9 @@ interface ModelDriverCapabilities {
   driverTransfer: boolean
   panels: boolean
   deactivate: boolean
+  purge: boolean
   migration: boolean
   cues: Exclude<CueKind, CueKind.LOAD>[]
-  headPose: boolean
   occupiesPoint: boolean
   hitTest: boolean
   stopAll: boolean
@@ -561,13 +608,23 @@ the difference is the point:
   probe means "could not determine", so the hint stays a usable fallback rather
   than a verdict that the renderer is useless.
 
+`'caption'` is an **optional** entry in `cues`: a driver that can show text, including head-tethered
+presentation, declares it and owns that rendering; one that cannot omits it and the host does not
+send the cue. Omission is a supported answer. Whether AIRI draws its own host overlay fallback is a
+host decision outside this contract — permitted, not required, and not allowed to depend on a driver
+`HeadPose`. Sending a caption to a driver that did not declare it is `unsupported-cue`.
+
 `profiles` is one field for all three profile members (`listProfiles`, `saveProfile`, `removeProfile`)
-because they are one ability: a renderer that can list a profile can store it. AIRI needs the answer to
+because they are one ability: a renderer that can list a profile can store it. `saveProfile` itself
+needs only a registered driver, not a live mount. AIRI needs the answer to
 know whether its own profile records can have bodies behind them at all. `driverTransfer` is what makes
 a driver movable: without it, a device restore brings back AIRI's own records and leaves the driver
 empty, so the host can say so *before* a backup instead of after a restore. `migration` is the same
 kind of answer for the one-time handover of pre-contract settings (5.9): without it those settings have
-nowhere to go, so the host says so once and drops them.
+nowhere to go, so the host says so once and drops them. `purge` is what makes "delete all data" and
+uninstall complete: the host cannot enumerate a driver's storage, so the driver must delete its own
+bytes (models, profiles, per-model state and settings), and the host clears its catalogue records only
+after that succeeds.
 
 It is **not** `Partial<...>`: a missing field would have to be read as `false` at
 every use site, which turns "I did not say" into a silent denial and puts a
@@ -632,14 +689,38 @@ interface CueEnvelope<C extends Cue = Cue> {
   persistent?: boolean // false = preview: transient, never saved
   nonce: OperationNonce
   at: number
-  target?: { modelDriverId?: ModelDriverId, modelId?: ModelId, mountId?: string, surface?: RendererMountSurfaceKind }
+  target?: {
+    modelDriverId?: ModelDriverId
+    modelId?: ModelId
+    mountId?: string // one mount; required by the first broker
+    stateScope?: string // every mount sharing this scope; rejected until fan-out lands
+    surface?: RendererMountSurfaceKind
+  }
 }
 
 interface CueAck {
   nonce: OperationNonce
-  reason: (CueRejection | undefined)[] // index-aligned; undefined = applied
-  handled: boolean // reason.every(r => r === undefined)
+  mountId?: string // required on the wire: the single mount that answered
+  requestId?: string // required on the broker path; a direct in-process sink may omit it
+  results: CueOutcome[] // index-aligned; every slot is a settled outcome
+  handled: boolean // results.every(result => result.status === 'resolved')
 }
+
+type CueOutcome = CueResolved | CueRejected
+
+interface CueResolved {
+  status: 'resolved'
+  value: CueResult
+}
+
+interface CueRejected {
+  status: 'rejected'
+  reason: CueRejection
+}
+
+type CueResult
+  = | { kind: 'capture', mime: string, data: ArrayBuffer, width: number, height: number }
+    | { [K in Exclude<CueKind, 'capture'>]: { kind: K } }[Exclude<CueKind, 'capture'>]
 
 type CueRejection
   = | 'unsupported-cue' | 'unknown-key' | 'renderer-not-ready' | 'no-model'
@@ -647,6 +728,13 @@ type CueRejection
 ```
 
 The rules that matter for review:
+
+**A scope can be a target — in a later revision.** `target.stateScope` is the long-term way to keep
+the actor window and a chat-side stage in lockstep, and `target.mountId` remains the way to address
+exactly one. The first broker accepts only `mountId`; a `stateScope` target is rejected with
+`INVALID_ENVELOPE` rather than silently routed to one of its mounts. Fan-out and its aggregate ack
+(one slot resolved only when every target resolved it, no single `mountId`) are a follow-up, because
+the settle and timeout rules for several answerers are not settled yet.
 
 1. **Refusal is not failure.** Every `CueRejection` value is an ordinary outcome:
    the send resolves `ok: true` with `handled: false`. `ok: false` is reserved for
@@ -674,14 +762,14 @@ The rules that matter for review:
    caller's promise with `aborted`: a caller must never be left waiting on a
    renderer that is gone.
 6. **A per-frame stream must never become a cue.** `send` returns an ack whose
-   reason array is sized to the transaction, so one frame per cue would allocate an
+   results array is sized to the transaction, so one frame per cue would allocate an
    ack per frame and ask a question a stream cannot answer. That is why the pointer
    is a service: events a renderer subscribes to, not a value the host restates. The
-   same rule now applies to audio — the host hands over a node and the renderer
-   measures it. (Two Live2D streams violate this today; 9.11 rules them
-   renderer-internal, so they are migration debt rather than a contract gap.)
+   same rule now applies to speech: the plugin registers a **plugin-level analyzer**
+   (`HostSpeechAnalyzerService`), and the host publishes low-rate frames outside the
+   cue vocabulary; no `AudioNode` crosses a realm and no mouth scalar is sent as a cue.
 
-The vocabulary (10 kinds). The kinds themselves are the *compile-time* half — AIRI ships them — while
+The vocabulary (11 kinds). The kinds themselves are the *compile-time* half — AIRI ships them — while
 the token a `ACT` cue carries belongs to the renderer and is known only at runtime (§4.1):
 
 | Kind         | Payload                                                                      | Notes                                                                                 |
@@ -696,6 +784,7 @@ the token a `ACT` cue carries belongs to the renderer and is known only at runti
 | `view`       | `pointOfInterestId`, `zoom?` (relative)                                      | moves the renderer's own camera; **declaring `view` is an ownership statement**       |
 | `caption`    | `text`, `utteranceId`, `segments?`, `language?`, `elapsedMs?`                | **the renderer owns text and captions**: content only, never position, font or colour |
 | `reset`      | `scope: expression \| motion \| profile \| gaze \| view \| caption \| all`   |                                                                                       |
+| `capture`    | **empty payload**                                                            | **returns bytes through the ack**, not through an exposed method; the renderer captures its own canvas, chooses the encoding and reports the actual `CaptureResult`; capture must be the only cue in its envelope |
 
 Three of these are worth defending explicitly:
 
@@ -766,7 +855,7 @@ Smaller choices, recorded because each one replaced a shape that drifted:
   depend on the value: a renderer must not withhold work it could do because it set `false`, and the
   host must not turn `true` into an automatic loop. Absent means the renderer has no opinion, never "do
   not retry".
-- **Eligibility is not failure.** A reference this renderer does not hold is a slot reason
+- **Eligibility is not failure.** A reference this renderer does not hold is a rejected outcome
   (`unknown-key`), so the send succeeds with `handled: false` rather than failing.
 
 ### 5.5 One mounted viewport (`renderer-mount.ts`)
@@ -784,7 +873,7 @@ interface RendererMountProps {
   interactionMode?: 'tactile' | 'orbit' | 'drag' | 'positioning' | 'none' // policy, not a host filter
   surface: RendererMountSurfaceKind // 'stage' | 'preview' | 'actor' | 'rehearsal'
 }
-// no mouth prop: the renderer taps `HostAudioInterface` and measures the speech itself (5.7)
+// no mouth prop and no audio service: lip sync is a plugin-level analyzer (5.7), outside this contract
 
 interface RendererMountEmits {
   'state-change': (state: RendererMountReadinessState) => void
@@ -798,13 +887,11 @@ interface RendererMountEmits {
 }
 
 interface RendererMountExposed {
-  captureFrame: () => Promise<ContractResult<Blob>> // required
-  getHeadPose?: () => HeadPose | null
   occupiesPoint?: (point: RendererMountPoint) => boolean // "is anything drawn here"
   hitTest?: (point: RendererMountPoint) => RendererMountHitArea | null // "which region is here"
   stopAll?: () => void
   dispose?: (strategy: 'shallow' | 'deep') => void
-  cues: CueSink // required
+  cues: CueSink // required; includes `capture`
 }
 ```
 
@@ -824,8 +911,10 @@ Design rules that generated this shape:
 - **`exposed` returns data or tears the mount down.** Nothing that needs a target,
   an ack, a preview, or delivery to a mount the caller does not hold belongs in the
   method bag — that is a cue, and the only reason a method bag cannot replace it is
-  that a method can only be called by whoever holds the mount. Nothing that hands the caller
-  the renderer's viewport belongs there either, for the reason in the bullet above.
+  that a method can only be called by whoever holds the mount. Capture is the clearest
+  case: a selfie may be triggered from the main window, which does not hold the actor
+  mount, so `capture` is a cue and its bytes come back in the ack. Nothing that hands the
+  caller the renderer's viewport belongs there either, for the reason in the bullet above.
 - **`occupiesPoint` and `hitTest` are different questions.** The first is about the
   viewport ("should a click reach the app behind the window; should the actor fade
   so it stops blocking what is behind it"), the second about the model ("where does
@@ -853,11 +942,10 @@ Design rules that generated this shape:
   `buttons` and `modifiers`, so edges and multi-touch are expressible and a renderer has no
   reason to attach a listener of its own. A subscription names one mount, because a renderer
   mounted twice has two boxes.
-- **`HeadPose` uses `null`, never `0`, for an axis a rig cannot express** (zero is a
-  real rotation reading), and `modelHeightPx: number | null` rather than a
-  fabricated fraction of the viewport. A renderer with no head bone at all answers `null` from
-  `getHeadPose` instead of three null axes, and the host has its own fallback for a missing or
-  unreasonable height.
+- **There is no head pose and no host-drawn caption.** Head-tethered text is a `CaptionCue` the
+  driver renders inside its own canvas. The host may add its own layers outside that canvas, but it
+  does not ask the renderer where the head is, so the old `HeadPose` shape and its `null`-vs-`0`
+  problem are gone rather than reconciled.
 - **There is no settings bag on the mount.** `RendererStage.vue` passes shadow/blink/idle flags,
   physics switches, mix duration and render scale as a union of per-renderer props, and an opaque
   `settings` object would have kept doing it — the same shape that gave `settings/mmd/scale` two
@@ -869,8 +957,9 @@ Design rules that generated this shape:
   appearance decision: otherwise every renderer invents its own idea of the current theme.
 - **No mouth value is normalized by the host, because none is sent.** The four renderers multiply the
   same number by 0.75, by 15, by 0.7, or divide it by 100 — which is exactly the kind of per-format
-  opinion that belongs where the mouth is measured: the renderer taps the speech stream and decides
-  its own scale, its own attack and its own vowel set.
+  opinion that belongs where the mouth is measured. That measurement is now **plugin-level**: the
+  plugin registers an analyzer against the host's audio source, and the renderer subscribes to the
+  analyzer's frame stream itself. The mount contract carries neither an `AudioNode` nor a mouth scalar.
 - **Emit is a mount concern, and the set is closed.** `state-change`, `first-frame`,
   `context-change`, `disposed`, `error`, plus the two push channels (`hit-area-change`,
   `animation-finished`) and `cue-rejected`. A plugin-level lifecycle event does not exist, because the
@@ -882,10 +971,12 @@ Design rules that generated this shape:
   now, the host asks (`hitTest`), and the payload carries no coordinate because the host already has
   the pointer and a second copy could only disagree with it. `areaId` is spelled the same in both
   directions.
-- **`captureFrame` is required and goes through the result envelope.** `null` would have to be read as
-  failure by every caller anyway: the producer resolved `null` when it had no canvas and `toBlob`
-  hands back `null` when the encode fails, so absence and breakage are one answer here — `internal`
-  when the render or the encode failed, `aborted` when the mount was torn down mid-capture.
+- **`capture` is a cue, not an exposed method.** A selfie can be triggered from a window that does
+  not hold the actor mount, and a method can only be called by whoever holds the component reference.
+  The cue returns encoded bytes in `CueAck.results`; its payload is empty, and the renderer captures
+  everything its own canvas holds and chooses the format — the caller does not name a background,
+  quality or width. Capture must be the only cue in its envelope; a failed encode is `capture-failed`
+  on the result envelope, never an empty success.
 - **`stopAll` and `dispose` are separate because they answer different questions**: stop what is
   playing (pause, teardown) versus release what is held. `dispose` takes the strategy because the
   choice is the caller's, never the renderer's: only the caller knows whether it is about to mount the
@@ -898,7 +989,8 @@ Design rules that generated this shape:
   stage — which is also why a cue with no surface is never delivered to a `preview` mount.
 - **`mountId` is required and it is not `stateScope`.** Several mounts can share one scope, and several
   scopes can live on one surface, so only a per-mount identity can name one of them — for a cue
-  (`target.mountId`) and for a per-mount service subscription alike.
+  (`target.mountId`) and for a per-mount service subscription alike. A cue that *should* hit every
+  mount sharing a scope names `target.stateScope` instead; that is the actor + chat case.
 
 ### 5.6 State (`persistence.ts`)
 
@@ -923,25 +1015,30 @@ interface HostStateTransferPort {
 
 - **A scope, not a model and not a mount.** Every mount in a scope reads and writes
   the same state; a scope outlives any particular mount; one scope is one record —
-  which is why `readSnapshot` takes the scope and nothing else. The sharing policy
-  (today: all mounts of a surface share one scope, each `preview` mount gets its
-  own) is the host's and can change without touching the contract.
+  which is why `readSnapshot` takes the scope and nothing else. A scope has semantic
+  identity and does **not** include `modelId`: switching the model updates the record,
+  it does not mint a new scope. **Every non-preview mount reuses the shared scope**
+  (actor, chat, rehearsal, main stage); only each `preview` mount gets its own. That
+  policy is the host's and can change without touching the contract.
 - **The name is opaque and host-minted**, under a reserved prefix, and never equal
   to a `RendererMountSurfaceKind` value, so a renderer cannot learn the policy by
   reading names.
+- **The authoritative copy lives in the main process in Electron.** A renderer publishes over
+  IPC; main keeps the snapshot, broadcasts the accepted revision, and is what builds prompts even
+  when the actor is in another window. A mount unmount clears that scope's prompt publication.
 - **The renderer is the only writer**, and every hand-over is the *complete* state —
   never a patch, a delta or a per-value negotiation, because only the renderer
   knows the shape of what it stored.
 - **`vocabulary` and `profileId` are required**, because "this renderer has no
   vocabulary" and "nothing is written yet" must not be the same `undefined`: a
   prompt builder cannot act on that ambiguity. An empty `items` is how a renderer
-  states the first. AIRI reads these from a **shared** scope (the live stage's
-  first), never a single-mount one, so a draft the user is still trying cannot
-  become what a prompt believes the model looks like.
+  states the first. AIRI reads these from the **shared** scope (actor, chat and the main stage all
+  publish into it), never a preview scope, so a draft the user is still trying cannot become what a
+  prompt believes the model looks like.
 - **Unconfirmed changes never reach the snapshot**: that is what `persistent: false`
   on a cue expresses.
-- **A scope that belongs to a single mount is discarded when it unmounts.** Nothing else can read it,
-  and keeping it would let a later preview inherit a draft.
+- **A preview scope is discarded when its mount unmounts.** Nothing else can read it, and keeping it
+  would let a later preview inherit a draft.
 - **A scope's name is stable while its state lives.** Renaming orphans the records, so the host either
   migrates them with the rename or discards them deliberately; it never leaves a renderer reading an
   empty scope and concluding that the model has no state.
@@ -960,14 +1057,14 @@ interface HostStateTransferPort {
 
 Injected at activation: `modelDriverId`, `contract` (a mirror of the manifest
 revision, so a renderer can branch without reaching for its own manifest), `log`,
-`storage` (get/set/remove/keys — primitives only, and `keys()` is for the renderer
-to enumerate *its own* namespace, not so the host can), `state`, `prompt` (the live state of a
-mounted model, in the vocabulary AIRI already holds), `cues`, `audio` (the shared
-`AudioContext`, a monotonic clock, and the speech stream a renderer taps — one node per utterance,
-with no outside-capture stream: 9.12), `pointer` (per-mount pointer events, subscribed to by
-`mountId`, and the only pointer a renderer may read), `theme` (`accentHue`, `isDark`, `onChange`),
-`ui` (toast, optional confirm), `i18n`, `runtime` (`windowKind`, `debug`),
-optional `bridge` (Electron IPC / webview messaging) and `diagnostics`.
+`storage` (get/set/remove/keys/watch — primitives only; every key is relative, the host enforces
+the driver namespace invisibly, and `keys()` only returns that namespace), `state`, `prompt` (the live state of a
+mounted model, in the vocabulary AIRI already holds), `cues`, `pointer` (per-mount pointer
+events, subscribed to by `mountId`, and the only pointer a renderer may read), `theme`
+(`accentHue`, `isDark`, `onChange`), `ui` (toast, optional confirm), `i18n`, `runtime`
+(`windowKind`, `debug`), optional `bridge` (Electron IPC / webview messaging, host-side
+channel allowlist) and `diagnostics`. There is deliberately **no `audio` service**: speech analysis is a
+plugin-level `HostSpeechAnalyzerService`, not part of the renderer contract.
 
 The rules that make this a container rather than a grab bag:
 
@@ -988,12 +1085,14 @@ The rules that make this a container rather than a grab bag:
   words the line from the `label` it already holds, at the tail, because it changes every turn (5.3
   states the same rule for `vocabulary`). A driver that could submit prose could submit instructions;
   an unconfirmed change stays on a `persistent: false` cue, as it does for the snapshot.
-- **Audio arrives as a tap, not as a number.** `audio.getSpeechStream()` hands back the node carrying
-  what the host is playing, one node per utterance, and the renderer attaches its own analyser to it.
-  The host publishes no openness and no visemes: each is a measurement of a signal the renderer can
-  make itself, and a second copy would drift from the one it can hear. There is no second stream —
-  outside audio is captured in a separate window, and an `AudioNode` cannot cross a realm (9.12
-  records why beats are host-only).
+- **Speech arrives as a plugin-level analyzer, not as a renderer service.** A plugin registers an
+  analyzer module against the host's audio source (`HostSpeechAnalyzerService`); the host loads it in
+  the window that owns the `AudioContext` and publishes low-rate `SpeechAnalysisFrame`s. The
+  renderer contract no longer carries an `AudioNode`, an `AudioContext`, or a mouth scalar: an
+  `AudioNode` cannot cross a realm, and a per-frame value would violate the cue rule. The plugin
+  that wants lip sync subscribes to the frame stream itself and maps `mouthOpen`/`viseme` to its own
+  rig. There is no second stream — outside audio is captured in a separate window (9.12 records why
+  beats stay host-only).
 - **Requirements the host has to satisfy before activation live in the manifest, not in prose.**
   `requirements.globalScripts` is how "the app's `index.html` happens to include a script tag" becomes
   a declaration — Live2D's Cubism Core today, and MMD's Ammo, which currently attaches itself to
@@ -1020,7 +1119,7 @@ every renderer inventing its own idea of the current theme.
 
 ### 5.8 Versioning (`shared.ts`, `host-services.ts`)
 
-`MODEL_DRIVER_CONTRACT_VERSION = { major: 0, minor: 1 }`. The host checks
+`MODEL_DRIVER_CONTRACT_VERSION = { major: 0, minor: 2 }`. The host checks
 `manifest.contractVersion` **when it reads the manifest**, before activation, and
 refuses a plugin it cannot speak — so no service container is ever built for it,
 and `ModelDriverHostServices.contract` can only ever repeat the validated value. There
@@ -1062,6 +1161,7 @@ interface ModelDriverRuntime {
 }
 
 interface ModelDriverMigrationInput {
+  // Shape not final: the per-model profile mapping has not been designed yet.
   entries: Record<string, unknown> // the legacy values, by AIRI's own key names
   selectedModelId?: ModelId // which model the window-global values described
 }
@@ -1094,15 +1194,94 @@ delete, retry and "what did you actually absorb" semantics would then live in an
 
 ---
 
+### 5.10 Cross-window mounts (`lifecycle.ts`, `shared/eventa.ts`)
+
+The contract assumes a host that can find a mount. In Electron that host is split: the control
+strip and TTS live in the main window, the live avatar in the actor window, and chat mounts a
+second view of the same shared scope (only calibration/settings previews are private). A cue
+addressed to a `mountId` therefore needs a centre, not a method bag; a `stateScope` fan-out is a
+later revision of the same centre.
+
+The host keeps a **mount registry** in the Electron main process:
+
+```ts
+interface RendererMountDescriptor {
+  mountId: string
+  modelDriverId: ModelDriverId
+  modelId?: ModelId
+  surface: RendererMountSurfaceKind
+  stateScope: string
+  windowId: string
+  readiness: RendererMountReadinessState
+  updatedAt: number
+}
+
+// The mounting host mints `mountId` as a UUID and passes it as a prop; the broker stamps `windowId` from the sender.
+type RendererMountRegistration = Omit<RendererMountDescriptor, 'updatedAt' | 'windowId'> & { windowId?: string }
+
+interface RendererMountQuery {
+  surface?: RendererMountSurfaceKind
+  stateScope?: string
+  windowId?: string
+  modelId?: ModelId
+  modelDriverId?: ModelDriverId
+}
+
+interface ModelDriverMountRegistry {
+  register: (descriptor: RendererMountRegistration) => Promise<ContractResult<RendererMountDescriptor>>
+  update: (mountId: string, patch: Partial<Omit<RendererMountDescriptor, 'mountId' | 'windowId' | 'updatedAt'>>) => Promise<ContractResult<RendererMountDescriptor>>
+  unregister: (mountId: string) => Promise<ContractResult<void>>
+  list: () => Promise<RendererMountDescriptor[]>
+  findBy: (query: RendererMountQuery) => Promise<RendererMountDescriptor[]>
+  onChanged: (handler: (mounts: RendererMountDescriptor[]) => void) => Unsubscribe
+}
+```
+
+The same process keeps the **cue broker**: it mints a global nonce, queues FIFO per addressed mount,
+holds the pending-request table, applies `timeoutMs`, and answers `no-model`/`renderer-not-ready`
+itself when there is no mount to ask. The first broker is **single-mount**: `target.mountId` is
+required, one request has one answerer, and `target.stateScope` is rejected with
+`INVALID_ENVELOPE` rather than silently routed to one of its mounts. Fan-out to every mount in a
+scope, with an aggregated per-slot ack, is a follow-up once its settle and timeout rules are
+settled. Renderers send and receive over `@moeru/eventa` contracts in
+`apps/stage-tamagotchi/src/shared/eventa.ts` (`stageRendererMountRegister/Update/Unregister/List`,
+`stageRendererCueSend/Deliver/Ack`, `stageRendererSpeechFrame`). BroadcastChannel remains suitable
+for observer-style state (the speech frames use it), but it cannot carry an ack, so it is not the
+cue transport.
+
+`mountId` is globally unique: the mounting host mints it as a UUID before mounting, and the
+registry rejects a duplicate from any window rather than generating or rewriting the value. The id
+is retired when its window is destroyed; every pending send for that window settles `aborted`,
+never hangs. A renderer ack is accepted only from the `webContents` that registered the mount, which
+is what makes a `mountId` a routing address rather than a claim.
+
+The broker is deliberately **usable-first**: an in-memory map, a counter and a pending table are
+enough for the first Electron slice. Persistence, reconnection and backpressure are optimisations
+that must not change the registry or ack semantics.
+
+### 5.11 Speech analysis (`host-services.ts`, plugin layer)
+
+`HostSpeechAnalyzerService` is exported from the SDK but is **not** part of
+`ModelDriverHostServices`. A plugin registers `{ pluginId, entry, options }`; the host loads the
+analyzer module in the window that owns the `AudioContext` and publishes `SpeechAnalysisFrame`
+(`at`, `rms`, optional `mouthOpen`/`viseme`) at roughly 30 Hz. The stream is observer-style: it
+travels over an eventa BroadcastChannel context, not over the request/reply IPC path and not
+through the main broker. It is latest-wins and has no ack; it must never be modelled as a cue.
+`unregister` is idempotent and stops the stream.
+
+Phase 1 of the migration may publish a host-computed frame from the existing main-window analyser
+before the plugin loader exists; the contract shape does not change when the analyzer moves into a
+plugin.
+
 ## 6. Worked examples
 
 ### 6.1 "Load this character's avatar"
 
 ```ts
-const modelToLoad = { modelId: 'display-model-abc', profileId: 'profile-default' }
+const modelToLoad = { kind: 'load', modelId: 'display-model-abc', profileId: 'profile-default' }
 const loadModelEnvelope = { cues: [modelToLoad], source: 'card', nonce: 7, at: 0, target: { surface: 'stage' } }
 // renderer: state-change -> loading-model ... MODEL_LOADED
-const loadModelAck = { nonce: 7, reason: [undefined], handled: true } // settled at MODEL_LOADED, not first-frame
+const loadModelAck = { nonce: 7, results: [{ status: 'resolved', value: { kind: 'load' } }], handled: true }
 ```
 
 ### 6.2 "The ACT stream says happy"
@@ -1167,13 +1346,20 @@ Recommended order, cheapest first, each step shippable on its own:
 | Step | Work                                                                                                                                                                                                                                                                         | Why this order                                                                                                                                                                                                                        |
 | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 0    | Land the contract package (no integration)                                                                                                                                                                                                                                   | Reviewable without behavior risk.                                                                                                                                                                                                     |
-| 1    | Host scaffolding: `stateScope` minting, one cue bus (in-process + `BroadcastChannel`) replacing the five renderer channels, `services.storage` primitives, the snapshot record, manifest validation, `HostNamedModelRecord`/`HostModelProfileRecord`, `profileId` minting | Everything else depends on it; it can be tested against a stub renderer.                                                                                                                                                              |
+| 1    | Host scaffolding: mount registry + cue broker in the Electron main process over `@moeru/eventa`, `stateScope` minting, the cue round-trip replacing the five renderer channels, `services.storage` primitives with change watch, the snapshot record, static-manifest validation (runtime only in the renderer), `HostNamedModelRecord`/`HostModelProfileRecord`, `profileId` minting | Everything else depends on it; it can be tested against a stub renderer. The registry makes `mountId` a routing address before any renderer migrates. |
 | 2    | **Spine** behind the contract                                                                                                                                                                                                                                                | Smallest surface: variants/skins are already `selection`-shaped, no camera, no lip sync, no blink. Proves mount + cue + panel with the least churn.                                                                                   |
 | 3    | **MMD**                                                                                                                                                                                                                                                                      | Exposes the settings-ownership failure modes cheaply (`scale`, `rotationY` vs `modelRotationY`, six inert camera keys, the unread `modelOffset`/`modelRotationY` pair).                                                               |
 | 4    | **Live2D**                                                                                                                                                                                                                                                                   | Exercises `parameter`, `mesh`, `expression`, a card-driven script calling its actions, hit areas and the capability model; also the first renderer whose mouse-focus and in-canvas caption paths have to be rebuilt on the pointer service and the caption cue. |
 | 5    | **VRM**                                                                                                                                                                                                                                                                      | Most entangled: host-written camera with two writers, a third writer in the positioning store, mesh visibility, auras, emotion mappings, custom VRMA blobs. Last on purpose.                                                          |
 | 6    | Delete what the contract replaces                                                                                                                                                                                                                                            | See the list below.                                                                                                                                                                                                                   |
-| 7    | Plugin packaging, enable/disable, probe, globals requirements, transfer bundles (incl. cloud sync)                                                                                                                                                                           | Turns "runs behind the contract" into "can live outside the monorepo".                                                                                                                                                                |
+| 7    | First-party packaging, enable/disable, static manifest, probe, globals requirements, transfer bundles (incl. cloud sync)                                                                                                                                                      | Completes the first-party path. Third-party dist/publish/loader is explicitly deferred until the contract and runtime are stable; this release does not promise "can live outside the monorepo".                                           |
+
+**Manifest first, runtime second.** The main process discovers and validates a static driver manifest
+(`id`, `contractVersion`, `entrypoints`, `requirements`, `capabilities` hint) and keeps only that plus
+the enabled flag. The renderer then loads the runtime and calls `activate()`; `rendererCapabilities()`
+is answered by that live instance because only the window has a DOM, WebGL and an `AudioContext`.
+The main registry therefore carries no more information than the manifest and must not expose a
+claimed capability result.
 
 Host-side state to move into renderer storage during steps 2-5 (99 literal keys
 today, of which these are load-bearing): camera position/distance/FOV/look-at,
@@ -1216,7 +1402,7 @@ renderer only.
 
 ## 9. Known gaps — what the contract cannot express yet
 
-**Status: open for 9.9, 9.13, 9.14; closed for the rest.** Each item declares
+**Status: open for 9.9, 9.14; closed for the rest.** Each item declares
 its own `Status:` line directly under its heading; `closed` means the question is answered or ruled
 out, and the text stays as the record of what was decided.
 
@@ -1331,10 +1517,14 @@ AIRI's vocabulary, so each would hand back renderer-internal names for the host 
 **Resolved:** text and captions belong entirely to the renderer. `CaptionCue` carries the utterance,
 its sentence split with timing, an `utteranceId` so a growing utterance keeps one highlight rather
 than restarting, and `elapsedMs` so a cue arriving mid-sentence starts where playback is; it never
-carries a position, font or colour. A renderer that cannot draw text leaves `'caption'` out of its
-declared cues and refuses the transaction, and `ResetCue` with `scope: 'caption'` takes it down.
-`nativeHandle` is deleted, because the host no longer draws inside a renderer's canvas at all. The
-problem it replaced is kept below.
+carries a position, font or colour. **It is an optional capability**: a driver that can show text,
+including head-tethered presentation, declares `'caption'` and owns that rendering; one that cannot
+leaves it out and the host does not send the cue. Omission is supported rather than degraded. AIRI
+may choose to draw its own host overlay fallback, which is a host decision outside this contract —
+permitted, not required, and not allowed to depend on a driver `HeadPose`. Sending a caption to a
+driver that did not declare it is `unsupported-cue`. `ResetCue` with `scope: 'caption'` takes it
+down. `nativeHandle` is deleted, because the host no longer draws inside a renderer's canvas; it may
+still add its own layers outside that canvas. The problem it replaced is kept below.
 
 Live2D draws a head-tethered comic bubble *inside its own WebGL canvas*, today by
 the host importing a renderer composable and handing it the Pixi app (2.3), and the
@@ -1514,10 +1704,10 @@ spring bones. There is therefore no `pose` member on `RendererMountProps`, no st
 lease — a lease arbitrates between producers, and a renderer with no external producer has nothing
 to arbitrate.
 
-What the host keeps is one fact and one gate. The speech stream (`HostAudioInterface`) is how a driver
-knows the character is talking, and how loudly — it derives openness from the signal itself; the
-on/off, profile and intensity of an ambient engine are driver settings behind a driver panel (5.2),
-never a cue.
+What the host keeps is one fact and one gate. The plugin-level speech analyzer
+(`HostSpeechAnalyzerService`) is how a driver knows the character is talking, and how loudly — the
+plugin maps the analyzer's frames to its own rig; the on/off, profile and intensity of an ambient
+engine are driver settings behind a driver panel (5.2), never a cue.
 
 **The authoring case survives the ruling.** A workbench that tunes the engine while watching it —
 fit, seed, profile, method — is a driver-internal surface too (5.2), driving the same instance
@@ -1535,9 +1725,9 @@ together, and leaves the two surfaces above.
 
 ### 9.12 Audio output, beat/tempo, and the scripting VM's verb set
 
-**Status: closed** — every item it asked for is ruled out: the verb set and the intimacy scalar by
-ownership (card versus character state), audio playback to the host, and the beat by leaving it out of
-the contract in both directions — no tempo, no beat event, no captured-audio stream.
+**Status: closed, revised 2026-10-20** — audio output, the beat and the verb set stay out of the
+renderer contract, and **speech reading is now plugin-level**: `HostSpeechAnalyzerService` replaces
+the old `HostAudioInterface` tap.
 
 The Live2D DSL has eight verbs and a VarFloat/intimacy/time-limit instruction set
 (`packages/live2d-runtime/src/dsl/command-parser.ts:55-99`,
@@ -1547,7 +1737,7 @@ outside the contract:
 | Verb / fact                                 | Closest concept                | Missing                                                                                                                                                                            |
 | :------------------------------------------ | :----------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `start_mtn Group#lane:item`                 | `MotionCue.key`                | lane and item sub-selection (deliberately excluded from the cue)                                                                                                                   |
-| `stop_sound <channel>`                      | none                           | the contract has **no audio-output cue**, and `HostAudioInterface` hands over the speech stream to *read*, never a channel to control                                                                                          |
+| `stop_sound <channel>`                      | none                           | the contract has **no audio-output cue**, and speech analysis is a plugin-level analyzer, never a channel to control |
 | `replace_tex <i> <file>`                    | none                           | texture-index addressing; `SelectionCue` was the only candidate and is deleted (9.8), so this stays renderer-internal                                                              |
 | `motions enable/disable <group>`            | `ResetCue` motion scope        | a per-group pool gate                                                                                                                                                              |
 | `Intimacy` bonus plus `Min`/`Max` gates     | none                           | a persistent per-model scalar (it lives in renderer storage and today leaks to the host over `dsl-intimacy-changed`, where a dating-sim store folds `delta` into its own variable) |
@@ -1572,11 +1762,11 @@ outside the contract:
   be handed to a renderer running in another window: a node does not cross a realm, and the capture
   handler is one app-wide `defaultSession` handler that the window owning it resets to `null`
   (`packages/electron-screen-capture/src/main/index.ts:146-151,228-239`). A `CAPTURE` stream was
-  therefore a promise no host could keep, so it is removed from `HostAudioInterface` rather than
-  shipped as one. Beat sync is a **host feature, temporarily unavailable to drivers**; a first-party
+  therefore a promise no host could keep, so it is kept out of the renderer contract entirely rather
+  than shipped as one. Beat sync is a **host feature, temporarily unavailable to drivers**; a first-party
   driver may read the plugin-layer channel directly as a stopgap, which is explicitly outside this
-  contract and costs it portability. The speech stream is unaffected: it is played in the same window
-  as the mount, so its per-utterance node is handed over.
+  contract and costs it portability. Speech analysis is unaffected: it is a plugin-level analyzer
+  (`HostSpeechAnalyzerService`), and its frames cross windows as data, not as an `AudioNode`.
 
 **Where the detector stays.** The detector that exists today is not fed by the speech graph: a
 dedicated Electron window captures **system audio**, runs an analyser worklet
@@ -1604,12 +1794,16 @@ member this contract owes.
 
 ### 9.13 Re-import, repair and payload replacement
 
-**Status: open** — the host already repairs and re-imports today, so the missing statement matters.
+**Status: closed (2026-10-20)** — the host already repairs and re-imports today, so the missing
+statement mattered; the answer is "conflict by default, explicit overwrite by exception".
 
-`ModelProbeInput.modelId` is minted by AIRI *before* the import, and nothing states
-what an import under an id that already exists means. Today the host repairs Live2D
-multi-model zips by splitting and re-importing parts, which replaces an existing
-model's payload rather than creating a new model. **Open.**
+`probe` no longer receives an id: it returns `parts`, and AIRI mints a `modelId` per selected part
+before `confirmImport`. `confirmImport` answers `MODEL_ID_CONFLICT` when `(modelDriverId, modelId)`
+already exists. Only an explicit user "replace" action, or a migration carrying a `migration` marker
+(`source`, `sourceId`, `payloadHash`), may set `overwrite: true`; the host writes a `pending` marker,
+runs the atomic replace, marks it `done`, and only then deletes the legacy blob. A retry with the same
+marker is a no-op when `done` and a safe replay when `pending`. The Live2D multi-model repair path is
+exactly this migration case; normal drop/card imports never overwrite.
 
 ### 9.14 Load progress
 
