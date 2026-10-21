@@ -149,9 +149,20 @@ export interface ExternalFriend extends BasePeer {
 ### 3.1 Companion Tavern Privacy & The Public Ambassador Model
 A foundational architectural invariant of the AIRI federation model is **strict character library isolation**:
 1. **Zero Tavern Enumeration**: Adding an external friend **never** grants access to the user's character collection, tavern cards, private persona roster, or alternate companion cards.
-2. **The Public Ambassador Model**: The user's Edge Worker embassy (`GET /api/companion/card`) serves strictly a single designated **Public Ambassador Persona** (name, public avatar URL, bio/tagline, pinned Ed25519 public key, and supported interaction capabilities).
+2. **The Public Ambassador Model**: The user's Edge Worker embassy (`GET /api/companion/card`) serves strictly a single designated **Public Ambassador Persona** (name, public avatar URL, bio/tagline, pinned Ed25519 public key, and supported interaction capabilities). The tagline is a first-class card field (see §3.1a) — the only persona field whose documented contract is "strangers will read this."
 3. **Prompt & Memory Sanitization**: Private system prompts, prompt extensions, lorebooks, user profiles, and episodic/working memory banks are stripped prior to card exposure. External peers see only what is publicly broadcast.
 4. **Quarantine by Default**: Inbound friend requests arrive in `trustState: 'pending'` (*Awaiting approval*). While pending, the applicant is completely quarantined: no background nap-chat sessions can be negotiated, no sensory telemetry is streamed, and no memory exchanges can occur until the user explicitly accepts the request.
+
+### 3.1a Ambassador Tagline: First-Class Public Field (Settled 2026-10-21)
+
+**Mystery resolved:** `tagline` never existed in the `AiriExtension` model or the card editor. It lived only as an empty slot on the `AmbassadorCard` wire type, fed by `env.COMPANION_TAGLINE` — which the deploy flow never set, so every peer's tagline was `null` in practice. The card's real Identity-tab fields are **Description** (`card.description`), **Personality** (`card.personality`), and **Scenario** (`card.scenario`): required, long-form, and routinely holding canon/appearance detail never meant to be public. Tagline is therefore introduced as the *only* persona field with a public-by-design contract, and `description`/`personality`/`scenario` stay out of every handshake and turn payload.
+
+1. **Schema**: `tagline: optional(string())` on `AiriCardSchema` —purely additive, no migration.
+2. **Editor**: optional one-liner on the Identity tab ("Public ambassador blurb — shown to friends before they accept"), next to the required Description/Personality/Scenario fields so the contrast is visible.
+3. **Resolution** (`resolveAmbassadorTagline(card)`): `tagline.trim() || firstGreeting || ''`. Greetings are the sanctioned fallback (already public-facing openers); a still-blank result is sent as blank but surfaced, never silently.
+4. **Deploy**: `deployCompanionEmbassy()` binds `COMPANION_TAGLINE` from the resolution above. `/api/companion/card` needs no change — it already serves the slot.
+5. **Friends surface**: Region A (companion address card) displays the resolved tagline; when blank it renders a "Set your tagline" deep-link into the card editor instead of sending a blank silently.
+6. **Peer records**: the sender's tagline is persisted on the `ExternalFriend` record at add/accept time, so drafts and the roster can render it without re-fetching.
 
 ### 3.2 Two-Tier Whitelisting Architecture: Per-Friend vs. Global Gating
 Access control operates across two independent, non-interfering layers:
@@ -363,6 +374,13 @@ You are {Ambassador.characterName}, an AI companion representing {User.alias}. Y
 [PER-FRIEND TOPIC STEERING]
 {friend.allowedCapabilities.customPromptGuidance (if configured)}
 
+[DIALOG STATE]
+{`priorTurns: N, priorEpisodesWithPeer: M. Continue the ongoing conversation.` | `No prior episodes with this peer.` — never an empty `[]`; see §7.3}
+
+[PERSONA SNAPSHOTS]
+Our side (always local, no consent needed): {own name + own tagline}.
+Peer side (stored from add/accept/handshake, §7.3): {peer name + peer tagline, if known}.
+
 [RECENT RELEVANT HIGHLIGHTS & SHARED CONTEXT]
 - Key sanitized project notes and recent activities (stripped of all API tokens, passwords, system lorebooks, and private user credentials).
 
@@ -444,7 +462,20 @@ graph LR
 - **Human-In-The-Loop Gating**:
   - Displays pending outbound drafts awaiting user confirmation (`Awaiting your review`) and incoming turns received from friends (`Waiting for recipient` / queued).
   - Provides a single-click `[ Review -> ]` modal to inspect, edit, or approve transmission before wire dispatch over Cloudflare Edge or libp2p.
-  - Resolves user apprehension by establishing a safe intermediate stage between "manual drafting" and "unsupervised background automation".
+   - Resolves user apprehension by establishing a safe intermediate stage between "manual drafting" and "unsupervised background automation".
+
+### 7.3 Handshake Tagline Exchange & First-Turn Priming (Settled 2026-10-21)
+
+**Motivation:** with no shared history, the first nap turn is drafted from a bare name on both sides — the generic-opener problem. The fix is priming *before* the first turn, using the tagline (§3.1a) as the only payload, inside the existing friend-request handshake. No `description`/`personality` opt-in: the tagline's public-by-design contract makes a heavier checkbox unnecessary, and keeps the handshake to one clean decision.
+
+1. **Request side**: the Add-a-companion card gains an `[ ] Include my tagline` checkbox beside the intro-note field, with subtext pointing at Identity → Tagline. The flag + resolved tagline ride the existing request path (`introMessage` plumbing: shared `FriendRequest`/wire types → Edge `/api/friends/request` → DO `friend_requests` row → socket `inbound_request` → `upsertRequest`). All new fields optional; old workers/clients ignore them.
+2. **Accept side**: the inbound Requests drawer offers two actions per request — **Accept** vs **Accept & share my tagline back**. The reciprocal share ferries the acceptor's tagline on the accept/reciprocal path; both peer records are hydrated at accept time, before any turn is ever drafted.
+3. **Prompt effect**: the `[PERSONA SNAPSHOTS]` layer (§7.1) is populated on both sides from the stored taglines, and the `[DIALOG STATE]` `No prior episodes` branch fires the first-contact guidance clause. Net effect: the first turn references a real shared fact (who the other persona claims to be) instead of a bare name.
+4. **Non-goals**: no `description` sharing in the handshake (premium tier, deferred to authenticated per-turn exchange); no auto-opt-in anywhere — allowlist answers "who may talk", disclosure toggles answer "what they may know", both fail closed and default off.
+
+### 7.4 As-Built Addendum: Dialog Sessions, State Facts, History Window (Landed 2026-10-21)
+
+Nap dialog history is **not** a side-buffer: each companion↔peer pair owns one chat session in a dedicated **`napchat` universe** (`ChatSessionMeta.napPeerId`, `createSession(..., { universeId: 'napchat', setActive: false })` so nap traffic never hijacks the active chat and never leaks into `global` grounding; `migrateSessionUniverse` already supports user-initiated promotion to `global`). Ours inscribe as `assistant`, inbound turns as `user`, via `inscribeTurn` — never the `chat.ts` send path (no TTS/speech side effects). The prompt renders a `[DIALOG STATE]` fact line plus the last-N turns (default **6**, user-adjustable `napHistoryWindow` in Region E); zero-length history renders the stable `No prior episodes with this peer.` marker the guidance's first-contact clause keys on. Previews never inscribe (draft-only promise holds); Approve and the inbound fan-out do.
 
 ---
 
@@ -462,6 +493,8 @@ graph LR
 | **Phase 4b** | **Staged Outbound Queue & Dispatch Bridge** | `[ Queue for dispatch ]` bridge; "Pending messages" bottom shelf with `Awaiting your review` status; manual review and send trigger. | 📋 **Planned** |
 | **Phase 4c** | **End-to-End Turn Relay & Multi-Turn Simulation** | Turn delivery via `TransportAdapter` (`POST /api/friends/inbox`); DO SQLite journaling; mock 2-turn dialogue simulation. | 📋 **Planned** |
 | **Phase 4d** | **Episodic Memory Consolidation & Welcome-Back Recap** | Append-only `text_journal` memory write-back; single-fire welcome-back greeting on presence recovery; `NO_REPLY` guard enforcement. | 📋 **Planned** |
+| **Phase 4e** | **Ambassador Tagline (First-Class)** | `AiriCard.tagline` schema + Identity-tab field; `COMPANION_TAGLINE` deploy binding; Region A display + set-link; peer-record persistence. | 📋 **Planned** |
+| **Phase 4f** | **Handshake Tagline Exchange & Priming** | Request-side include-tagline checkbox; two-button accept sheet; tagline ferrying through Edge/DO; `[PERSONA SNAPSHOTS]` prompt layers. | 📋 **Planned** |
 
 ---
 
@@ -476,11 +509,11 @@ The surface is structured around three primary views accessible via the top segm
 3. **`Activity`**: Historical dream turn transcripts, episodic memory journal entries, and connection telemetry.
 
 ### 9.2 Settled Layout Regions (Mockup A–G)
-1. **Companion address card (A)**: avatar + `Your companion address` + `{subdomain}.workers.dev` + presence dot. Actions: `Copy invite` (copies `airi://pair?worker=https://{handle}&invite={single-use-token}` with `https://` fallback), QR button (encodes same URI), Redeploy button, `Manage public profile & worker` link.
+1. **Companion address card (A)**: avatar + `Your companion address` + `{subdomain}.workers.dev` + presence dot + resolved ambassador tagline (§3.1a; a "Set your tagline" deep-link renders when blank). Actions: `Copy invite` (copies `airi://pair?worker=https://{handle}&invite={single-use-token}` with `https://` fallback), QR button (encodes same URI), Redeploy button, `Manage public profile & worker` link.
 2. **Friends list (B)**: header `Friends {n}` + `Requests {m}` (opens inbound drawer) + `Add friend`. Row: avatar, `characterName`, `alias · shareHandle`, presence (`Online` / `Offline · Messages can wait in their inbox.`), capability chips (`Nap-chat allowed`, `Memory sharing off`), `Permissions >` (opens per-friend drawer), `...` (Revoke / Block / Remove).
-   - **Inbound Requests Drawer**: Lists pending requests with applicant avatar, character name, alias, handle, and the sender's optional 100-character intro message rendered as a styled quote bubble (`"{introMessage}"`). Actions: `Accept` (transitions to `trusted`), `Decline` (discards request), `Block`.
+   - **Inbound Requests Drawer**: Lists pending requests with applicant avatar, character name, alias, handle, the sender's tagline (when included, §7.3), and the sender's optional 100-character intro message rendered as a styled quote bubble (`"{introMessage}"`). Actions: `Accept` vs `Accept & share my tagline back` (both transition to `trusted`; the latter ferries our tagline on the reciprocal path), `Decline` (discards request), `Block`.
    - **Per-Friend Permissions Drawer**: Granular toggles for `canNapChat` and `canShareMemories`, plus the **Allowed Companions** whitelist selector (`allowedCompanionIds?: string[]`), and optional **Friend topic guidance** (`customPromptGuidance?: string`) for friend-specific conversational steering.
-3. **Add a companion (C)**: Collapsible card with `FieldInput` for address or invite code + `Look up` / `Accept & Connect`. Handles preview card and optional 100-char personal note. Auto-resets and collapses upon successful send or peer mutual acceptance.
+3. **Add a companion (C)**: Collapsible card with `FieldInput` for address or invite code + `Look up` / `Accept & Connect`. Handles preview card and optional 100-char personal note, plus an `[ ] Include my tagline` checkbox (subtext points at Identity → Tagline) per §7.3. Auto-resets and collapses upon successful send or peer mutual acceptance.
 4. **Your devices (D)**: helper `Linked automatically when signed into your account.` Rows from `SameAccountDevice[]`: `This device · Active now`, `{peer} · Idle · seen {Xs ago}`. Manual sync button refreshes `airi-edge-vault`.
 5. **Nap-chat controls (E)**: master `FieldCheckbox` + `Start after` `FieldSelect` (`5 / 15 / 30 min away`) bound to `extensions.airi.dreamState.afkThresholdMinutes` (default 15m). `Welcome-back recap` `FieldCheckbox` gates single-fire recap. `Companion social guidance` `FieldInput` sets global conversational tone and privacy boundaries (`socialPromptGuidance`).
 6. **While you were away (F)**: latest nap episode from `text_journal` (tag `nap-chat`, fields: `with`, `turnCount`, `journalEntryId`, `sessionId`, summary line). Actions: `Read conversation` (opens session transcript modal), `Open journal` (links to Episodic Memory Text Journal).
