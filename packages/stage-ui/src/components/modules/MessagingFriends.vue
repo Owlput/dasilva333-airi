@@ -98,6 +98,19 @@ const embassyCompanionNickname = computed(() => {
 // Public ambassador blurb for the embassy companion — tagline first, first
 // greeting as fallback, blank when neither exists (surfaced, never silent).
 const ambassadorTagline = computed(() => resolveAmbassadorTagline(embassyCompanionCard.value ?? airiCardStore.activeCard))
+const ambassadorTaglineSource = computed((): 'tagline' | 'greeting' | 'none' => {
+  const card = embassyCompanionCard.value as { tagline?: string | null, greetings?: string[] | null } | null
+  if ((card?.tagline || '').trim())
+    return 'tagline'
+  if ((card?.greetings || []).some(g => (g || '').trim()))
+    return 'greeting'
+  const active = airiCardStore.activeCard as { tagline?: string | null, greetings?: string[] | null } | null
+  if ((active?.tagline || '').trim())
+    return 'tagline'
+  if ((active?.greetings || []).some(g => (g || '').trim()))
+    return 'greeting'
+  return 'none'
+})
 const embassy = usePeerEmbassy()
 const embassyInboxStore = useEmbassyInboxStore()
 const napChatCoordinatorStore = useNapChatCoordinatorStore()
@@ -177,6 +190,41 @@ watch(() => embassyInboxStore.socketStatus, (status) => {
     isEmbassyOnline.value = false
 })
 
+// What the deployed worker actually serves as our public card. Compared
+// against the local ambassador so a stale deploy (or an ambassador switch
+// without redeploying) surfaces instead of silently serving old identity.
+const workerCard = ref<{ name: string, tagline: string } | null>(null)
+async function probeWorkerCard() {
+  if (!myAddress.value) {
+    workerCard.value = null
+    return
+  }
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    const res = await fetch(`https://${myAddress.value}/api/companion/card`, { signal: controller.signal })
+    clearTimeout(timeout)
+    if (!res.ok)
+      return
+    const data = await res.json() as any
+    workerCard.value = { name: String(data?.name || ''), tagline: String(data?.tagline || '') }
+  }
+  catch {
+    // Offline worker: keep the last known card, if any.
+  }
+}
+const workerCardStale = computed(() => {
+  if (!workerCard.value || !hasAddress.value)
+    return false
+  return (workerCard.value.name !== embassyCompanionName.value)
+    || (workerCard.value.tagline !== ambassadorTagline.value)
+})
+
+watch(embassyCompanionId, (next, prev) => {
+  if (prev !== undefined && next !== prev)
+    toast.info('Ambassador changed — redeploy to update your public card.')
+})
+
 async function handleDeployEmbassy() {
   if (!cloudflareStore.isAuthenticated) {
     toast.error('Sign in to Cloudflare first in Settings.')
@@ -194,7 +242,7 @@ async function handleDeployEmbassy() {
     const res = await cloudflareStore.deployCompanionEmbassy({
       enableEmbassyDO: true,
       characterName: embassyCompanionName.value,
-      tagline: resolveAmbassadorTagline(airiCardStore.activeCard),
+      tagline: ambassadorTagline.value,
     })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
@@ -204,6 +252,10 @@ async function handleDeployEmbassy() {
           break
         await new Promise(r => setTimeout(r, 1500))
       }
+      // Refresh the served card so the staleness hint clears (bindings can
+      // lag a few seconds behind a successful deploy).
+      await new Promise(r => setTimeout(r, 2000))
+      await probeWorkerCard()
       if (isEmbassyOnline.value) {
         void initEmbassySocket()
       }
@@ -222,6 +274,7 @@ onMounted(async () => {
   if (cloudflareStore.isAuthenticated) {
     void cloudflareStore.syncVaultDevices().catch(() => {})
     void probeEmbassyHealth()
+    void probeWorkerCard()
     void initEmbassySocket()
   }
 })
@@ -232,11 +285,12 @@ onUnmounted(() => {
 
 watch([myAddress, () => cloudflareStore.activeAccountId], () => {
   void probeEmbassyHealth()
+  void probeWorkerCard()
   void initEmbassySocket()
 })
 
 function handleEditTagline() {
-  const cardId = airiCardStore.activeCardId as string | undefined
+  const cardId = embassyCompanionId.value !== 'airi' ? embassyCompanionId.value : (airiCardStore.activeCardId as string | undefined)
   if (cardId)
     router.push({ path: '/settings/airi-card/edit', query: { id: String(cardId) } })
   else router.push('/settings/airi-card')
@@ -347,6 +401,28 @@ const simCharacterId = computed(() => {
   if (simCompanionId.value !== 'current')
     return simCompanionId.value
   return embassyCompanionId.value
+})
+// The companion actually drafting this preview (sim selector, defaulting to
+// the embassy ambassador). Persona, recent turns, and journal scope all key
+// off THIS character — never the ambient active card.
+const simCompanionCard = computed(() => {
+  try {
+    return airiCardStore.getCard(simCharacterId.value) ?? null
+  }
+  catch {
+    return null
+  }
+})
+const simCompanionName = computed(() => {
+  return (simCompanionCard.value as { name?: string } | null)?.name || embassyCompanionName.value
+})
+const simTaglineSource = computed((): 'tagline' | 'greeting' | 'none' => {
+  const card = simCompanionCard.value as { tagline?: string | null, greetings?: string[] | null } | null
+  if ((card?.tagline || '').trim())
+    return 'tagline'
+  if ((card?.greetings || []).some(g => (g || '').trim()))
+    return 'greeting'
+  return 'none'
 })
 const simIdleSec = computed(() => (Number.parseInt(simAbsence.value, 10) || 15) * 60)
 const napHistoryWindowOption = computed({
@@ -540,7 +616,7 @@ function extractProse(raw: string): string {
 // fallbacks often carry ACTOR cues) and capped so a scene-setter greeting
 // renders as a blurb, not a wall of text. Deploy/prompt paths keep the full
 // resolved value; this is presentation-only.
-const ambassadorTaglineDisplay = computed(() => extractProse(ambassadorTagline.value).slice(0, 280))
+const ambassadorTaglineDisplay = computed(() => extractProse(ambassadorTagline.value).replace(/^[“”"']+|[“”"']+$/g, '').slice(0, 280))
 
 async function handleGeneratePreview() {
   if (simIsGenerating.value)
@@ -550,17 +626,30 @@ async function handleGeneratePreview() {
     toast.info('No eligible friends yet — add a friend to preview nap-chat drafts.')
     return
   }
-  const companionName = embassyCompanionName.value
+  const companionName = simCompanionName.value
   const recipientName = peer.characterName
   const perFriendGuidance = peer.allowedCapabilities?.customPromptGuidance?.trim() || ''
 
   simIsGenerating.value = true
   try {
     const windowSize = napHistoryWindow.value
-    // Real context extracts: recent turns + journal highlights + guidance layers.
+    // Real context extracts, ALL scoped to the drafting companion (never the
+    // ambient active card): its session turns, its journal slice, its persona.
     let recentTurns: Array<{ role: string, content: string }> = []
     try {
-      const history = chatSessionStore.messages as Array<{ role?: string, content?: unknown }>
+      const charIndex = chatSessionStore.getCharacterIndex(simCharacterId.value)
+      let history: Array<{ role?: string, content?: unknown }> = []
+      if (charIndex?.activeSessionId) {
+        try {
+          await chatSessionStore.loadSession(charIndex.activeSessionId)
+        }
+        catch {}
+        history = (chatSessionStore.getSessionMessages(charIndex.activeSessionId) as Array<{ role?: string, content?: unknown }>) || []
+      }
+      else if (!charIndex) {
+        // Session index not ready yet — fall back to what's on screen.
+        history = chatSessionStore.messages as Array<{ role?: string, content?: unknown }>
+      }
       recentTurns = (history || []).slice(-windowSize).map((m) => {
         const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')
         return { role: m.role || 'user', content: content.slice(0, 200) }
@@ -570,7 +659,7 @@ async function handleGeneratePreview() {
 
     let journalHighlights: Array<{ text: string }> = []
     try {
-      const results = await textJournalStore.searchEntries({ query: recipientName, limit: 3 })
+      const results = await textJournalStore.searchEntries({ query: recipientName, limit: 3, characterId: simCharacterId.value })
       journalHighlights = (results || []).slice(0, 3).map(r => ({ text: String((r as any).content || (r as any).text || '').slice(0, 200) })).filter(j => j.text.trim().length > 0)
     }
     catch {}
@@ -593,7 +682,7 @@ async function handleGeneratePreview() {
 
     const recentSummary = recentTurns.length > 0
       ? recentTurns.map(t => `${t.role}: ${t.content}`).join('\n')
-      : '(no recent chat turns in the active session)'
+      : `(no recent chat turns for ${companionName})`
     const journalSummary = journalHighlights.length > 0
       ? journalHighlights.map(j => `- ${j.text}`).join('\n')
       : '(no journal highlights matched)'
@@ -601,14 +690,15 @@ async function handleGeneratePreview() {
       ? dialogTurns.map(t => `${t.role === 'assistant' ? companionName : recipientName}: ${t.content}`).join('\n')
       : NAP_DIALOG_NO_HISTORY_MARKER
 
-    const ownTagline = resolveAmbassadorTagline(airiCardStore.activeCard)
+    const ownTagline = resolveAmbassadorTagline((simCompanionCard.value as { tagline?: string | null, greetings?: string[] | null } | null) ?? airiCardStore.activeCard)
+    const ownPersonaLabel = simTaglineSource.value === 'tagline' ? 'card tagline' : simTaglineSource.value === 'greeting' ? 'first-greeting fallback' : 'missing'
     const peerTagline = (simRecipientPeer.value?.tagline || '').trim()
     const systemPrompt = [
       `[SYSTEM / IDENTITY]\nYou are ${companionName}, an AI companion representing the user. You are drafting an autonomous background chat opener to ${recipientName}.`,
       `[GLOBAL SOCIAL GUIDANCE]\n${simGuidance.value.trim() || socialPromptGuidance.value}`,
       perFriendGuidance ? `[PER-FRIEND TOPIC STEERING]\n${perFriendGuidance}` : '',
       `[DIALOG STATE]\n${dialogStateLine}`,
-      ownTagline ? `[OUR PERSONA]\n${companionName} — ${ownTagline}` : '',
+      ownTagline ? `[OUR PERSONA — ${ownPersonaLabel}]\n${companionName} — ${ownTagline}` : '',
       peerTagline ? `[PEER PERSONA]\n${recipientName} — ${peerTagline}` : '',
       `[NAP DIALOG HISTORY — last ${dialogTurns.length}]\n${dialogSummary}`,
       `[RECENT RELEVANT HIGHLIGHTS & SHARED CONTEXT]\nRecent turns:\n${recentSummary}\nJournal highlights:\n${journalSummary}`,
@@ -651,10 +741,10 @@ async function handleGeneratePreview() {
     draftSource.value = `Source: dialog (${dialogTurns.length}) + recent turns (${recentTurns.length}) + journal (${journalHighlights.length}) + social guidance → ${model}`
     draftContextUsed.value = [
       { type: 'Dialog state', text: dialogStateLine, age: 'napchat universe' },
-      ...(ownTagline ? [{ type: 'Our persona', text: `${companionName} — ${ownTagline}`, age: 'card tagline' }] : []),
+      ...(ownTagline ? [{ type: 'Our persona', text: `${companionName} — ${ownTagline}`, age: ownPersonaLabel }] : []),
       ...(peerTagline ? [{ type: 'Peer persona', text: `${recipientName} — ${peerTagline}`, age: 'shared tagline' }] : []),
       { type: 'Nap dialog history', text: dialogSummary.slice(0, 500), age: dialogTurns.length > 0 ? 'napchat universe' : 'no history' },
-      { type: 'Recent turns', text: recentSummary.slice(0, 500), age: recentTurns.length > 0 ? 'active session' : 'empty' },
+      { type: 'Recent turns', text: recentSummary.slice(0, 500), age: recentTurns.length > 0 ? `${companionName}'s session` : 'empty' },
       ...(journalHighlights.length > 0 ? [{ type: 'Journal highlights', text: journalSummary.slice(0, 500), age: 'text-journal' }] : []),
       { type: 'Global guidance', text: (simGuidance.value.trim() || socialPromptGuidance.value).slice(0, 500), age: 'sandbox' },
       ...(perFriendGuidance ? [{ type: 'Per-friend steering', text: perFriendGuidance.slice(0, 500), age: 'permissions' }] : []),
@@ -1063,7 +1153,7 @@ async function handleSendRequest() {
     fromCharacterName: embassyCompanionName.value,
     introMessage: lookupIntroNote.value.trim(),
     inviteToken: lookedUpInviteToken.value,
-    senderTagline: lookupShareTagline.value ? (resolveAmbassadorTagline(airiCardStore.activeCard) || undefined) : undefined,
+    senderTagline: lookupShareTagline.value ? (ambassadorTagline.value || undefined) : undefined,
   })
 
   const targetName = lookedUpCard.value?.name || extractHandleAlias(lookedUpHandle.value) || 'Friend'
@@ -1147,7 +1237,7 @@ async function handleAcceptRequest(req: InboundRequestItem, shareBack = false) {
       companionName: embassyCompanionName.value,
       sendReciprocal: true,
       shareTagline: shareBack,
-      senderTagline: shareBack ? (resolveAmbassadorTagline(airiCardStore.activeCard) || undefined) : undefined,
+      senderTagline: shareBack ? (ambassadorTagline.value || undefined) : undefined,
     })
     if (!res.ok) {
       toast.error(`Failed to accept ${req.characterName}: ${res.error || 'Server error'}`)
@@ -1376,6 +1466,21 @@ const surfaceCardClass = computed(() => [
               <div v-if="ambassadorTagline" :title="ambassadorTagline" :class="['mt-1', 'max-w-xs', 'text-xs', 'italic', 'text-neutral-500', 'dark:text-neutral-400', 'line-clamp-3']">
                 "{{ ambassadorTaglineDisplay }}"
               </div>
+              <button
+                v-if="ambassadorTaglineSource === 'greeting'"
+                :class="['mt-0.5', 'text-[11px]', 'text-amber-600', 'dark:text-amber-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                @click="handleEditTagline"
+              >
+                <span>Using first greeting — set a dedicated tagline</span>
+              </button>
+              <button
+                v-if="workerCardStale"
+                :class="['mt-0.5', 'flex', 'items-center', 'gap-1', 'text-[11px]', 'font-medium', 'text-amber-600', 'dark:text-amber-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                @click="handleDeployEmbassy"
+              >
+                <span>Worker card is out of date — update worker</span>
+                <div class="i-solar:alt-arrow-right-linear text-xs" />
+              </button>
               <button
                 v-else
                 :class="['mt-1', 'flex', 'items-center', 'gap-1', 'text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
