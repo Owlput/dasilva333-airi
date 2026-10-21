@@ -90,7 +90,7 @@ function navigateTo(to: string) {
               Settings
             </span>
             <span class="text-xs text-neutral-400 font-mono dark:text-neutral-500">
-              設定 · Hub
+              設 · Hub
             </span>
           </div>
         </div>
