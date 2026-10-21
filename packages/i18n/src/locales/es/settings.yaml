@@ -215,6 +215,8 @@ pages:
           compatibilidad de tarjetas y trabajo futuro en el flujo de prompts,
           por lo que puedes rellenarlas ahora sin esperar un comportamiento en
           vivo distinto por el momento.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: El nombre debe ser válido o no estar vacío.
         version: '¡Error: Número de versión inválido!'
@@ -225,6 +227,7 @@ pages:
         posthistoryinstructions: 'Error: Se requiere un prompt post-historial.'
       none: Ninguno (Sin fondo)
       preferred_background: Escena / Fondo preferido
+      tagline: Tagline
     modules: Módulos
     name_asc: Nombre (A-Z)
     name_desc: Nombre (Z-A)

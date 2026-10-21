@@ -7,6 +7,7 @@ const emit = defineEmits<{
 }>()
 const cardName = defineModel<string>('cardName', { required: true })
 const cardNickname = defineModel<string>('cardNickname', { required: true })
+const cardTagline = defineModel<string>('cardTagline', { required: true })
 const cardDescription = defineModel<string>('cardDescription', { required: true })
 const cardNotes = defineModel<string>('cardNotes', { required: true })
 const cardSystemPrompt = defineModel<string>('cardSystemPrompt', { required: true })
@@ -29,6 +30,7 @@ const { t } = useI18n()
     <div class="input-list ml-auto mr-auto w-90% flex flex-row flex-wrap justify-start gap-8">
       <FieldInput v-model="cardName" :label="t('settings.pages.card.creation.name')" :description="t('settings.pages.card.creation.fields_info.name')" :required="true" />
       <FieldInput v-model="cardNickname" :label="t('settings.pages.card.creation.nickname')" :description="t('settings.pages.card.creation.fields_info.nickname')" />
+      <FieldInput v-model="cardTagline" :label="t('settings.pages.card.creation.tagline')" :description="t('settings.pages.card.creation.fields_info.tagline')" />
       <div class="max-w-full">
         <label class="flex flex-col gap-4">
           <div>

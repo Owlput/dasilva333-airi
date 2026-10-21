@@ -440,6 +440,7 @@ const AiriExtensionSchema = looseObject({
 export const AiriCardSchema = looseObject({
   name: string('Card name is required'),
   nickname: optional(string()),
+  tagline: optional(string()),
   version: string('Version is required'),
   description: optional(string()),
   notes: optional(string()),

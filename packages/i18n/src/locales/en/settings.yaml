@@ -248,6 +248,8 @@ pages:
           previous card.
         consciousness_model: Select the consciousness model (AI model) for this character.
         speech_model: Select the speech synthesis model and voice for this character.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: Name should be valid or non-empty.
         version: 'Error: Invalid version number !'
@@ -259,6 +261,7 @@ pages:
       presence_info: Configure the visual, vocal, and cognitive presence for this
         character (Avatar, Voice, Consciousness, and Scene). If not set, global
         defaults will be used.
+      tagline: Tagline
     modules: Modules
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
@@ -552,7 +555,8 @@ pages:
       description: Short-term memory specific settings and management
       title: Short-Term Memory
     messaging-friends:
-      description: Connect your devices, manage trusted friends, and configure autonomous nap-chat
+      description: Connect your devices, manage trusted friends, and configure
+        autonomous nap-chat
       title: Friends & Companions
     messaging-discord:
       description: Discord bot gateway, slash commands, text chat, and voice channel

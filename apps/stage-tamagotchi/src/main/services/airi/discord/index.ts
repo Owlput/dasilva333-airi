@@ -599,6 +599,7 @@ export function setupDiscordService() {
         scriptName: payload.scriptName,
         ownerId: payload.ownerId || payload.accountId,
         characterName: payload.characterName,
+        tagline: payload.tagline,
         enableEmbassyDO: payload.enableEmbassyDO ?? true,
       })
       pushLog('DEPLOY', `Web CORS Reverse-Proxy deployed successfully: ${res.workerUrl}`)

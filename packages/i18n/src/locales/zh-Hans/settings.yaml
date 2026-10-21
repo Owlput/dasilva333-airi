@@ -197,6 +197,8 @@ pages:
         speech_model: 为此角色指定语音合成模型与音色。
         identity_prompting: 这些字段均有助于定义角色，但在当前架构中并非独立的运行时层。系统提示词直接用于 AIRI
           的活跃提示词组装。历史后置指令目前主要用于卡片格式兼容性和未来提示词流水线，因此您现在即可填写，无需期待即刻的独立在线行为差异。
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: 错误：你必须提供一个有效的名称！
         version: '错误：版本号无效！'
@@ -207,6 +209,7 @@ pages:
         posthistoryinstructions: '错误：必须提供消息历史后的提示。'
       none: 无（无背景）
       presence_info: 配置此角色卡的可视形象、声音及认知存在（模型形象、语音、意识脑与场景）。如未设置，将使用全局默认配置。
+      tagline: Tagline
     modules: 模块
     name_asc: 名称 (A-Z)
     name_desc: 名称 (Z-A)

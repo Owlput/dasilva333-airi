@@ -196,6 +196,8 @@ pages:
         speech_model: 請為此角色選用語音合成模型與聲線。
         identity_prompting: 這些欄位皆有助於定義角色，但在目前的架構中並非獨立的執行期層。系統提示詞直接用於 AIRI
           的動態提示詞組裝。歷史後置指令目前主要保留用於卡片格式相容性與未來的提示詞管線，因此您現在即可填寫，無需期待即刻的獨立在線行為差異。
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: 錯誤：你必須提供一個有效的名稱！
         version: '錯誤：版本號無效！'
@@ -206,6 +208,7 @@ pages:
         posthistoryinstructions: '錯誤：必須提供訊息歷史後的提示。'
       none: 無（無背景）
       preferred_background: 首選場景 / 背景
+      tagline: Tagline
     modules: 模組
     name_asc: 名稱 (A-Z)
     name_desc: 名稱 (Z-A)

@@ -734,7 +734,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     return true
   }
 
-  async function deployCompanionEmbassy(options: { enableEmbassyDO?: boolean, characterName?: string } = { enableEmbassyDO: true }): Promise<{ success: boolean, workerUrl: string }> {
+  async function deployCompanionEmbassy(options: { enableEmbassyDO?: boolean, characterName?: string, tagline?: string } = { enableEmbassyDO: true }): Promise<{ success: boolean, workerUrl: string }> {
     const apiToken = activeAccessToken.value
     const accountId = activeAccountId.value
     if (!apiToken || !accountId)
@@ -752,6 +752,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     const workerUrl = `https://${scriptName}.${subdomain}.workers.dev`
     const enableDO = options.enableEmbassyDO ?? true
     const characterName = options.characterName || 'AIRI'
+    const tagline = options.tagline || ''
 
     if (isElectron && invokeDeployCorsProxy) {
       try {
@@ -762,6 +763,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
           scriptName,
           ownerId: accountId,
           characterName,
+          tagline,
           enableEmbassyDO: enableDO,
         })
         if (!res.success)
@@ -812,6 +814,7 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     }
     bindings.push({ type: 'plain_text', name: 'OWNER_ID', text: accountId })
     bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: characterName })
+    bindings.push({ type: 'plain_text', name: 'COMPANION_TAGLINE', text: tagline })
 
     if (enableDO) {
       bindings.push({

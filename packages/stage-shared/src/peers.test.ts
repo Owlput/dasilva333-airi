@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractHandleAlias, isCompanionAllowedForFriend } from './peers'
+import { extractHandleAlias, isCompanionAllowedForFriend, resolveAmbassadorTagline } from './peers'
 
 describe('extractHandleAlias', () => {
   it('extracts subdomain from 4-part workers.dev handles', () => {
@@ -41,5 +41,22 @@ describe('isCompanionAllowedForFriend', () => {
     expect(isCompanionAllowedForFriend(restricted, 'card-1')).toBe(true)
     expect(isCompanionAllowedForFriend(restricted, 'card-2')).toBe(false)
     expect(isCompanionAllowedForFriend(restricted, 'card-3')).toBe(true)
+  })
+})
+
+describe('resolveAmbassadorTagline', () => {
+  it('prefers the explicit tagline', () => {
+    expect(resolveAmbassadorTagline({ tagline: '  Quiet conversations  ', greetings: ['Hello!'] })).toBe('Quiet conversations')
+  })
+
+  it('falls back to the first non-blank greeting', () => {
+    expect(resolveAmbassadorTagline({ tagline: '  ', greetings: ['  ', 'Hey there!'] })).toBe('Hey there!')
+    expect(resolveAmbassadorTagline({ greetings: ['Hey!'] })).toBe('Hey!')
+  })
+
+  it('returns blank when nothing is set', () => {
+    expect(resolveAmbassadorTagline({ tagline: null, greetings: [] })).toBe('')
+    expect(resolveAmbassadorTagline(null)).toBe('')
+    expect(resolveAmbassadorTagline(undefined)).toBe('')
   })
 })

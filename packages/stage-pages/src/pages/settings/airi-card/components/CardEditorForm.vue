@@ -1595,6 +1595,7 @@ function makeComputed<T extends keyof Card>(
 
 const cardName = makeComputed('name', input => kebabcase(input))
 const cardNickname = makeComputed('nickname')
+const cardTagline = makeComputed('tagline')
 const cardDescription = makeComputed('description')
 const cardNotes = makeComputed('notes')
 
@@ -1917,6 +1918,7 @@ function handleGeneratorSave(newValue: string) {
         v-if="activeTab === 'identity'"
         v-model:card-name="cardName"
         v-model:card-nickname="cardNickname"
+        v-model:card-tagline="cardTagline"
         v-model:card-description="cardDescription"
         v-model:card-notes="cardNotes"
         v-model:card-system-prompt="cardSystemPrompt"

@@ -207,6 +207,8 @@ pages:
           AIRI. Инструкции после истории пока сохраняются для совместимости
           формата карточек и будущих обновлений конвейера промптов, поэтому вы
           можете заполнить их сейчас, не ожидая мгновенных отличий в поведении.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: Имя должно быть корректным и непустым.
         version: 'Ошибка: неверная версия!'
@@ -217,6 +219,7 @@ pages:
         posthistoryinstructions: 'Ошибка: требуется post-history промпт.'
       none: Нет (Без фона)
       preferred_background: Предпочтительная сцена / фон
+      tagline: Tagline
     modules: Модули
     name_asc: Имя (А-Я)
     name_desc: Имя (Я-А)

@@ -34,6 +34,12 @@ export interface ExternalFriend extends BasePeer {
   }
   allowedCompanionIds?: string[]
   introMessage?: string
+  /**
+   * Public ambassador blurb, mirrored from the peer's card tagline at
+   * add/accept time (or ferried through the friend-request handshake).
+   * Public by design — never holds tavern/private card contents.
+   */
+  tagline?: string | null
 }
 
 export interface FriendRequest {
@@ -73,6 +79,20 @@ export function buildRequestSignaturePayload(timestamp: number, nonce: string, i
 }
 
 export type Peer = SameAccountDevice | ExternalFriend
+
+/**
+ * Ambassador tagline resolution: explicit tagline first, then the card's
+ * first greeting (already a public-facing opener), then blank.
+ * Callers surface a set-your-tagline affordance instead of sending a
+ * silent blank — see the nap-chat Friends surface (Region A).
+ */
+export function resolveAmbassadorTagline(card?: { tagline?: string | null, greetings?: string[] | null } | null): string {
+  const direct = (card?.tagline || '').trim()
+  if (direct)
+    return direct
+  const greeting = (card?.greetings || []).map(g => (g || '').trim()).find(g => g.length > 0) || ''
+  return greeting
+}
 
 export function isSameAccountDevice(peer: Peer): peer is SameAccountDevice {
   return peer.relationship === 'same-account'

@@ -197,6 +197,8 @@ pages:
         identity_prompting: これらのフィールドはキャラクターの定義に役立ちますが、現在のところ個別のランタイムレイヤーとしては分離されていません。システムプロンプトは
           AIRI のアクティブプロンプト組み立てに使用されます。履歴後指示（Post-History
           Instructions）は主にカードの互換性と将来のプロンプトパイプラインのために保持されているため、現時点では挙動の変化を期待せずに入力して問題ありません。
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: 名前は有効であるか、空でない必要があります。
         version: 'エラー: 無効なバージョン番号です！'
@@ -207,6 +209,7 @@ pages:
         posthistoryinstructions: 'エラー: 履歴の後のプロンプトは必須です。'
       none: なし (背景なし)
       preferred_background: 優先するシーン / 背景
+      tagline: Tagline
     modules: モジュール
     name_asc: 名前(A-Z)
     name_desc: 名前(Z-A)

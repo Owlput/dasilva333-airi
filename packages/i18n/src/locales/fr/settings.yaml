@@ -217,6 +217,8 @@ pages:
           la compatibilité des fiches et les futurs travaux de pipeline de
           prompts, vous pouvez donc les remplir sans attendre de comportement
           distinct pour le moment.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: Le nom doit être valide ou non vide.
         version: 'Erreur : numéro de version invalide !'
@@ -227,6 +229,7 @@ pages:
         posthistoryinstructions: 'Erreur : le prompt post-historique est requis.'
       none: Aucun (Sans arrière-plan)
       preferred_background: Scène / Arrière-plan préféré
+      tagline: Tagline
     modules: Modules
     name_asc: Nom (A-Z)
     name_desc: Nom (Z-A)

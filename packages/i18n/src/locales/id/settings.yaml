@@ -449,6 +449,8 @@ pages:
           sebelumnya.
         consciousness_model: Pilih model kesadaran (model AI) untuk karakter ini.
         speech_model: Pilih model sintesis suara dan pengisi suara untuk karakter ini.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         model_required: Pilih model untuk setiap penyedia eksplisit. Model tidak dapat
           diwarisi dari penyedia yang berbeda.
@@ -462,6 +464,7 @@ pages:
         invalid_artistry_json: 'Kesalahan: Opsi penyedia Artistry memuat format JSON
           yang tidak valid.'
       none: Tidak Ada
+      tagline: Tagline
     modules: Modul
     name_asc: Nama (A-Z)
     name_desc: Nama (Z-A)

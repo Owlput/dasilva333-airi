@@ -264,6 +264,7 @@ export interface CloudflareDeployCorsProxyPayload {
   scriptName?: string
   ownerId?: string
   characterName?: string
+  tagline?: string
   enableEmbassyDO?: boolean
 }
 

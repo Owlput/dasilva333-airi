@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { resolveAmbassadorTagline } from '@proj-airi/stage-shared'
 import { CloudflareConnectDialog } from '@proj-airi/stage-ui/components'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useCloudflareStore } from '@proj-airi/stage-ui/stores/modules/cloudflare'
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { Button } from '@proj-airi/ui'
@@ -11,6 +13,7 @@ import { toast } from 'vue-sonner'
 const router = useRouter()
 const cloudflareStore = useCloudflareStore()
 const syncStore = useSyncEngineStore()
+const airiCardStore = useAiriCardStore()
 
 const {
   cfAccountId,
@@ -143,7 +146,10 @@ async function handleDeployEmbassy() {
   isDeployingEmbassy.value = true
   try {
     toast.info('Deploying Companion Embassy worker (airi-stage-edge)...')
-    const res = await cloudflareStore.deployCompanionEmbassy({ enableEmbassyDO: true })
+    const res = await cloudflareStore.deployCompanionEmbassy({
+      enableEmbassyDO: true,
+      tagline: resolveAmbassadorTagline(airiCardStore.activeCard),
+    })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
       for (let attempt = 0; attempt < 5; attempt++) {

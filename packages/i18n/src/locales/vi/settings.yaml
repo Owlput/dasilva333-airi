@@ -208,6 +208,8 @@ pages:
           tương thích thẻ và quy trình lời nhắc trong tương lai, vì vậy bạn có
           thể điền ngay bây giờ mà chưa cần mong đợi sự khác biệt về hành vi
           trực tiếp riêng biệt.
+        tagline: Public ambassador blurb shown to friends. Displayed on your companion
+          address and included with friend requests when you opt in.
       errors:
         name: Tên không hợp lệ hoặc rỗng.
         version: 'Lỗi: Số phiên bản không hợp lệ!'
@@ -218,6 +220,7 @@ pages:
         posthistoryinstructions: 'Lỗi: Cần có lịch sử đăng lời nhắc'
       none: Không (Không có hình nền)
       preferred_background: Cảnh / Hình nền ưa thích
+      tagline: Tagline
     modules: Mô-đun
     name_asc: Tên (A-Z)
     name_desc: Tên (Z-A)

@@ -32,6 +32,13 @@ interface CardMeta {
 
 interface CardAdditional {
   /**
+   * Public ambassador blurb (AIRI-native, not part of the CCv3 spec).
+   * Shown on the companion address and sent with friend requests when the
+   * user opts in. Never exported to the spec-exact v3 `data` object —
+   * card-file round-trip for this field is a known gap (see Phase 4e notes).
+   */
+  tagline?: string
+  /**
    * Extensions.
    * - extensions
    */

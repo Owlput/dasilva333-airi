@@ -3,7 +3,7 @@ import type { AmbassadorCard, ExternalFriend, FriendRequest, Peer } from '@proj-
 
 import type { NapTurn } from '../../stores/nap-chat'
 
-import { extractHandleAlias, isCompanionAllowedForFriend, isExternalFriend, isNapChatEligible, isSameAccountDevice } from '@proj-airi/stage-shared'
+import { extractHandleAlias, isCompanionAllowedForFriend, isExternalFriend, isNapChatEligible, isSameAccountDevice, resolveAmbassadorTagline } from '@proj-airi/stage-shared'
 import { Button, FieldCheckbox, FieldInput, FieldSelect } from '@proj-airi/ui'
 import { useClipboard } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -48,6 +48,9 @@ const userProfileStore = useSettingsUserProfile()
 const activeCompanionName = computed(() => {
   return airiCardStore.activeCard?.name || userProfileStore.name || 'AIRI'
 })
+// Public ambassador blurb for the active card — tagline first, first
+// greeting as fallback, blank when neither exists (surfaced, never silent).
+const ambassadorTagline = computed(() => resolveAmbassadorTagline(airiCardStore.activeCard))
 const napChatStore = useNapChatStore()
 const {
   napEnabled: napChatEnabled,
@@ -153,6 +156,7 @@ async function handleDeployEmbassy() {
     const res = await cloudflareStore.deployCompanionEmbassy({
       enableEmbassyDO: true,
       characterName: activeCompanionName.value,
+      tagline: resolveAmbassadorTagline(airiCardStore.activeCard),
     })
     if (res.success) {
       toast.success('Companion Embassy deployed successfully!')
@@ -192,6 +196,13 @@ watch([myAddress, () => cloudflareStore.activeAccountId], () => {
   void probeEmbassyHealth()
   void initEmbassySocket()
 })
+
+function handleEditTagline() {
+  const cardId = airiCardStore.activeCardId as string | undefined
+  if (cardId)
+    router.push({ path: '/settings/airi-card/edit', query: { id: String(cardId) } })
+  else router.push('/settings/airi-card')
+}
 
 async function handleManualDeviceSync() {
   if (!cloudflareStore.isAuthenticated) {
@@ -1028,6 +1039,7 @@ async function handleSendRequest() {
       alias: extractHandleAlias(lookedUpHandle.value) || 'Friend',
       characterName: targetName,
       avatarUrl: lookedUpCard.value?.avatarUrl || undefined,
+      tagline: lookedUpCard.value?.tagline ?? null,
       relationship: 'external-friend',
       trustState: 'pending',
       lastSeenTimestamp: Date.now(),
@@ -1294,6 +1306,17 @@ const surfaceCardClass = computed(() => [
                 <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
                 Claim a workers.dev subdomain in Settings to enable
               </div>
+              <div v-if="ambassadorTagline" :class="['mt-1', 'max-w-xs', 'text-xs', 'italic', 'text-neutral-500', 'dark:text-neutral-400']">
+                "{{ ambassadorTagline }}"
+              </div>
+              <button
+                v-else
+                :class="['mt-1', 'flex', 'items-center', 'gap-1', 'text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                @click="handleEditTagline"
+              >
+                <span>Set your tagline</span>
+                <div class="i-solar:alt-arrow-right-linear text-xs" />
+              </button>
             </div>
           </div>
 
