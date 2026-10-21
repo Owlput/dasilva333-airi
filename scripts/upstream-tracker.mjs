@@ -298,6 +298,8 @@ function loadState(config) {
       const parsed = JSON.parse(fs.readFileSync(config.stateFile, 'utf8'))
       if (!parsed.tracked_prs)
         parsed.tracked_prs = {}
+      if (!parsed.acknowledged_mentions)
+        parsed.acknowledged_mentions = []
       return parsed
     }
     catch (err) {
@@ -310,6 +312,7 @@ function loadState(config) {
     remote: config.remote,
     branch: config.branch,
     tracked_prs: {},
+    acknowledged_mentions: [],
     history: [],
   }
 }
@@ -367,6 +370,14 @@ query($owner: String!, $repo: String!, $limit: Int!) {
         closedAt
         totalCommentsCount
         url
+        comments(last: 25) {
+          nodes {
+            author { login }
+            body
+            createdAt
+            url
+          }
+        }
       }
     }
     issues(first: $limit, orderBy: {field: UPDATED_AT, direction: DESC}) {
@@ -378,7 +389,15 @@ query($owner: String!, $repo: String!, $limit: Int!) {
         createdAt
         updatedAt
         closedAt
-        comments { totalCount }
+        comments(last: 25) {
+          totalCount
+          nodes {
+            author { login }
+            body
+            createdAt
+            url
+          }
+        }
         url
       }
     }
@@ -386,7 +405,7 @@ query($owner: String!, $repo: String!, $limit: Int!) {
 }
 `
 
-function fetchTargetItems(config, limit = 100) {
+function fetchTargetItems(config, limit = 50) {
   const [owner, name] = config.repo.split('/')
   try {
     const raw = execFileSync('gh', [
@@ -421,6 +440,12 @@ function fetchTargetItems(config, limit = 100) {
       commentsCount: node.totalCommentsCount ?? 0,
       url: node.url || `https://github.com/${config.repo}/pull/${node.number}`,
       type: 'PR',
+      recentComments: (node.comments?.nodes || []).map(c => ({
+        author: c.author?.login || 'unknown',
+        body: c.body || '',
+        createdAt: c.createdAt,
+        url: c.url,
+      })),
     }))
 
     const issues = issueNodes.map(node => ({
@@ -436,6 +461,12 @@ function fetchTargetItems(config, limit = 100) {
       commentsCount: node.comments?.totalCount ?? 0,
       url: node.url || `https://github.com/${config.repo}/issues/${node.number}`,
       type: 'Issue',
+      recentComments: (node.comments?.nodes || []).map(c => ({
+        author: c.author?.login || 'unknown',
+        body: c.body || '',
+        createdAt: c.createdAt,
+        url: c.url,
+      })),
     }))
 
     return [...prs, ...issues]
@@ -447,13 +478,14 @@ function fetchTargetItems(config, limit = 100) {
   }
 }
 
-function inspectPRDelta(trackedPrsMap, fetchedItems, lastRunTimestamp) {
+function inspectPRDelta(trackedPrsMap, fetchedItems, lastRunTimestamp, acknowledgedMentions = []) {
   if (!fetchedItems) {
     return {
       available: false,
       newPrs: [],
       statusChanges: [],
       commentChanges: [],
+      actionableMentions: [],
       totalChanges: 0,
       nextTrackedMap: trackedPrsMap || {},
     }
@@ -465,8 +497,36 @@ function inspectPRDelta(trackedPrsMap, fetchedItems, lastRunTimestamp) {
   const newPrs = []
   const statusChanges = []
   const commentChanges = []
+  const actionableMentions = []
 
   for (const item of fetchedItems) {
+    // Scan recent comments for direct mentions of @dasilva333 or maintainer inquiries
+    for (const c of item.recentComments || []) {
+      const isMention = /@?dasilva333/i.test(c.body)
+      const isMaintainer = ['7n1m4', 'vi70x3', 'vi'].includes(c.author?.toLowerCase())
+      const isBot = ['anlmabot', 'github-actions', 'github-actions[bot]'].includes(c.author?.toLowerCase())
+      const isSelf = c.author?.toLowerCase() === 'dasilva333'
+
+      const isTargetedMention = isMention
+      const isOpenMaintainerDiscussion = isMaintainer && !isBot && item.state === 'OPEN'
+
+      if (!isSelf && (isTargetedMention || isOpenMaintainerDiscussion)) {
+        const isAcked = acknowledgedMentions.includes(c.url)
+        actionableMentions.push({
+          itemNumber: item.number,
+          itemTitle: item.title,
+          itemType: item.type,
+          itemUrl: item.url,
+          author: c.author,
+          createdAt: c.createdAt,
+          commentUrl: c.url,
+          bodyPreview: c.body.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3).join(' ').slice(0, 300),
+          isDirectMention: isMention,
+          isAcknowledged: isAcked,
+        })
+      }
+    }
+
     const key = `${item.type || 'PR'}:${item.number}`
     const prev = hasTrackedBaseline ? (trackedPrsMap[key] || trackedPrsMap[String(item.number)]) : null
 
@@ -522,6 +582,7 @@ function inspectPRDelta(trackedPrsMap, fetchedItems, lastRunTimestamp) {
     newPrs,
     statusChanges,
     commentChanges,
+    actionableMentions,
     totalChanges,
     nextTrackedMap,
   }
@@ -599,6 +660,17 @@ function inspectDelta(fromSha, toSha) {
 function formatTerminalBrief(config, delta, prDelta) {
   const { fromSha, toSha, commits, filesCount, groupedSubsystems } = delta
   const lines = []
+
+  if (prDelta?.actionableMentions?.length > 0) {
+    lines.push(`\n🚨 ACTION REQUIRED: DIRECT MENTION / MAINTAINER INQUIRY DETECTED:`)
+    for (const m of prDelta.actionableMentions) {
+      const ackBadge = m.isAcknowledged ? ' [ACKNOWLEDGED]' : ' ⚠️ [UNACKNOWLEDGED]'
+      const mentionBadge = m.isDirectMention ? ' (tagged @dasilva333)' : ''
+      lines.push(`  • [${m.itemType} #${m.itemNumber}] by @${m.author}${mentionBadge}${ackBadge} (${m.createdAt.slice(0, 10)}):`)
+      lines.push(`    "${m.bodyPreview}"`)
+      lines.push(`    ↳ ${m.commentUrl}`)
+    }
+  }
 
   const prChangesCount = prDelta?.totalChanges || 0
   const hasCommits = commits.length > 0
@@ -712,6 +784,17 @@ function formatMarkdownSection(config, delta, prDelta, customNotes = '') {
     lines.push(`\n## [${today}] ${config.name} Activity: \`${toSha.slice(0, 8)}\` (${prChangesCount} update(s))`)
   }
   lines.push('')
+
+  if (prDelta?.actionableMentions?.length > 0) {
+    lines.push('### 🚨 Action Required: Direct Mentions & Maintainer Inquiries')
+    for (const m of prDelta.actionableMentions) {
+      const ackStr = m.isAcknowledged ? ' *(Acknowledged)*' : ' **(Pending Reply)**'
+      const typeStr = m.itemType ? `[${m.itemType}] ` : ''
+      lines.push(`- ${typeStr}[#${m.itemNumber}](${m.itemUrl}) \`${m.itemTitle}\` — Comment by **@${m.author}**${ackStr} ([view comment](${m.commentUrl})):`)
+      lines.push(`  > "${m.bodyPreview.replace(/"/g, '\\"')}"`)
+    }
+    lines.push('')
+  }
 
   if (customNotes) {
     lines.push('### 🎯 Executive Highlights')
@@ -855,6 +938,7 @@ async function main() {
     'notes': { type: 'string', default: '' },
     'update-state': { type: 'boolean', default: false },
     'skip-prs': { type: 'boolean', default: false },
+    'ack-mention': { type: 'string' },
     'json': { type: 'boolean', default: false },
     'help': { type: 'boolean', short: 'h', default: false },
   }
@@ -880,6 +964,7 @@ Commands:
   --append-log            Append the delta summary to radar log file.
   --notes <string>        Executive summary notes to embed in the radar log entry.
   --update-state          Advance baseline SHA and PR state to current target state.
+  --ack-mention <url>     Mark a specific direct mention / inquiry as acknowledged.
   --json                  Output result in JSON format.
   --format <brief|md>     Output format (brief text or Markdown).
   --dry-run               Do not write to state file or radar markdown file.
@@ -888,6 +973,20 @@ Commands:
   }
 
   const state = loadState(config)
+
+  if (values['ack-mention']) {
+    if (!state.acknowledged_mentions)
+      state.acknowledged_mentions = []
+    if (!state.acknowledged_mentions.includes(values['ack-mention'])) {
+      state.acknowledged_mentions.push(values['ack-mention'])
+      saveState(config, state)
+      console.log(`✅ [${config.name}Tracker] Marked mention as acknowledged: ${values['ack-mention']}`)
+    }
+    else {
+      console.log(`ℹ️ [${config.name}Tracker] Mention already acknowledged: ${values['ack-mention']}`)
+    }
+    process.exit(0)
+  }
 
   // Mode 1: Initialization
   if (values.init) {
@@ -947,13 +1046,14 @@ Commands:
 
   // PR & Issue Activity Check
   const fetchedItems = values['skip-prs'] ? null : fetchTargetItems(config)
-  const prDelta = inspectPRDelta(state.tracked_prs, fetchedItems, state.last_run_timestamp)
+  const prDelta = inspectPRDelta(state.tracked_prs, fetchedItems, state.last_run_timestamp, state.acknowledged_mentions || [])
 
   const isShaUnchanged = baseSha === currentHeadSha
   const hasNoCommits = isShaUnchanged
   const hasNoPRChanges = prDelta.totalChanges === 0
+  const hasUnackedMentions = prDelta.actionableMentions?.some(m => !m.isAcknowledged) || false
 
-  if (hasNoCommits && hasNoPRChanges) {
+  if (hasNoCommits && hasNoPRChanges && !hasUnackedMentions) {
     if (values.json) {
       console.log(JSON.stringify({ status: 'UP_TO_DATE', sha: currentHeadSha, commits: 0, prChanges: 0 }))
     }

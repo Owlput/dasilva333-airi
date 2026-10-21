@@ -1,6 +1,6 @@
 {
-  "last_inspected_sha": "cf090ed5b6e746382cf30ab76c4b48abb9261569",
-  "last_run_timestamp": "2026-10-20T15:48:18.992Z",
+  "last_inspected_sha": "904120f8ae5d2ea398ee465387f109c3cf226ffa",
+  "last_run_timestamp": "2026-10-21T16:22:46.665Z",
   "remote": "7n1m4",
   "branch": "main",
   "tracked_prs": {
@@ -10,8 +10,8 @@
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-18T02:56:27Z",
-      "url": "https://github.com/7n1m4/airi/pull/8",
+      "updatedAt": "2026-10-21T12:31:27Z",
+      "url": "https://github.com/anlmalabs/airi/pull/8",
       "type": "PR"
     },
     "PR:7": {
@@ -21,7 +21,7 @@
       "author": "7n1m4",
       "commentsCount": 1,
       "updatedAt": "2026-10-17T14:45:56Z",
-      "url": "https://github.com/7n1m4/airi/pull/7",
+      "url": "https://github.com/anlmalabs/airi/pull/7",
       "type": "PR"
     },
     "PR:6": {
@@ -30,8 +30,8 @@
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-13T05:19:27Z",
-      "url": "https://github.com/7n1m4/airi/pull/6",
+      "updatedAt": "2026-10-21T12:31:36Z",
+      "url": "https://github.com/anlmalabs/airi/pull/6",
       "type": "PR"
     },
     "PR:5": {
@@ -40,18 +40,18 @@
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-09T13:32:34Z",
-      "url": "https://github.com/7n1m4/airi/pull/5",
+      "updatedAt": "2026-10-21T12:31:38Z",
+      "url": "https://github.com/anlmalabs/airi/pull/5",
       "type": "PR"
     },
     "Issue:1": {
-      "title": "wayfinder: Cloudflare Purge → libp2p Local Mesh → Agentic OS",
+      "title": "roadmap (permanent):  libp2p Local Mesh → Agentic OS integration",
       "state": "OPEN",
       "isDraft": false,
       "author": "7n1m4",
-      "commentsCount": 2,
-      "updatedAt": "2026-10-20T02:25:36Z",
-      "url": "https://github.com/7n1m4/airi/issues/1",
+      "commentsCount": 15,
+      "updatedAt": "2026-10-21T16:21:49Z",
+      "url": "https://github.com/anlmalabs/airi/issues/1",
       "type": "Issue"
     },
     "Issue:2": {
@@ -60,28 +60,148 @@
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-09T13:32:35Z",
-      "url": "https://github.com/7n1m4/airi/issues/2",
+      "updatedAt": "2026-10-21T11:07:16Z",
+      "url": "https://github.com/anlmalabs/airi/issues/2",
       "type": "Issue"
     },
     "Issue:4": {
       "title": "Phase 3: Agentic OS Integration",
-      "state": "OPEN",
+      "state": "CLOSED",
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-08T23:40:02Z",
-      "url": "https://github.com/7n1m4/airi/issues/4",
+      "updatedAt": "2026-10-21T11:07:20Z",
+      "url": "https://github.com/anlmalabs/airi/issues/4",
       "type": "Issue"
     },
     "Issue:3": {
       "title": "Phase 2: libp2p Local Mesh Foundation",
-      "state": "OPEN",
+      "state": "CLOSED",
       "isDraft": false,
       "author": "7n1m4",
       "commentsCount": 0,
-      "updatedAt": "2026-10-08T23:38:23Z",
-      "url": "https://github.com/7n1m4/airi/issues/3",
+      "updatedAt": "2026-10-21T11:07:18Z",
+      "url": "https://github.com/anlmalabs/airi/issues/3",
+      "type": "Issue"
+    },
+    "PR:20": {
+      "title": "feat(cross-wan): stand up a three-runner libp2p mesh across the WAN",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 1,
+      "updatedAt": "2026-10-21T15:13:12Z",
+      "url": "https://github.com/anlmalabs/airi/pull/20",
+      "type": "PR"
+    },
+    "PR:18": {
+      "title": "ci: cross-WAN harness using GitHub issue rendezvous (no secrets)",
+      "state": "CLOSED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T15:04:56Z",
+      "url": "https://github.com/anlmalabs/airi/pull/18",
+      "type": "PR"
+    },
+    "PR:16": {
+      "title": "ci: two-runner cross-WAN harness with gist rendezvous + WebRTC hole punching",
+      "state": "CLOSED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T15:04:54Z",
+      "url": "https://github.com/anlmalabs/airi/pull/16",
+      "type": "PR"
+    },
+    "PR:14": {
+      "title": "ci: cross-WAN P2P harness workflow (Phase 5, hosted runners only)",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T13:02:16Z",
+      "url": "https://github.com/anlmalabs/airi/pull/14",
+      "type": "PR"
+    },
+    "PR:15": {
+      "title": "feat(libp2p): add public STUN to WebRTC transport + build addon in CI",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T13:02:14Z",
+      "url": "https://github.com/anlmalabs/airi/pull/15",
+      "type": "PR"
+    },
+    "PR:13": {
+      "title": "refactor(agentic): route companion share publishing through TransportAdapter (Phase 4 PR 3a)",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T12:40:26Z",
+      "url": "https://github.com/anlmalabs/airi/pull/13",
+      "type": "PR"
+    },
+    "PR:12": {
+      "title": "feat(stage-tamagotchi): TransportAdapter registry impl + libp2p adapter factory (Phase 4 PR 2)",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T12:31:13Z",
+      "url": "https://github.com/anlmalabs/airi/pull/12",
+      "type": "PR"
+    },
+    "PR:11": {
+      "title": "feat(stage-shared): TransportAdapter seam contract + registry interface (Phase 4)",
+      "state": "MERGED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T12:18:35Z",
+      "url": "https://github.com/anlmalabs/airi/pull/11",
+      "type": "PR"
+    },
+    "Issue:19": {
+      "title": "scratch: cross-wan tunnel validation",
+      "state": "CLOSED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 121,
+      "updatedAt": "2026-10-21T15:07:34Z",
+      "url": "https://github.com/anlmalabs/airi/issues/19",
+      "type": "Issue"
+    },
+    "Issue:17": {
+      "title": "[CI] Cross-WAN rendezvous (auto-managed, do not close)",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 9,
+      "updatedAt": "2026-10-21T15:06:00Z",
+      "url": "https://github.com/anlmalabs/airi/issues/17",
+      "type": "Issue"
+    },
+    "Issue:9": {
+      "title": "test app post",
+      "state": "CLOSED",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T11:25:31Z",
+      "url": "https://github.com/anlmalabs/airi/issues/9",
+      "type": "Issue"
+    },
+    "Issue:10": {
+      "title": "Phase 4: TransportAdapter seam (pluggable mesh boundary)",
+      "state": "OPEN",
+      "isDraft": false,
+      "author": "anlmabot",
+      "commentsCount": 0,
+      "updatedAt": "2026-10-21T11:24:34Z",
+      "url": "https://github.com/anlmalabs/airi/issues/10",
       "type": "Issue"
     }
   },
@@ -93,6 +213,25 @@
       "commits_count": 11,
       "files_count": 88,
       "pr_changes_count": 1
+    },
+    {
+      "date": "2026-10-21T15:21:58.762Z",
+      "from_sha": "cf090ed5b6e746382cf30ab76c4b48abb9261569",
+      "to_sha": "904120f8ae5d2ea398ee465387f109c3cf226ffa",
+      "commits_count": 10,
+      "files_count": 40,
+      "pr_changes_count": 15
+    },
+    {
+      "date": "2026-10-21T16:22:46.674Z",
+      "from_sha": "904120f8ae5d2ea398ee465387f109c3cf226ffa",
+      "to_sha": "904120f8ae5d2ea398ee465387f109c3cf226ffa",
+      "commits_count": 0,
+      "files_count": 0,
+      "pr_changes_count": 1
     }
+  ],
+  "acknowledged_mentions": [
+    "https://github.com/anlmalabs/airi/issues/1#issuecomment-6313736629"
   ]
 }
