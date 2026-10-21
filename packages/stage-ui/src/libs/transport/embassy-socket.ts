@@ -6,6 +6,7 @@ export interface EmbassySocketRequest {
   fromPubkey: string
   fromCharacterName: string
   introMessage?: string
+  fromTagline?: string
   timestamp?: number
   nonce?: string
 }

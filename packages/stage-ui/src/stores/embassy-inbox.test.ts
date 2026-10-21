@@ -318,6 +318,44 @@ describe('useEmbassyInboxStore', () => {
     store.disconnect()
   })
 
+  it('carries an opted-in sender tagline from socket to peer record', async () => {
+    // ROOT CAUSE: the handshake primes both sides pre-first-turn, so the
+    // tagline must survive intake → review → accept without re-fetching.
+    const { store } = setup()
+    await connect(store)
+
+    const ws = FakeSocket.instances[0]
+    ws.simulateMessage(JSON.stringify({
+      type: 'inbound_request',
+      request: {
+        id: 'r-tagline',
+        fromHandle: 'yuki.workers.dev',
+        fromPubkey: 'ab'.repeat(32),
+        fromCharacterName: 'Yuki',
+        introMessage: 'hi',
+        fromTagline: 'Quiet conversations',
+        timestamp: 1,
+        nonce: 'n-tag',
+        status: 'pending',
+      },
+    }))
+    expect(store.inboundRequests.find(r => r.id === 'r-tagline')?.fromTagline).toBe('Quiet conversations')
+
+    const calls: Array<{ url: string, init: any }> = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      calls.push({ url, init })
+      return new Response(JSON.stringify({ trusted: true }), { status: 200 })
+    }))
+    const res = await store.acceptRequest('r-tagline')
+    expect(res).toEqual({ ok: true })
+
+    const { usePeersStore } = await import('./peers')
+    const peers = usePeersStore()
+    const entry = peers.roster.find(p => p.id === 'ab'.repeat(32))
+    expect(entry && 'tagline' in entry && (entry as any).tagline).toBe('Quiet conversations')
+    store.disconnect()
+  })
+
   it('marks inbound request as accepted and excludes from pendingRequests if peer is already trusted', async () => {
     const { store } = setup()
     await connect(store)

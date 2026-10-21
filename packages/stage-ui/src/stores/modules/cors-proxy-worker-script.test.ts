@@ -52,6 +52,56 @@ describe('cors-proxy-worker-script embassy parity', () => {
     const data: any = await res.json()
     expect(data.name).toBeTruthy()
     expect(data.publicKey).toBeNull()
+    expect(data.tagline).toBe('Personal Edge Companion')
+
+    const branded = await worker.fetch(new Request('https://edge.test/api/companion/card'), { COMPANION_TAGLINE: 'Quiet conversations' } as any)
+    expect(((await branded.json()) as any).tagline).toBe('Quiet conversations')
+  })
+
+  it('ferries an opted-in sender tagline to storage without touching the signature', async () => {
+    const worker = await loadTemplate()
+    const { keyPair, publicKeyHex } = await generateEdKey()
+    const kv = createKv()
+    const env: any = { MEMORY: kv, OWNER_ID: 'owner-1' }
+    const sign = async (msg: string) =>
+      uint8ArrayToHex(new Uint8Array(await crypto.subtle.sign('Ed25519', keyPair.privateKey, new TextEncoder().encode(msg))))
+
+    // Signature payload deliberately excludes the tagline (self-asserted claim).
+    const ts = Date.now()
+    const sig = await sign(`${ts}:parity-tagline-1:hi:${publicKeyHex}`)
+    const res = await worker.fetch(new Request('https://edge.test/api/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({
+        fromHandle: 'alex.workers.dev',
+        fromPubkey: publicKeyHex,
+        fromCharacterName: 'Kirie',
+        introMessage: 'hi',
+        fromTagline: 'Quiet <b>conversations</b>',
+        timestamp: ts,
+        nonce: 'parity-tagline-1',
+        signature: sig,
+      }),
+    }), env)
+    expect(res.status).toBe(200)
+
+    const stored = [...kv.store.values()].map(v => JSON.parse(v)).find(r => r.nonce === 'parity-tagline-1')
+    expect(stored).toBeDefined()
+    expect(stored.fromTagline).toBe('Quiet conversations')
+
+    const tooLong = await worker.fetch(new Request('https://edge.test/api/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({
+        fromHandle: 'alex.workers.dev',
+        fromPubkey: publicKeyHex,
+        fromCharacterName: 'Kirie',
+        introMessage: 'hi',
+        fromTagline: 'x'.repeat(141),
+        timestamp: Date.now(),
+        nonce: 'parity-tagline-2',
+        signature: '00'.repeat(64),
+      }),
+    }), env)
+    expect(tooLong.status).toBe(400)
   })
 
   it('rejects unsigned, stale, replayed, and over-long friend requests', async () => {
@@ -237,7 +287,7 @@ describe('cors-proxy-worker-script embassy parity', () => {
               return {
                 toArray: () => tables.friend_requests
                   .filter(r => r.status === 'pending')
-                  .map(r => ({ id: r.id, from_handle: r.from_handle, from_pubkey: r.from_pubkey, from_character_name: r.from_character_name, intro_message: r.intro_message, timestamp: r.timestamp, nonce: r.nonce })),
+                  .map(r => ({ id: r.id, from_handle: r.from_handle, from_pubkey: r.from_pubkey, from_character_name: r.from_character_name, intro_message: r.intro_message, from_tagline: r.from_tagline, timestamp: r.timestamp, nonce: r.nonce })),
               }
             }
             throw new Error(`unhandled test query: ${q.slice(0, 60)}`)
@@ -261,6 +311,7 @@ describe('cors-proxy-worker-script embassy parity', () => {
         fromPubkey: 'ab'.repeat(32),
         fromCharacterName: 'Kirie',
         introMessage: 'hi',
+        fromTagline: 'Quiet conversations',
         timestamp: 1,
         nonce: 'n1',
       }),
@@ -268,6 +319,7 @@ describe('cors-proxy-worker-script embassy parity', () => {
     expect(storeReq.status).toBe(200)
     expect(sent).toHaveLength(1)
     expect(JSON.parse(sent[0]).type).toBe('inbound_request')
+    expect(JSON.parse(sent[0]).request.fromTagline).toBe('Quiet conversations')
 
     const denied = await DO.fetch(new Request('https://do/internal/inbox', {
       method: 'POST',

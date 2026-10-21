@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractHandleAlias, isCompanionAllowedForFriend, resolveAmbassadorTagline } from './peers'
+import { extractHandleAlias, isCompanionAllowedForFriend, MAX_TAGLINE_LENGTH, resolveAmbassadorTagline, sanitizeTaglineMessage } from './peers'
 
 describe('extractHandleAlias', () => {
   it('extracts subdomain from 4-part workers.dev handles', () => {
@@ -41,6 +41,15 @@ describe('isCompanionAllowedForFriend', () => {
     expect(isCompanionAllowedForFriend(restricted, 'card-1')).toBe(true)
     expect(isCompanionAllowedForFriend(restricted, 'card-2')).toBe(false)
     expect(isCompanionAllowedForFriend(restricted, 'card-3')).toBe(true)
+  })
+})
+
+describe('sanitizeTaglineMessage', () => {
+  it('strips markup and caps length', () => {
+    expect(sanitizeTaglineMessage('  <b>Quiet</b> companion  ')).toBe('Quiet companion')
+    expect(sanitizeTaglineMessage('x'.repeat(200))).toHaveLength(MAX_TAGLINE_LENGTH)
+    expect(sanitizeTaglineMessage(null)).toBe('')
+    expect(sanitizeTaglineMessage(undefined)).toBe('')
   })
 })
 

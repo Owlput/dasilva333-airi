@@ -3,6 +3,7 @@ import type { AmbassadorCard } from '@proj-airi/stage-shared'
 import {
   buildRequestSignaturePayload,
   sanitizeIntroMessage,
+  sanitizeTaglineMessage,
 } from '@proj-airi/stage-shared'
 import { ref } from 'vue'
 
@@ -199,6 +200,7 @@ export function usePeerEmbassy() {
       fromCharacterName: string
       introMessage?: string
       inviteToken?: string
+      senderTagline?: string
     },
   ): Promise<{ ok: boolean, id?: string, error?: string }> {
     isSending.value = true
@@ -217,6 +219,7 @@ export function usePeerEmbassy() {
         : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 
       const intro = sanitizeIntroMessage(options.introMessage)
+      const tagline = sanitizeTaglineMessage(options.senderTagline)
       const signaturePayload = buildRequestSignaturePayload(timestamp, nonce, intro, keypair.publicKeyHex)
 
       const encoder = new TextEncoder()
@@ -227,7 +230,7 @@ export function usePeerEmbassy() {
       )
       const signatureHex = uint8ArrayToHex(new Uint8Array(sigBuffer))
 
-      const body = {
+      const body: Record<string, unknown> = {
         fromHandle: options.fromHandle,
         fromPubkey: keypair.publicKeyHex,
         fromCharacterName: options.fromCharacterName,
@@ -237,6 +240,10 @@ export function usePeerEmbassy() {
         signature: signatureHex,
         invite: options.inviteToken || normalized.invite,
       }
+      // Self-asserted public blurb — rides outside the signature (see
+      // buildRequestSignaturePayload). Omitted when blank to keep old workers happy.
+      if (tagline)
+        body.fromTagline = tagline
 
       const urlsToTry: string[] = [normalized.workerUrl]
       const handleParts = normalized.handle.split('.')

@@ -32,6 +32,7 @@ export interface Env {
 }
 
 const MAX_INTRO_MESSAGE_LENGTH = 100
+const MAX_TAGLINE_MESSAGE_LENGTH = 140
 const SIGNATURE_DRIFT_SEC = 300
 const NONCE_TTL_SEC = 600
 const INVITE_TTL_SEC = 86400
@@ -39,6 +40,11 @@ const INVITE_TTL_SEC = 86400
 function sanitizeIntroMessage(input?: unknown): string {
   const text = typeof input === 'string' ? input : ''
   return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, MAX_INTRO_MESSAGE_LENGTH)
+}
+
+function sanitizeTaglineMessage(input?: unknown): string {
+  const text = typeof input === 'string' ? input : ''
+  return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, MAX_TAGLINE_MESSAGE_LENGTH)
 }
 
 function isHex64(value?: unknown): value is string {
@@ -423,6 +429,13 @@ export default {
       if (typeof body?.introMessage === 'string' && body.introMessage.length > MAX_INTRO_MESSAGE_LENGTH) {
         return jsonResponse({ error: 'intro_too_long' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
       }
+      // Self-asserted public blurb: length-checked and sanitized, but intentionally
+      // outside the Ed25519 payload (same class as the sender display name — the
+      // recipient reviews it in the drawer before accepting).
+      const fromTagline = sanitizeTaglineMessage(body?.fromTagline)
+      if (typeof body?.fromTagline === 'string' && body.fromTagline.length > MAX_TAGLINE_MESSAGE_LENGTH) {
+        return jsonResponse({ error: 'tagline_too_long' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
       const { fromHandle, fromPubkey, fromCharacterName, timestamp, nonce, signature, invite } = body ?? {}
       if (typeof fromHandle !== 'string' || !fromHandle || !isHex64(fromPubkey) || typeof fromCharacterName !== 'string' || !fromCharacterName) {
         return jsonResponse({ error: 'invalid_identity' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
@@ -460,6 +473,7 @@ export default {
         fromPubkey,
         fromCharacterName,
         introMessage,
+        fromTagline,
         timestamp,
         nonce,
       }

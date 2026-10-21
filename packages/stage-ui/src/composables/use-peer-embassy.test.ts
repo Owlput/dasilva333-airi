@@ -135,6 +135,34 @@ describe('usePeerEmbassy composable', () => {
       expect(dispatchedBody.timestamp).toBeGreaterThan(0)
     })
 
+    it('attaches the sender tagline when opted in, omits it otherwise', async () => {
+      let dispatchedBody: any = null
+      globalThis.fetch = vi.fn().mockImplementation(async (_url, options) => {
+        dispatchedBody = JSON.parse(options.body)
+        return {
+          ok: true,
+          json: async () => ({ status: 'pending', id: 'req-124' }),
+        }
+      })
+
+      const { sendFriendRequest } = usePeerEmbassy()
+      const withTagline = await sendFriendRequest('mira.workers.dev', {
+        fromHandle: 'richy.workers.dev',
+        fromCharacterName: 'AIRI',
+        senderTagline: '  Quiet <b>conversations</b>  ',
+      })
+      expect(withTagline.ok).toBe(true)
+      // Sanitized, and outside the signature payload by design.
+      expect(dispatchedBody.fromTagline).toBe('Quiet conversations')
+
+      const withoutTagline = await sendFriendRequest('mira.workers.dev', {
+        fromHandle: 'richy.workers.dev',
+        fromCharacterName: 'AIRI',
+      })
+      expect(withoutTagline.ok).toBe(true)
+      expect('fromTagline' in dispatchedBody).toBe(false)
+    })
+
     it('returns error when endpoint rejects request', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,

@@ -35,6 +35,10 @@ function sanitizeIntroMessage(input) {
   var text = typeof input === 'string' ? input : '';
   return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, 100);
 }
+function sanitizeTaglineMessage(input) {
+  var text = typeof input === 'string' ? input : '';
+  return text.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim().slice(0, 140);
+}
 function isHex64Peer(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
 }
@@ -99,7 +103,7 @@ export default {
       return corsJson({
         name: (env && env.CHARACTER_NAME) || 'AIRI',
         avatarUrl: null,
-        tagline: 'Personal Edge Companion',
+        tagline: (env && env.COMPANION_TAGLINE) || 'Personal Edge Companion',
         publicKey: null
       }, 200);
     }
@@ -117,6 +121,10 @@ export default {
       var reqIntro = sanitizeIntroMessage(reqBody && reqBody.introMessage);
       if (reqBody && typeof reqBody.introMessage === 'string' && reqBody.introMessage.length > 100) {
         return corsJson({ error: 'intro_too_long' }, 400);
+      }
+      var reqTagline = sanitizeTaglineMessage(reqBody && reqBody.fromTagline);
+      if (reqBody && typeof reqBody.fromTagline === 'string' && reqBody.fromTagline.length > 140) {
+        return corsJson({ error: 'tagline_too_long' }, 400);
       }
       if (!reqBody || typeof reqBody.fromHandle !== 'string' || !reqBody.fromHandle
         || !isHex64Peer(reqBody.fromPubkey) || typeof reqBody.fromCharacterName !== 'string' || !reqBody.fromCharacterName) {
@@ -157,6 +165,7 @@ export default {
         fromPubkey: reqBody.fromPubkey,
         fromCharacterName: reqBody.fromCharacterName,
         introMessage: reqIntro,
+        fromTagline: reqTagline,
         timestamp: reqBody.timestamp,
         nonce: reqBody.nonce,
         status: 'pending'
@@ -436,12 +445,13 @@ export class EmbassyDO {
         ).toArray();
         if (existing.length === 0) {
           this.state.storage.sql.exec(
-            'INSERT INTO friend_requests (id, from_handle, from_pubkey, from_character_name, intro_message, timestamp, nonce, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO friend_requests (id, from_handle, from_pubkey, from_character_name, intro_message, from_tagline, timestamp, nonce, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             record.id,
             record.fromHandle,
             record.fromPubkey,
             record.fromCharacterName || 'AIRI',
             record.introMessage || '',
+            record.fromTagline || '',
             Number(record.timestamp || Date.now()),
             record.nonce || record.id,
             'pending',
@@ -528,14 +538,17 @@ export class EmbassyDO {
   }
 
   ensureSchema() {
-    this.state.storage.sql.exec('CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, from_handle TEXT NOT NULL, from_pubkey TEXT NOT NULL, from_character_name TEXT NOT NULL, intro_message TEXT NOT NULL DEFAULT "", timestamp INTEGER NOT NULL, nonce TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT "pending", created_at INTEGER NOT NULL)');
+    this.state.storage.sql.exec('CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, from_handle TEXT NOT NULL, from_pubkey TEXT NOT NULL, from_character_name TEXT NOT NULL, intro_message TEXT NOT NULL DEFAULT "", from_tagline TEXT NOT NULL DEFAULT "", timestamp INTEGER NOT NULL, nonce TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT "pending", created_at INTEGER NOT NULL)');
+    try {
+      this.state.storage.sql.exec('ALTER TABLE friend_requests ADD COLUMN from_tagline TEXT NOT NULL DEFAULT ""');
+    } catch (e) {}
     this.state.storage.sql.exec('CREATE TABLE IF NOT EXISTS trusted_peers (pubkey TEXT PRIMARY KEY, handle TEXT NOT NULL, accepted_at INTEGER NOT NULL)');
     this.state.storage.sql.exec('CREATE TABLE IF NOT EXISTS nap_turns (id TEXT PRIMARY KEY, sender_pubkey TEXT NOT NULL, topic TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp INTEGER NOT NULL)');
   }
 
   listPending() {
     var rows = this.state.storage.sql.exec(
-      "SELECT id, from_handle, from_pubkey, from_character_name, intro_message, timestamp, nonce FROM friend_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 100"
+      "SELECT id, from_handle, from_pubkey, from_character_name, intro_message, from_tagline, timestamp, nonce FROM friend_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 100"
     ).toArray();
     return rows.map(function(row) {
       return {
@@ -544,6 +557,7 @@ export class EmbassyDO {
         fromPubkey: String(row.from_pubkey),
         fromCharacterName: String(row.from_character_name),
         introMessage: String(row.intro_message || ''),
+        fromTagline: String(row.from_tagline || ''),
         timestamp: Number(row.timestamp),
         nonce: String(row.nonce)
       };

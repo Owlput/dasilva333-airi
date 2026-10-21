@@ -21,6 +21,7 @@ describe('embassy DO helpers', () => {
     expect(joined).toContain('trusted_peers')
     expect(joined).toContain('nap_turns')
     expect(joined).toContain('nonce')
+    expect(joined).toContain('from_tagline')
   })
 
   it('validates inbound friend request records', () => {
@@ -33,6 +34,18 @@ describe('embassy DO helpers', () => {
       fromCharacterName: 'Kirie',
       nonce: 'n1',
     })).toBe(true)
+  })
+
+  it('accepts records with or without an opted-in tagline', () => {
+    const base = {
+      id: 'r1',
+      fromHandle: 'alex.workers.dev',
+      fromPubkey: 'ab'.repeat(32),
+      fromCharacterName: 'Kirie',
+      nonce: 'n1',
+    }
+    expect(isValidFriendRequestRecord({ ...base, fromTagline: 'Quiet conversations' })).toBe(true)
+    expect(isValidFriendRequestRecord({ ...base, fromTagline: 42 })).toBe(false)
   })
 
   it('serializes push events for hibernated sockets', () => {

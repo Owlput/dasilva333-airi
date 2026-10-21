@@ -182,6 +182,7 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
       fromPubkey: request.fromPubkey,
       fromCharacterName: request.fromCharacterName,
       introMessage: request.introMessage,
+      fromTagline: request.fromTagline ?? null,
       timestamp: request.timestamp ?? Date.now(),
       nonce: request.nonce ?? request.id,
       status: isResolved ? 'accepted' : (request.status ?? 'pending'),
@@ -275,7 +276,7 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
 
   async function acceptRequest(
     id: string,
-    options?: { companionName?: string, sendReciprocal?: boolean },
+    options?: { companionName?: string, sendReciprocal?: boolean, shareTagline?: boolean, senderTagline?: string },
   ): Promise<{ ok: boolean, error?: string }> {
     const request = inboundRequests.value.find(r => r.id === id)
     if (!request)
@@ -316,6 +317,8 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
         cloudflareWorkerUrl: request.fromHandle.startsWith('http') ? request.fromHandle : `https://${request.fromHandle}`,
       },
       shareHandle: request.fromHandle,
+      // Sender's public blurb, when they opted in — persisted for prompt priming.
+      tagline: request.fromTagline ?? null,
       allowedCapabilities: { canNapChat: false, canShareMemories: false, canStreamSensory: false },
       allowedCompanionIds: [],
     })
@@ -329,6 +332,7 @@ export const useEmbassyInboxStore = defineStore('embassy-inbox', () => {
           fromHandle,
           fromCharacterName,
           introMessage: '[AIRI_MUTUAL_ACCEPT]',
+          senderTagline: options?.shareTagline ? options?.senderTagline : undefined,
         }).catch((err) => {
           console.warn('[embassyInboxStore] Reciprocal friend request failed:', err)
         })

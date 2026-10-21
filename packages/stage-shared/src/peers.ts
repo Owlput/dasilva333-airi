@@ -49,6 +49,8 @@ export interface FriendRequest {
   fromCharacterName: string
   fromAvatarUrl?: string
   introMessage?: string
+  /** Sender's public ambassador blurb, when they opted to include it. Self-asserted, like the sender name/handle. */
+  fromTagline?: string | null
   timestamp: number
   nonce: string
   status: 'pending' | 'accepted' | 'ignored'
@@ -74,6 +76,20 @@ export function isIntroMessageValid(input?: string | null): boolean {
   return input.length <= MAX_INTRO_MESSAGE_LENGTH
 }
 
+export const MAX_TAGLINE_LENGTH = 140
+
+export function sanitizeTaglineMessage(input?: string | null): string {
+  const text = (input ?? '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim()
+  return text.slice(0, MAX_TAGLINE_LENGTH)
+}
+
+/**
+ * The signature covers sender identity, replay protection, and intro integrity.
+ * Sender name/handle/tagline are deliberately self-asserted public claims outside
+ * the signature — same class as the display name. The recipient sees them in the
+ * review drawer before accepting, and prompt assembly frames peer blurbs as
+ * untrusted third-party content.
+ */
 export function buildRequestSignaturePayload(timestamp: number, nonce: string, introMessage: string, senderPubkey: string): string {
   return `${timestamp}:${nonce}:${sanitizeIntroMessage(introMessage)}:${senderPubkey}`
 }

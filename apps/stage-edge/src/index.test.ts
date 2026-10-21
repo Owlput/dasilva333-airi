@@ -614,6 +614,60 @@ describe('apps/stage-edge worker index', () => {
       expect(tampered.status).toBe(401)
     })
 
+    it('pOST /api/friends/request ferries an opted-in tagline outside the signature', async () => {
+      // ROOT CAUSE LOCK: the tagline is a self-asserted public claim (same class
+      // as the display name). It must verify against the ORIGINAL signature
+      // payload and ride to storage unmodified apart from sanitization.
+      const { keyPair, publicKeyHex } = await generateEdKey()
+      const kv = createKv()
+      const env: Env = { ...baseEnv, MEMORY: kv as any }
+
+      const timestamp = Date.now()
+      const nonce = 'tagline-nonce-1'
+      const payload = `${timestamp}:${nonce}:hi:${publicKeyHex}`
+      const signature = await signHex(keyPair.privateKey, payload)
+      const res = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi',
+            fromTagline: 'Quiet <b>conversations</b>',
+            timestamp,
+            nonce,
+            signature,
+          }),
+        }),
+        env,
+      )
+      expect(res.status).toBe(200)
+
+      const stored = [...kv.store.values()].map(v => JSON.parse(v)).find(r => r.nonce === nonce)
+      expect(stored).toBeDefined()
+      expect(stored.fromTagline).toBe('Quiet conversations')
+
+      const tooLong = await worker.fetch(
+        new Request('https://edge.airi.moeru.ai/api/friends/request', {
+          method: 'POST',
+          body: JSON.stringify({
+            fromHandle: 'alex.workers.dev',
+            fromPubkey: publicKeyHex,
+            fromCharacterName: 'Kirie',
+            introMessage: 'hi',
+            fromTagline: 'x'.repeat(141),
+            timestamp: Date.now(),
+            nonce: 'tagline-nonce-2',
+            signature: '00'.repeat(64),
+          }),
+        }),
+        env,
+      )
+      expect(tooLong.status).toBe(400)
+      expect((await tooLong.json() as any).error).toBe('tagline_too_long')
+    })
+
     it('pOST /api/friends/inbox quarantines untrusted senders and queues trusted', async () => {
       const { keyPair, publicKeyHex } = await generateEdKey()
       const kv = createKv()

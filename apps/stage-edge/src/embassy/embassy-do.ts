@@ -15,11 +15,21 @@ export const FRIEND_REQUESTS_DDL = `CREATE TABLE IF NOT EXISTS friend_requests (
   from_pubkey TEXT NOT NULL,
   from_character_name TEXT NOT NULL,
   intro_message TEXT NOT NULL DEFAULT '',
+  from_tagline TEXT NOT NULL DEFAULT '',
   timestamp INTEGER NOT NULL,
   nonce TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'pending',
   created_at INTEGER NOT NULL
 )`
+
+/**
+ * Idempotent forward migration for pre-tagline databases.
+ * `CREATE TABLE IF NOT EXISTS` never adds columns, and existing DOs keep
+ * their SQLite files across deploys — so new columns need an explicit ADD.
+ * The try/catch makes re-runs (and concurrent writers) safe: a duplicate-
+ * column error simply means the migration already landed.
+ */
+export const FRIEND_REQUESTS_TAGLINE_MIGRATION_DDL = `ALTER TABLE friend_requests ADD COLUMN from_tagline TEXT NOT NULL DEFAULT ''`
 
 export const TRUSTED_PEERS_DDL = `CREATE TABLE IF NOT EXISTS trusted_peers (
   pubkey TEXT PRIMARY KEY,
@@ -43,6 +53,7 @@ export interface InboundFriendRequest {
   fromPubkey: string
   fromCharacterName: string
   introMessage: string
+  fromTagline?: string
   timestamp: number
   nonce: string
 }
@@ -69,6 +80,7 @@ export function isValidFriendRequestRecord(value: unknown): value is InboundFrie
     && typeof r.fromPubkey === 'string' && r.fromPubkey.length > 0
     && typeof r.fromCharacterName === 'string' && r.fromCharacterName.length > 0
     && typeof r.nonce === 'string' && r.nonce.length > 0
+    && (r.fromTagline === undefined || typeof r.fromTagline === 'string')
 }
 
 export function buildPushEvent(event: EmbassyPushEvent): string {
@@ -104,11 +116,17 @@ export interface EmbassyEnv {
 function ensureSchema(storage: EmbassyStorage): void {
   for (const ddl of EMBASSY_SCHEMA_DDL)
     storage.sql.exec(ddl)
+  try {
+    storage.sql.exec(FRIEND_REQUESTS_TAGLINE_MIGRATION_DDL)
+  }
+  catch {
+    // Duplicate-column: the migration already landed (or a concurrent writer won).
+  }
 }
 
 function listPendingRequests(storage: EmbassyStorage): InboundFriendRequest[] {
   const rows = storage.sql.exec<Record<string, unknown>>(
-    `SELECT id, from_handle, from_pubkey, from_character_name, intro_message, timestamp, nonce
+    `SELECT id, from_handle, from_pubkey, from_character_name, intro_message, from_tagline, timestamp, nonce
      FROM friend_requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 100`,
   ).toArray()
   return rows.map(row => ({
@@ -117,6 +135,7 @@ function listPendingRequests(storage: EmbassyStorage): InboundFriendRequest[] {
     fromPubkey: String(row.from_pubkey),
     fromCharacterName: String(row.from_character_name),
     introMessage: typeof row.intro_message === 'string' ? row.intro_message : '',
+    fromTagline: typeof row.from_tagline === 'string' ? row.from_tagline : '',
     timestamp: Number(row.timestamp),
     nonce: String(row.nonce),
   }))
@@ -177,13 +196,14 @@ export class EmbassyDO {
         if (existing.length > 0)
           return
         this.state.storage.sql.exec(
-          `INSERT INTO friend_requests (id, from_handle, from_pubkey, from_character_name, intro_message, timestamp, nonce, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+          `INSERT INTO friend_requests (id, from_handle, from_pubkey, from_character_name, intro_message, from_tagline, timestamp, nonce, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
           record.id,
           record.fromHandle,
           record.fromPubkey,
           record.fromCharacterName,
           record.introMessage ?? '',
+          typeof record.fromTagline === 'string' ? record.fromTagline : '',
           record.timestamp,
           record.nonce,
           Date.now(),
