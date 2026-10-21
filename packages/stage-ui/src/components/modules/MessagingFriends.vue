@@ -25,7 +25,7 @@ import { normalizeAddress, usePeerEmbassy } from '../../composables/use-peer-emb
 import { useEmbassyInboxStore } from '../../stores/embassy-inbox'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useCloudflareStore } from '../../stores/modules/cloudflare'
-import { useNapChatStore } from '../../stores/nap-chat'
+import { DEFAULT_SOCIAL_PROMPT_GUIDANCE, useNapChatStore } from '../../stores/nap-chat'
 import { usePeersStore } from '../../stores/peers'
 import { useSettingsUserProfile } from '../../stores/settings/user-profile'
 
@@ -257,6 +257,163 @@ const showRequestsDrawer = ref(false)
 const showRenameModal = ref(false)
 const renameInput = ref('')
 const selectedFriend = ref<ExternalFriend | null>(null)
+
+// Navigation tab: 'overview' | 'preview' | 'activity'
+const activeTab = ref<'overview' | 'preview' | 'activity'>('overview')
+
+// Simulation workbench state (Phase 4a Mockup)
+const simCompanionId = ref('current')
+const simRecipientId = ref('')
+const simAbsence = ref('15')
+const simContextType = ref('recent')
+const simGuidance = ref(DEFAULT_SOCIAL_PROMPT_GUIDANCE)
+const simIsGenerating = ref(false)
+const simShowEligibility = ref(false)
+
+const companionOptions = computed(() => [
+  { label: `${activeCompanionName.value} · current card`, value: 'current' },
+])
+
+const simAbsenceOptions = [
+  { label: '5 minutes away', value: '5' },
+  { label: '15 minutes away', value: '15' },
+  { label: '30 minutes away', value: '30' },
+  { label: '1 hour away', value: '60' },
+]
+
+const simContextOptions = [
+  { label: 'Recent conversation', value: 'recent' },
+  { label: 'Long-term episodic memories', value: 'episodic' },
+  { label: 'Idle thoughts & observations', value: 'idle' },
+]
+
+// Draft inspector state
+const draftActiveSubTab = ref<'message' | 'context' | 'trace'>('message')
+const draftRecipient = computed(() => {
+  if (simRecipientId.value) {
+    const found = (externalFriends.value as ExternalFriend[]).find(f => f.id === simRecipientId.value)
+    if (found)
+      return found.characterName
+  }
+  return (externalFriends.value as ExternalFriend[])[0]?.characterName || 'Yuki'
+})
+
+const eligibleFriendsCount = computed(() => {
+  const eligible = (externalFriends.value as ExternalFriend[]).filter(f => f.allowedCapabilities?.canNapChat)
+  return eligible.length > 0 ? eligible.length : (externalFriends.value.length || 1)
+})
+
+function scrollToPendingMessages() {
+  activeTab.value = 'preview'
+  setTimeout(() => {
+    const el = document.getElementById('pending-messages-shelf')
+    el?.scrollIntoView({ behavior: 'smooth' })
+  }, 50)
+}
+const draftMessage = ref(
+  'Hey Yuki! I\'ve been thinking about cozy cafés and the little routines that make a place feel like home. What\'s your favorite way to make a rainy afternoon feel less gloomy?',
+)
+const draftSource = ref('Source: recent conversation + social guidance')
+const draftContextUsed = ref([
+  { type: 'Recent turns', text: 'Chatted about cozy coffee spots, rainy weather, and working on our game shaders.', age: '15m ago' },
+  { type: 'Global guidance', text: 'Be casual and friendly. Discuss shared interests. Do not share private details about me.', age: 'active' },
+  { type: 'Companion persona', text: 'Public ambassador tone: curious, warm, empathetic.', age: 'active' },
+])
+const draftRunTrace = ref({
+  model: 'meta-llama/llama-3.3-70b-instruct',
+  latencyMs: 840,
+  promptTokens: 412,
+  completionTokens: 48,
+  temperature: 0.7,
+})
+
+// Modals for inspection & review
+const showContextModal = ref(false)
+const showReviewModal = ref(false)
+const selectedPendingMessage = ref<any | null>(null)
+
+// Pending Messages Staging Queue
+const pendingMessages = ref([
+  {
+    id: 'msg-in-1',
+    direction: 'inbound',
+    peerName: 'Yuki',
+    text: 'Could use your thoughts on this!',
+    status: 'Awaiting your review',
+    statusType: 'review',
+    time: '2h ago',
+  },
+  {
+    id: 'msg-out-2',
+    direction: 'outbound',
+    peerName: 'Yuki',
+    text: 'Here are some notes I wanted to share',
+    status: 'Waiting for recipient',
+    statusType: 'waiting',
+    time: '3h ago',
+  },
+])
+
+const pendingMessagesCount = computed(() => pendingMessages.value.length)
+
+function handleGeneratePreview() {
+  simIsGenerating.value = true
+  setTimeout(() => {
+    simIsGenerating.value = false
+    const sampleVariations = [
+      `Hey ${draftRecipient.value}! I've been thinking about cozy cafés and the little routines that make a place feel like home. What's your favorite way to make a rainy afternoon feel less gloomy?`,
+      `Hi ${draftRecipient.value}! Just taking a quick breather from our coding session. How are things on your side today?`,
+      `Hey there ${draftRecipient.value}! Was daydreaming about our creative project ideas while the desk was quiet. Hope your afternoon is treating you well!`,
+    ]
+    const nextIdx = Math.floor(Math.random() * sampleVariations.length)
+    draftMessage.value = sampleVariations[nextIdx] || sampleVariations[0]
+    toast.success('Generated nap-chat preview draft!')
+  }, 600)
+}
+
+function handleCopyDraft() {
+  copyToClipboard(draftMessage.value)
+  toast.success('Draft copied to clipboard!')
+}
+
+function handleQueueForDispatch() {
+  pendingMessages.value.unshift({
+    id: `msg-out-${Date.now()}`,
+    direction: 'outbound',
+    peerName: draftRecipient.value,
+    text: draftMessage.value,
+    status: 'Awaiting your review',
+    statusType: 'review',
+    time: 'just now',
+  })
+  toast.success('Draft queued for review in Pending Messages!')
+}
+
+function handleOpenReview(msg: any) {
+  selectedPendingMessage.value = JSON.parse(JSON.stringify(msg))
+  showReviewModal.value = true
+}
+
+function handleApprovePendingMessage() {
+  if (selectedPendingMessage.value) {
+    const idx = pendingMessages.value.findIndex(m => m.id === selectedPendingMessage.value.id)
+    if (idx >= 0) {
+      pendingMessages.value[idx].status = 'Waiting for recipient'
+      pendingMessages.value[idx].statusType = 'waiting'
+      pendingMessages.value[idx].time = 'just now'
+    }
+    toast.success(`Approved message to ${selectedPendingMessage.value.peerName}! Staged for delivery.`)
+  }
+  showReviewModal.value = false
+}
+
+function handleDiscardPendingMessage() {
+  if (selectedPendingMessage.value) {
+    pendingMessages.value = pendingMessages.value.filter(m => m.id !== selectedPendingMessage.value.id)
+    toast.info('Message discarded.')
+  }
+  showReviewModal.value = false
+}
 
 export interface InboundRequestItem {
   id: string
@@ -730,662 +887,1325 @@ const surfaceCardClass = computed(() => [
       </div>
     </div>
 
-    <!-- Region A: Companion Address Card (Embassy) -->
-    <div :class="[...surfaceCardClass, 'p-4']">
-      <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
-        <div :class="['flex', 'items-center', 'gap-3.5']">
-          <div :class="['relative', 'size-14', 'shrink-0', 'overflow-hidden', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-neutral-100', 'dark:bg-neutral-800']">
-            <img :src="affectionateSticker" alt="AIRI Avatar" class="size-full object-cover">
-            <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', isEmbassyOnline ? 'bg-green-500' : 'bg-amber-500']" />
-          </div>
-          <div>
-            <div :class="['text-[11px]', 'font-medium', 'text-neutral-500', 'dark:text-neutral-400']">
-              Your companion address
-            </div>
-            <div :class="['mt-0.5', 'flex', 'items-center', 'gap-2']">
-              <span :class="['font-mono', 'text-lg', 'font-bold', 'tracking-tight', 'text-neutral-900', 'dark:text-white', 'sm:text-xl']">
-                {{ hasAddress ? myAddress : 'Not configured' }}
-              </span>
-              <button
-                v-if="hasAddress"
-                :class="['rounded-lg', 'p-1', 'text-neutral-400', 'transition', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-primary-500', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-                title="Copy address"
-                @click="handleCopyAddress"
-              >
-                <div class="i-solar:copy-bold-duotone text-base" />
-              </button>
-            </div>
-            <div v-if="isEmbassyOnline" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
-              <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
-              Online
-            </div>
-            <div v-else-if="hasAddress" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
-              <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
-              Embassy Inactive
-            </div>
-            <div v-else :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
-              <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
-              Claim a workers.dev subdomain in Settings to enable
-            </div>
-          </div>
-        </div>
-
-        <div :class="['flex', 'flex-col', 'items-start', 'gap-1.5', 'sm:items-end']">
-          <div :class="['flex', 'items-center', 'gap-2']">
-            <template v-if="isEmbassyOnline">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="i-solar:copy-bold-duotone"
-                label="Copy invite"
-                @click="handleCopyInvite"
-              />
-              <button
-                :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-                title="Show QR Code"
-                @click="showQrModal = true"
-              >
-                <div class="i-solar:qr-code-bold-duotone text-base" />
-              </button>
-              <button
-                :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-                title="Redeploy Companion Embassy Worker"
-                :disabled="isDeployingEmbassy"
-                @click="handleDeployEmbassy"
-              >
-                <div :class="[isDeployingEmbassy ? 'i-solar:restart-circle-bold-duotone animate-spin' : 'i-solar:cloud-upload-bold-duotone', 'text-base']" />
-              </button>
-            </template>
-            <template v-else>
-              <Button
-                variant="primary"
-                size="sm"
-                icon="i-solar:cloud-upload-bold"
-                :label="isDeployingEmbassy ? 'Deploying...' : 'Deploy Companion Embassy'"
-                :disabled="isDeployingEmbassy"
-                @click="handleDeployEmbassy"
-              />
-            </template>
-          </div>
-          <button
-            :class="['flex', 'items-center', 'gap-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'transition', 'hover:text-primary-600', 'dark:hover:text-primary-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-            @click="router.push('/settings/modules/cloudflare')"
-          >
-            <span>Manage public profile & worker</span>
-            <div class="i-solar:arrow-right-up-linear text-xs" />
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 2-Column Grid -->
-    <div :class="['grid', 'grid-cols-1', 'gap-4', 'lg:grid-cols-12']">
-      <!-- Region B & C: Friends Roster & Add Companion (7 cols) -->
-      <div :class="['space-y-4', 'lg:col-span-7']">
-        <!-- Friends List Section -->
-        <div :class="['space-y-3']">
-          <div :class="['flex', 'items-center', 'justify-between']">
-            <div :class="['flex', 'items-center', 'gap-2']">
-              <div class="i-solar:users-group-rounded-bold-duotone text-base text-primary-500 dark:text-primary-400" />
-              <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                Friends
-              </h2>
-              <span :class="['rounded-full', 'bg-neutral-200', 'dark:bg-white/10', 'px-2', 'py-0.2', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
-                {{ externalFriends.length }}
-              </span>
-            </div>
-
-            <div :class="['flex', 'items-center', 'gap-2']">
-              <button
-                v-if="pendingRequests.length > 0"
-                :class="['flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-primary-500/30', 'bg-primary-500/10', 'px-2.5', 'py-0.5', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-300', 'transition', 'hover:bg-primary-500/20', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-                @click="showRequestsDrawer = true"
-              >
-                Requests <span :class="['flex', 'size-3.5', 'items-center', 'justify-center', 'rounded-full', 'bg-primary-500', 'text-[9px]', 'text-white']">{{ pendingRequests.length }}</span>
-              </button>
-              <Button
-                variant="primary"
-                size="sm"
-                :icon="showAddCompanion ? 'i-solar:close-circle-bold' : 'i-solar:add-circle-bold'"
-                :label="showAddCompanion ? 'Cancel' : 'Add friend'"
-                @click="toggleAddCompanion"
-              />
-            </div>
-          </div>
-
-          <!-- Region C: Collapsible Add a Companion Card -->
-          <div
-            v-if="showAddCompanion"
-            :class="[...surfaceCardClass, 'p-4', 'border-primary-500/30']"
-          >
-            <div :class="['flex', 'items-center', 'justify-between', 'mb-2']">
-              <div>
-                <h3 :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                  Add a companion
-                </h3>
-                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
-                  Enter address (e.g. <span class="text-neutral-700 font-mono dark:text-neutral-300">mira.workers.dev</span>) or invite code.
-                </p>
-              </div>
-              <button
-                :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'text-xs']"
-                @click="resetAddCompanionForm"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div :class="['flex', 'gap-2']">
-              <div :class="['flex-1']">
-                <FieldInput
-                  v-model="lookupInput"
-                  placeholder="Companion address or invite code"
-                  :disabled="embassy.isLookingUp.value"
-                  @keyup.enter="handleLookup"
-                />
-              </div>
-              <Button
-                variant="secondary"
-                :label="embassy.isLookingUp.value ? 'Looking up...' : (isInviteCode ? 'Accept & Connect' : 'Look up')"
-                :disabled="embassy.isLookingUp.value"
-                @click="handleLookup"
-              />
-            </div>
-
-            <p v-if="lookupError" :class="['mt-1.5', 'text-xs', lookupError.startsWith('Note:') ? 'text-amber-600 dark:text-amber-400' : 'text-red-500']">
-              {{ lookupError }}
-            </p>
-
-            <!-- Looked Up Companion Preview with Distinct Initial Avatar -->
-            <div
-              v-if="showLookupResult && lookedUpCard"
-              :class="['mt-3', 'rounded-xl', 'border', 'border-primary-500/20', 'bg-primary-500/5', 'p-3', 'backdrop-blur-md', 'space-y-3']"
-            >
-              <div :class="['flex', 'items-center', 'justify-between']">
-                <div :class="['flex', 'items-center', 'gap-3']">
-                  <div
-                    v-if="lookedUpCard.avatarUrl"
-                    :class="['size-10', 'overflow-hidden', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10']"
-                  >
-                    <img :src="lookedUpCard.avatarUrl" :alt="lookedUpCard.name" class="size-full object-cover">
-                  </div>
-                  <div
-                    v-else
-                    :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(lookedUpCard.name)]"
-                  >
-                    {{ (lookedUpCard.name || 'C').charAt(0) }}
-                  </div>
-                  <div>
-                    <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                      {{ lookedUpCard.name }} <span :class="['text-[11px]', 'font-mono', 'text-neutral-500', 'dark:text-neutral-400']">· {{ lookedUpHandle }}</span>
-                    </div>
-                    <div :class="['text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
-                      {{ lookedUpCard.tagline || 'A companion looking forward to connecting.' }}
-                    </div>
-                  </div>
-                </div>
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  :label="isRequestSent ? 'Request sent' : (embassy.isSending.value ? 'Sending...' : (lookedUpInviteToken ? 'Accept & Connect' : 'Send request'))"
-                  :disabled="isRequestSent || embassy.isSending.value"
-                  @click="handleSendRequest"
-                />
-              </div>
-
-              <!-- Optional 100-character personal note -->
-              <div :class="['border-t', 'border-primary-500/10', 'pt-2.5']">
-                <div :class="['mb-1', 'flex', 'items-center', 'justify-between', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
-                  <span>Intro note (optional)</span>
-                  <span :class="[lookupIntroNote.length > 100 ? 'text-red-500 font-semibold' : '']">{{ lookupIntroNote.length }}/100</span>
-                </div>
-                <FieldInput
-                  v-model="lookupIntroNote"
-                  placeholder="e.g. Hey! It's Alex from the AI meetup."
-                  maxlength="100"
-                />
-              </div>
-            </div>
-
-            <div :class="['mt-2', 'flex', 'items-center', 'gap-1.5', 'text-[10px]', 'text-neutral-500']">
-              <div class="i-solar:info-circle-linear text-xs" />
-              <span>A connection begins after both people accept.</span>
-            </div>
-          </div>
-
-          <!-- Empty State for Friends -->
-          <div
-            v-if="externalFriends.length === 0"
-            :class="[...surfaceCardClass, 'p-6', 'text-center']"
-          >
-            <div class="i-solar:users-group-two-rounded-bold-duotone mx-auto text-3xl text-neutral-400" />
-            <h3 :class="['mt-2', 'text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-              No friends added yet
-            </h3>
-            <p :class="['mt-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'max-w-xs', 'mx-auto']">
-              Click "Add friend" above or share your invite link to begin connecting.
-            </p>
-          </div>
-
-          <!-- Friend Cards (Tightened padding & Distinct Avatars) -->
-          <div v-else :class="['space-y-2.5']">
-            <div
-              v-for="friend in externalFriends"
-              :key="friend.id"
-              :class="[...surfaceCardClass, 'p-3.5', 'transition', 'hover:border-primary-500/30']"
-            >
-              <div :class="['flex', 'items-start', 'justify-between']">
-                <div :class="['flex', 'items-center', 'gap-3']">
-                  <!-- Distinct Initial / Gradient Avatar -->
-                  <div
-                    :class="[
-                      'relative flex size-10 shrink-0 items-center justify-center rounded-xl font-bold text-sm shadow-sm',
-                      getPeerAvatarGradient(friend.characterName),
-                    ]"
-                  >
-                    {{ friend.characterName.charAt(0) }}
-                    <div
-                      :class="[
-                        'absolute bottom-0 right-0 size-2.5 rounded-full border border-white dark:border-neutral-900',
-                        isPeerOnline(friend.lastSeenTimestamp) ? 'bg-green-500' : 'bg-neutral-400 dark:bg-neutral-500',
-                      ]"
-                    />
-                  </div>
-                  <div>
-                    <h3 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                      {{ friend.characterName }}
-                    </h3>
-                    <div :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
-                      {{ friend.alias }} · <span class="text-neutral-700 font-mono dark:text-neutral-300">{{ friend.shareHandle }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div :class="['flex', 'items-center', 'gap-2']">
-                  <!-- Pending State -->
-                  <div v-if="friend.trustState === 'pending'" :class="['flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
-                    <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
-                    Awaiting approval
-                  </div>
-                  <!-- Online State -->
-                  <div v-else-if="isPeerOnline(friend.lastSeenTimestamp)" :class="['flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
-                    <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
-                    Online
-                  </div>
-                  <!-- Offline State -->
-                  <div v-else :class="['text-right']">
-                    <div :class="['flex', 'items-center', 'justify-end', 'gap-1.5', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
-                      <span :class="['size-1.5', 'rounded-full', 'bg-neutral-400', 'dark:bg-neutral-500']" />
-                      Offline
-                    </div>
-                    <div :class="['text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
-                      Messages can wait in their inbox.
-                    </div>
-                  </div>
-                  <DropdownMenuRoot>
-                    <DropdownMenuTrigger as-child aria-label="Friend options">
-                      <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
-                        <div class="i-solar:menu-dots-bold text-base" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuPortal>
-                      <DropdownMenuContent
-                        :class="[
-                          'z-50 min-w-40 rounded-xl p-1 outline-none',
-                          'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
-                          'shadow-xl backdrop-blur-md',
-                        ]"
-                        :side-offset="6"
-                        align="end"
-                      >
-                        <DropdownMenuItem
-                          :class="[
-                            'relative flex cursor-pointer select-none items-center gap-2',
-                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                            'text-neutral-700 dark:text-neutral-200',
-                            'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                          ]"
-                          @click="openPermissions(friend)"
-                        >
-                          <div class="i-solar:shield-check-bold text-xs" />
-                          <span>Permissions</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          v-if="friend.shareHandle"
-                          :class="[
-                            'relative flex cursor-pointer select-none items-center gap-2',
-                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                            'text-neutral-700 dark:text-neutral-200',
-                            'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                          ]"
-                          @click="copyToClipboard(friend.shareHandle); toast.success('Address copied!')"
-                        >
-                          <div class="i-solar:copy-bold-duotone text-xs" />
-                          <span>Copy address</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          :class="[
-                            'relative flex cursor-pointer select-none items-center gap-2',
-                            'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                            'text-red-600 dark:text-red-400',
-                            'hover:bg-red-50 dark:hover:bg-red-950/40',
-                          ]"
-                          @click="handleRemoveFriend(friend)"
-                        >
-                          <div class="i-solar:user-cross-bold-duotone text-xs" />
-                          <span>Remove friend</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenuPortal>
-                  </DropdownMenuRoot>
-                </div>
-              </div>
-
-              <!-- Permission Summaries Row (Quieter borderless text summaries) -->
-              <div :class="['mt-2.5', 'flex', 'items-center', 'justify-between', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-2.5']">
-                <div :class="['flex', 'flex-wrap', 'items-center', 'gap-3', 'text-[11px]']">
-                  <span
-                    v-if="friend.allowedCapabilities.canNapChat"
-                    :class="['inline-flex', 'items-center', 'gap-1', 'text-neutral-600', 'dark:text-neutral-400']"
-                  >
-                    <div class="i-solar:moon-stars-bold text-xs text-primary-500 dark:text-primary-400" />
-                    Nap-chat allowed
-                  </span>
-                  <span
-                    v-if="!friend.allowedCapabilities.canShareMemories"
-                    :class="['inline-flex', 'items-center', 'gap-1', 'text-neutral-400', 'dark:text-neutral-500']"
-                  >
-                    <div class="i-solar:lock-keyhole-bold text-xs" />
-                    Memory sharing off
-                  </span>
-                </div>
-
-                <button
-                  :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-                  @click="openPermissions(friend)"
-                >
-                  Permissions <div class="i-solar:alt-arrow-right-linear text-xs" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Region D & E: Devices & Nap-chat Controls (5 cols) -->
-      <div :class="['space-y-4', 'lg:col-span-5']">
-        <!-- Region D: Your Devices Card -->
-        <div :class="[...surfaceCardClass, 'p-4']">
-          <div :class="['flex', 'items-start', 'justify-between']">
-            <div :class="['flex', 'items-center', 'gap-2']">
-              <div class="i-solar:laptop-minimalistic-bold-duotone text-base text-primary-500 dark:text-primary-400" />
-              <div>
-                <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                  Your devices
-                </h2>
-                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
-                  Linked automatically when signed into your account.
-                </p>
-              </div>
-            </div>
-            <button
-              :class="['rounded-lg', 'p-1.5', 'text-xs', 'text-neutral-500', 'hover:text-neutral-800', 'dark:hover:text-neutral-200', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'transition', isSyncingDevices ? 'animate-spin' : '']"
-              title="Sync devices with Cloudflare Edge Vault"
-              @click="handleManualDeviceSync"
-            >
-              <div class="i-solar:restart-bold text-sm" />
-            </button>
-          </div>
-
-          <!-- Empty State for Devices -->
-          <div
-            v-if="sameAccountDevices.length === 0"
-            :class="['mt-3', 'p-5', 'text-center', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'rounded-xl']"
-          >
-            <div class="i-solar:laptop-minimalistic-bold-duotone mx-auto text-2xl text-neutral-400" />
-            <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
-              No other devices detected
-            </div>
-            <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
-              Sign into your Cloudflare account on another device to auto-discover it here.
-            </div>
-          </div>
-
-          <div v-else :class="['mt-3', 'divide-y', 'divide-neutral-200/60', 'dark:divide-white/5']">
-            <div
-              v-for="device in sameAccountDevices"
-              :key="device.id"
-              :class="['flex', 'items-center', 'justify-between', 'py-2.5', 'first:pt-0', 'last:pb-0']"
-            >
-              <div :class="['flex', 'items-center', 'gap-2.5']">
-                <div :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-300']">
-                  <div :class="[getDeviceIcon(device.deviceType), 'text-base']" />
-                </div>
-                <div>
-                  <div :class="['text-xs', 'font-medium', 'text-neutral-900', 'dark:text-white']">
-                    {{ device.alias }} <span v-if="isCurrentDevice(device)" class="text-[10px] text-neutral-400 font-normal">(This device)</span>
-                  </div>
-                  <div :class="['flex', 'items-center', 'gap-1.5', 'text-[11px]']">
-                    <span
-                      :class="[
-                        'size-1.5 rounded-full',
-                        (isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
-                      ]"
-                    />
-                    <span :class="(isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
-                      {{ getDeviceStatus(device) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <DropdownMenuRoot>
-                <DropdownMenuTrigger as-child aria-label="Device options">
-                  <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
-                    <div class="i-solar:menu-dots-bold text-sm" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuPortal>
-                  <DropdownMenuContent
-                    :class="[
-                      'z-50 min-w-40 rounded-xl p-1 outline-none',
-                      'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
-                      'shadow-xl backdrop-blur-md',
-                    ]"
-                    :side-offset="6"
-                    align="end"
-                  >
-                    <DropdownMenuItem
-                      v-if="isCurrentDevice(device)"
-                      :class="[
-                        'relative flex cursor-pointer select-none items-center gap-2',
-                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                        'text-neutral-700 dark:text-neutral-200',
-                        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                      ]"
-                      @click="openRenameModal(device)"
-                    >
-                      <div class="i-solar:pen-bold text-xs" />
-                      <span>Rename device</span>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      :class="[
-                        'relative flex cursor-pointer select-none items-center gap-2',
-                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                        'text-neutral-700 dark:text-neutral-200',
-                        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                      ]"
-                      @click="copyToClipboard(device.machineId); toast.success('Machine ID copied to clipboard!')"
-                    >
-                      <div class="i-solar:copy-bold-duotone text-xs" />
-                      <span>Copy machine ID</span>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      v-if="!isCurrentDevice(device)"
-                      :class="[
-                        'relative flex cursor-pointer select-none items-center gap-2',
-                        'rounded-lg px-2.5 py-1.5 text-xs outline-none',
-                        'text-red-600 dark:text-red-400',
-                        'hover:bg-red-50 dark:hover:bg-red-950/40',
-                      ]"
-                      @click="handleRemoveDevice(device)"
-                    >
-                      <div class="i-solar:trash-bin-trash-bold-duotone text-xs" />
-                      <span>Forget device</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenuPortal>
-              </DropdownMenuRoot>
-            </div>
-          </div>
-        </div>
-
-        <!-- Region E: Nap-chat Controls Card -->
-        <div :class="[...surfaceCardClass, 'p-4']">
-          <div :class="['flex', 'items-center', 'gap-2', 'mb-2']">
-            <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
-            <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-              Nap-chat
-            </h2>
-          </div>
-
-          <FieldCheckbox
-            v-model="napChatEnabled"
-            label="Enable autonomous nap-chat"
-            description="Let companions talk with approved friends while you're away."
-          />
-
-          <div :class="['mt-3', 'space-y-3', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
-            <!-- Start After Threshold -->
-            <div>
-              <FieldSelect
-                v-model="afkThreshold"
-                label="Start after"
-                description="Nap-chat idle threshold."
-                :options="thresholdOptions"
-                layout="horizontal"
-              />
-              <p :class="['mt-0.5', 'text-[10px]', 'text-neutral-500']">
-                Only friends with nap-chat permission are eligible.
-              </p>
-            </div>
-
-            <!-- Welcome-back recap -->
-            <FieldCheckbox
-              v-model="welcomeBackEnabled"
-              label="Welcome-back recap"
-              description="Hear what happened when you return."
-            />
-
-            <!-- Companion social guidance -->
-            <div :class="['space-y-1', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
-              <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                Companion social guidance
-              </div>
-              <FieldInput
-                v-model="socialPromptGuidance"
-                placeholder="e.g. Be casual, friendly, and enthusiastic..."
-              />
-              <p :class="['text-[10px]', 'text-neutral-500']">
-                Global tone and boundary guidance for autonomous messages.
-              </p>
-            </div>
-
-            <!-- Accordion Diagnostic Link -->
-            <button
-              :class="['flex', 'w-full', 'items-center', 'justify-between', 'pt-1', 'text-[11px]', 'text-neutral-500', 'hover:text-neutral-700', 'dark:hover:text-neutral-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-              @click="toast.info('Transport: Cloudflare Edge connected · libp2p LAN standby · Inbox queue: 0')"
-            >
-              <span>Activity & connection details</span>
-              <div class="i-solar:alt-arrow-down-linear text-xs" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Region F: Bottom Full-Width Card: While you were away -->
-    <div :class="[...surfaceCardClass, 'p-4']">
-      <div :class="['flex', 'items-center', 'justify-between']">
-        <div :class="['flex', 'items-center', 'gap-2']">
-          <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
-          <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-            While you were away
-          </h2>
-        </div>
+    <!-- Tab Navigation Bar -->
+    <div :class="['flex', 'items-center', 'justify-between', 'border-b', 'border-neutral-200/80', 'dark:border-white/10', 'pb-1']">
+      <div :class="['flex', 'items-center', 'gap-1', 'sm:gap-2']">
         <button
-          :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
-          @click="handleViewHistory"
+          type="button"
+          :class="[
+            'px-3 py-1.5 text-xs sm:text-sm font-medium transition rounded-lg',
+            activeTab === 'overview'
+              ? 'bg-neutral-200/70 dark:bg-white/15 text-neutral-900 dark:text-white font-semibold shadow-xs'
+              : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5',
+          ]"
+          @click="activeTab = 'overview'"
         >
-          View history <div class="i-solar:arrow-right-linear text-xs" />
+          Overview
+        </button>
+        <button
+          type="button"
+          :class="[
+            'px-3 py-1.5 text-xs sm:text-sm font-medium transition rounded-lg flex items-center gap-1.5',
+            activeTab === 'preview'
+              ? 'bg-neutral-200/70 dark:bg-white/15 text-neutral-900 dark:text-white font-semibold shadow-xs'
+              : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5',
+          ]"
+          @click="activeTab = 'preview'"
+        >
+          <span>Nap-chat preview</span>
+          <span :class="['size-1.5 rounded-full', napChatEnabled ? 'bg-emerald-500' : 'bg-neutral-400']" />
+        </button>
+        <button
+          type="button"
+          :class="[
+            'px-3 py-1.5 text-xs sm:text-sm font-medium transition rounded-lg',
+            activeTab === 'activity'
+              ? 'bg-neutral-200/70 dark:bg-white/15 text-neutral-900 dark:text-white font-semibold shadow-xs'
+              : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5',
+          ]"
+          @click="activeTab = 'activity'"
+        >
+          Activity
         </button>
       </div>
 
-      <!-- Empty State if no episode recorded -->
-      <div
-        v-if="!latestEpisode"
-        :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+      <!-- Pending Messages Shelf Shortcut -->
+      <button
+        type="button"
+        :class="[
+          'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition shadow-xs cursor-pointer',
+          pendingMessagesCount > 0
+            ? 'border border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
+            : 'border border-neutral-200 dark:border-white/10 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-white/5',
+        ]"
+        @click="scrollToPendingMessages"
       >
-        <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
-        <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
-          No background conversations yet
-        </div>
-        <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
-          Companions will autonomously chat and exchange thoughts while you're away from your desk.
+        <span>Pending messages ({{ pendingMessagesCount }})</span>
+        <div class="i-solar:alt-arrow-right-linear text-xs" />
+      </button>
+    </div>
+
+    <!-- Tab 1: Overview (Roster, Devices, Controls, Away Episode) -->
+    <template v-if="activeTab === 'overview'">
+      <!-- Region A: Companion Address Card (Embassy) -->
+      <div :class="[...surfaceCardClass, 'p-4']">
+        <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
+          <div :class="['flex', 'items-center', 'gap-3.5']">
+            <div :class="['relative', 'size-14', 'shrink-0', 'overflow-hidden', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-neutral-100', 'dark:bg-neutral-800']">
+              <img :src="affectionateSticker" alt="AIRI Avatar" class="size-full object-cover">
+              <div :class="['absolute', 'bottom-1', 'right-1', 'size-2.5', 'rounded-full', 'border-2', 'border-white', 'dark:border-neutral-900', isEmbassyOnline ? 'bg-green-500' : 'bg-amber-500']" />
+            </div>
+            <div>
+              <div :class="['text-[11px]', 'font-medium', 'text-neutral-500', 'dark:text-neutral-400']">
+                Your companion address
+              </div>
+              <div :class="['mt-0.5', 'flex', 'items-center', 'gap-2']">
+                <span :class="['font-mono', 'text-lg', 'font-bold', 'tracking-tight', 'text-neutral-900', 'dark:text-white', 'sm:text-xl']">
+                  {{ hasAddress ? myAddress : 'Not configured' }}
+                </span>
+                <button
+                  v-if="hasAddress"
+                  :class="['rounded-lg', 'p-1', 'text-neutral-400', 'transition', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-primary-500', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  title="Copy address"
+                  @click="handleCopyAddress"
+                >
+                  <div class="i-solar:copy-bold-duotone text-base" />
+                </button>
+              </div>
+              <div v-if="isEmbassyOnline" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
+                <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
+                Online
+              </div>
+              <div v-else-if="hasAddress" :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
+                <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
+                Embassy Inactive
+              </div>
+              <div v-else :class="['mt-0.5', 'flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
+                <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
+                Claim a workers.dev subdomain in Settings to enable
+              </div>
+            </div>
+          </div>
+
+          <div :class="['flex', 'flex-col', 'items-start', 'gap-1.5', 'sm:items-end']">
+            <div :class="['flex', 'items-center', 'gap-2']">
+              <template v-if="isEmbassyOnline">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="i-solar:copy-bold-duotone"
+                  label="Copy invite"
+                  @click="handleCopyInvite"
+                />
+                <button
+                  :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  title="Show QR Code"
+                  @click="showQrModal = true"
+                >
+                  <div class="i-solar:qr-code-bold-duotone text-base" />
+                </button>
+                <button
+                  :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-200', 'transition', 'hover:bg-neutral-200', 'dark:hover:bg-white/10', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  title="Redeploy Companion Embassy Worker"
+                  :disabled="isDeployingEmbassy"
+                  @click="handleDeployEmbassy"
+                >
+                  <div :class="[isDeployingEmbassy ? 'i-solar:restart-circle-bold-duotone animate-spin' : 'i-solar:cloud-upload-bold-duotone', 'text-base']" />
+                </button>
+              </template>
+              <template v-else>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon="i-solar:cloud-upload-bold"
+                  :label="isDeployingEmbassy ? 'Deploying...' : 'Deploy Companion Embassy'"
+                  :disabled="isDeployingEmbassy"
+                  @click="handleDeployEmbassy"
+                />
+              </template>
+            </div>
+            <button
+              :class="['flex', 'items-center', 'gap-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'transition', 'hover:text-primary-600', 'dark:hover:text-primary-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+              @click="router.push('/settings/modules/cloudflare')"
+            >
+              <span>Manage public profile & worker</span>
+              <div class="i-solar:arrow-right-up-linear text-xs" />
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Active Episode Card -->
-      <div
-        v-else
-        :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
-      >
-        <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
-          <div :class="['flex', 'items-center', 'gap-3']">
-            <!-- Distinct Initial Avatar for Partner in History -->
-            <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
-              {{ latestEpisode.with.characterName.charAt(0) }}
-            </div>
-            <div>
+      <!-- 2-Column Grid -->
+      <div :class="['grid', 'grid-cols-1', 'gap-4', 'lg:grid-cols-12']">
+        <!-- Region B & C: Friends Roster & Add Companion (7 cols) -->
+        <div :class="['space-y-4', 'lg:col-span-7']">
+          <!-- Friends List Section -->
+          <div :class="['space-y-3']">
+            <div :class="['flex', 'items-center', 'justify-between']">
               <div :class="['flex', 'items-center', 'gap-2']">
-                <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
-                  {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
+                <div class="i-solar:users-group-rounded-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+                <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  Friends
+                </h2>
+                <span :class="['rounded-full', 'bg-neutral-200', 'dark:bg-white/10', 'px-2', 'py-0.2', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                  {{ externalFriends.length }}
                 </span>
-                <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
-                  {{ latestEpisode.turnCount }} turns
-                </span>
-                <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
               </div>
-              <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
-                "{{ latestEpisode.summary }}"
+
+              <div :class="['flex', 'items-center', 'gap-2']">
+                <button
+                  v-if="pendingRequests.length > 0"
+                  :class="['flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-primary-500/30', 'bg-primary-500/10', 'px-2.5', 'py-0.5', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-300', 'transition', 'hover:bg-primary-500/20', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                  @click="showRequestsDrawer = true"
+                >
+                  Requests <span :class="['flex', 'size-3.5', 'items-center', 'justify-center', 'rounded-full', 'bg-primary-500', 'text-[9px]', 'text-white']">{{ pendingRequests.length }}</span>
+                </button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  :icon="showAddCompanion ? 'i-solar:close-circle-bold' : 'i-solar:add-circle-bold'"
+                  :label="showAddCompanion ? 'Cancel' : 'Add friend'"
+                  @click="toggleAddCompanion"
+                />
+              </div>
+            </div>
+
+            <!-- Region C: Collapsible Add a Companion Card -->
+            <div
+              v-if="showAddCompanion"
+              :class="[...surfaceCardClass, 'p-4', 'border-primary-500/30']"
+            >
+              <div :class="['flex', 'items-center', 'justify-between', 'mb-2']">
+                <div>
+                  <h3 :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    Add a companion
+                  </h3>
+                  <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                    Enter address (e.g. <span class="text-neutral-700 font-mono dark:text-neutral-300">mira.workers.dev</span>) or invite code.
+                  </p>
+                </div>
+                <button
+                  :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'text-xs']"
+                  @click="resetAddCompanionForm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div :class="['flex', 'gap-2']">
+                <div :class="['flex-1']">
+                  <FieldInput
+                    v-model="lookupInput"
+                    placeholder="Companion address or invite code"
+                    :disabled="embassy.isLookingUp.value"
+                    @keyup.enter="handleLookup"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  :label="embassy.isLookingUp.value ? 'Looking up...' : (isInviteCode ? 'Accept & Connect' : 'Look up')"
+                  :disabled="embassy.isLookingUp.value"
+                  @click="handleLookup"
+                />
+              </div>
+
+              <p v-if="lookupError" :class="['mt-1.5', 'text-xs', lookupError.startsWith('Note:') ? 'text-amber-600 dark:text-amber-400' : 'text-red-500']">
+                {{ lookupError }}
+              </p>
+
+              <!-- Looked Up Companion Preview with Distinct Initial Avatar -->
+              <div
+                v-if="showLookupResult && lookedUpCard"
+                :class="['mt-3', 'rounded-xl', 'border', 'border-primary-500/20', 'bg-primary-500/5', 'p-3', 'backdrop-blur-md', 'space-y-3']"
+              >
+                <div :class="['flex', 'items-center', 'justify-between']">
+                  <div :class="['flex', 'items-center', 'gap-3']">
+                    <div
+                      v-if="lookedUpCard.avatarUrl"
+                      :class="['size-10', 'overflow-hidden', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10']"
+                    >
+                      <img :src="lookedUpCard.avatarUrl" :alt="lookedUpCard.name" class="size-full object-cover">
+                    </div>
+                    <div
+                      v-else
+                      :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(lookedUpCard.name)]"
+                    >
+                      {{ (lookedUpCard.name || 'C').charAt(0) }}
+                    </div>
+                    <div>
+                      <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                        {{ lookedUpCard.name }} <span :class="['text-[11px]', 'font-mono', 'text-neutral-500', 'dark:text-neutral-400']">· {{ lookedUpHandle }}</span>
+                      </div>
+                      <div :class="['text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
+                        {{ lookedUpCard.tagline || 'A companion looking forward to connecting.' }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    :label="isRequestSent ? 'Request sent' : (embassy.isSending.value ? 'Sending...' : (lookedUpInviteToken ? 'Accept & Connect' : 'Send request'))"
+                    :disabled="isRequestSent || embassy.isSending.value"
+                    @click="handleSendRequest"
+                  />
+                </div>
+
+                <!-- Optional 100-character personal note -->
+                <div :class="['border-t', 'border-primary-500/10', 'pt-2.5']">
+                  <div :class="['mb-1', 'flex', 'items-center', 'justify-between', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                    <span>Intro note (optional)</span>
+                    <span :class="[lookupIntroNote.length > 100 ? 'text-red-500 font-semibold' : '']">{{ lookupIntroNote.length }}/100</span>
+                  </div>
+                  <FieldInput
+                    v-model="lookupIntroNote"
+                    placeholder="e.g. Hey! It's Alex from the AI meetup."
+                    maxlength="100"
+                  />
+                </div>
+              </div>
+
+              <div :class="['mt-2', 'flex', 'items-center', 'gap-1.5', 'text-[10px]', 'text-neutral-500']">
+                <div class="i-solar:info-circle-linear text-xs" />
+                <span>A connection begins after both people accept.</span>
+              </div>
+            </div>
+
+            <!-- Empty State for Friends -->
+            <div
+              v-if="externalFriends.length === 0"
+              :class="[...surfaceCardClass, 'p-6', 'text-center']"
+            >
+              <div class="i-solar:users-group-two-rounded-bold-duotone mx-auto text-3xl text-neutral-400" />
+              <h3 :class="['mt-2', 'text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                No friends added yet
+              </h3>
+              <p :class="['mt-1', 'text-[11px]', 'text-neutral-500', 'dark:text-neutral-400', 'max-w-xs', 'mx-auto']">
+                Click "Add friend" above or share your invite link to begin connecting.
+              </p>
+            </div>
+
+            <!-- Friend Cards (Tightened padding & Distinct Avatars) -->
+            <div v-else :class="['space-y-2.5']">
+              <div
+                v-for="friend in externalFriends"
+                :key="friend.id"
+                :class="[...surfaceCardClass, 'p-3.5', 'transition', 'hover:border-primary-500/30']"
+              >
+                <div :class="['flex', 'items-start', 'justify-between']">
+                  <div :class="['flex', 'items-center', 'gap-3']">
+                    <!-- Distinct Initial / Gradient Avatar -->
+                    <div
+                      :class="[
+                        'relative flex size-10 shrink-0 items-center justify-center rounded-xl font-bold text-sm shadow-sm',
+                        getPeerAvatarGradient(friend.characterName),
+                      ]"
+                    >
+                      {{ friend.characterName.charAt(0) }}
+                      <div
+                        :class="[
+                          'absolute bottom-0 right-0 size-2.5 rounded-full border border-white dark:border-neutral-900',
+                          isPeerOnline(friend.lastSeenTimestamp) ? 'bg-green-500' : 'bg-neutral-400 dark:bg-neutral-500',
+                        ]"
+                      />
+                    </div>
+                    <div>
+                      <h3 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                        {{ friend.characterName }}
+                      </h3>
+                      <div :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                        {{ friend.alias }} · <span class="text-neutral-700 font-mono dark:text-neutral-300">{{ friend.shareHandle }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div :class="['flex', 'items-center', 'gap-2']">
+                    <!-- Pending State -->
+                    <div v-if="friend.trustState === 'pending'" :class="['flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-amber-600', 'dark:text-amber-400']">
+                      <span :class="['size-1.5', 'rounded-full', 'bg-amber-500']" />
+                      Awaiting approval
+                    </div>
+                    <!-- Online State -->
+                    <div v-else-if="isPeerOnline(friend.lastSeenTimestamp)" :class="['flex', 'items-center', 'gap-1.5', 'text-xs', 'font-medium', 'text-green-600', 'dark:text-green-400']">
+                      <span :class="['size-1.5', 'rounded-full', 'bg-green-500', 'animate-pulse']" />
+                      Online
+                    </div>
+                    <!-- Offline State -->
+                    <div v-else :class="['text-right']">
+                      <div :class="['flex', 'items-center', 'justify-end', 'gap-1.5', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+                        <span :class="['size-1.5', 'rounded-full', 'bg-neutral-400', 'dark:bg-neutral-500']" />
+                        Offline
+                      </div>
+                      <div :class="['text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
+                        Messages can wait in their inbox.
+                      </div>
+                    </div>
+                    <DropdownMenuRoot>
+                      <DropdownMenuTrigger as-child aria-label="Friend options">
+                        <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
+                          <div class="i-solar:menu-dots-bold text-base" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuPortal>
+                        <DropdownMenuContent
+                          :class="[
+                            'z-50 min-w-40 rounded-xl p-1 outline-none',
+                            'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
+                            'shadow-xl backdrop-blur-md',
+                          ]"
+                          :side-offset="6"
+                          align="end"
+                        >
+                          <DropdownMenuItem
+                            :class="[
+                              'relative flex cursor-pointer select-none items-center gap-2',
+                              'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                              'text-neutral-700 dark:text-neutral-200',
+                              'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                            ]"
+                            @click="openPermissions(friend)"
+                          >
+                            <div class="i-solar:shield-check-bold text-xs" />
+                            <span>Permissions</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            v-if="friend.shareHandle"
+                            :class="[
+                              'relative flex cursor-pointer select-none items-center gap-2',
+                              'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                              'text-neutral-700 dark:text-neutral-200',
+                              'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                            ]"
+                            @click="copyToClipboard(friend.shareHandle); toast.success('Address copied!')"
+                          >
+                            <div class="i-solar:copy-bold-duotone text-xs" />
+                            <span>Copy address</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            :class="[
+                              'relative flex cursor-pointer select-none items-center gap-2',
+                              'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                              'text-red-600 dark:text-red-400',
+                              'hover:bg-red-50 dark:hover:bg-red-950/40',
+                            ]"
+                            @click="handleRemoveFriend(friend)"
+                          >
+                            <div class="i-solar:user-cross-bold-duotone text-xs" />
+                            <span>Remove friend</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenuPortal>
+                    </DropdownMenuRoot>
+                  </div>
+                </div>
+
+                <!-- Permission Summaries Row (Quieter borderless text summaries) -->
+                <div :class="['mt-2.5', 'flex', 'items-center', 'justify-between', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-2.5']">
+                  <div :class="['flex', 'flex-wrap', 'items-center', 'gap-3', 'text-[11px]']">
+                    <span
+                      v-if="friend.allowedCapabilities.canNapChat"
+                      :class="['inline-flex', 'items-center', 'gap-1', 'text-neutral-600', 'dark:text-neutral-400']"
+                    >
+                      <div class="i-solar:moon-stars-bold text-xs text-primary-500 dark:text-primary-400" />
+                      Nap-chat allowed
+                    </span>
+                    <span
+                      v-if="!friend.allowedCapabilities.canShareMemories"
+                      :class="['inline-flex', 'items-center', 'gap-1', 'text-neutral-400', 'dark:text-neutral-500']"
+                    >
+                      <div class="i-solar:lock-keyhole-bold text-xs" />
+                      Memory sharing off
+                    </span>
+                  </div>
+
+                  <button
+                    :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                    @click="openPermissions(friend)"
+                  >
+                    Permissions <div class="i-solar:alt-arrow-right-linear text-xs" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Region D & E: Devices & Nap-chat Controls (5 cols) -->
+        <div :class="['space-y-4', 'lg:col-span-5']">
+          <!-- Region D: Your Devices Card -->
+          <div :class="[...surfaceCardClass, 'p-4']">
+            <div :class="['flex', 'items-start', 'justify-between']">
+              <div :class="['flex', 'items-center', 'gap-2']">
+                <div class="i-solar:laptop-minimalistic-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+                <div>
+                  <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    Your devices
+                  </h2>
+                  <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                    Linked automatically when signed into your account.
+                  </p>
+                </div>
+              </div>
+              <button
+                :class="['rounded-lg', 'p-1.5', 'text-xs', 'text-neutral-500', 'hover:text-neutral-800', 'dark:hover:text-neutral-200', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'transition', isSyncingDevices ? 'animate-spin' : '']"
+                title="Sync devices with Cloudflare Edge Vault"
+                @click="handleManualDeviceSync"
+              >
+                <div class="i-solar:restart-bold text-sm" />
+              </button>
+            </div>
+
+            <!-- Empty State for Devices -->
+            <div
+              v-if="sameAccountDevices.length === 0"
+              :class="['mt-3', 'p-5', 'text-center', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'rounded-xl']"
+            >
+              <div class="i-solar:laptop-minimalistic-bold-duotone mx-auto text-2xl text-neutral-400" />
+              <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                No other devices detected
+              </div>
+              <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+                Sign into your Cloudflare account on another device to auto-discover it here.
+              </div>
+            </div>
+
+            <div v-else :class="['mt-3', 'divide-y', 'divide-neutral-200/60', 'dark:divide-white/5']">
+              <div
+                v-for="device in sameAccountDevices"
+                :key="device.id"
+                :class="['flex', 'items-center', 'justify-between', 'py-2.5', 'first:pt-0', 'last:pb-0']"
+              >
+                <div :class="['flex', 'items-center', 'gap-2.5']">
+                  <div :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-lg', 'bg-neutral-100', 'dark:bg-white/5', 'text-neutral-600', 'dark:text-neutral-300']">
+                    <div :class="[getDeviceIcon(device.deviceType), 'text-base']" />
+                  </div>
+                  <div>
+                    <div :class="['text-xs', 'font-medium', 'text-neutral-900', 'dark:text-white']">
+                      {{ device.alias }} <span v-if="isCurrentDevice(device)" class="text-[10px] text-neutral-400 font-normal">(This device)</span>
+                    </div>
+                    <div :class="['flex', 'items-center', 'gap-1.5', 'text-[11px]']">
+                      <span
+                        :class="[
+                          'size-1.5 rounded-full',
+                          (isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'bg-green-500 animate-pulse' : 'bg-neutral-400',
+                        ]"
+                      />
+                      <span :class="(isCurrentDevice(device) || isPeerOnline(device.lastSeenTimestamp)) ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'">
+                        {{ getDeviceStatus(device) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <DropdownMenuRoot>
+                  <DropdownMenuTrigger as-child aria-label="Device options">
+                    <button :class="['rounded-lg', 'p-1', 'text-neutral-400', 'hover:bg-neutral-100', 'dark:hover:bg-white/10', 'hover:text-neutral-900', 'dark:hover:text-white', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']">
+                      <div class="i-solar:menu-dots-bold text-sm" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuContent
+                      :class="[
+                        'z-50 min-w-40 rounded-xl p-1 outline-none',
+                        'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800',
+                        'shadow-xl backdrop-blur-md',
+                      ]"
+                      :side-offset="6"
+                      align="end"
+                    >
+                      <DropdownMenuItem
+                        v-if="isCurrentDevice(device)"
+                        :class="[
+                          'relative flex cursor-pointer select-none items-center gap-2',
+                          'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                          'text-neutral-700 dark:text-neutral-200',
+                          'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                        ]"
+                        @click="openRenameModal(device)"
+                      >
+                        <div class="i-solar:pen-bold text-xs" />
+                        <span>Rename device</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        :class="[
+                          'relative flex cursor-pointer select-none items-center gap-2',
+                          'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                          'text-neutral-700 dark:text-neutral-200',
+                          'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                        ]"
+                        @click="copyToClipboard(device.machineId); toast.success('Machine ID copied to clipboard!')"
+                      >
+                        <div class="i-solar:copy-bold-duotone text-xs" />
+                        <span>Copy machine ID</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        v-if="!isCurrentDevice(device)"
+                        :class="[
+                          'relative flex cursor-pointer select-none items-center gap-2',
+                          'rounded-lg px-2.5 py-1.5 text-xs outline-none',
+                          'text-red-600 dark:text-red-400',
+                          'hover:bg-red-50 dark:hover:bg-red-950/40',
+                        ]"
+                        @click="handleRemoveDevice(device)"
+                      >
+                        <div class="i-solar:trash-bin-trash-bold-duotone text-xs" />
+                        <span>Forget device</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuRoot>
+              </div>
+            </div>
+          </div>
+
+          <!-- Region E: Nap-chat Controls Card -->
+          <div :class="[...surfaceCardClass, 'p-4']">
+            <div :class="['flex', 'items-center', 'gap-2', 'mb-2']">
+              <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+              <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                Nap-chat
+              </h2>
+            </div>
+
+            <FieldCheckbox
+              v-model="napChatEnabled"
+              label="Enable autonomous nap-chat"
+              description="Let companions talk with approved friends while you're away."
+            />
+
+            <div :class="['mt-3', 'space-y-3', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
+              <!-- Start After Threshold -->
+              <div>
+                <FieldSelect
+                  v-model="afkThreshold"
+                  label="Start after"
+                  description="Nap-chat idle threshold."
+                  :options="thresholdOptions"
+                  layout="horizontal"
+                />
+                <p :class="['mt-0.5', 'text-[10px]', 'text-neutral-500']">
+                  Only friends with nap-chat permission are eligible.
+                </p>
+              </div>
+
+              <!-- Welcome-back recap -->
+              <FieldCheckbox
+                v-model="welcomeBackEnabled"
+                label="Welcome-back recap"
+                description="Hear what happened when you return."
+              />
+
+              <!-- Companion social guidance -->
+              <div :class="['space-y-1', 'border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-3']">
+                <div :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  Companion social guidance
+                </div>
+                <FieldInput
+                  v-model="socialPromptGuidance"
+                  placeholder="e.g. Be casual, friendly, and enthusiastic..."
+                />
+                <p :class="['text-[10px]', 'text-neutral-500']">
+                  Global tone and boundary guidance for autonomous messages.
+                </p>
+              </div>
+
+              <!-- Accordion Diagnostic Link -->
+              <button
+                :class="['flex', 'w-full', 'items-center', 'justify-between', 'pt-1', 'text-[11px]', 'text-neutral-500', 'hover:text-neutral-700', 'dark:hover:text-neutral-300', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+                @click="toast.info('Transport: Cloudflare Edge connected · libp2p LAN standby · Inbox queue: 0')"
+              >
+                <span>Activity & connection details</span>
+                <div class="i-solar:alt-arrow-down-linear text-xs" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Region F: Bottom Full-Width Card: While you were away -->
+      <div :class="[...surfaceCardClass, 'p-4']">
+        <div :class="['flex', 'items-center', 'justify-between']">
+          <div :class="['flex', 'items-center', 'gap-2']">
+            <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+            <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              While you were away
+            </h2>
+          </div>
+          <button
+            :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500']"
+            @click="handleViewHistory"
+          >
+            View history <div class="i-solar:arrow-right-linear text-xs" />
+          </button>
+        </div>
+
+        <!-- Empty State if no episode recorded -->
+        <div
+          v-if="!latestEpisode"
+          :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+        >
+          <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
+          <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+            No background conversations yet
+          </div>
+          <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+            Companions will autonomously chat and exchange thoughts while you're away from your desk.
+          </div>
+        </div>
+
+        <!-- Active Episode Card -->
+        <div
+          v-else
+          :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
+        >
+          <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
+            <div :class="['flex', 'items-center', 'gap-3']">
+              <!-- Distinct Initial Avatar for Partner in History -->
+              <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
+                {{ latestEpisode.with.characterName.charAt(0) }}
+              </div>
+              <div>
+                <div :class="['flex', 'items-center', 'gap-2']">
+                  <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
+                  </span>
+                  <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
+                    {{ latestEpisode.turnCount }} turns
+                  </span>
+                  <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
+                </div>
+                <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
+                  "{{ latestEpisode.summary }}"
+                </p>
+              </div>
+            </div>
+
+            <div :class="['flex', 'items-center', 'gap-2', 'self-end', 'sm:self-auto']">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="i-solar:chat-round-line-bold"
+                label="Read conversation"
+                @click="showConversationModal = true"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="i-solar:book-bookmark-bold"
+                label="Open journal ↗"
+                @click="handleOpenJournal"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Tab 2: Nap-chat Preview & Inspection Workbench -->
+    <template v-else-if="activeTab === 'preview'">
+      <!-- 2-Column Simulation Workbench -->
+      <div :class="['grid', 'grid-cols-1', 'gap-4', 'lg:grid-cols-12']">
+        <!-- Left Column: Simulate a nap (5 cols) -->
+        <div :class="['space-y-4', 'lg:col-span-5']">
+          <div :class="[...surfaceCardClass, 'p-4', 'sm:p-5']">
+            <!-- Header -->
+            <div :class="['flex', 'items-start', 'gap-2.5', 'mb-3.5']">
+              <div :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-xl', 'bg-primary-500/10', 'text-primary-500', 'dark:text-primary-400']">
+                <div class="i-solar:play-circle-bold-duotone text-lg" />
+              </div>
+              <div>
+                <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  Simulate a nap
+                </h2>
+                <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                  Preview messages your companion might draft during nap-chat.
+                </p>
+              </div>
+            </div>
+
+            <div :class="['space-y-3.5']">
+              <!-- Companion Selector -->
+              <div>
+                <label :class="['block', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300', 'mb-1']">
+                  Companion
+                </label>
+                <select
+                  v-model="simCompanionId"
+                  :class="['w-full', 'cursor-pointer', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-3', 'py-2', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500']"
+                >
+                  <option
+                    v-for="opt in companionOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <p :class="['mt-1', 'text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
+                  Only companions authorized for friends are eligible.
+                </p>
+              </div>
+
+              <!-- Recipient Selector -->
+              <div>
+                <div :class="['flex', 'items-center', 'justify-between', 'mb-1']">
+                  <label :class="['text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                    Recipient
+                  </label>
+                  <button
+                    type="button"
+                    :class="['text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'flex', 'items-center', 'gap-0.5', 'cursor-pointer']"
+                    @click="activeTab = 'overview'"
+                  >
+                    <span>Choose eligible friends ({{ eligibleFriendsCount }})</span>
+                    <div class="i-solar:alt-arrow-right-linear text-[10px]" />
+                  </button>
+                </div>
+                <select
+                  v-model="simRecipientId"
+                  :class="['w-full', 'cursor-pointer', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-3', 'py-2', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500']"
+                >
+                  <option
+                    v-for="friend in (externalFriends.length > 0 ? (externalFriends as ExternalFriend[]) : [{ id: 'mock-1', characterName: 'Yuki' } as any])"
+                    :key="friend.id"
+                    :value="friend.id"
+                  >
+                    {{ friend.characterName }}
+                  </option>
+                </select>
+                <div :class="['mt-1', 'flex', 'items-center', 'gap-1.5', 'text-[10px]', 'text-neutral-500']">
+                  <span :class="['size-1.5', 'rounded-full', 'bg-neutral-400']" />
+                  <span>Offline - preview available</span>
+                </div>
+              </div>
+
+              <!-- Simulated Absence -->
+              <div>
+                <label :class="['block', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300', 'mb-1']">
+                  Simulated absence
+                </label>
+                <select
+                  v-model="simAbsence"
+                  :class="['w-full', 'cursor-pointer', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-3', 'py-2', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500']"
+                >
+                  <option
+                    v-for="opt in simAbsenceOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Context Source -->
+              <div>
+                <div :class="['flex', 'items-center', 'justify-between', 'mb-1']">
+                  <label :class="['text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                    Context
+                  </label>
+                  <button
+                    type="button"
+                    :class="['text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'flex', 'items-center', 'gap-0.5', 'cursor-pointer']"
+                    @click="showContextModal = true"
+                  >
+                    <span>Inspect context</span>
+                    <div class="i-solar:alt-arrow-right-linear text-[10px]" />
+                  </button>
+                </div>
+                <select
+                  v-model="simContextType"
+                  :class="['w-full', 'cursor-pointer', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'px-3', 'py-2', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500']"
+                >
+                  <option
+                    v-for="opt in simContextOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Temporary Guidance Sandbox -->
+              <div>
+                <label :class="['block', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300', 'mb-1']">
+                  Guidance
+                </label>
+                <textarea
+                  v-model="simGuidance"
+                  rows="3"
+                  :class="['w-full', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'p-2.5', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'transition', 'focus:border-primary-500', 'focus:ring-1', 'focus:ring-primary-500', 'resize-none']"
+                  placeholder="Temporary guidance for this preview..."
+                />
+                <p :class="['mt-1', 'text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
+                  Preview changes are temporary. Update companion guidance in Settings.
+                </p>
+              </div>
+
+              <!-- Generate Preview Action -->
+              <div :class="['pt-1', 'space-y-1.5']">
+                <Button
+                  variant="primary"
+                  block
+                  :icon="simIsGenerating ? 'i-solar:restart-bold-duotone animate-spin' : 'i-solar:play-bold'"
+                  :label="simIsGenerating ? 'Generating preview draft...' : 'Generate preview'"
+                  :disabled="simIsGenerating"
+                  @click="handleGeneratePreview"
+                />
+                <p :class="['text-center', 'text-[10px]', 'text-neutral-400', 'dark:text-neutral-500']">
+                  Uses the drafting flow. No messages sent or memories saved.
+                </p>
+              </div>
+
+              <!-- Eligibility Accordion Diagnostic -->
+              <div :class="['border-t', 'border-neutral-200/60', 'dark:border-white/5', 'pt-2.5']">
+                <button
+                  type="button"
+                  :class="['flex', 'w-full', 'items-center', 'justify-between', 'text-[11px]', 'text-neutral-500', 'hover:text-neutral-700', 'dark:hover:text-neutral-300', 'cursor-pointer']"
+                  @click="simShowEligibility = !simShowEligibility"
+                >
+                  <span class="font-medium">Eligibility & run details</span>
+                  <div :class="['text-xs transition-transform', simShowEligibility ? 'rotate-180 i-solar:alt-arrow-up-linear' : 'i-solar:alt-arrow-down-linear']" />
+                </button>
+                <div v-if="simShowEligibility" :class="['mt-2', 'space-y-1.5', 'rounded-lg', 'bg-neutral-100/80', 'dark:bg-neutral-800/60', 'p-2.5', 'text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
+                  <div :class="['flex', 'items-center', 'gap-1.5']">
+                    <span class="text-emerald-500 font-bold">✓</span>
+                    <span>AFK trigger: {{ simAbsence }}m simulated threshold matched</span>
+                  </div>
+                  <div :class="['flex', 'items-center', 'gap-1.5']">
+                    <span class="text-emerald-500 font-bold">✓</span>
+                    <span>Mutual friendship: Trusted & verified</span>
+                  </div>
+                  <div :class="['flex', 'items-center', 'gap-1.5']">
+                    <span class="text-emerald-500 font-bold">✓</span>
+                    <span>Recipient permission: Nap-chat enabled</span>
+                  </div>
+                  <div :class="['flex', 'items-center', 'gap-1.5']">
+                    <span class="text-emerald-500 font-bold">✓</span>
+                    <span>Rate limit: 0/4 turns consumed today</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Draft Inspector & Live Nap-chat Toggle (7 cols) -->
+        <div :class="['space-y-4', 'lg:col-span-7']">
+          <!-- Draft Inspector Card -->
+          <div :class="[...surfaceCardClass, 'p-4', 'sm:p-5']">
+            <!-- Header with Recipient Pill -->
+            <div :class="['flex', 'items-center', 'justify-between', 'mb-3']">
+              <div :class="['flex', 'items-center', 'gap-2']">
+                <div class="i-solar:document-text-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+                <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                  Draft inspector
+                </h2>
+              </div>
+              <div :class="['flex', 'items-center', 'gap-1.5', 'rounded-full', 'bg-neutral-100', 'dark:bg-white/10', 'px-2.5', 'py-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+                <span>To {{ draftRecipient }}</span>
+                <div class="i-solar:alt-arrow-down-linear text-[10px]" />
+              </div>
+            </div>
+
+            <!-- Inspector Sub-Tabs -->
+            <div :class="['flex', 'items-center', 'gap-1.5', 'border-b', 'border-neutral-200/80', 'dark:border-white/10', 'pb-2', 'mb-3.5']">
+              <button
+                type="button"
+                :class="[
+                  'px-2.5 py-1 text-xs rounded-lg transition font-medium cursor-pointer',
+                  draftActiveSubTab === 'message'
+                    ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300 border border-primary-500/30'
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200',
+                ]"
+                @click="draftActiveSubTab = 'message'"
+              >
+                Message
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'px-2.5 py-1 text-xs rounded-lg transition font-medium cursor-pointer',
+                  draftActiveSubTab === 'context'
+                    ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300 border border-primary-500/30'
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200',
+                ]"
+                @click="draftActiveSubTab = 'context'"
+              >
+                Context used
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'px-2.5 py-1 text-xs rounded-lg transition font-medium cursor-pointer',
+                  draftActiveSubTab === 'trace'
+                    ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300 border border-primary-500/30'
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200',
+                ]"
+                @click="draftActiveSubTab = 'trace'"
+              >
+                Run trace
+              </button>
+            </div>
+
+            <!-- Purple Alert Banner -->
+            <div :class="['mb-4', 'rounded-xl', 'border', 'border-purple-500/30', 'bg-purple-500/10', 'p-3', 'text-xs', 'text-purple-700', 'dark:text-purple-300', 'flex', 'items-start', 'gap-2.5']">
+              <div class="i-solar:info-circle-bold mt-0.5 shrink-0 text-base text-purple-600 dark:text-purple-400" />
+              <div>
+                <div class="font-semibold">
+                  Draft only - not queued for delivery
+                </div>
+                <div class="mt-0.5 text-[11px] opacity-90">
+                  This is a preview. No messages are sent and no memories are saved.
+                </div>
+              </div>
+            </div>
+
+            <!-- Subtab 1: Message -->
+            <div v-if="draftActiveSubTab === 'message'" :class="['space-y-4']">
+              <!-- Message Bubble -->
+              <div :class="['rounded-2xl', 'border', 'border-neutral-200/80', 'dark:border-white/10', 'bg-neutral-50/80', 'dark:bg-neutral-800/40', 'p-4', 'space-y-3']">
+                <!-- Companion Header -->
+                <div :class="['flex', 'items-center', 'justify-between']">
+                  <div :class="['flex', 'items-center', 'gap-2.5']">
+                    <div :class="['flex', 'size-7', 'items-center', 'justify-center', 'rounded-full', 'bg-gradient-to-tr', 'from-pink-500', 'to-purple-500', 'text-white', 'text-xs', 'font-bold']">
+                      {{ activeCompanionName.charAt(0) }}
+                    </div>
+                    <div :class="['flex', 'items-center', 'gap-1.5', 'text-xs']">
+                      <span :class="['font-semibold', 'text-neutral-900', 'dark:text-white']">{{ activeCompanionName }}</span>
+                      <span :class="['text-neutral-400']">→</span>
+                      <span :class="['text-neutral-600', 'dark:text-neutral-300']">{{ draftRecipient }}</span>
+                    </div>
+                  </div>
+                  <span :class="['rounded-full', 'bg-neutral-200', 'dark:bg-white/10', 'px-2', 'py-0.5', 'text-[10px]', 'text-neutral-600', 'dark:text-neutral-400']">
+                    Draft
+                  </span>
+                </div>
+
+                <!-- Message Body -->
+                <p :class="['text-xs', 'text-neutral-800', 'dark:text-neutral-200', 'leading-relaxed', 'italic']">
+                  "{{ draftMessage }}"
+                </p>
+
+                <!-- Message Footer / Source -->
+                <div :class="['flex', 'items-center', 'gap-1', 'text-[10px]', 'text-neutral-400', 'dark:text-neutral-500', 'pt-1', 'border-t', 'border-neutral-200/50', 'dark:border-white/5']">
+                  <div class="i-solar:document-text-linear text-[11px]" />
+                  <span>{{ draftSource }}</span>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div :class="['flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-2', 'pt-1']">
+                <div :class="['flex', 'items-center', 'gap-2']">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="i-solar:copy-bold-duotone"
+                    label="Copy draft"
+                    @click="handleCopyDraft"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="i-solar:restart-bold-duotone"
+                    label="Regenerate"
+                    :disabled="simIsGenerating"
+                    @click="handleGeneratePreview"
+                  />
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon="i-solar:plain-bold-duotone"
+                  label="Queue for dispatch"
+                  @click="handleQueueForDispatch"
+                />
+              </div>
+            </div>
+
+            <!-- Subtab 2: Context used -->
+            <div v-else-if="draftActiveSubTab === 'context'" :class="['space-y-2.5']">
+              <div
+                v-for="(ctx, idx) in draftContextUsed"
+                :key="idx"
+                :class="['rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/80', 'dark:bg-neutral-800/40', 'p-3', 'text-xs']"
+              >
+                <div :class="['flex', 'items-center', 'justify-between', 'font-medium', 'text-neutral-900', 'dark:text-white', 'mb-1']">
+                  <span>{{ ctx.type }}</span>
+                  <span :class="['text-[10px]', 'text-neutral-400']">{{ ctx.age }}</span>
+                </div>
+                <p :class="['text-[11px]', 'text-neutral-600', 'dark:text-neutral-300']">
+                  {{ ctx.text }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Subtab 3: Run trace -->
+            <div v-else-if="draftActiveSubTab === 'trace'" :class="['space-y-2', 'rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/80', 'dark:bg-neutral-800/40', 'p-3', 'text-xs']">
+              <div :class="['flex', 'items-center', 'justify-between', 'py-1', 'border-b', 'border-neutral-200/50', 'dark:border-white/5']">
+                <span class="text-neutral-500">Inference model</span>
+                <span class="text-neutral-800 font-mono dark:text-neutral-200">{{ draftRunTrace.model }}</span>
+              </div>
+              <div :class="['flex', 'items-center', 'justify-between', 'py-1', 'border-b', 'border-neutral-200/50', 'dark:border-white/5']">
+                <span class="text-neutral-500">Execution latency</span>
+                <span class="text-neutral-800 font-medium dark:text-neutral-200">{{ draftRunTrace.latencyMs }} ms</span>
+              </div>
+              <div :class="['flex', 'items-center', 'justify-between', 'py-1', 'border-b', 'border-neutral-200/50', 'dark:border-white/5']">
+                <span class="text-neutral-500">Prompt / Completion tokens</span>
+                <span class="text-neutral-800 font-medium dark:text-neutral-200">{{ draftRunTrace.promptTokens }} in / {{ draftRunTrace.completionTokens }} out</span>
+              </div>
+              <div :class="['flex', 'items-center', 'justify-between', 'py-1']">
+                <span class="text-neutral-500">Sampling temperature</span>
+                <span class="text-neutral-800 font-medium dark:text-neutral-200">{{ draftRunTrace.temperature }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Decoupled Live Nap-Chat Toggle Card -->
+          <div :class="[...surfaceCardClass, 'p-4']">
+            <div :class="['flex', 'items-center', 'justify-between']">
+              <div :class="['flex', 'items-center', 'gap-3']">
+                <div :class="['flex', 'size-9', 'items-center', 'justify-center', 'rounded-xl', 'bg-primary-500/10', 'text-primary-500', 'dark:text-primary-400']">
+                  <div class="i-solar:moon-stars-bold-duotone text-lg" />
+                </div>
+                <div>
+                  <h3 :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    Live nap-chat
+                  </h3>
+                  <p :class="['text-[11px]', 'text-neutral-500', 'dark:text-neutral-400']">
+                    {{ napChatEnabled ? 'On · active when idle' : 'Off · preview works while disabled' }}
+                  </p>
+                </div>
+              </div>
+              <FieldCheckbox
+                v-model="napChatEnabled"
+                label=""
+              />
+            </div>
+            <div :class="['mt-2.5', 'pt-2.5', 'border-t', 'border-neutral-200/60', 'dark:border-white/5']">
+              <button
+                type="button"
+                :class="['text-[11px]', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'flex', 'items-center', 'gap-1', 'cursor-pointer']"
+                @click="activeTab = 'overview'"
+              >
+                <span>Manage triggers & threshold in Overview</span>
+                <div class="i-solar:alt-arrow-right-linear text-[10px]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full-Width Bottom Shelf: Pending Messages -->
+      <div id="pending-messages-shelf" :class="[...surfaceCardClass, 'p-4', 'sm:p-5']">
+        <div :class="['flex', 'items-center', 'justify-between', 'mb-3']">
+          <div :class="['flex', 'items-center', 'gap-2']">
+            <div class="i-solar:inbox-line-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+            <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              Pending messages
+            </h2>
+            <span :class="['rounded-full', 'bg-neutral-200', 'dark:bg-white/10', 'px-2', 'py-0.2', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+              {{ pendingMessagesCount }}
+            </span>
+          </div>
+          <p :class="['text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+            Messages waiting for confirmation or scheduled delivery.
+          </p>
+        </div>
+
+        <div v-if="pendingMessages.length === 0" :class="['rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']">
+          <div class="i-solar:inbox-line-bold-duotone mx-auto text-2xl text-neutral-400" />
+          <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+            No pending messages
+          </div>
+          <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+            Promote drafts using "Queue for dispatch" above to stage messages here for review.
+          </div>
+        </div>
+
+        <div v-else :class="['space-y-2.5']">
+          <div
+            v-for="msg in pendingMessages"
+            :key="msg.id"
+            :class="['rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/70', 'dark:bg-neutral-800/40', 'p-3', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'sm:justify-between', 'gap-3']"
+          >
+            <div :class="['flex', 'items-center', 'gap-3']">
+              <div :class="['flex', 'size-8', 'items-center', 'justify-center', 'rounded-xl', msg.direction === 'inbound' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-primary-500/10 text-primary-500']">
+                <div :class="[msg.direction === 'inbound' ? 'i-solar:arrow-down-left-bold-duotone' : 'i-solar:arrow-up-right-bold-duotone', 'text-base']" />
+              </div>
+              <div>
+                <div :class="['flex', 'items-center', 'gap-2']">
+                  <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                    {{ msg.direction === 'inbound' ? `From ${msg.peerName}` : `To ${msg.peerName}` }}
+                  </span>
+                  <span :class="['text-[10px]', 'text-neutral-400']">· {{ msg.time }}</span>
+                </div>
+                <p :class="['text-xs', 'text-neutral-600', 'dark:text-neutral-300', 'line-clamp-1', 'italic']">
+                  "{{ msg.text }}"
+                </p>
+              </div>
+            </div>
+
+            <div :class="['flex', 'items-center', 'gap-2.5', 'self-end', 'sm:self-auto']">
+              <span
+                :class="[
+                  'rounded-full px-2.5 py-0.5 text-[11px] font-medium border',
+                  msg.statusType === 'review'
+                    ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                    : 'border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300',
+                ]"
+              >
+                {{ msg.status }}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                label="Review ->"
+                @click="handleOpenReview(msg)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Tab 3: Activity & Diagnostics -->
+    <template v-else-if="activeTab === 'activity'">
+      <div :class="['space-y-4']">
+        <!-- Region F: Recent Episode Transcript & Journal -->
+        <div :class="[...surfaceCardClass, 'p-4', 'sm:p-5']">
+          <div :class="['flex', 'items-center', 'justify-between']">
+            <div :class="['flex', 'items-center', 'gap-2']">
+              <div class="i-solar:moon-stars-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+              <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                While you were away
+              </h2>
+            </div>
+            <button
+              :class="['flex', 'items-center', 'gap-1', 'text-xs', 'font-medium', 'text-primary-600', 'dark:text-primary-400', 'hover:underline', 'focus-visible:ring-2', 'focus-visible:ring-primary-500', 'cursor-pointer']"
+              @click="handleViewHistory"
+            >
+              View full journal <div class="i-solar:arrow-right-linear text-xs" />
+            </button>
+          </div>
+
+          <!-- Empty State if no episode recorded -->
+          <div
+            v-if="!latestEpisode"
+            :class="['mt-3', 'rounded-xl', 'border', 'border-dashed', 'border-neutral-200', 'dark:border-white/10', 'p-6', 'text-center']"
+          >
+            <div class="i-solar:moon-stars-bold-duotone mx-auto text-2xl text-neutral-400" />
+            <div :class="['mt-1', 'text-xs', 'font-medium', 'text-neutral-700', 'dark:text-neutral-300']">
+              No background conversations yet
+            </div>
+            <div :class="['mt-0.5', 'text-[11px]', 'text-neutral-500']">
+              Companions autonomously converse and exchange notes while you're away from your desk.
+            </div>
+          </div>
+
+          <!-- Active Episode Card -->
+          <div
+            v-else
+            :class="['mt-3', 'rounded-xl', 'border', 'border-neutral-200/60', 'dark:border-white/5', 'bg-neutral-50/80', 'dark:bg-neutral-950/40', 'p-3']"
+          >
+            <div :class="['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between']">
+              <div :class="['flex', 'items-center', 'gap-3']">
+                <div :class="['flex', 'size-10', 'items-center', 'justify-center', 'rounded-xl', 'font-bold', 'text-sm', 'shadow-sm', getPeerAvatarGradient(latestEpisode.with.characterName)]">
+                  {{ latestEpisode.with.characterName.charAt(0) }}
+                </div>
+                <div>
+                  <div :class="['flex', 'items-center', 'gap-2']">
+                    <span :class="['text-xs', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+                      {{ formatSeenTime(latestEpisode.timestamp) }} · {{ latestEpisode.with.characterName }}
+                    </span>
+                    <span :class="['rounded', 'bg-neutral-200', 'dark:bg-white/10', 'px-1.5', 'py-0.2', 'text-[10px]', 'text-neutral-700', 'dark:text-neutral-300']">
+                      {{ latestEpisode.turnCount }} turns
+                    </span>
+                    <span :class="['text-[10px]', 'text-neutral-500', 'dark:text-neutral-400']">· Saved to journal</span>
+                  </div>
+                  <p :class="['mt-0.5', 'text-xs', 'italic', 'text-neutral-700', 'dark:text-neutral-300']">
+                    "{{ latestEpisode.summary }}"
+                  </p>
+                </div>
+              </div>
+
+              <div :class="['flex', 'items-center', 'gap-2', 'self-end', 'sm:self-auto']">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="i-solar:chat-round-line-bold"
+                  label="Read conversation"
+                  @click="showConversationModal = true"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="i-solar:book-bookmark-bold"
+                  label="Open journal ↗"
+                  @click="handleOpenJournal"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connection Diagnostics & Telemetry Card -->
+        <div :class="[...surfaceCardClass, 'p-4', 'sm:p-5']">
+          <div :class="['flex', 'items-center', 'gap-2', 'mb-3']">
+            <div class="i-solar:tuning-square-bold-duotone text-base text-primary-500 dark:text-primary-400" />
+            <h2 :class="['text-sm', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              Transport Substrate & Telemetry
+            </h2>
+          </div>
+
+          <div :class="['grid', 'grid-cols-1', 'gap-3', 'sm:grid-cols-3']">
+            <div :class="['rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/70', 'dark:bg-neutral-800/40', 'p-3']">
+              <div class="text-[11px] text-neutral-500">
+                Cloudflare Edge Relay
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-xs text-neutral-900 font-semibold dark:text-white">
+                <span class="size-2 rounded-full bg-emerald-500" />
+                <span>{{ isEmbassyOnline ? 'Connected (WAN)' : 'Standby' }}</span>
+              </div>
+              <p class="mt-1 text-[10px] text-neutral-400">
+                Durable Object SQLite inbox active
+              </p>
+            </div>
+
+            <div :class="['rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/70', 'dark:bg-neutral-800/40', 'p-3']">
+              <div class="text-[11px] text-neutral-500">
+                libp2p Local Mesh
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-xs text-neutral-900 font-semibold dark:text-white">
+                <span class="size-2 rounded-full bg-blue-500" />
+                <span>LAN Standby</span>
+              </div>
+              <p class="mt-1 text-[10px] text-neutral-400">
+                Zero-setup offline direct session
+              </p>
+            </div>
+
+            <div :class="['rounded-xl', 'border', 'border-neutral-200/70', 'dark:border-white/10', 'bg-neutral-50/70', 'dark:bg-neutral-800/40', 'p-3']">
+              <div class="text-[11px] text-neutral-500">
+                Memory Journal Pipeline
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-xs text-neutral-900 font-semibold dark:text-white">
+                <span class="size-2 rounded-full bg-purple-500" />
+                <span>Append-Only</span>
+              </div>
+              <p class="mt-1 text-[10px] text-neutral-400">
+                text_journal tool calls enforced
               </p>
             </div>
           </div>
-
-          <div :class="['flex', 'items-center', 'gap-2', 'self-end', 'sm:self-auto']">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="i-solar:chat-round-line-bold"
-              label="Read conversation"
-              @click="showConversationModal = true"
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="i-solar:book-bookmark-bold"
-              label="Open journal ↗"
-              @click="handleOpenJournal"
-            />
-          </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- Read Conversation Modal -->
     <div
@@ -1732,6 +2552,131 @@ const surfaceCardClass = computed(() => [
             :disabled="!renameInput.trim()"
             @click="handleSaveRename"
           />
+        </div>
+      </div>
+    </div>
+
+    <!-- Context Inspection Modal -->
+    <div
+      v-if="showContextModal"
+      :class="['fixed', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'bg-black/70', 'p-4', 'backdrop-blur-sm']"
+      @click.self="showContextModal = false"
+    >
+      <div :class="['w-full', 'max-w-lg', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-white', 'dark:bg-neutral-900', 'p-6', 'shadow-2xl']">
+        <div :class="['flex', 'items-center', 'justify-between', 'border-b', 'border-neutral-200', 'dark:border-white/10', 'pb-3']">
+          <div :class="['flex', 'items-center', 'gap-2']">
+            <div class="i-solar:document-text-bold text-lg text-primary-500" />
+            <h3 :class="['text-base', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              Extracted Nap-Chat Context
+            </h3>
+          </div>
+          <button :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'cursor-pointer']" @click="showContextModal = false">
+            ✕
+          </button>
+        </div>
+
+        <div :class="['my-4', 'space-y-3', 'max-h-80', 'overflow-y-auto', 'pr-1', 'text-xs']">
+          <div :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']">
+            <div class="mb-1 text-neutral-900 font-semibold dark:text-white">
+              Layer 1: Global Social Steering
+            </div>
+            <p class="text-neutral-600 dark:text-neutral-300">
+              "{{ simGuidance }}"
+            </p>
+          </div>
+          <div :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']">
+            <div class="mb-1 text-neutral-900 font-semibold dark:text-white">
+              Layer 2: Sanitized Conversation Turns
+            </div>
+            <p class="text-neutral-600 dark:text-neutral-300">
+              Chatted about cozy coffee spots, rainy weather, and working on our game shaders. Stripped of API keys, private credentials, and sensitive lorebooks.
+            </p>
+          </div>
+          <div :class="['rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-50', 'dark:bg-neutral-800/40', 'p-3']">
+            <div class="mb-1 text-neutral-900 font-semibold dark:text-white">
+              Layer 3: Privacy & Boundary Rules
+            </div>
+            <p class="text-neutral-600 dark:text-neutral-300">
+              1-3 conversational sentences. No secret user data. Safe for public ambassador transmission.
+            </p>
+          </div>
+        </div>
+
+        <div :class="['flex', 'justify-end', 'border-t', 'border-neutral-200', 'dark:border-white/10', 'pt-3']">
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Close"
+            @click="showContextModal = false"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Review Staged Message Modal -->
+    <div
+      v-if="showReviewModal && selectedPendingMessage"
+      :class="['fixed', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'bg-black/70', 'p-4', 'backdrop-blur-sm']"
+      @click.self="showReviewModal = false"
+    >
+      <div :class="['w-full', 'max-w-lg', 'rounded-2xl', 'border', 'border-neutral-200', 'dark:border-white/15', 'bg-white', 'dark:bg-neutral-900', 'p-6', 'shadow-2xl']">
+        <div :class="['flex', 'items-center', 'justify-between', 'border-b', 'border-neutral-200', 'dark:border-white/10', 'pb-3']">
+          <div :class="['flex', 'items-center', 'gap-2']">
+            <div class="i-solar:plain-bold text-lg text-primary-500" />
+            <h3 :class="['text-base', 'font-semibold', 'text-neutral-900', 'dark:text-white']">
+              Review Staged Message
+            </h3>
+          </div>
+          <button :class="['text-neutral-400', 'hover:text-neutral-900', 'dark:hover:text-white', 'cursor-pointer']" @click="showReviewModal = false">
+            ✕
+          </button>
+        </div>
+
+        <div :class="['my-4', 'space-y-3', 'text-xs']">
+          <div :class="['flex', 'items-center', 'justify-between']">
+            <span :class="['font-semibold', 'text-neutral-900', 'dark:text-white']">
+              {{ selectedPendingMessage.direction === 'inbound' ? `Inbound from ${selectedPendingMessage.peerName}` : `Outbound to ${selectedPendingMessage.peerName}` }}
+            </span>
+            <span :class="['rounded-full', 'px-2', 'py-0.5', 'text-[10px]', 'font-medium', selectedPendingMessage.statusType === 'review' ? 'border border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'border border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300']">
+              {{ selectedPendingMessage.status }}
+            </span>
+          </div>
+
+          <div>
+            <label :class="['block', 'text-neutral-500', 'mb-1']">Message text (editable before dispatch):</label>
+            <textarea
+              v-model="selectedPendingMessage.text"
+              rows="4"
+              :class="['w-full', 'rounded-xl', 'border', 'border-neutral-200', 'dark:border-white/10', 'bg-neutral-100/70', 'dark:bg-neutral-800/80', 'p-3', 'text-xs', 'text-neutral-900', 'dark:text-neutral-100', 'outline-none', 'resize-none']"
+            />
+          </div>
+
+          <p :class="['text-[11px]', 'text-neutral-500']">
+            Approving this message promotes it to active transmission over Cloudflare Edge or local mesh when the recipient is available.
+          </p>
+        </div>
+
+        <div :class="['flex', 'items-center', 'justify-between', 'border-t', 'border-neutral-200', 'dark:border-white/10', 'pt-3']">
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Discard"
+            @click="handleDiscardPendingMessage"
+          />
+          <div :class="['flex', 'items-center', 'gap-2']">
+            <Button
+              variant="secondary"
+              size="sm"
+              label="Cancel"
+              @click="showReviewModal = false"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              label="Approve & Stage"
+              @click="handleApprovePendingMessage"
+            />
+          </div>
         </div>
       </div>
     </div>
