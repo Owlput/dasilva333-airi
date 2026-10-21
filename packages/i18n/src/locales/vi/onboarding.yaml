@@ -42,10 +42,11 @@ steps:
       continue: Tiếp tục thiết lập
       closeToTray: Thu nhỏ vào khay
       comebackLead: Nếu bạn muốn quay lại sau, chỉ cần
-      desktopInstruction: nhấp chuột phải vào biểu tượng khay hệ thống AIRI và chọn Trình hướng dẫn đồng hành.
+      desktopInstruction: nhấp chuột phải vào biểu tượng khay hệ thống AIRI và chọn
+        Trình hướng dẫn đồng hành.
       desktopAlternative: Hoặc mở Cài đặt → Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành.
-      webInstruction: nhấn vào biểu tượng bánh răng ở góc trên bên phải để mở Cài đặt, sau đó đi tới
-        Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành.
+      webInstruction: nhấn vào biểu tượng bánh răng ở góc trên bên phải để mở Cài đặt,
+        sau đó đi tới Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành.
       webSettingsPath: Cài đặt → Trình hướng dẫn nhân vật → Trình hướng dẫn đồng hành
       close: Đóng
     quickStartButton: Quick start
@@ -1026,8 +1027,8 @@ steps:
         note: Large repository of anime & game characters with direct download links.
       character-tavern:
         badge: Clean UI
-        note: Clean and intuitive character library featuring 19K+ community cards
-          and direct card downloads.
+        note: Clean and intuitive character library featuring 19K+ community cards and
+          direct card downloads.
     tropeTemplates:
       desktop-companion:
         label: Desktop Companion
@@ -2718,6 +2719,9 @@ quickStart:
     speechMuted: Vocal synthesis muted
     seedingPersona: Seeding {name}'s soul & stage card...
     stageReady: '{name} is alive and ready on Stage!'
+    webLlmFailed: Failed to load WebLLM model
+    whisperFailed: Failed to load Whisper STT
+    kokoroFailed: Failed to load Kokoro TTS
   greetingDefaultName: there
   connection:
     connected: Connected! {elapsed}ms TTFT
@@ -2729,6 +2733,18 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+  launching: Launching Stage...
+  retry: Retry
+  continueAnyway: Continue Anyway
+  backToSettings: Back to Settings
+  validation:
+    selectProvider: Please select an AI provider
+    apiKeyRequired: API Key is required for this cloud provider
+    baseUrlRequired: Base URL is required for OpenAI-compatible endpoint
+    validModelRequired: Please select a valid model
+    selectCompanion: Please select a starter companion
+    selectVoiceEngine: Please select a voice engine
+    selectSttEngine: Please select a speech-to-text engine
 onboarding:
   steps:
     appearance:

@@ -44,10 +44,12 @@ steps:
       continue: Poursuivre la configuration
       closeToTray: Réduire dans la barre d'état
       comebackLead: Si vous souhaitez y revenir plus tard, il vous suffit de
-      desktopInstruction: faire un clic droit sur l'icône de la barre d'état système d'AIRI et de cliquer sur Assistant de compagnon.
+      desktopInstruction: faire un clic droit sur l'icône de la barre d'état système
+        d'AIRI et de cliquer sur Assistant de compagnon.
       desktopAlternative: Ou ouvrez Paramètres → Assistant de personnage → Assistant de compagnon.
-      webInstruction: appuyez sur l'icône d'engrenage en haut à droite pour ouvrir les Paramètres, puis accédez à
-        Assistant de personnage → Assistant de compagnon.
+      webInstruction: appuyez sur l'icône d'engrenage en haut à droite pour ouvrir les
+        Paramètres, puis accédez à Assistant de personnage → Assistant de
+        compagnon.
       webSettingsPath: Paramètres → Assistant de personnage → Assistant de compagnon
       close: Fermer
     quickStartButton: Quick start
@@ -1036,8 +1038,8 @@ steps:
         note: Large repository of anime & game characters with direct download links.
       character-tavern:
         badge: Clean UI
-        note: Clean and intuitive character library featuring 19K+ community cards
-          and direct card downloads.
+        note: Clean and intuitive character library featuring 19K+ community cards and
+          direct card downloads.
     tropeTemplates:
       desktop-companion:
         label: Desktop Companion
@@ -2727,6 +2729,9 @@ quickStart:
     speechMuted: Vocal synthesis muted
     seedingPersona: Seeding {name}'s soul & stage card...
     stageReady: '{name} is alive and ready on Stage!'
+    webLlmFailed: Failed to load WebLLM model
+    whisperFailed: Failed to load Whisper STT
+    kokoroFailed: Failed to load Kokoro TTS
   greetingDefaultName: there
   connection:
     connected: Connected! {elapsed}ms TTFT
@@ -2738,6 +2743,18 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+  launching: Launching Stage...
+  retry: Retry
+  continueAnyway: Continue Anyway
+  backToSettings: Back to Settings
+  validation:
+    selectProvider: Please select an AI provider
+    apiKeyRequired: API Key is required for this cloud provider
+    baseUrlRequired: Base URL is required for OpenAI-compatible endpoint
+    validModelRequired: Please select a valid model
+    selectCompanion: Please select a starter companion
+    selectVoiceEngine: Please select a voice engine
+    selectSttEngine: Please select a speech-to-text engine
 onboarding:
   steps:
     appearance:

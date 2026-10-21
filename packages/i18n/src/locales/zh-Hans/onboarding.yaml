@@ -39,8 +39,7 @@ steps:
       comebackLead: 如果你想稍后再返回设置，只需
       desktopInstruction: 右键点击 AIRI 系统托盘图标并点击“伴侣向导”。
       desktopAlternative: 或打开 设置 → 角色向导 → 伴侣向导。
-      webInstruction: 点击右上角的齿轮图标打开设置，然后前往
-        角色向导 → 伴侣向导。
+      webInstruction: 点击右上角的齿轮图标打开设置，然后前往 角色向导 → 伴侣向导。
       webSettingsPath: 设置 → 角色向导 → 伴侣向导
       close: 关闭
     quickStartButton: 极速启动
@@ -2451,6 +2450,9 @@ quickStart:
     speechMuted: 语音合成已静音
     seedingPersona: 正在初始化 {name} 的人格与舞台角色卡…
     stageReady: '{name} 已就绪，可以登上舞台了！'
+    webLlmFailed: Failed to load WebLLM model
+    whisperFailed: Failed to load Whisper STT
+    kokoroFailed: Failed to load Kokoro TTS
   greetingDefaultName: 朋友
   connection:
     connected: 连接成功！首字延迟 {elapsed} 毫秒
@@ -2463,6 +2465,18 @@ quickStart:
   hearing:
     listening: 正在聆听…
   baseUrl: 基础 URL
+  launching: Launching Stage...
+  retry: Retry
+  continueAnyway: Continue Anyway
+  backToSettings: Back to Settings
+  validation:
+    selectProvider: Please select an AI provider
+    apiKeyRequired: API Key is required for this cloud provider
+    baseUrlRequired: Base URL is required for OpenAI-compatible endpoint
+    validModelRequired: Please select a valid model
+    selectCompanion: Please select a starter companion
+    selectVoiceEngine: Please select a voice engine
+    selectSttEngine: Please select a speech-to-text engine
 onboarding:
   steps:
     appearance:

@@ -39,8 +39,7 @@ steps:
       comebackLead: 如果你想稍後再返回設定，只需
       desktopInstruction: 右鍵點擊 AIRI 系統匣圖示並點擊「伴侶精靈」。
       desktopAlternative: 或開啟 設定 → 角色精靈 → 伴侶精靈。
-      webInstruction: 點擊右上角的齒輪圖示開啟設定，然後前往
-        角色精靈 → 伴侶精靈。
+      webInstruction: 點擊右上角的齒輪圖示開啟設定，然後前往 角色精靈 → 伴侶精靈。
       webSettingsPath: 設定 → 角色精靈 → 伴侶精靈
       close: 關閉
     quickStartButton: Quick start
@@ -969,8 +968,8 @@ steps:
         note: Large repository of anime & game characters with direct download links.
       character-tavern:
         badge: Clean UI
-        note: Clean and intuitive character library featuring 19K+ community cards
-          and direct card downloads.
+        note: Clean and intuitive character library featuring 19K+ community cards and
+          direct card downloads.
     tropeTemplates:
       desktop-companion:
         label: Desktop Companion
@@ -2631,6 +2630,9 @@ quickStart:
     speechMuted: Vocal synthesis muted
     seedingPersona: Seeding {name}'s soul & stage card...
     stageReady: '{name} is alive and ready on Stage!'
+    webLlmFailed: Failed to load WebLLM model
+    whisperFailed: Failed to load Whisper STT
+    kokoroFailed: Failed to load Kokoro TTS
   greetingDefaultName: there
   connection:
     connected: Connected! {elapsed}ms TTFT
@@ -2642,6 +2644,18 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+  launching: Launching Stage...
+  retry: Retry
+  continueAnyway: Continue Anyway
+  backToSettings: Back to Settings
+  validation:
+    selectProvider: Please select an AI provider
+    apiKeyRequired: API Key is required for this cloud provider
+    baseUrlRequired: Base URL is required for OpenAI-compatible endpoint
+    validModelRequired: Please select a valid model
+    selectCompanion: Please select a starter companion
+    selectVoiceEngine: Please select a voice engine
+    selectSttEngine: Please select a speech-to-text engine
 onboarding:
   steps:
     appearance:

@@ -44,8 +44,8 @@ steps:
       comebackLead: Jika Anda ingin kembali lagi nanti, cukup
       desktopInstruction: klik kanan ikon baki sistem AIRI dan klik Panduan Pendamping.
       desktopAlternative: Atau buka Pengaturan → Panduan Karakter → Panduan Pendamping.
-      webInstruction: ketuk ikon roda gigi di kanan atas untuk membuka Pengaturan, lalu buka
-        Panduan Karakter → Panduan Pendamping.
+      webInstruction: ketuk ikon roda gigi di kanan atas untuk membuka Pengaturan,
+        lalu buka Panduan Karakter → Panduan Pendamping.
       webSettingsPath: Pengaturan → Panduan Karakter → Panduan Pendamping
       close: Tutup
     quickStartButton: Quick start
@@ -1024,8 +1024,8 @@ steps:
         note: Large repository of anime & game characters with direct download links.
       character-tavern:
         badge: Clean UI
-        note: Clean and intuitive character library featuring 19K+ community cards
-          and direct card downloads.
+        note: Clean and intuitive character library featuring 19K+ community cards and
+          direct card downloads.
     tropeTemplates:
       desktop-companion:
         label: Desktop Companion
@@ -2709,6 +2709,9 @@ quickStart:
     speechMuted: Vocal synthesis muted
     seedingPersona: Seeding {name}'s soul & stage card...
     stageReady: '{name} is alive and ready on Stage!'
+    webLlmFailed: Failed to load WebLLM model
+    whisperFailed: Failed to load Whisper STT
+    kokoroFailed: Failed to load Kokoro TTS
   greetingDefaultName: there
   connection:
     connected: Connected! {elapsed}ms TTFT
@@ -2720,6 +2723,18 @@ quickStart:
     speaking: Speaking...
   hearing:
     listening: Listening...
+  launching: Launching Stage...
+  retry: Retry
+  continueAnyway: Continue Anyway
+  backToSettings: Back to Settings
+  validation:
+    selectProvider: Please select an AI provider
+    apiKeyRequired: API Key is required for this cloud provider
+    baseUrlRequired: Base URL is required for OpenAI-compatible endpoint
+    validModelRequired: Please select a valid model
+    selectCompanion: Please select a starter companion
+    selectVoiceEngine: Please select a voice engine
+    selectSttEngine: Please select a speech-to-text engine
 onboarding:
   steps:
     appearance:
