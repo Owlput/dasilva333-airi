@@ -211,27 +211,45 @@ export default {
 `
     }
 
-    const formData = new FormData()
-    const metadata = {
+    const bindings: any[] = [
+      { type: 'kv_namespace', name: 'MEMORY', namespace_id: namespaceId },
+      { type: 'plain_text', name: 'CHARACTER_NAME', text: options.characterName || 'AIRI' },
+      { type: 'plain_text', name: 'LLM_BASE_URL', text: options.llmBaseUrl || '' },
+      { type: 'plain_text', name: 'LLM_MODEL', text: options.llmModel || 'gemini-3.5-flash-lite' },
+      { type: 'secret_text', name: 'LLM_API_KEY', text: options.llmApiKey },
+      { type: 'secret_text', name: 'DISCORD_PUBLIC_KEY', text: resolvedPublicKey },
+    ]
+
+    if (options.discordBotToken) {
+      bindings.push({ type: 'secret_text', name: 'DISCORD_BOT_TOKEN', text: options.discordBotToken })
+      bindings.push({ type: 'durable_object_namespace', name: 'DISCORD_HOST', class_name: 'DiscordHostDO' })
+    }
+
+    const metadata: Record<string, unknown> = {
       main_module: 'index.mjs',
       compatibility_date: '2025-02-04',
       compatibility_flags: ['nodejs_compat'],
-      bindings: [
-        { type: 'kv_namespace', name: 'MEMORY', namespace_id: namespaceId },
-        { type: 'plain_text', name: 'CHARACTER_NAME', text: options.characterName || 'AIRI' },
-        { type: 'plain_text', name: 'LLM_BASE_URL', text: options.llmBaseUrl || '' },
-        { type: 'plain_text', name: 'LLM_MODEL', text: options.llmModel || 'gemini-3.5-flash-lite' },
-        { type: 'secret_text', name: 'LLM_API_KEY', text: options.llmApiKey },
-        { type: 'secret_text', name: 'DISCORD_PUBLIC_KEY', text: resolvedPublicKey },
-      ],
+      bindings,
     }
 
+    if (options.discordBotToken) {
+      metadata.migrations = {
+        new_tag: 'v1',
+        steps: [
+          {
+            new_sqlite_classes: ['DiscordHostDO'],
+          },
+        ],
+      }
+    }
+
+    const formData = new FormData()
     formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
     formData.append('index.mjs', new Blob([workerScriptCode], { type: 'application/javascript+module' }), 'index.mjs')
 
     console.info(`[Stage-Deployer] Uploading ES module script to Cloudflare Workers API...`)
 
-    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/workers/scripts/${options.scriptName}`, {
+    let res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/workers/scripts/${options.scriptName}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${this.client.apiToken}`,
@@ -241,7 +259,23 @@ export default {
 
     if (!res.ok) {
       const errText = await res.text()
-      throw new Error(`Worker script upload failed -> HTTP ${res.status}: ${errText}`)
+      if (metadata.migrations && (errText.includes('migration') || errText.includes('tag') || errText.includes('already'))) {
+        delete metadata.migrations
+        const retryFormData = new FormData()
+        retryFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
+        retryFormData.append('index.mjs', new Blob([workerScriptCode], { type: 'application/javascript+module' }), 'index.mjs')
+        res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/workers/scripts/${options.scriptName}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${this.client.apiToken}`,
+          },
+          body: retryFormData,
+        })
+      }
+      if (!res.ok) {
+        const finalErr = await res.text().catch(() => errText)
+        throw new Error(`Worker script upload failed -> HTTP ${res.status}: ${finalErr}`)
+      }
     }
 
     // 4. Ensure workers.dev subdomain registration & enable route
@@ -300,6 +334,7 @@ export default {
     targetSubdomain?: string
     ownerId?: string
     characterName?: string
+    tagline?: string
     enableEmbassyDO?: boolean
   }): Promise<{ workerUrl: string }> {
     const scriptName = options?.scriptName || 'airi-cors-proxy'
@@ -323,6 +358,7 @@ export default {
       bindings.push({ type: 'kv_namespace', name: 'MEMORY', namespace_id: namespaceId })
       bindings.push({ type: 'plain_text', name: 'OWNER_ID', text: options?.ownerId || accountId })
       bindings.push({ type: 'plain_text', name: 'CHARACTER_NAME', text: options?.characterName || 'AIRI' })
+      bindings.push({ type: 'plain_text', name: 'COMPANION_TAGLINE', text: options?.tagline || '' })
     }
 
     const enableDO = options?.enableEmbassyDO ?? (scriptName === 'airi-stage-edge')

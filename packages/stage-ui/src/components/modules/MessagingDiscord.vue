@@ -10,6 +10,7 @@ import { toast } from 'vue-sonner'
 
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { buildSystemPrompt, useAiriCardStore } from '../../stores/modules/airi-card'
+import { useCloudflareStore } from '../../stores/modules/cloudflare'
 import { useConsciousnessStore } from '../../stores/modules/consciousness'
 import { useDiscordStore } from '../../stores/modules/discord'
 import { useProvidersStore } from '../../stores/providers'
@@ -18,6 +19,7 @@ import { BrainModelPicker } from '../scenarios/chat'
 
 const { t } = useI18n()
 const discordStore = useDiscordStore()
+const cloudflareStore = useCloudflareStore()
 const chatSessionStore = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
 const consciousnessStore = useConsciousnessStore()
@@ -26,6 +28,7 @@ const userProfileStore = useSettingsUserProfile()
 
 const { activeCardId, activeCard } = storeToRefs(airiCardStore)
 const { activeSessionId } = storeToRefs(chatSessionStore)
+const { isAuthenticated: isCfAuthenticated, activeAccountId, cfSubdomain: activeCfSubdomain } = storeToRefs(cloudflareStore)
 
 const {
   token,
@@ -37,9 +40,6 @@ const {
   executionMode,
   ownerUsername,
   ownerUserId,
-  cfAccountId,
-  cfApiToken,
-  cfOAuthTokens,
   cloudRelayInstances,
   visionEnabled,
   dmsEnabled,
@@ -57,10 +57,8 @@ const simulateUsername = ref('TestUser')
 const simulateContent = ref('Hello from simulated event!')
 
 // Cloud Relay Form State
-const showManualTokenInput = ref(false)
 const selectedMemoryMode = ref<'fixed' | 'unlimited'>('unlimited')
 const isDeployingRelay = ref(false)
-const isOAuthAuthenticating = ref(false)
 
 // Step 1: Deploy Session Selection Modal State
 const deployModalOpen = ref(false)
@@ -390,7 +388,7 @@ async function handleLaunchDeployment() {
     const baseUrl: string = (providerConfig.baseUrl || providerConfig.url || providerConfig.endpoint || '') as string
 
     // Auto-prompt PKCE login if tokens are missing
-    if (!cfApiToken.value && !cfOAuthTokens.value?.accessToken) {
+    if (!isCfAuthenticated.value) {
       toast.loading('Authenticating with Cloudflare via OAuth...', { id: toastId })
       await discordStore.authenticateWithCloudflare()
     }
@@ -469,16 +467,6 @@ function handleSimulate() {
 
 function handleForceSync() {
   discordStore.forceCardSync({ name: '', avatarBase64: null })
-}
-
-async function handleCloudflareOAuth() {
-  isOAuthAuthenticating.value = true
-  try {
-    await discordStore.authenticateWithCloudflare()
-  }
-  finally {
-    isOAuthAuthenticating.value = false
-  }
 }
 
 function getStatusColor(state: string) {
@@ -798,58 +786,76 @@ function formatTimestamp(ts: number) {
           </div>
         </div>
 
-        <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
-          <div class="mb-3 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <div class="i-solar:key-minimalistic-bold-duotone text-lg text-primary-500" />
-              <h4 class="text-xs font-bold">
-                Cloudflare Account Authentication
-              </h4>
-            </div>
-
-            <button
-              type="button"
-              class="flex items-center gap-1 text-[11px] text-neutral-400 font-medium hover:text-primary-500"
-              @click="showManualTokenInput = !showManualTokenInput"
-            >
-              <span>{{ showManualTokenInput ? 'Hide Manual Input' : 'Manual Input' }}</span>
-              <div class="i-solar:alt-arrow-down-bold text-xs transition-transform" :class="{ 'rotate-180': showManualTokenInput }" />
-            </button>
-          </div>
-
-          <div class="flex items-center justify-between gap-4">
-            <div class="flex-1">
-              <p class="text-[11px] text-neutral-400">
-                Authenticate securely via browser using 1-click OAuth, or manually specify your Cloudflare credentials.
-              </p>
-              <div v-if="cfOAuthTokens" class="mt-1.5 flex items-center gap-1.5 text-[10px] text-emerald-500 font-semibold">
-                <span>✅ Authenticated via OAuth</span>
+        <!-- Cloudflare Connection Status Card -->
+        <div
+          v-if="isCfAuthenticated"
+          :class="[
+            'border rounded-xl p-4',
+            'border-neutral-200/80 dark:border-neutral-800',
+            'bg-neutral-50/50 dark:bg-neutral-900/50',
+          ]"
+        >
+          <div :class="['flex items-center justify-between gap-4']">
+            <div :class="['flex items-center gap-3 min-w-0']">
+              <div :class="['size-9 rounded-lg flex items-center justify-center shrink-0 bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20']">
+                <div class="i-solar:shield-check-bold-duotone text-xl" />
+              </div>
+              <div :class="['min-w-0']">
+                <div :class="['flex items-center gap-2']">
+                  <h4 :class="['text-xs font-bold text-neutral-900 dark:text-neutral-100']">
+                    Cloudflare Connected
+                  </h4>
+                  <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20']">
+                    Active
+                  </span>
+                </div>
+                <p :class="['text-[11px] text-neutral-400 truncate mt-0.5']">
+                  {{ activeCfSubdomain ? `${activeCfSubdomain}.workers.dev` : (activeAccountId ? `Account: ${activeAccountId.slice(0, 12)}...` : 'Ready for Edge deployments') }}
+                </p>
               </div>
             </div>
 
             <Button
-              :label="isOAuthAuthenticating ? 'Authenticating...' : 'Authenticate with Cloudflare'"
-              variant="primary"
-              :disabled="isOAuthAuthenticating"
-              @click="handleCloudflareOAuth"
+              label="Manage Cloudflare"
+              size="sm"
+              variant="secondary"
+              icon="i-solar:settings-minimalistic-bold-duotone"
+              @click="cloudflareStore.isHubOpen = true"
             />
           </div>
+        </div>
 
-          <!-- Collapsible Manual Input Form -->
-          <div v-if="showManualTokenInput" class="mt-4 border-t border-neutral-200/60 pt-4 space-y-3 dark:border-neutral-800/60">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-bold">Manual Cloudflare API Token</span>
-              <a
-                href="https://dash.cloudflare.com/profile/api-tokens"
-                target="_blank"
-                rel="noopener"
-                class="text-[10px] text-primary-500 hover:underline"
-              >
-                Get Cloudflare API Token ↗
-              </a>
+        <div
+          v-else
+          :class="[
+            'border rounded-xl p-4',
+            'border-amber-200/80 dark:border-amber-800/60',
+            'bg-amber-50/40 dark:bg-amber-950/20',
+          ]"
+        >
+          <div :class="['flex items-center justify-between gap-4']">
+            <div :class="['flex items-center gap-3 min-w-0']">
+              <div :class="['size-9 rounded-lg flex items-center justify-center shrink-0 bg-amber-500/10 text-amber-500 dark:bg-amber-500/20']">
+                <div class="i-solar:cloud-cross-bold-duotone text-xl" />
+              </div>
+              <div :class="['min-w-0']">
+                <h4 :class="['text-xs font-bold text-amber-900 dark:text-amber-200']">
+                  Cloudflare Account Required
+                </h4>
+                <p :class="['text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5']">
+                  Connect your Cloudflare account to deploy 24/7 serverless character relays and Durable Objects.
+                </p>
+              </div>
             </div>
-            <FieldInput v-model="cfAccountId" label="Account ID" placeholder="32-char Cloudflare Account ID" />
-            <FieldInput v-model="cfApiToken" type="password" label="API Token" placeholder="Workers & KV write token" />
+
+            <Button
+              label="Connect Cloudflare"
+              size="sm"
+              variant="primary"
+              color="primary"
+              icon="i-solar:link-circle-bold"
+              @click="cloudflareStore.isConnectOpen = true"
+            />
           </div>
         </div>
       </section>
@@ -1130,16 +1136,30 @@ function formatTimestamp(ts: number) {
     <Teleport to="body">
       <div
         v-if="deployModalOpen"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        :class="[
+          'fixed inset-0 z-[9999]',
+          'flex items-center justify-center p-3 sm:p-4',
+          'bg-black/60 backdrop-blur-sm',
+          'overflow-y-auto',
+        ]"
       >
-        <div class="max-w-lg w-full border border-neutral-200/80 rounded-2xl bg-white p-6 shadow-2xl space-y-5 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="flex items-center justify-between">
+        <div
+          :class="[
+            'relative flex flex-col',
+            'max-w-lg w-full max-h-[88dvh]',
+            'rounded-2xl border shadow-2xl overflow-hidden',
+            'bg-white dark:bg-neutral-900',
+            'border-neutral-200/80 dark:border-neutral-800',
+          ]"
+        >
+          <!-- Header (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between p-4 sm:p-5 border-b border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-white dark:bg-neutral-900']">
             <div class="flex items-center gap-2.5">
-              <div class="h-9 w-9 flex items-center justify-center rounded-xl bg-primary-500/10 text-lg text-primary-500 font-bold">
+              <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-primary-500/10 text-lg text-primary-500 font-bold">
                 🚀
               </div>
               <div>
-                <h3 class="text-sm font-bold">
+                <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
                   Deploy Character to Cloudflare Edge
                 </h3>
                 <p class="text-[11px] text-neutral-400">
@@ -1150,15 +1170,15 @@ function formatTimestamp(ts: number) {
 
             <button
               type="button"
-              class="h-7 w-7 flex items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              class="h-7 w-7 flex shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
               @click="deployModalOpen = false"
             >
               ✕
             </button>
           </div>
 
-          <!-- Session Selection Options -->
-          <div class="max-h-[50dvh] overflow-y-auto pr-1 space-y-3">
+          <!-- Session Selection Options (scrollable, flex-1, min-h-0) -->
+          <div :class="['min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-3']">
             <!-- Option: Start New Dedicated Relay Session -->
             <button
               type="button"
@@ -1231,7 +1251,8 @@ function formatTimestamp(ts: number) {
             </div>
           </div>
 
-          <div class="flex items-center justify-end gap-3 border-t border-neutral-200/60 pt-4 dark:border-neutral-800/60">
+          <!-- Footer (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-end gap-3 p-4 border-t border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm']">
             <Button label="Cancel" variant="secondary" @click="deployModalOpen = false" />
             <Button
               label="Next: Review & Inspect Details →"
@@ -1250,16 +1271,30 @@ function formatTimestamp(ts: number) {
     <Teleport to="body">
       <div
         v-if="inspectModalOpen"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        :class="[
+          'fixed inset-0 z-[9999]',
+          'flex items-center justify-center p-3 sm:p-4',
+          'bg-black/60 backdrop-blur-sm',
+          'overflow-y-auto',
+        ]"
       >
-        <div class="max-w-xl w-full border border-neutral-200/80 rounded-2xl bg-white p-6 shadow-2xl space-y-5 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="flex items-center justify-between">
+        <div
+          :class="[
+            'relative flex flex-col',
+            'max-w-xl w-full max-h-[88dvh]',
+            'rounded-2xl border shadow-2xl overflow-hidden',
+            'bg-white dark:bg-neutral-900',
+            'border-neutral-200/80 dark:border-neutral-800',
+          ]"
+        >
+          <!-- Header (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between p-4 sm:p-5 border-b border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-white dark:bg-neutral-900']">
             <div class="flex items-center gap-2.5">
-              <div class="h-9 w-9 flex items-center justify-center rounded-xl bg-emerald-500/10 text-lg text-emerald-500 font-bold">
+              <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-lg text-emerald-500 font-bold">
                 🔍
               </div>
               <div>
-                <h3 class="text-sm font-bold">
+                <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
                   Review & Inspect Details
                 </h3>
                 <p class="text-[11px] text-neutral-400">
@@ -1270,192 +1305,195 @@ function formatTimestamp(ts: number) {
 
             <button
               type="button"
-              class="h-7 w-7 flex items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              class="h-7 w-7 flex shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
               @click="inspectModalOpen = false"
             >
               ✕
             </button>
           </div>
 
-          <!-- Section 1: Session & Deployment Summary Card -->
-          <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-4 space-y-2 dark:border-neutral-800 dark:bg-neutral-900/50">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <div class="i-solar:user-bold-duotone text-base text-primary-500" />
-                <span class="text-xs font-bold">{{ activeCard?.name || 'Active Character' }}</span>
-              </div>
-              <span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] text-emerald-500 font-bold uppercase">
-                {{ selectedMemoryMode === 'unlimited' ? 'Unlimited Memory' : 'Fixed 10-Turn Window' }}
-              </span>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 pt-1 text-[11px] text-neutral-400">
-              <div>
-                <span class="text-neutral-500 font-medium dark:text-neutral-400">Target Session: </span>
-                <span class="text-neutral-800 font-bold dark:text-neutral-200">{{ selectedSessionMeta.title }}</span>
-              </div>
-              <div>
-                <span class="text-neutral-500 font-medium dark:text-neutral-400">Discord Bot Tag: </span>
-                <span class="text-neutral-800 font-bold dark:text-neutral-200">{{ serviceStatus.botUser?.tag || 'Configured Bot' }}</span>
-              </div>
-              <div class="col-span-2 flex items-center gap-1">
-                <span class="text-neutral-500 font-medium dark:text-neutral-400">Target Discord Servers: </span>
-                <span v-if="serviceStatus.guilds && serviceStatus.guilds.length > 0" class="text-neutral-800 font-bold dark:text-neutral-200">
-                  {{ serviceStatus.guilds.map(g => g.name).join(', ') }} ({{ serviceStatus.guilds.length }} server{{ serviceStatus.guilds.length > 1 ? 's' : '' }})
-                </span>
-                <span v-else class="text-neutral-800 font-bold dark:text-neutral-200">
-                  Global (All Connected Servers & DMs)
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 1.5: Cloudflare Subdomain Status / Registration -->
-          <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-4 space-y-3 dark:border-neutral-800 dark:bg-neutral-900/50">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <div class="i-solar:globus-bold-duotone text-base text-primary-500" />
-                <span class="text-xs text-neutral-800 font-bold dark:text-neutral-200">Cloudflare Workers Domain</span>
-              </div>
-              <span v-if="existingSubdomain" class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] text-emerald-500 font-bold">
-                Registered: {{ existingSubdomain }}.workers.dev
-              </span>
-              <span v-else class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] text-amber-500 font-bold uppercase">
-                Action Required
-              </span>
-            </div>
-
-            <div v-if="existingSubdomain" class="text-[11px] text-neutral-400">
-              Active Cloudflare root subdomain: <code class="rounded bg-neutral-200 px-1 py-0.5 text-neutral-800 font-mono dark:bg-neutral-800 dark:text-neutral-200">{{ existingSubdomain }}.workers.dev</code>
-            </div>
-
-            <div v-else class="pt-1 space-y-2">
-              <div class="border border-amber-500/30 rounded-lg bg-amber-500/10 p-2.5 text-[11px] text-amber-700 leading-snug dark:text-amber-300">
-                ⚠️ <strong>Subdomain Setup Required:</strong> This Cloudflare account does not have a <code class="font-bold font-mono">workers.dev</code> root subdomain yet. Setting it registers your global deployment handle (affecting all Workers on your account).
-              </div>
-
-              <div class="flex flex-col gap-1.5">
-                <label class="text-[11px] text-neutral-600 font-bold dark:text-neutral-300">
-                  Workers Root Subdomain Handle
-                </label>
+          <!-- Body (scrollable, flex-1, min-h-0, overflow-y-auto) -->
+          <div :class="['min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5']">
+            <!-- Section 1: Session & Deployment Summary Card -->
+            <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-4 space-y-2 dark:border-neutral-800 dark:bg-neutral-900/50">
+              <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <div class="relative flex-1">
-                    <input
-                      v-model="targetSubdomainInput"
-                      type="text"
-                      placeholder="e.g. dasilva333"
-                      class="w-full border border-neutral-300 rounded-xl bg-white px-3 py-1.5 text-xs text-neutral-800 font-mono outline-none dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200"
+                  <div class="i-solar:user-bold-duotone text-base text-primary-500" />
+                  <span class="text-xs font-bold">{{ activeCard?.name || 'Active Character' }}</span>
+                </div>
+                <span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] text-emerald-500 font-bold uppercase">
+                  {{ selectedMemoryMode === 'unlimited' ? 'Unlimited Memory' : 'Fixed 10-Turn Window' }}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-1 text-[11px] text-neutral-400">
+                <div>
+                  <span class="text-neutral-500 font-medium dark:text-neutral-400">Target Session: </span>
+                  <span class="text-neutral-800 font-bold dark:text-neutral-200">{{ selectedSessionMeta.title }}</span>
+                </div>
+                <div>
+                  <span class="text-neutral-500 font-medium dark:text-neutral-400">Discord Bot Tag: </span>
+                  <span class="text-neutral-800 font-bold dark:text-neutral-200">{{ serviceStatus.botUser?.tag || 'Configured Bot' }}</span>
+                </div>
+                <div class="col-span-2 flex items-center gap-1">
+                  <span class="text-neutral-500 font-medium dark:text-neutral-400">Target Discord Servers: </span>
+                  <span v-if="serviceStatus.guilds && serviceStatus.guilds.length > 0" class="text-neutral-800 font-bold dark:text-neutral-200">
+                    {{ serviceStatus.guilds.map(g => g.name).join(', ') }} ({{ serviceStatus.guilds.length }} server{{ serviceStatus.guilds.length > 1 ? 's' : '' }})
+                  </span>
+                  <span v-else class="text-neutral-800 font-bold dark:text-neutral-200">
+                    Global (All Connected Servers & DMs)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 1.5: Cloudflare Subdomain Status / Registration -->
+            <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-4 space-y-3 dark:border-neutral-800 dark:bg-neutral-900/50">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div class="i-solar:globus-bold-duotone text-base text-primary-500" />
+                  <span class="text-xs text-neutral-800 font-bold dark:text-neutral-200">Cloudflare Workers Domain</span>
+                </div>
+                <span v-if="existingSubdomain" class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] text-emerald-500 font-bold">
+                  Registered: {{ existingSubdomain }}.workers.dev
+                </span>
+                <span v-else class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] text-amber-500 font-bold uppercase">
+                  Action Required
+                </span>
+              </div>
+
+              <div v-if="existingSubdomain" class="text-[11px] text-neutral-400">
+                Active Cloudflare root subdomain: <code class="rounded bg-neutral-200 px-1 py-0.5 text-neutral-800 font-mono dark:bg-neutral-800 dark:text-neutral-200">{{ existingSubdomain }}.workers.dev</code>
+              </div>
+
+              <div v-else class="pt-1 space-y-2">
+                <div class="border border-amber-500/30 rounded-lg bg-amber-500/10 p-2.5 text-[11px] text-amber-700 leading-snug dark:text-amber-300">
+                  ⚠️ <strong>Subdomain Setup Required:</strong> This Cloudflare account does not have a <code class="font-bold font-mono">workers.dev</code> root subdomain yet. Setting it registers your global deployment handle (affecting all Workers on your account).
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-[11px] text-neutral-600 font-bold dark:text-neutral-300">
+                    Workers Root Subdomain Handle
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <div class="relative flex-1">
+                      <input
+                        v-model="targetSubdomainInput"
+                        type="text"
+                        placeholder="e.g. dasilva333"
+                        class="w-full border border-neutral-300 rounded-xl bg-white px-3 py-1.5 text-xs text-neutral-800 font-mono outline-none dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200"
+                      >
+                    </div>
+                    <span class="text-xs text-neutral-400 font-semibold font-mono">.workers.dev</span>
+                    <Button
+                      label="Generate Random Slug"
+                      variant="secondary"
+                      class="text-xs"
+                      @click="generateRandomSubdomainSlug"
+                    />
+                  </div>
+                  <p class="text-[10px] text-neutral-400 italic">
+                    Derived from your User Profile ("{{ userProfileStore.name }}"). If this handle is taken on Cloudflare, click "Generate Random Slug" or type another custom handle.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 2: Consciousness (LLM Provider & Model Picker) -->
+            <div class="space-y-2">
+              <label class="flex items-center gap-2 text-xs text-neutral-700 font-bold dark:text-neutral-200">
+                <div class="i-solar:brain-bold-duotone text-base text-primary-500" />
+                <span>Consciousness (Edge LLM Provider & Model)</span>
+              </label>
+              <p class="text-[11px] text-neutral-400">
+                Select the LLM engine for 24/7 Cloud Relay inference. Credentials are automatically sourced from your AIRI Provider settings.
+              </p>
+              <div class="pt-1">
+                <BrainModelPicker
+                  v-model:provider="selectedConsciousnessProvider"
+                  v-model:model="selectedConsciousnessModel"
+                  variant="button"
+                  title="Select Consciousness LLM for Edge Worker"
+                  side="bottom"
+                  class="w-full"
+                />
+              </div>
+            </div>
+
+            <!-- Section 3: History Seeding & Context Depth -->
+            <div class="space-y-2">
+              <label class="flex items-center gap-2 text-xs text-neutral-700 font-bold dark:text-neutral-200">
+                <div class="i-solar:history-bold-duotone text-base text-primary-500" />
+                <span>Conversation History Seeding</span>
+              </label>
+              <p class="text-[11px] text-neutral-400">
+                Choose how much dialogue history to seed into Cloudflare KV for context continuity.
+              </p>
+
+              <div class="grid grid-cols-1 gap-2 pt-1">
+                <div
+                  v-for="option in availableHistoryDepths"
+                  :key="option.value"
+                  :class="[
+                    'flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all',
+                    selectedHistoryDepth === option.value
+                      ? 'bg-primary-50/30 border-primary-500 dark:bg-primary-900/10 dark:border-primary-400'
+                      : 'bg-neutral-50/50 border-neutral-200/80 dark:bg-neutral-900/40 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700',
+                  ]"
+                  @click="selectedHistoryDepth = option.value"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      :class="[
+                        'w-4 h-4 rounded-full border flex items-center justify-center transition-all',
+                        selectedHistoryDepth === option.value
+                          ? 'border-primary-500 bg-primary-500 text-white'
+                          : 'border-neutral-300 dark:border-neutral-700',
+                      ]"
                     >
+                      <div v-if="selectedHistoryDepth === option.value" class="h-1.5 w-1.5 rounded-full bg-white" />
+                    </div>
+                    <div>
+                      <div class="text-xs text-neutral-800 font-bold dark:text-neutral-200">
+                        {{ option.label }}
+                      </div>
+                      <div class="text-[10px] text-neutral-400">
+                        {{ option.desc }}
+                      </div>
+                    </div>
                   </div>
-                  <span class="text-xs text-neutral-400 font-semibold font-mono">.workers.dev</span>
-                  <Button
-                    label="Generate Random Slug"
-                    variant="secondary"
-                    class="text-xs"
-                    @click="generateRandomSubdomainSlug"
-                  />
                 </div>
-                <p class="text-[10px] text-neutral-400 italic">
-                  Derived from your User Profile ("{{ userProfileStore.name }}"). If this handle is taken on Cloudflare, click "Generate Random Slug" or type another custom handle.
-                </p>
               </div>
             </div>
-          </div>
 
-          <!-- Section 2: Consciousness (LLM Provider & Model Picker) -->
-          <div class="space-y-2">
-            <label class="flex items-center gap-2 text-xs text-neutral-700 font-bold dark:text-neutral-200">
-              <div class="i-solar:brain-bold-duotone text-base text-primary-500" />
-              <span>Consciousness (Edge LLM Provider & Model)</span>
-            </label>
-            <p class="text-[11px] text-neutral-400">
-              Select the LLM engine for 24/7 Cloud Relay inference. Credentials are automatically sourced from your AIRI Provider settings.
-            </p>
-            <div class="pt-1">
-              <BrainModelPicker
-                v-model:provider="selectedConsciousnessProvider"
-                v-model:model="selectedConsciousnessModel"
-                variant="button"
-                title="Select Consciousness LLM for Edge Worker"
-                side="bottom"
-                class="w-full"
-              />
-            </div>
-          </div>
-
-          <!-- Section 3: History Seeding & Context Depth -->
-          <div class="space-y-2">
-            <label class="flex items-center gap-2 text-xs text-neutral-700 font-bold dark:text-neutral-200">
-              <div class="i-solar:history-bold-duotone text-base text-primary-500" />
-              <span>Conversation History Seeding</span>
-            </label>
-            <p class="text-[11px] text-neutral-400">
-              Choose how much dialogue history to seed into Cloudflare KV for context continuity.
-            </p>
-
-            <div class="grid grid-cols-1 gap-2 pt-1">
-              <div
-                v-for="option in availableHistoryDepths"
-                :key="option.value"
-                :class="[
-                  'flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all',
-                  selectedHistoryDepth === option.value
-                    ? 'bg-primary-50/30 border-primary-500 dark:bg-primary-900/10 dark:border-primary-400'
-                    : 'bg-neutral-50/50 border-neutral-200/80 dark:bg-neutral-900/40 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700',
-                ]"
-                @click="selectedHistoryDepth = option.value"
+            <!-- Section 4: Collapsible System Prompt Inspector -->
+            <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-3 space-y-2 dark:border-neutral-800 dark:bg-neutral-900/50">
+              <button
+                type="button"
+                class="w-full flex items-center justify-between text-xs text-neutral-700 font-bold dark:text-neutral-200 hover:text-primary-500"
+                @click="showSystemPromptPreview = !showSystemPromptPreview"
               >
-                <div class="flex items-center gap-2.5">
-                  <div
-                    :class="[
-                      'w-4 h-4 rounded-full border flex items-center justify-center transition-all',
-                      selectedHistoryDepth === option.value
-                        ? 'border-primary-500 bg-primary-500 text-white'
-                        : 'border-neutral-300 dark:border-neutral-700',
-                    ]"
-                  >
-                    <div v-if="selectedHistoryDepth === option.value" class="h-1.5 w-1.5 rounded-full bg-white" />
-                  </div>
-                  <div>
-                    <div class="text-xs text-neutral-800 font-bold dark:text-neutral-200">
-                      {{ option.label }}
-                    </div>
-                    <div class="text-[10px] text-neutral-400">
-                      {{ option.desc }}
-                    </div>
-                  </div>
+                <div class="flex items-center gap-2">
+                  <div class="i-solar:document-text-bold-duotone text-base text-primary-500" />
+                  <span>Preview Assembled System Prompt</span>
                 </div>
+                <div class="flex items-center gap-1 text-[11px] text-neutral-400 font-normal">
+                  <span>{{ showSystemPromptPreview ? 'Hide' : 'Inspect Prompt' }}</span>
+                  <div class="i-solar:alt-arrow-down-bold text-xs transition-transform" :class="{ 'rotate-180': showSystemPromptPreview }" />
+                </div>
+              </button>
+
+              <div v-if="showSystemPromptPreview" class="mt-2 max-h-48 overflow-y-auto rounded-lg bg-neutral-900 p-3 text-[10px] text-neutral-300 font-mono scrollbar-none space-y-1">
+                <pre class="whitespace-pre-wrap break-all">{{ assembledSystemPrompt }}</pre>
               </div>
             </div>
           </div>
 
-          <!-- Section 3: Collapsible System Prompt Inspector -->
-          <div class="border border-neutral-200/80 rounded-xl bg-neutral-50/50 p-3 space-y-2 dark:border-neutral-800 dark:bg-neutral-900/50">
+          <!-- Footer (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between p-4 border-t border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm']">
             <button
               type="button"
-              class="w-full flex items-center justify-between text-xs text-neutral-700 font-bold dark:text-neutral-200 hover:text-primary-500"
-              @click="showSystemPromptPreview = !showSystemPromptPreview"
-            >
-              <div class="flex items-center gap-2">
-                <div class="i-solar:document-text-bold-duotone text-base text-primary-500" />
-                <span>Preview Assembled System Prompt</span>
-              </div>
-              <div class="flex items-center gap-1 text-[11px] text-neutral-400 font-normal">
-                <span>{{ showSystemPromptPreview ? 'Hide' : 'Inspect Prompt' }}</span>
-                <div class="i-solar:alt-arrow-down-bold text-xs transition-transform" :class="{ 'rotate-180': showSystemPromptPreview }" />
-              </div>
-            </button>
-
-            <div v-if="showSystemPromptPreview" class="mt-2 max-h-48 overflow-y-auto rounded-lg bg-neutral-900 p-3 text-[10px] text-neutral-300 font-mono scrollbar-none space-y-1">
-              <pre class="whitespace-pre-wrap break-all">{{ assembledSystemPrompt }}</pre>
-            </div>
-          </div>
-
-          <!-- Modal Action Buttons -->
-          <div class="flex items-center justify-between border-t border-neutral-200/60 pt-4 dark:border-neutral-800/60">
-            <button
-              type="button"
-              class="text-xs text-neutral-400 font-medium hover:text-neutral-200"
+              class="text-xs text-neutral-400 font-medium transition-colors hover:text-neutral-200"
               @click="inspectModalOpen = false; deployModalOpen = true"
             >
               ← Back to Session Picker
@@ -1481,16 +1519,30 @@ function formatTimestamp(ts: number) {
     <Teleport to="body">
       <div
         v-if="syncModalOpen"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        :class="[
+          'fixed inset-0 z-[9999]',
+          'flex items-center justify-center p-3 sm:p-4',
+          'bg-black/60 backdrop-blur-sm',
+          'overflow-y-auto',
+        ]"
       >
-        <div class="max-w-xl w-full border border-neutral-200/80 rounded-2xl bg-white p-6 shadow-2xl space-y-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="flex items-center justify-between">
+        <div
+          :class="[
+            'relative flex flex-col',
+            'max-w-xl w-full max-h-[88dvh]',
+            'rounded-2xl border shadow-2xl overflow-hidden',
+            'bg-white dark:bg-neutral-900',
+            'border-neutral-200/80 dark:border-neutral-800',
+          ]"
+        >
+          <!-- Header (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between p-4 sm:p-5 border-b border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-white dark:bg-neutral-900']">
             <div class="flex items-center gap-2.5">
-              <div class="h-9 w-9 flex items-center justify-center rounded-xl bg-emerald-500/10 text-lg text-emerald-500 font-bold">
+              <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-lg text-emerald-500 font-bold">
                 📥
               </div>
               <div>
-                <h3 class="text-sm font-bold">
+                <h3 class="text-sm text-neutral-900 font-bold dark:text-neutral-100">
                   Review & Reconcile Cloud Relay Memories
                 </h3>
                 <p class="text-[11px] text-neutral-400">
@@ -1501,15 +1553,15 @@ function formatTimestamp(ts: number) {
 
             <button
               type="button"
-              class="h-7 w-7 flex items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              class="h-7 w-7 flex shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
               @click="syncModalOpen = false"
             >
               ✕
             </button>
           </div>
 
-          <!-- Quick Filters Bar -->
-          <div class="flex items-center justify-between border-b border-neutral-200/60 pb-3 dark:border-neutral-800/60">
+          <!-- Quick Filters Bar (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between px-4 sm:px-6 py-3 border-b border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-neutral-50/50 dark:bg-neutral-900/50']">
             <span class="text-xs text-neutral-400 font-medium">
               Found {{ reconciliationCandidates.length }} new remote turn{{ reconciliationCandidates.length > 1 ? 's' : '' }}
             </span>
@@ -1517,14 +1569,14 @@ function formatTimestamp(ts: number) {
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                class="rounded-lg bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 font-bold dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                class="rounded-lg bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
                 @click="handleSelectAllCandidates(true)"
               >
                 Select All
               </button>
               <button
                 type="button"
-                class="rounded-lg bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 font-bold dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                class="rounded-lg bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
                 @click="handleSelectAllCandidates(false)"
               >
                 Deselect All
@@ -1532,8 +1584,8 @@ function formatTimestamp(ts: number) {
             </div>
           </div>
 
-          <!-- Scrollable Candidate List -->
-          <div class="max-h-64 overflow-y-auto pr-1 space-y-2">
+          <!-- Scrollable Candidate List (min-h-0 flex-1 overflow-y-auto) -->
+          <div :class="['min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-2']">
             <div
               v-for="candidate in reconciliationCandidates"
               :key="candidate.id"
@@ -1565,8 +1617,8 @@ function formatTimestamp(ts: number) {
             </div>
           </div>
 
-          <!-- Modal Action Buttons -->
-          <div class="flex items-center justify-between border-t border-neutral-200/60 pt-4 dark:border-neutral-800/60">
+          <!-- Footer (pinned, shrink-0) -->
+          <div :class="['flex items-center justify-between p-4 border-t border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm']">
             <Button label="Cancel" variant="secondary" @click="syncModalOpen = false" />
             <Button
               :label="`📥 Merge ${reconciliationCandidates.filter(c => c.selected).length} Selected`"

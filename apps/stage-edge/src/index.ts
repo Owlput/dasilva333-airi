@@ -8,13 +8,17 @@ import { EMBASSY_DO_ID_NAME } from './embassy/embassy-do'
 import { generateLlmReply } from './inference/llm'
 import { buildSystemInstruction } from './templates/character'
 
+export { DiscordHostDO } from './discord/discord-host-do'
 export { EmbassyDO } from './embassy/embassy-do'
+
+export const DISCORD_HOST_DO_NAME = 'default-discord-host'
 
 export interface Env {
   LLM_API_KEY: string
   LLM_MODEL?: string
   LLM_BASE_URL?: string
   DISCORD_PUBLIC_KEY: string
+  DISCORD_BOT_TOKEN?: string
   SYSTEM_PROMPT?: string
   CHARACTER_NAME?: string
   MEMORY?: KVNamespace
@@ -23,6 +27,8 @@ export interface Env {
   COMPANION_AVATAR_URL?: string
   OWNER_ID?: string
   EMBASSY?: DurableObjectNamespace
+  DISCORD_HOST?: DurableObjectNamespace
+  ALLOWED_CHANNEL_ID?: string
 }
 
 const MAX_INTRO_MESSAGE_LENGTH = 100
@@ -309,6 +315,20 @@ export default {
           }
         }
 
+        const channelId = interaction.channel_id || interaction.channel?.id
+        if (env.DISCORD_HOST && channelId) {
+          const hostStub = env.DISCORD_HOST.get(env.DISCORD_HOST.idFromName(DISCORD_HOST_DO_NAME))
+          const wakePromise = hostStub.fetch('http://internal/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ activeChannelId: channelId }),
+          }).catch((err: any) => console.warn('[Stage-Edge] Failed to wake DiscordHostDO:', err))
+
+          if (ctx?.waitUntil) {
+            ctx.waitUntil(wakePromise)
+          }
+        }
+
         if (ctx?.waitUntil) {
           ctx.waitUntil(doInferenceAndReply())
           return jsonResponse({ type: 5 })
@@ -318,6 +338,22 @@ export default {
           return jsonResponse({ type: 5 })
         }
       }
+    }
+
+    // Discord Gateway DO control & query routes
+    if (url.pathname.startsWith('/discord/gateway/') || url.pathname === '/discord/status' || url.pathname === '/discord/connect') {
+      if (!env.DISCORD_HOST) {
+        return jsonResponse({ error: 'DISCORD_HOST durable object not bound' }, { status: 501, headers: { 'Access-Control-Allow-Origin': '*' } })
+      }
+      const hostStub = env.DISCORD_HOST.get(env.DISCORD_HOST.idFromName(DISCORD_HOST_DO_NAME))
+      let targetPath = url.pathname
+      if (url.pathname.startsWith('/discord/gateway/')) {
+        targetPath = `/${url.pathname.slice('/discord/gateway/'.length)}`
+      }
+      else if (url.pathname.startsWith('/discord/')) {
+        targetPath = `/${url.pathname.slice('/discord/'.length)}`
+      }
+      return hostStub.fetch(new Request(`http://internal${targetPath}${url.search}`, request))
     }
 
     // Companion embassy: hibernated WebSocket attachment (single DO per user).

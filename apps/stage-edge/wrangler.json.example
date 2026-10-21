@@ -19,6 +19,10 @@
       {
         "name": "EMBASSY",
         "class_name": "EmbassyDO"
+      },
+      {
+        "name": "DISCORD_HOST",
+        "class_name": "DiscordHostDO"
       }
     ]
   },
@@ -26,7 +30,8 @@
     {
       "tag": "v1",
       "new_sqlite_classes": [
-        "EmbassyDO"
+        "EmbassyDO",
+        "DiscordHostDO"
       ]
     }
   ]
