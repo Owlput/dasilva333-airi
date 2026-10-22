@@ -68,6 +68,7 @@ export interface ChatAssistantMessage extends AssistantMessage {
   }
   grounding?: ChatGroundingMetadata
   error?: { message: string, detail: string }
+  cadenceBubbles?: string[]
 }
 
 export type ChatMessage = ChatAssistantMessage | SystemMessage | ToolMessage | UserMessage

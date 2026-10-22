@@ -16,6 +16,7 @@ import { useChatSessionStore } from '../../../stores/chat/session-store'
 import { useTextJournalStore } from '../../../stores/memory-text-journal'
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../../stores/modules/consciousness'
+import { useSystemOneStore } from '../../../stores/modules/system-one'
 import { hydrateLegacyActorSlices, hydrateStickerSlices, isValidActorId } from '../../../utils/chat-actor-slices'
 import { MarkdownRenderer } from '../../markdown'
 import { ChatActionMenu } from './components/action-menu'
@@ -43,6 +44,23 @@ const showJournalModal = ref(false)
 const chatSession = useChatSessionStore()
 const chatOrchestrator = useChatOrchestratorStore()
 const cardStore = useAiriCardStore()
+const systemOneStore = useSystemOneStore()
+
+const cadenceConfig = computed(() => cardStore.activeCard?.extensions?.airi?.acting?.cadence)
+const isCadenceActive = computed(() => {
+  return !!cadenceConfig.value?.multiBubbleEnabled && systemOneStore.configured
+})
+
+const isMaskedByCadence = computed(() => {
+  return isCadenceActive.value && chatOrchestrator.sending && isLatestAssistantMessage.value
+})
+
+const cadenceBubbles = computed(() => {
+  return props.message.cadenceBubbles || []
+})
+const hasCadenceBubbles = computed(() => {
+  return cadenceBubbles.value.length > 1
+})
 
 const formattedTime = computed(() => {
   if (!props.message.createdAt)
@@ -725,6 +743,28 @@ const hasActorSlices = computed(() => actorAwareSlices.value.some(s => s.type ==
 
             <div v-if="message.content === 'NO_REPLY' || message.rawContent === 'NO_REPLY'" class="py-1 text-sm text-neutral-500/70 italic dark:text-neutral-400/70">
               The character chose not to respond in this turn
+            </div>
+            <div v-else-if="isMaskedByCadence" class="flex items-center gap-2 py-1.5 text-neutral-400">
+              <span class="i-eos-icons:three-dots-loading text-base" />
+              <span class="text-xs italic">typing...</span>
+            </div>
+            <div
+              v-else-if="hasCadenceBubbles && !isEditing"
+              class="mt-1 flex flex-col gap-2"
+            >
+              <div
+                v-for="(bubble, bIdx) in cadenceBubbles"
+                :key="bIdx"
+                class="break-words border border-black/5 rounded-xl bg-black/3 px-3 py-2 shadow-sm transition-all dark:border-white/10 dark:bg-white/5"
+                :class="mood ? 'text-neutral-800 dark:text-neutral-200' : (cardDefaultColor && !hasActorSlices ? '' : 'text-primary-700 dark:primary-100')"
+                :style="!hasActorSlices && cardDefaultColor ? { color: cardDefaultColor } : undefined"
+              >
+                <MarkdownRenderer
+                  :content="bubble"
+                  :active-text="isLatestAssistantMessage ? activeSpokenText : undefined"
+                  :active-color="isLatestAssistantMessage ? activeSpokenColor : undefined"
+                />
+              </div>
             </div>
             <div
               v-else-if="resolvedSlices.length > 0 && !isEditing"

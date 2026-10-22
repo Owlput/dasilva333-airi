@@ -260,6 +260,16 @@ export const AiriPacingSchema = object({
 export type AiriThinkingFiller = InferOutput<typeof AiriThinkingFillerSchema>
 export type AiriPacing = InferOutput<typeof AiriPacingSchema>
 
+export const AiriCadenceSchema = object({
+  multiBubbleEnabled: optional(boolean()),
+  splitThreshold: optional(pipe(number(), minValue(0.1), maxValue(1.0))),
+  interBubblePauseMs: optional(pipe(number(), integer(), minValue(200), maxValue(5000))),
+  typingCadenceMsPerChar: optional(pipe(number(), integer(), minValue(10), maxValue(200))),
+  maxBubblesPerTurn: optional(pipe(number(), integer(), minValue(1), maxValue(10))),
+})
+
+export type AiriCadence = InferOutput<typeof AiriCadenceSchema>
+
 export const CharacterCueAllowlistSchema = object({
   version: literal(1),
   emotions: optional(record(string(), object({
@@ -349,6 +359,7 @@ const AiriExtensionSchema = looseObject({
     speechMannerismPrompt: string(),
     idleAnimations: optional(array(string())),
     pacing: optional(AiriPacingSchema),
+    cadence: optional(AiriCadenceSchema),
     cueAllowlist: optional(CharacterCueAllowlistSchema),
     autoCuesEnabled: optional(boolean()),
     autoCueExpressions: optional(boolean()),

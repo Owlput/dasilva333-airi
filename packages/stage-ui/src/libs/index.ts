@@ -1,4 +1,5 @@
 export * from './audio/manager'
+export * from './cadence'
 export * from './character/expression-noise-gate'
 export * from './color-from-element'
 export * from './native-ai'

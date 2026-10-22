@@ -288,6 +288,13 @@ const pacingMaxSynthesisBudgetMs = ref<number>(3200)
 const pacingProfile = ref<string>('balanced')
 const pacingExperimentalOrganicPivots = ref<boolean>(false)
 
+// Conversational Cadence (Multi-Bubble Burst)
+const cadenceMultiBubbleEnabled = ref<boolean>(false)
+const cadenceSplitThreshold = ref<number>(0.45)
+const cadenceInterBubblePauseMs = ref<number>(800)
+const cadenceTypingCadenceMsPerChar = ref<number>(45)
+const cadenceMaxBubblesPerTurn = ref<number>(4)
+
 // Placeholder state variables for Tools tab
 const selectedTextJournalInstruction = ref<string>('')
 const selectedSandboxInstruction = ref<string>('')
@@ -1184,6 +1191,14 @@ async function saveCard(card: Card): Promise<boolean> {
               enabled: f.enabled !== false,
             })),
           },
+          cadence: {
+            ...existingAiriExt?.acting?.cadence,
+            multiBubbleEnabled: cadenceMultiBubbleEnabled.value,
+            splitThreshold: cadenceSplitThreshold.value,
+            interBubblePauseMs: cadenceInterBubblePauseMs.value,
+            typingCadenceMsPerChar: cadenceTypingCadenceMsPerChar.value,
+            maxBubblesPerTurn: cadenceMaxBubblesPerTurn.value,
+          },
           stickerDirectivesPrompt: selectedActingStickerDirectivesPrompt.value,
           activeStickerIds: [...selectedActingActiveStickerIds.value],
           stickerWidgetsEnabled: selectedActingStickerWidgetsEnabled.value,
@@ -1431,6 +1446,11 @@ function initializeCard(): Card {
     pacingFillers.value = airiExt?.acting?.pacing?.fillers && airiExt.acting.pacing.fillers.length > 0
       ? JSON.parse(JSON.stringify(airiExt.acting.pacing.fillers))
       : JSON.parse(JSON.stringify(DEFAULT_PACING_FILLERS))
+    cadenceMultiBubbleEnabled.value = airiExt?.acting?.cadence?.multiBubbleEnabled ?? false
+    cadenceSplitThreshold.value = airiExt?.acting?.cadence?.splitThreshold ?? 0.45
+    cadenceInterBubblePauseMs.value = airiExt?.acting?.cadence?.interBubblePauseMs ?? 800
+    cadenceTypingCadenceMsPerChar.value = airiExt?.acting?.cadence?.typingCadenceMsPerChar ?? 45
+    cadenceMaxBubblesPerTurn.value = airiExt?.acting?.cadence?.maxBubblesPerTurn ?? 4
     // Context-aware idle animation initialization:
     // Check if the current stage model matches an actor with custom idleAnimations override.
     const visualAssets = airiExt?.visual_assets || {}
@@ -1978,6 +1998,11 @@ function handleGeneratorSave(newValue: string) {
         v-model:pacing-max-synthesis-budget-ms="pacingMaxSynthesisBudgetMs"
         v-model:pacing-profile="pacingProfile"
         v-model:pacing-experimental-organic-pivots="pacingExperimentalOrganicPivots"
+        v-model:cadence-multi-bubble-enabled="cadenceMultiBubbleEnabled"
+        v-model:cadence-split-threshold="cadenceSplitThreshold"
+        v-model:cadence-inter-bubble-pause-ms="cadenceInterBubblePauseMs"
+        v-model:cadence-typing-cadence-ms-per-char="cadenceTypingCadenceMsPerChar"
+        v-model:cadence-max-bubbles-per-turn="cadenceMaxBubblesPerTurn"
         v-model:selected-acting-sticker-directives-prompt="selectedActingStickerDirectivesPrompt"
         v-model:selected-acting-sticker-widgets-enabled="selectedActingStickerWidgetsEnabled"
         v-model:selected-acting-active-sticker-ids="selectedActingActiveStickerIds"

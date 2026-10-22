@@ -1,6 +1,6 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
 
-import type { AiriCognition, AiriPacing, CardCustomSticker, CharacterCueAllowlist } from '../../types/card.schema'
+import type { AiriCadence, AiriCognition, AiriPacing, CardCustomSticker, CharacterCueAllowlist } from '../../types/card.schema'
 import type { VoiceProfile } from '../providers'
 
 import { debug } from '@proj-airi/stage-shared'
@@ -109,6 +109,7 @@ export interface ActingConfig {
   speechMannerismPrompt: string
   idleAnimations?: string[]
   pacing?: AiriPacing
+  cadence?: AiriCadence
   cueAllowlist?: CharacterCueAllowlist
   autoCuesEnabled?: boolean
   autoCueExpressions?: boolean

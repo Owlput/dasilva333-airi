@@ -21,6 +21,7 @@ import { createLlmJsonInterceptor } from '../composables/llm-json-interceptor'
 import { useLlmmarkerParser } from '../composables/llm-marker-parser'
 import { parseSticker } from '../composables/queues'
 import { categorizeResponse, createStreamingCategorizer } from '../composables/response-categoriser'
+import { evaluateCadenceSplits } from '../libs/cadence'
 import { appendActorAwareTextSlice, captureActorToken, createActorSliceState } from '../utils/chat-actor-slices'
 import { useCompactionStore } from './chat/compaction'
 import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext } from './chat/context-providers'
@@ -71,6 +72,7 @@ import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
 import { useLiveSessionStore } from './modules/live-session'
 import { useNan0Store } from './modules/nan0'
+import { useSystemOneStore } from './modules/system-one'
 import { useVisionStore } from './modules/vision'
 import { useProactivityStore } from './proactivity'
 import { useProvidersStore } from './providers'
@@ -2105,6 +2107,31 @@ Format your output as a raw thought log.`
         }
         ;(buildingMessage as any).rawContent = rawFullText
         console.info('[Chat:rawContent]', rawFullText)
+
+        // Evaluate multi-bubble conversational cadence splits if enabled on the card
+        const cadenceConfig = activeCard.value?.extensions?.airi?.acting?.cadence
+        const systemOneStore = useSystemOneStore()
+        if (
+          cadenceConfig?.multiBubbleEnabled
+          && systemOneStore.configured
+          && typeof buildingMessage.content === 'string'
+          && buildingMessage.content.includes('\n')
+        ) {
+          try {
+            const splitRes = await evaluateCadenceSplits(buildingMessage.content, {
+              splitThreshold: cadenceConfig.splitThreshold ?? 0.45,
+              maxBubbles: cadenceConfig.maxBubblesPerTurn ?? 4,
+              systemOneExecute: (state, questions) => systemOneStore.execute(state, questions),
+            })
+            if (splitRes.bubbles.length > 1) {
+              buildingMessage.cadenceBubbles = splitRes.bubbles
+            }
+          }
+          catch (cadenceErr) {
+            console.warn('[Chat:Cadence] Failed to evaluate cadence splits:', cadenceErr)
+          }
+        }
+
         const currentMessages = chatSession.getSessionMessages(sessionId)
         chatSession.setSessionMessages(sessionId, [...currentMessages, toRaw(buildingMessage)])
 

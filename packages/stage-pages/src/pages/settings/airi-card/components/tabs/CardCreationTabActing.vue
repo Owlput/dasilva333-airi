@@ -3,12 +3,12 @@ import type { SpeechCapabilitiesInfo } from '@proj-airi/stage-ui/stores/provider
 import type { CharacterCueAllowlist } from '@proj-airi/stage-ui/types/card.schema'
 import type { ThinkingFillerPhrase } from '@proj-airi/stage-ui/types/pacing'
 
-import { DEFAULT_PACING_FILLERS, PACING_PROFILES } from '@proj-airi/stage-ui/types/pacing'
+import { DEFAULT_PACING_FILLERS } from '@proj-airi/stage-ui/types/pacing'
 import { computed, ref, watch } from 'vue'
 
+import ActingSubTabCadence from './acting/ActingSubTabCadence.vue'
 import ActingSubTabCues from './acting/ActingSubTabCues.vue'
 import ActingSubTabIdling from './acting/ActingSubTabIdling.vue'
-import ActingSubTabPacingPlayground from './acting/ActingSubTabPacingPlayground.vue'
 import ActingSubTabStickers from './acting/ActingSubTabStickers.vue'
 import ActingSubTabThinking from './acting/ActingSubTabThinking.vue'
 import ActingSubTabVoice from './acting/ActingSubTabVoice.vue'
@@ -132,13 +132,20 @@ const pacingMaxSynthesisBudgetMs = defineModel<number>('pacingMaxSynthesisBudget
 const pacingProfile = defineModel<string>('pacingProfile', { default: 'balanced' })
 const pacingExperimentalOrganicPivots = defineModel<boolean>('pacingExperimentalOrganicPivots', { default: false })
 
+// Conversational Cadence (Multi-Bubble Burst) Models
+const cadenceMultiBubbleEnabled = defineModel<boolean>('cadenceMultiBubbleEnabled', { default: false })
+const cadenceSplitThreshold = defineModel<number>('cadenceSplitThreshold', { default: 0.45 })
+const cadenceInterBubblePauseMs = defineModel<number>('cadenceInterBubblePauseMs', { default: 800 })
+const cadenceTypingCadenceMsPerChar = defineModel<number>('cadenceTypingCadenceMsPerChar', { default: 45 })
+const cadenceMaxBubblesPerTurn = defineModel<number>('cadenceMaxBubblesPerTurn', { default: 4 })
+
 // Sticker Directives & Desktop Slappers Models
 const selectedActingStickerDirectivesPrompt = defineModel<string>('selectedActingStickerDirectivesPrompt', { default: '' })
 const selectedActingStickerWidgetsEnabled = defineModel<boolean>('selectedActingStickerWidgetsEnabled', { default: false })
 const selectedActingActiveStickerIds = defineModel<string[]>('selectedActingActiveStickerIds', { default: () => [] })
 
-// Sub-Tab Navigation (6 Hubs with separate Idling segment)
-type ActingSubTabId = 'expressions' | 'idling' | 'speech' | 'pacing' | 'stickers' | 'playground'
+// Sub-Tab Navigation (6 Hubs with Cadence replacing standalone Lab)
+type ActingSubTabId = 'expressions' | 'idling' | 'speech' | 'pacing' | 'cadence' | 'stickers'
 const activeSubTab = ref<ActingSubTabId>('expressions')
 
 const subTabs = [
@@ -146,28 +153,9 @@ const subTabs = [
   { id: 'idling' as const, label: 'Idling', icon: 'i-solar:running-bold-duotone', desc: 'Continuous idle loops, cycle motions & avatar customizer' },
   { id: 'speech' as const, label: 'Voice', icon: 'i-solar:soundwave-bold-duotone', desc: 'Voice acting, audio tags, vocal mannerisms & caption FX' },
   { id: 'pacing' as const, label: 'Thinking', icon: 'i-solar:hourglass-bold-duotone', desc: 'Thinking fillers, live spoken asides & deliberation cadence' },
+  { id: 'cadence' as const, label: 'Cadence', icon: 'i-solar:chat-round-line-bold-duotone', desc: 'Single-turn multi-bubble delivery & Jev System-1 cadence' },
   { id: 'stickers' as const, label: 'Stickers', icon: 'i-solar:sticker-smile-circle-bold-duotone', desc: 'Chibi reaction stickers & desktop stage slappers' },
-  { id: 'playground' as const, label: 'Lab', icon: 'i-solar:test-tube-minimalistic-bold-duotone', desc: 'Interactive reasoning, latency & audio audition sandbox' },
 ]
-
-function applyPacingProfile(profileId: 'snappy' | 'balanced' | 'deep_cot') {
-  const profile = PACING_PROFILES[profileId]
-  if (!profile)
-    return
-  pacingProfile.value = profileId
-  const s = profile.settings
-  pacingArmMinMs.value = s.armMinMs
-  pacingArmMaxMs.value = s.armMaxMs
-  pacingMaxFillerDurationMs.value = s.maxFillerDurationMs
-  pacingIntervalMs.value = s.pacingIntervalMs
-  pacingMaxFillersPerTurn.value = s.maxFillersPerTurn
-  pacingMaxSynthesisBudgetMs.value = s.maxSynthesisBudgetMs
-  pacingMaxFillerSynthesisBudgetMs.value = s.maxFillerSynthesisBudgetMs
-  pacingDynamicAsidesEnabled.value = s.dynamicAsidesEnabled
-  pacingSemanticExtractorEnabled.value = s.semanticExtractorEnabled
-  pacingDynamicAfterMs.value = s.dynamicAfterMs
-  pacingCandidateTtlMs.value = s.candidateTtlMs
-}
 </script>
 
 <template>
@@ -268,11 +256,20 @@ function applyPacingProfile(profileId: 'snappy' | 'balanced' | 'deep_cot') {
         :selected-speech-provider-label="selectedSpeechProviderLabel"
         :acting-mannerism-options="actingMannerismOptions"
         :insert-speech-mannerism="insertSpeechMannerism"
-        @navigate-to-playground="activeSubTab = 'playground'"
         @sparkle-click="(fieldId) => emit('sparkle-click', fieldId)"
       />
 
-      <!-- 4. STICKERS SUB-TAB -->
+      <!-- 4. CADENCE SUB-TAB -->
+      <ActingSubTabCadence
+        v-else-if="activeSubTab === 'cadence'"
+        v-model:multi-bubble-enabled="cadenceMultiBubbleEnabled"
+        v-model:split-threshold="cadenceSplitThreshold"
+        v-model:inter-bubble-pause-ms="cadenceInterBubblePauseMs"
+        v-model:typing-cadence-ms-per-char="cadenceTypingCadenceMsPerChar"
+        v-model:max-bubbles-per-turn="cadenceMaxBubblesPerTurn"
+      />
+
+      <!-- 5. STICKERS SUB-TAB -->
       <ActingSubTabStickers
         v-else-if="activeSubTab === 'stickers'"
         v-model:sticker-directives-prompt="selectedActingStickerDirectivesPrompt"
@@ -280,17 +277,6 @@ function applyPacingProfile(profileId: 'snappy' | 'balanced' | 'deep_cot') {
         v-model:active-sticker-ids="selectedActingActiveStickerIds"
         :card-id="props.cardId"
         @sparkle-click="(fieldId) => emit('sparkle-click', fieldId)"
-      />
-
-      <!-- 5. LAB (PLAYGROUND) SUB-TAB -->
-      <ActingSubTabPacingPlayground
-        v-else-if="activeSubTab === 'playground'"
-        :pacing-enabled="pacingEnabled"
-        :selected-speech-provider="props.selectedSpeechProvider"
-        :selected-speech-model="props.selectedSpeechModel"
-        :selected-speech-voice-id="props.selectedSpeechVoiceId"
-        @navigate-to-pacing="activeSubTab = 'pacing'"
-        @apply-preset="applyPacingProfile"
       />
     </div>
   </div>
