@@ -864,7 +864,9 @@ async function downloadAndPickModel(model: any) {
       const downloadEndpoint = model.downloadUrl || `${catalogUrl}/api/v1/models/${encodeURIComponent(model.id)}/download`
       const toastId = toast.loading(`Downloading ${model.name || model.id}...`)
 
-      const res = await fetch(downloadEndpoint)
+      const res = await fetch(downloadEndpoint, {
+        cache: 'no-store',
+      })
       if (!res.ok) {
         throw new Error(`Catalog server returned HTTP ${res.status}: ${res.statusText}`)
       }
