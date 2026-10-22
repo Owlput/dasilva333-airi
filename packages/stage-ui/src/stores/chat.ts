@@ -2131,7 +2131,10 @@ Format your output as a raw thought log.`
             })
             if (splitRes.bubbles.length > 1) {
               buildingMessage.cadenceBubbles = splitRes.bubbles
-              ;(buildingMessage as any).cadencePausesMs = splitRes.pausesMs
+              buildingMessage.cadenceBubbleRanges = splitRes.bubbleRanges
+              buildingMessage.cadenceBeatsMs = splitRes.beatsMs
+              buildingMessage.cadenceTextDelaysMs = splitRes.textDelaysMs
+              buildingMessage.cadencePausesMs = splitRes.pausesMs
             }
           }
           catch (cadenceErr) {

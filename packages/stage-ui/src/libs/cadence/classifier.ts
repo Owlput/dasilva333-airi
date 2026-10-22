@@ -2,6 +2,11 @@ import type { System1Answer, System1Response } from '../providers/types'
 
 export type CadenceRhythmCategory = 'rapid_burst' | 'conversational_beat' | 'thoughtful_pause'
 
+export interface CadenceBubbleRange {
+  start: number
+  end: number
+}
+
 export interface CadenceBoundaryEvaluation {
   index: number
   before: string
@@ -11,13 +16,24 @@ export interface CadenceBoundaryEvaluation {
   rhythmCategory?: CadenceRhythmCategory
   rhythmProbabilities?: Record<CadenceRhythmCategory, number>
   expectedBeatMs?: number
+  /** Conversational pause only. Voiced delivery waits for audio, then this. */
+  beatMs?: number
   calculatedDelayMs?: number
+  /** Beat + full next-bubble typing estimate. Text-only delivery uses this. */
+  textDelayMs?: number
 }
 
 export interface CadenceSplitResult {
   bubbles: string[]
+  /** [start, end) offsets into the original input text, parallel to `bubbles`. */
+  bubbleRanges: CadenceBubbleRange[]
   evaluations: CadenceBoundaryEvaluation[]
+  /** Legacy alias: text-only delays (beat + full-bubble typing), kept for existing readers. */
   pausesMs: number[]
+  /** Conversational beats per split transition, parallel to `pausesMs`. Voiced path uses these. */
+  beatsMs: number[]
+  /** Text-only delays per split transition (beat + full next-bubble typing). */
+  textDelaysMs: number[]
   latencyMs?: number
 }
 
@@ -37,9 +53,46 @@ export interface CadenceEvaluateOptions {
   ) => Promise<System1Response | { answers?: Record<string, System1Answer> }>
 }
 
+interface LineRecord {
+  /** Trimmed display text for Jev questions. */
+  display: string
+  /** Start offset of line content in the original text (excludes newline). */
+  start: number
+  /** End offset of line content in the original text (excludes newline). */
+  end: number
+}
+
+function parseNonEmptyLines(rawText: string): { clean: string, records: LineRecord[] } {
+  const clean = rawText.trim()
+  const records: LineRecord[] = []
+  let pos = 0
+  const newline = /\r\n|\n|\r/g
+  let match: RegExpExecArray | null
+
+  const pushLine = (lineStart: number, lineEnd: number) => {
+    const text = rawText.slice(lineStart, lineEnd)
+    if (text.trim().length === 0)
+      return
+    records.push({ display: text.trim(), start: lineStart, end: lineEnd })
+  }
+
+  while ((match = newline.exec(rawText)) !== null) {
+    pushLine(pos, match.index)
+    pos = match.index + match[0].length
+  }
+  pushLine(pos, rawText.length)
+
+  return { clean, records }
+}
+
 /**
  * Extracts candidate lines and evaluates newline boundaries with Jev System-1
  * to produce intelligently split chat bubbles with semantic cadence delay pacing.
+ *
+ * Source-range rule: bubbles slice the original input text via recorded
+ * [start, end) offsets so repeated lines map by occurrence position, internal
+ * whitespace/CRLF is preserved verbatim, and speech segments can attach by
+ * source range instead of re-matching edited text.
  */
 export async function evaluateCadenceSplits(
   rawText: string,
@@ -56,33 +109,40 @@ export async function evaluateCadenceSplits(
   const minDelayMs = options.minDelayMs ?? 350
   const maxDelayCeilingMs = options.maxDelayCeilingMs ?? 3500
 
-  const clean = rawText.trim()
-  if (!clean) {
-    return { bubbles: [], evaluations: [], pausesMs: [] }
+  const emptyResult = (): CadenceSplitResult => ({
+    bubbles: [],
+    bubbleRanges: [],
+    evaluations: [],
+    pausesMs: [],
+    beatsMs: [],
+    textDelaysMs: [],
+  })
+
+  if (!rawText.trim()) {
+    return emptyResult()
   }
 
-  // Split on single or multiple newlines
-  const lines = clean
-    .split(/\r?\n+/)
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
+  const { clean, records } = parseNonEmptyLines(rawText)
 
   // If there's only 1 chunk or maxBubbles is 1, return the original text directly
-  if (lines.length <= 1 || maxBubbles <= 1) {
+  if (records.length <= 1 || maxBubbles <= 1) {
     return {
       bubbles: [clean],
+      bubbleRanges: records.length === 1 ? [{ start: records[0].start, end: records[0].end }] : [],
       evaluations: [],
       pausesMs: [],
+      beatsMs: [],
+      textDelaysMs: [],
     }
   }
 
   // Evaluate all line boundaries across the full text
-  const boundaryCount = lines.length - 1
+  const boundaryCount = records.length - 1
   const questions: Record<string, any> = {}
 
   for (let i = 0; i < boundaryCount; i++) {
-    const before = lines[i]
-    const after = lines[i + 1]
+    const before = records[i].display
+    const after = records[i + 1].display
 
     // Noul split probability question (Approach 3 bidirectional anchor)
     questions[`b_${i}`] = {
@@ -117,28 +177,36 @@ export async function evaluateCadenceSplits(
     console.error('[Cadence] System 1 boundary evaluation failed:', err)
     return {
       bubbles: [clean],
+      bubbleRanges: [],
       evaluations: [],
       pausesMs: [],
+      beatsMs: [],
+      textDelaysMs: [],
       latencyMs: Date.now() - startTime,
     }
   }
 
   const latencyMs = Date.now() - startTime
+
+  // Pass 1: resolve split decisions and per-boundary beats (no typing yet —
+  // typing needs the full assembled next bubble, known only after all splits).
+  const isSplitAt: boolean[] = []
+  const beatAt: (number | undefined)[] = []
   const evaluations: CadenceBoundaryEvaluation[] = []
-  const bubbles: string[] = []
-  const pausesMs: number[] = []
-  let currentBubble = lines[0]
+  let splitCount = 0
 
   for (let i = 0; i < boundaryCount; i++) {
-    const before = lines[i]
-    const after = lines[i + 1]
+    const before = records[i].display
+    const after = records[i + 1].display
     const score = response.answers?.[`b_${i}`]?.noul ?? 0.0
-    const isSplit = score >= threshold && bubbles.length + 1 < maxBubbles
+    const isSplit = score >= threshold && splitCount + 1 < maxBubbles
+    if (isSplit)
+      splitCount++
+    isSplitAt.push(isSplit)
 
     let rhythmCategory: CadenceRhythmCategory | undefined
     let rhythmProbabilities: Record<CadenceRhythmCategory, number> | undefined
-    let expectedBeatMs: number | undefined
-    let calculatedDelayMs: number | undefined
+    let beatMs: number | undefined
 
     if (dynamicPacing) {
       const choiceAnswer = response.answers?.[`c_${i}`]
@@ -147,25 +215,22 @@ export async function evaluateCadenceSplits(
 
       if (probs) {
         rhythmProbabilities = probs
-        expectedBeatMs = Math.round(
+        beatMs = Math.round(
           rapidBurstMs * (probs.rapid_burst ?? 0)
           + conversationalBeatMs * (probs.conversational_beat ?? 0)
           + thoughtfulPauseMs * (probs.thoughtful_pause ?? 0),
         )
       }
       else {
-        expectedBeatMs = rhythmCategory === 'rapid_burst'
+        beatMs = rhythmCategory === 'rapid_burst'
           ? rapidBurstMs
           : rhythmCategory === 'thoughtful_pause'
             ? thoughtfulPauseMs
             : conversationalBeatMs
       }
-
-      // Physical typing duration estimated from the character length of the upcoming line
-      const typingMs = Math.round(after.length * typingCadenceMsPerChar)
-      calculatedDelayMs = Math.max(minDelayMs, Math.min(maxDelayCeilingMs, expectedBeatMs + typingMs))
     }
 
+    beatAt.push(beatMs)
     evaluations.push({
       index: i,
       before,
@@ -174,34 +239,60 @@ export async function evaluateCadenceSplits(
       isSplit,
       rhythmCategory,
       rhythmProbabilities,
-      expectedBeatMs,
-      calculatedDelayMs,
+      expectedBeatMs: beatMs,
+      beatMs,
     })
-
-    if (isSplit) {
-      bubbles.push(currentBubble)
-      if (calculatedDelayMs !== undefined) {
-        pausesMs.push(calculatedDelayMs)
-      }
-      currentBubble = after
-    }
-    else {
-      currentBubble = `${currentBubble}\n\n${after}`
-    }
   }
 
-  // Append remaining lines if any exceeded boundaryCount
-  if (lines.length - 1 > boundaryCount) {
-    const remaining = lines.slice(boundaryCount + 1).join('\n\n')
-    currentBubble = `${currentBubble}\n\n${remaining}`
+  // Pass 2: assemble bubbles by slicing the original text (preserves
+  // whitespace/CRLF verbatim; repeated lines map by occurrence position).
+  const bubbles: string[] = []
+  const bubbleRanges: CadenceBubbleRange[] = []
+  let bubbleStartRecord = 0
+
+  const flushBubble = (endRecord: number) => {
+    const start = records[bubbleStartRecord].start
+    const end = records[endRecord].end
+    bubbles.push(rawText.slice(start, end))
+    bubbleRanges.push({ start, end })
   }
 
-  bubbles.push(currentBubble)
+  for (let i = 0; i < boundaryCount; i++) {
+    if (isSplitAt[i]) {
+      flushBubble(i)
+      bubbleStartRecord = i + 1
+    }
+  }
+  flushBubble(records.length - 1)
+
+  // Pass 3: text-only delays use the complete next bubble length.
+  const beatsMs: number[] = []
+  const textDelaysMs: number[] = []
+  const pausesMs: number[] = []
+  let bubbleIdx = 0
+
+  for (let i = 0; i < boundaryCount; i++) {
+    const beatMs = beatAt[i]
+    if (!isSplitAt[i] || beatMs === undefined)
+      continue
+    const nextBubble = bubbles[bubbleIdx + 1]
+    const typingMs = Math.round(nextBubble.length * typingCadenceMsPerChar)
+    const textDelayMs = Math.max(minDelayMs, Math.min(maxDelayCeilingMs, beatMs + typingMs))
+    evaluations[i].calculatedDelayMs = textDelayMs
+    evaluations[i].textDelayMs = textDelayMs
+    beatsMs.push(beatMs)
+    textDelaysMs.push(textDelayMs)
+    pausesMs.push(textDelayMs)
+    bubbleIdx++
+  }
 
   return {
     bubbles,
+    bubbleRanges,
     evaluations,
     pausesMs,
+    beatsMs,
+    textDelaysMs,
     latencyMs,
   }
 }

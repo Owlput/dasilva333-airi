@@ -1,12 +1,20 @@
 # Conversational Cadence & Multi-Bubble Delivery
 
+**Status:** Phase 3 decisions resolved; handoff updated October 22, 2026.
+
+**Approved direction:** Keep normal streaming and TTS preparation. Hold dialogue and answer playback behind typing dots until streaming and Jev classification finish. Associate existing speech segments with virtual bubbles, then deliver them together. Cadence takes precedence over experimental cross-segment batching.
+
 ## 1. Executive Summary
 
 In casual human instant messaging (Discord, Telegram, iMessage), people rarely send a single large block of text. Instead, they type in natural bursts—firing off an opener or acknowledgment, sending the main content or structured items, and following up with a sign-off or reaction.
 
 Historically, LLM architectures have enforced a monolithic paradigm: one user prompt produces one single streaming text response. Previous attempts to simulate multi-message replies required training models on custom reply tags (e.g., `<reply_to_...>`, `<break>`), which broke compatibility with general-purpose LLMs, complicated streaming, or introduced severe formatting drift in database chat histories.
 
-This specification establishes **Conversational Cadence**: an intelligent, post-stream boundary classification architecture powered by **TypeSafe Jev System-1**. The primary LLM streams normally via SSE without special syntax or behavioral compromises; CoT reasoning streams into the reasoning drawer in real-time, while dialogue text is masked behind an active typing indicator. Upon stream completion, Jev evaluates newline boundaries in parallel (~80ms), determining where a human texter would hit "Send." The UI renders these split chunks as distinct virtual bubbles under the character header with natural typing pauses, while preserving a pristine single-turn schema in local storage.
+This specification establishes **Conversational Cadence**: post-stream newline-boundary classification powered by **TypeSafe Jev System-1**. The primary LLM streams normally via SSE, reasoning remains visible live, and the existing TTS pipeline prepares answer audio as usual. Dialogue text and answer playback are held behind an iPhone-style bouncing typing indicator.
+
+After streaming ends, Jev selects conversational bubble boundaries. Existing speech segments are associated with those bubbles, and delivery starts with the audio already prepared or still being prepared. Voiced delivery follows actual playback completion plus semantic pauses; text-only delivery follows typing cadence. Storage remains one assistant turn.
+
+**No per-bubble synthesis redesign:** Jev groups presentation; it does not define new TTS requests. Do not introduce sequential on-demand synthesis or a rolling one-bubble-ahead preparation policy.
 
 ---
 
@@ -18,7 +26,7 @@ The database session history strictly stores standard single-turn records:
 {
   role: 'assistant',
   content: 'Hey dont forget to bring the grocery list tonight\n\nmake sure to bring\n-bananas\n-pears\n\nlove ya see you soon',
-  cadenceBubbles?: [
+  cadenceBubbles: [
     'Hey dont forget to bring the grocery list tonight',
     'make sure to bring\n-bananas\n-pears',
     'love ya see you soon'
@@ -26,13 +34,15 @@ The database session history strictly stores standard single-turn records:
 }
 ```
 - **Context Preservation:** When past turns are fed back to the LLM on subsequent turns, the prompt builder injects the single unmodified `content` (or `rawContent`). The model never sees fragmented virtual turns or invented delimiter tokens.
-- **Render Separation:** The UI checks `message.cadenceBubbles`. If present with length > 1, it renders multiple bubble containers with stagger pacing; otherwise, it renders the normal single bubble.
+- **Render Separation:** Saved bubble metadata defines grouping. Only a newly generated turn in active delivery is staggered. History, refresh, and reopened timelines render all saved bubbles immediately; no cadence replay is added.
+- **Exact Text:** Preserve source whitespace and Markdown when deriving bubbles. Keep source ranges or equivalent stable mappings; do not reconstruct original lines with different separators. Stored chat slices and speech segments are distinct structures.
 
 ### 2.2 Transport Invariance (Full SSE Streaming Preserved)
 - HTTP/SSE streaming remains active throughout the entire generation.
 - Abort controllers, idle stream timeouts, and connection monitoring operate identically to standard chat turns.
 - CoT reasoning tokens (`reasoning-delta`) stream directly into `ChatResponsePart` in real-time so the user can inspect thoughts as they generate.
-- The assistant speech content is masked behind a typing indicator (`three-dots-loading`) while `chatOrchestrator.sending` is true, preventing awkward half-rendered text from jumping into multiple bubbles mid-stream.
+- During generation and classification, dialogue stays behind bouncing typing dots and answer playback is held. Existing TTS preparation continues. Track delivery progress separately from generation; a global sending flag alone cannot represent this lifecycle.
+- Keep Stop available during generation, classification, audio readiness waits, playback, and silent inter-bubble gaps.
 
 ### 2.3 Strict System-1 Gate (No Heuristic Fallbacks)
 - Multi-bubble cadence requires an active System-1 provider (OpenCode Go, OpenRouter, TypeSafe AI, or local WebGPU/WASM Laya).
@@ -56,9 +66,13 @@ Persisted under `card.extensions.airi.acting.cadence`:
 ```typescript
 export const AiriCadenceSchema = object({
   multiBubbleEnabled: optional(boolean()),
-  splitThreshold: optional(pipe(number(), minValue(0.1), maxValue(1.0))), // Default: 0.45 (Sensitivity range: 0.35 - 0.75)
-  interBubblePauseMs: optional(pipe(number(), integer(), minValue(200), maxValue(5000))), // Default: 800ms
-  typingCadenceMsPerChar: optional(pipe(number(), integer(), minValue(10), maxValue(200))), // Default: 45ms
+  splitThreshold: optional(pipe(number(), minValue(0.1), maxValue(1.0))), // Default: 0.45
+  dynamicPacingEnabled: optional(boolean()), // Default: true
+  typingCadenceMsPerChar: optional(pipe(number(), integer(), minValue(10), maxValue(150))), // Default: 35ms
+  rapidBurstMs: optional(pipe(number(), integer(), minValue(150), maxValue(800))), // Default: 350ms
+  conversationalBeatMs: optional(pipe(number(), integer(), minValue(400), maxValue(2000))), // Default: 900ms
+  thoughtfulPauseMs: optional(pipe(number(), integer(), minValue(800), maxValue(4000))), // Default: 1800ms
+  maxDelayCeilingMs: optional(pipe(number(), integer(), minValue(1500), maxValue(8000))), // Default: 3500ms
   maxBubblesPerTurn: optional(pipe(number(), integer(), minValue(1), maxValue(10))), // Default: 4
 })
 ```
@@ -73,7 +87,9 @@ Located directly in `ActingSubTabCadence.vue`:
 
 ## 4. Empirical Jev Shootout & Prompt Engineering Research
 
-During development, extensive empirical shootout tests were conducted against `https://opencode.ai/zen/v1/systemone` using model `jev-1.13-free`. The following documented findings establish the canonical prompt design and failure modes.
+**Research provenance:** Measurements below are retained from the original development notes and were not rerun for this revision. They describe the reported probe, not production guarantees.
+
+During development, empirical shootout tests were conducted against `https://opencode.ai/zen/v1/systemone` using model `jev-1.13-free`. The following documented findings establish the canonical prompt design and failure modes.
 
 ### 4.1 The Test Corpus (The Grocery List Probe)
 ```text
@@ -132,7 +148,7 @@ love ya see you soon
   - `b_0` (`"Hey dont forget..." -> "make sure to bring"`): **`0.47`** (Split at threshold `0.45`)
   - `b_1..b_5` (`-bananas` through `-eggs`): **`0.12` – `0.27`** (Solidly Joined with an 18-point safety buffer)
   - `b_6` (`"-eggs" -> "love ya see you soon"`): **`0.78`** (Decisive Split)
-- **Outcome:** **100% precision.** Achieved the exact 3-bubble target at default threshold `0.45` with zero regexes or hardcoded list syntax. Exposes a user sensitivity slider from `0.35` to `0.75` (default: `0.45`). At `0.45`, it produces 3 bubbles; at `0.50`, it yields 2 bubbles (merging reminder + list, and splitting sign-off).
+- **Outcome on this probe:** Exact target grouping. Achieved the exact 3-bubble target at default threshold `0.45` with zero regexes or hardcoded list syntax. Exposes a user sensitivity slider from `0.35` to `0.75` (default: `0.45`). At `0.45`, it produces 3 bubbles; at `0.50`, it yields 2 bubbles (merging reminder + list, and splitting sign-off).
 
 ---
 
@@ -183,7 +199,7 @@ We conducted an empirical research shootout against `https://opencode.ai/zen/v1/
   - `c_0` (Opener $\rightarrow$ List): `rapid_burst` (61%), `conversational_beat` (38%), `thoughtful_pause` (1%)
   - `c_1..c_5` (Internal list items): **91% – 96% pure `rapid_burst`** (virtually 0% pause)
   - `c_6` (List $\rightarrow$ Sign-off): Decisively flipped to **`conversational_beat` (79%) + `thoughtful_pause` (20%)**, dropping `rapid_burst` to 1%.
-- **Verdict:** **Flawless categorical separation.** Softmax probability mass shifts cleanly across boundaries, aligning with human conversational intuition.
+- **Verdict on this probe:** Clear categorical separation. Softmax probability mass shifts cleanly across boundaries, aligning with human conversational intuition.
 
 ---
 
@@ -201,8 +217,8 @@ Per Jev Contract 8 (Batching Efficiency), related heads evaluate concurrently ac
 | **`b_5` / `c_5`** | `"-milk"` $\rightarrow$ `"-eggs"` | `0.14` | `0.16` | `rapid_burst` | 92% rapid / 7% beat / 1% pause |
 | **`b_6` / `c_6`** | `"-eggs"` $\rightarrow$ `"love ya see you soon"` | **`0.78`** *(Split)* | **`0.79`** *(Split)* | `conversational_beat` | 1% rapid / 79% beat / 20% pause |
 
-- **Zero Signal Bleed:** `b_0` (0.47) and `b_6` (0.79) held byte-identical values when bundled alongside 7 rich `choice` heads.
-- **Latency Invariance:** Total WAN HTTP roundtrip clocked at **372ms** (~120ms execution on Jev), requiring only a single network hop.
+- **Observed stability:** The first accepted boundary stayed at 0.47; the final boundary moved from 0.78 to 0.79. Both decisions stayed the same at threshold 0.45. This probe does not establish universally zero cross-talk.
+- **Reported latency:** Total WAN HTTP roundtrip clocked at **372ms** (~120ms execution on Jev), requiring only a single network hop.
 
 ---
 
@@ -222,7 +238,7 @@ Using default constants ($w_{\text{rapid}} = 350\text{ms}$, $w_{\text{beat}} = 9
   $$350(0.01) + 900(0.79) + 1800(0.20) = \mathbf{1075\text{ms}}$$
   *(A warm, distinct pause before signing off)*
 
-#### Step 2: Combine with Physical Typing Velocity and Enforce Ceiling
+#### Step 2: Text-Only Delivery — Combine with Physical Typing Velocity and Enforce Ceiling
 $$\text{delayMs}_i = \text{clamp}\Big(\text{beatPauseMs}_i + (\text{charCount}_{i+1} \times \text{msPerChar}), \text{minDelayMs}, \text{maxCeilingMs}\Big)$$
 
 - **`minDelayMs` (Default: 350ms):** Prevents instant, jarring pop-ins.
@@ -230,67 +246,35 @@ $$\text{delayMs}_i = \text{clamp}\Big(\text{beatPauseMs}_i + (\text{charCount}_{
 
 ---
 
+**Timing clarification:** Count the entire assembled next bubble, not just its first line. For voiced turns, do not add this typing estimate: wait for the current bubble's final audio piece, then apply only the semantic beat. Keep semantic beats and text-only delays as separate typed values; the current generic pausesMs must not be assumed to mean both.
+
 ### 5.5 Near-Term Goals & Implementation Initiatives
 
-1. **Actuator Integration in `classifier.ts`:**
-   Extend `evaluateCadenceSplits()` to bundle `b_i` (`noul`) and `c_i` (`choice`) in the same dispatch, returning `{ bubbles, evaluations, pausesMs }`.
-2. **Schema & Card Extension Expansion:**
-   Update `AiriCadenceSchema` to support rhythm parameters:
-   ```typescript
-   export const AiriCadenceSchema = object({
-     multiBubbleEnabled: optional(boolean()),
-     splitThreshold: optional(pipe(number(), minValue(0.1), maxValue(1.0))), // Default: 0.45
-     dynamicPacingEnabled: optional(boolean()), // Default: true
-     typingCadenceMsPerChar: optional(pipe(number(), integer(), minValue(10), maxValue(150))), // Default: 35ms
-     rapidBurstMs: optional(pipe(number(), integer(), minValue(150), maxValue(800))), // Default: 350ms
-     conversationalBeatMs: optional(pipe(number(), integer(), minValue(400), maxValue(2000))), // Default: 900ms
-     thoughtfulPauseMs: optional(pipe(number(), integer(), minValue(800), maxValue(4000))), // Default: 1800ms
-     maxDelayCeilingMs: optional(pipe(number(), integer(), minValue(1500), maxValue(8000))), // Default: 3500ms
-     maxBubblesPerTurn: optional(pipe(number(), integer(), minValue(1), maxValue(10))), // Default: 4
-   })
-   ```
+1. **Classifier and Delivery Metadata:**
+   The classifier already bundles split and rhythm questions. Expose semantic beats separately from text-only delays and preserve original text ranges. Compute text-only delays after assembling complete bubbles.
+2. **Card Schema:**
+   Use Section 3.2 as the single schema definition. Retain persisted settings compatibility; the earlier fixed-pause draft is superseded by dynamic rhythm settings.
 3. **Sandbox Telemetry UI (`ActingSubTabCadence.vue`):**
    Display the detected rhythm badge (`[RAPID BURST]`, `[CONVERSATIONAL BEAT]`, `[THOUGHTFUL PAUSE]`) and computed millisecond breakdown in the decision matrix.
-4. **Affective Modulation (Mood-Driven Tempo):**
+4. **Future Affective Modulation (Outside Phase 3):**
    Scale $w_{\text{rapid}}$ and `msPerChar` dynamically based on character mood (e.g. energized avatars type at 20ms/char with shorter beats; reflective avatars type at 55ms/char with longer pauses).
 
 ---
 
 ## 6. End-to-End Runtime Pipeline
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant ChatStore as chat.ts (Orchestrator)
-    participant LLM as LLM Streaming Gateway
-    participant Jev as TypeSafe Jev Coprocessor
-    participant AssistantItem as assistant-item.vue
+1. Snapshot turn identity, cadence settings, System-1 availability, and speech mode.
+2. Stream the LLM normally. Show reasoning live. Feed answer text into existing speech segmentation and synthesis.
+3. Hold dialogue display and answer playback behind bouncing typing dots. The playback hold must allow upstream synthesis to continue.
+4. At stream completion, flush trailing speech input and call Jev on the complete dialogue text.
+5. Recheck cancellation/generation identity after classification. Associate bubbles with speech segments using preserved `[start, end)` text ranges.
+6. Persist one assistant message with original content/raw content plus typed cadence metadata (`cadenceBubbles`, `cadenceBubbleRanges`, `cadenceBeatsMs`, `cadenceTextDelaysMs`, legacy `cadencePausesMs`) before starting delivery.
+7. Release the first bubble and its assigned audio when ready. For each following bubble:
+   - **Voiced:** wait for the current bubble's final audio piece, then its semantic beat.
+   - **Text-only:** use the complete next bubble's typing estimate plus semantic beat, subject to the configured ceiling.
+8. Finish live delivery. Subsequent historical rendering displays every bubble immediately.
 
-    User->>ChatStore: Send User Message
-    ChatStore->>LLM: Stream Turn Request (SSE)
-
-    loop Real-Time Streaming
-        LLM-->>ChatStore: reasoning-delta (CoT tokens)
-        ChatStore->>AssistantItem: Update CoT Drawer (Visible Live)
-        LLM-->>ChatStore: content-delta (Speech tokens)
-        Note over AssistantItem: isMaskedByCadence = true<br/>Dialogue hidden behind typing loader
-    end
-
-    LLM-->>ChatStore: Stream Finished (onEnd)
-
-    alt Cadence Enabled & System-1 Configured
-        ChatStore->>Jev: evaluateCadenceSplits(rawText, { splitThreshold: 0.45, dynamicPacing: true })
-        Note over Jev: Single parallel forward pass (~120ms)<br/>Evaluates splits (noul) + rhythm (choice)
-        Jev-->>ChatStore: { bubbles: [b0, b1, b2], pausesMs: [574, 1075] }
-        ChatStore->>ChatStore: buildingMessage.cadenceBubbles = bubbles
-        ChatStore->>ChatStore: buildingMessage.cadencePausesMs = pausesMs
-    end
-
-    ChatStore->>ChatStore: Persist to IndexedDB (single unmodified message content)
-    ChatStore->>AssistantItem: sending = false (Unhide)
-    AssistantItem->>AssistantItem: Render virtual bubble stack with staggered pauses [574ms, 1075ms]
-```
+Generation, classification, and delivery are distinct phases. Persisted history does not itself trigger audio or timers. If classification fails, retain the original single message and release held normal speech without a second synthesis pass or heuristic splitting.
 
 ---
 
@@ -298,83 +282,151 @@ sequenceDiagram
 
 | Responsibility | Authoritative Source File |
 | :--- | :--- |
-| **Cadence Classifier Core** | [`packages/stage-ui/src/libs/cadence/classifier.ts`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/libs/cadence/classifier.ts) |
-| **Classifier Unit Test Suite** | [`packages/stage-ui/src/libs/cadence/classifier.test.ts`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/libs/cadence/classifier.test.ts) |
-| **Chat Orchestration Hook** | [`packages/stage-ui/src/stores/chat.ts`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/stores/chat.ts#L2108-L2130) |
-| **Masked Bubble Renderer** | [`packages/stage-ui/src/components/scenarios/chat/assistant-item.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/chat/assistant-item.vue#L740-L770) |
-| **Cadence Settings & Sandbox UI** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabCadence.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabCadence.vue) |
-| **Thinking Tab In-Place Lab** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabThinking.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabThinking.vue#L390-L425) |
-| **Acting Sub-Tab Controller** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/CardCreationTabActing.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/tabs/CardCreationTabActing.vue) |
-| **Card Schema Definition** | [`packages/stage-ui/src/types/card.schema.ts`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/types/card.schema.ts#L263-L271) |
-| **Card Editor Persistence** | [`packages/stage-pages/src/pages/settings/airi-card/components/CardEditorForm.vue`](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/CardEditorForm.vue) |
+| **Cadence Classifier Core** | [`packages/stage-ui/src/libs/cadence/classifier.ts`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-ui/src/libs/cadence/classifier.ts) |
+| **Classifier Unit Test Suite** | [`packages/stage-ui/src/libs/cadence/classifier.test.ts`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-ui/src/libs/cadence/classifier.test.ts) |
+| **Chat Orchestration Hook** | [`packages/stage-ui/src/stores/chat.ts`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-ui/src/stores/chat.ts#L2108-L2130) |
+| **Masked Bubble Renderer** | [`packages/stage-ui/src/components/scenarios/chat/assistant-item.vue`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-ui/src/components/scenarios/chat/assistant-item.vue#L740-L770) |
+| **Cadence Settings & Sandbox UI** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabCadence.vue`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabCadence.vue) |
+| **Thinking Tab In-Place Lab** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabThinking.vue`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-pages/src/pages/settings/airi-card/components/tabs/acting/ActingSubTabThinking.vue#L390-L425) |
+| **Acting Sub-Tab Controller** | [`packages/stage-pages/src/pages/settings/airi-card/components/tabs/CardCreationTabActing.vue`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-pages/src/pages/settings/airi-card/components/tabs/CardCreationTabActing.vue) |
+| **Card Schema Definition** | [`packages/stage-ui/src/types/card.schema.ts`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-ui/src/types/card.schema.ts#L263-L271) |
+| **Card Editor Persistence** | [`packages/stage-pages/src/pages/settings/airi-card/components/CardEditorForm.vue`](https://github.com/dasilva333/airi/blob/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9/packages/stage-pages/src/pages/settings/airi-card/components/CardEditorForm.vue) |
 
 ---
 
-## 8. Phase 3 Runtime Integration: TTS Override Architecture & Open Questions
+## 8. Phase 3 Runtime Integration — Resolved Decisions
 
-### 8.1 The Core Invariant: Cadence as Master Conductor Overriding Eager Streaming TTS
+### 8.1 Decision 1: Preserve Normal Voice Preparation; Gate Playback
 
-In standard AIRI dialogue, tokens stream immediately into `intent.writeLiteral(literal)`, causing the speech pipeline to synthesize and speak sentences in real time. However, when `multiBubbleEnabled` is active, the assistant chat UI intentionally masks the spoken text behind a typing indicator (`three-dots-loading`).
+**Original question:** Prepare voice ahead of delivery, or synthesize each bubble only when needed?
 
-If streaming TTS remains eager, the avatar will audibly blurt out the entire response while the user is still looking at a loading spinner, causing complete cognitive dissonance. Therefore:
-> **Core Architectural Rule:** Conversational Cadence acts as the master conductor. When enabled, it strictly **overrides eager streaming speech synthesis**. Speech generation and playback are bound directly to the staggered virtual bubble lifecycle.
+**Resolved:** Continue normal streaming TTS preparation before Jev has selected bubbles. Cadence delays answer playback and dialogue display, not synthesis. By the end of classification, some or all audio may be ready; readiness is not guaranteed.
 
----
+- Keep existing provider configuration, concurrency controls, segmentation, and cancellation.
+- Do not synthesize one request per Jev bubble or add a rolling one-bubble-ahead preparation policy.
+- Start delivery when the first bubble's audio is ready; do not require the entire turn's audio to finish generating.
+- Hold placement (waiter, not kitchen): keep `onTokenLiteral` → `intent.writeLiteral`, `onTokenSpecial` → `intent.writeSpecial`, `onStreamEnd` → `intent.writeFlush`, and `onAssistantResponseEnd` → `intent.end()` flowing normally so segmentation and TTS synthesis continue upstream. Apply the cadence hold downstream at playback scheduling/consumption (`ControlStripHost playFunction` / `playbackManager.schedule` gate, plus caption and ACT/ACTOR/effect release). Do not block the producer loop in `speech-pipeline.ts` awaiting playback completion.
+- Bounded readiness timeout: if the first bubble's audio never becomes ready (synthesis failure, provider hang), stop waiting and continue with text. Delivery constant `firstBubbleReadyTimeoutMs: 8000` (not part of `AiriCadenceSchema §3.2`); on expiry release text delivery and release held normal speech once without a second synthesis pass. The same fallback applies when classification fails. Stop remains available during the wait, and expiry must not start duplicate audio or restart synthesis.
+- Release prepared segments in their existing order, associated with the bubbles.
+- On classifier failure or a one-bubble result, release the held answer through normal speech without generating it again.
+- Normal answer-end and fallback recovery must recognize cadence ownership so they do not produce duplicate full-response speech.
 
-### 8.2 The Dual-Clock Problem: Audio-Driven vs Velocity-Driven Timing
+### 8.2 Speech Segments Fit Under Virtual Bubbles
 
-When scheduling the delay before Bubble $i+1$ appears, the system must choose which clock governs the transition:
+**Confirmed source behavior:** The default TTS chunker treats newline, carriage return, and tab as hard split characters alongside sentence punctuation. CRLF is normalized to LF. Jev considers newline boundaries only.
 
-```mermaid
-flowchart TD
-    A["Stream Finishes & Jev Resolves Bubbles"] --> B{"Is TTS Active & Voiced?"}
+For matching dialogue text on the unbatched speech path, a bubble can contain several speech segments; those segments do not need to cross a selected newline boundary.
 
-    B -- Yes --> C["Mode A: Audio-Clock Driven"]
-    C --> C1["Reveal Bubble i"]
-    C1 --> C2["Avatar Speaks Bubble i Audio Track"]
-    C2 --> C3["Audio Track Finishes Playing"]
-    C3 --> C4["Wait Jev Semantic Beat Duration (beatPauseMs)"]
-    C4 --> C5["Reveal Bubble i+1"]
+| Virtual bubble | Existing speech segments assigned to it |
+| --- | --- |
+| Hey! Remember groceries tonight. | Hey! / Remember groceries tonight. |
+| Bring: followed by banana and pear list lines | Lead-in / banana line / pear line |
+| Love ya! | Love ya! |
 
-    B -- No / Muted --> D["Mode B: Velocity-Clock Driven"]
-    D --> D1["Reveal Bubble i"]
-    D1 --> D2["Compute Hybrid Pacing Delay: clamp(beatPauseMs + charCount * msPerChar)"]
-    D2 --> D3["Hold Typing Dots for Computed Duration"]
-    D3 --> D4["Reveal Bubble i+1"]
-```
+**Terminology:** Stored chat slices can span lines and carry actor, tool, and sticker metadata. They are not TTS segments. Preserve display metadata when rendering bubble ranges; use speech segment identity for playback tracking.
 
-* **Mode A (Voiced Turns):** Audio playback duration physically governs pacing. A bubble cannot be considered "finished" until the avatar concludes speaking it. Bubble $i+1$ pops in only after Bubble $i$'s audio finishes **plus** the Jev semantic beat delay ($574\text{ms}$ or $1075\text{ms}$).
-* **Mode B (Text-Only / Muted Turns):** Governed by the Hybrid Velocity Curve ($\text{charCount} \times \text{msPerChar} + \text{beatMs}$), keeping pauses natural even without audio.
+**Required mapping:** Retain stable source positions or equivalent line/segment associations through transformations. Trimming, narrative stripping, punctuation-only chunks, repeated lines, actor tokens, and silent content must not attach segments to the wrong bubble. One speech segment can produce multiple audio pieces; a bubble finishes only after all its pieces finish. Synthesis completion, scheduling, intent end, and the first audio piece's end are not equivalent to bubble playback completion.
 
----
+**Source-range rule (page numbers, not rediscovery):** the classifier must record each bubble as a `[start, end)` range in the original dialogue text and preserve source whitespace/CRLF in bubble text (slice, do not rebuild with `'\n\n'`). Speech segments are attached by the range they were segmented from, never by re-matching edited bubble text. Identical repeated lines therefore map by occurrence position; punctuation-only, stripped-narrative, actor-token, and silent chunks carry their source position even when they produce no audio. A bubble containing several prepared segments plays all of them; segments never cross a selected newline boundary on the unbatched path.
 
-### 8.3 Open Architectural Questions for Consultation
+### 8.3 Cadence Takes Precedence Over Experimental Batching
 
-The following questions require alignment before beginning the Phase 3 implementation sprint:
+The optional lead coordinator can merge multiple speech segments before synthesis. It is experimental and is not enabled in the reviewed ControlStripHost configuration.
 
-#### Question 1: Audio Pre-Warming vs Sequential Synthesis
-* **Option 1A (Pre-Warming - Recommended):** As soon as Jev returns virtual bubbles on `onEnd`, fire TTS synthesis requests for all bubbles in parallel in the background. Hold playback until each bubble's visual turn arrives.
-  * *Advantage:* Zero latency between bubbles; speech begins immediately when the bubble pops into view.
-  * *Trade-off:* If the user clicks "Stop" during Bubble 1, pre-warmed audio for Bubble 2 and 3 consumed synthesis resources.
-* **Option 1B (Sequential On-Demand Synthesis):** Synthesize Bubble $i+1$ only when Bubble $i$ finishes speaking.
-  * *Advantage:* Saves synthesis resources on interrupted turns.
-  * *Trade-off:* Cloud TTS synthesis latency (300–800ms) could create awkward silent gaps between bubbles.
+**Approved precedence:** When cadence is effectively active for a turn, bypass experimental cross-segment synthesis batching that could erase newline boundaries, even if its setting is enabled. Cadence and that batching mode are mutually exclusive for the turn.
 
-#### Question 2: Architectural Interception Layer
-* **Option 2A (Chat Store Event Dispatch):** `chat.ts` emits a typed event `onCadenceBubblesResolved({ bubbles, pausesMs })`. The speech runtime and the UI subscribe independently.
-  * *Advantage:* Decoupled architecture. Neither `chat.ts` nor `assistant-item.vue` depends directly on low-level speech handles.
-* **Option 2B (Speech Host Guard in `ControlStripHost.vue`):** `ControlStripHost.vue` checks `activeCard?.cadence?.multiBubbleEnabled` and gates `onTokenLiteral`, delegating delivery to an internal `playCadenceAudioQueue()`.
-  * *Advantage:* Keeps speech routing centralized inside the existing `ControlStripHost` speech pipeline.
+- Apply the override before any answer segment is synthesized.
+- Preserve the saved experimental preference; bypass it for the cadence turn rather than rewriting settings.
+- Outside cadence, retain configured behavior.
+- Several prepared segments may belong to one bubble. Audio pieces belonging to the same segment may also be joined. Neither permits merging speech across a bubble boundary.
 
-#### Question 3: Interruption & Stop Contract (Contract 4)
-* When the user clicks **"Stop"** or submits a new turn while Bubble 1 is playing:
-  1. Does the visual stack freeze at Bubble 1, or reveal all remaining text statically without audio?
-  2. The speech pipeline must drop all pending audio buffers immediately without draining them.
+This is a narrow compatibility rule, not a replacement speech engine.
 
-#### Question 4: Chat History Voice Replay
-* When a user clicks the "Play Audio" / speaker icon on an old message in chat history:
-  * Does it play the full message as a single continuous audio stream?
-  * Or does it replay the staggered multi-bubble cadence with inter-bubble pauses?
+### 8.4 Decision 2: Extend Existing Coordination
+
+**Original question:** Should the chat store emit an event, or should ControlStripHost run the sequence?
+
+**Resolved direction:** Reuse and extend existing reasoning/conversation pacing coordination and the speech host where practical. Do not create competing UI and audio clocks.
+
+The precise internal placement remains an implementation choice after tracing the current pacing coordinator. The user has not mandated a new coordinator class or a specific event API.
+
+- Chat orchestration owns completed text, Jev evaluation, single-turn persistence, and cancellation identity.
+- Existing pacing/speech infrastructure owns playback readiness, bubble progress, and inter-bubble waits.
+- The UI observes shared delivery progress instead of running an independent timer sequence.
+- Preserve normal literal-token input to synthesis. Hold answer playback and sequence ACT/ACTOR/effects with their associated speech.
+- Reasoning remains live. Preserve existing thinking/filler behavior and its handoff; prevent answer audio from escaping through fallback recovery.
+- Extend existing cross-window contracts: one owner drives delivery and secondary surfaces mirror it.
+- Capture session/message/generation identity and settings per turn instead of rereading a changing active card.
+- Cancel live presentation on session departure; reopening history shows all saved bubbles without restarting delivery.
+
+### 8.5 The Two Delivery Clocks
+
+**Voiced turns:** Reveal Bubble i and play its prepared segments. After its final audio piece ends, wait only `beatMs` before revealing/playing Bubble i+1. If upcoming audio is still preparing, keep a typing/readiness indicator until ready (subject to the §8.1 readiness timeout). Do not add simulated typing time to spoken duration.
+
+**Text-only or muted turns:** Reveal the first bubble after classification. Use `textDelayMs = clamp(beatMs + fullNextBubbleChars * msPerChar)` to time each reveal, where `fullNextBubbleChars` is the complete next bubble length (not just its first line). Do not wait for audio events in text-only mode.
+
+**Timing contract:** `beatMs` (conversational pause from Jev rhythm softmax) and `textDelayMs` (beat + full-bubble typing estimate) are separate typed values. `pausesMs` is retained only as the legacy text-only `textDelayMs` alias; voiced delivery must never consume the combined value. Classifier evaluations expose both `expectedBeatMs`/`beatMs` and `calculatedDelayMs`/`textDelayMs`, and split results expose parallel `beatsMs` and `textDelaysMs` arrays.
+
+### 8.6 Decision 3: Stop Preserves What Exists
+
+**Original question:** If interrupted during Bubble 1, freeze the visual stack or reveal the rest?
+
+| Stop timing | Resolved behavior |
+| --- | --- |
+| During LLM generation | Abort streaming, persist the received partial reply, and display it. Preserve current behavior. |
+| During classification | Cancel/invalidate the pending result and retain/display the received reply. A late result must not append another message or restart speech. |
+| After generation, during delivery | Stop audio and reveal remaining generated bubbles immediately. The complete response is saved and would appear after refresh. |
+| New user submission | Cancel old delivery immediately, reveal its generated remainder, and proceed with the new turn. |
+
+Cancellation drops pending audio, synthesis work where abort is supported, timers, captions, and queued effects instead of draining them. Ignore late callbacks for cancelled turns. Keep Stop available during silent gaps as well as audible playback.
+
+Extend the existing generation-stopped cancellation contract. Following completion hooks must not recreate an intent or trigger full-response fallback speech. Recheck generation/cancellation after asynchronous classification and before persistence or delivery.
+
+### 8.7 Decision 4: Ordinary Static History; No Replay Feature
+
+**Original question:** Should a historical speaker action replay cadence or read continuously?
+
+**Resolved:** This question assumed an audio replay feature that does not exist. Phase 3 adds no audio replay or cadence reenactment.
+
+Every saved bubble is visible immediately on refresh, reopening a timeline, or loading history. Do not hide historical text, replay typing dots, rerun Jev, or start audio automatically. Bubble grouping persists; live delivery timing is transient.
+
+### 8.8 Current Code Baseline and Implementation Checks
+
+Reviewed GitHub main at [97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9](https://github.com/dasilva333/airi/commit/97972c6abf1d5a4e288290efdda8fcbc0c4aa7d9), October 22, 2026. Implementation status: classifier source-range slicing plus typed `bubbleRanges`/`beatsMs`/`textDelaysMs` (`pausesMs` legacy alias) is implemented and covered by 9 classifier tests; chat persistence stores the typed fields. Playback hold, readiness timeout, and post-classification cancellation checks remain pending delivery work (see below).
+
+- classifier.ts bundles split and rhythm queries, slices bubbles from original offsets (bubbleRanges), and computes text-only delays from complete bubbles while exposing separate beatsMs/textDelaysMs (pausesMs retained as legacy text-delay alias).
+- chat.ts persists typed cadence metadata (`cadenceBubbles`, `cadenceBubbleRanges`, `cadenceBeatsMs`, `cadenceTextDelaysMs`, legacy `cadencePausesMs`); still pending: recheck generation/cancellation identity after classification and before persistence/delivery.
+- assistant-item.vue currently renders all saved bubbles together. Live delivery needs shared progress separate from static history.
+- ControlStripHost.vue eagerly forwards answer speech into playback. Preserve synthesis forwarding while adding the playback hold and duplicate-fallback protection.
+- tts-chunker.ts recognizes newlines. lead-coordinator.ts can merge segments if explicitly enabled; cadence must override it.
+- Advance from actual final playback-piece completion rather than generic intent-end events.
+
+Additional source map (repository-relative):
+
+| Responsibility | Source |
+| --- | --- |
+| Speech segmentation | packages/pipelines-audio/src/processors/tts-chunker.ts |
+| Experimental batching | packages/pipelines-audio/src/processors/lead-coordinator.ts |
+| Synthesis and scheduling | packages/pipelines-audio/src/speech-pipeline.ts |
+| Speech host and hooks | packages/stage-ui/src/components/scenes/ControlStripHost.vue |
+| Speech runtime | packages/stage-ui/src/services/speech/pipeline-runtime.ts |
+| Event definitions | packages/stage-ui/src/types/chat.ts and packages/stage-ui/src/stores/chat/hooks.ts |
+| Secondary-window mirroring | packages/stage-ui/src/stores/mods/api/context-bridge.ts |
+| Actor-aware display slices | packages/stage-ui/src/utils/chat-actor-slices.ts |
+
+### 8.9 Acceptance Criteria
+
+1. With cadence off, ordinary streaming text and speech retain existing behavior.
+2. With cadence on, reasoning remains visible and normal TTS preparation continues while dialogue and answer playback stay held through classification.
+3. Delivery starts without a second per-bubble synthesis pass; no overlapping bubble audio or premature avatar effects occur.
+4. A multiline list stays grouped when Jev joins it. Several speech segments play under that bubble. LF and CRLF map correctly.
+5. Enabling experimental cross-segment batching alongside cadence still produces an unbatched, newline-preserving speech path. Its preference remains saved for non-cadence turns.
+6. Text-only delays count entire bubbles; voiced delivery follows final-piece playback plus semantic beat.
+7. Stop during generation retains partial text. Stop during classification cannot cause stale persistence. Stop during playback or a silent gap reveals the saved remainder and cancels pending delivery.
+8. New submissions, session changes, and teardown leave no stale timers, speech, captions, or effects.
+9. Refresh and history mounting show every saved bubble immediately with no replay.
+10. Classifier failure, first-bubble audio-readiness timeout, or a one-bubble result releases held normal output once as text, without heuristic splitting, second synthesis pass, or duplicate fallback speech.
+11. Verify actor changes, stripped narrative/silent chunks, repeated lines, multi-piece audio, and secondary-window input for correct mapping and single-owner delivery.
 
 ---
 

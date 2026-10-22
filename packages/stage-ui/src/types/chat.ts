@@ -69,6 +69,13 @@ export interface ChatAssistantMessage extends AssistantMessage {
   grounding?: ChatGroundingMetadata
   error?: { message: string, detail: string }
   cadenceBubbles?: string[]
+  /** [start, end) offsets into the original message content, parallel to cadenceBubbles. */
+  cadenceBubbleRanges?: { start: number, end: number }[]
+  /** Conversational beats per split transition. Voiced delivery waits for audio, then this. */
+  cadenceBeatsMs?: number[]
+  /** Text-only delays per split transition (beat + full next-bubble typing). Legacy pauses alias. */
+  cadenceTextDelaysMs?: number[]
+  cadencePausesMs?: number[]
 }
 
 export type ChatMessage = ChatAssistantMessage | SystemMessage | ToolMessage | UserMessage
