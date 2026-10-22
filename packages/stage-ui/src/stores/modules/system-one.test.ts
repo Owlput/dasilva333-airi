@@ -69,13 +69,21 @@ describe('system 1 coprocessor architecture', () => {
       expect(provider?.id).toBe('laya-local')
     })
 
-    it('lists all three system1 providers in defined providers catalog', () => {
+    it('registers opencode-go as cloud system1 provider', () => {
+      const provider = getDefinedProvider('opencode-go')
+      expect(provider).toBeDefined()
+      expect(provider?.tasks).toContain('system1')
+      expect(provider?.id).toBe('opencode-go')
+    })
+
+    it('lists all four system1 providers in defined providers catalog', () => {
       const all = listProviders()
       const s1 = all.filter(p => p.tasks.includes('system1'))
       const ids = s1.map(p => p.id)
       expect(ids).toContain('openrouter-ai')
       expect(ids).toContain('typesafe-ai')
       expect(ids).toContain('laya-local')
+      expect(ids).toContain('opencode-go')
     })
   })
 
