@@ -3,7 +3,7 @@ import type { LatestTurnUsage } from '@proj-airi/stage-ui/stores/modules/live-se
 import type { PacingMetrics } from '@proj-airi/stage-ui/types'
 
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
-import { ChatOptionsPopover } from '@proj-airi/stage-layouts'
+import { ChatOptionsPopover, ChatWorkspacePopover } from '@proj-airi/stage-layouts'
 import { resolveAtmosphereComponent } from '@proj-airi/stage-layouts/components/Backgrounds'
 import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
 import { ChatBrainPopover, ChatSessionModal } from '@proj-airi/stage-ui/components'
@@ -58,6 +58,9 @@ const { latestTurnUsage } = storeToRefs(liveSessionStore)
 const applySizePreset = useElectronEventaInvoke(electronApplySizePreset)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const isSettingsOpen = ref(false)
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+const isWin = typeof navigator !== 'undefined' && /Win/.test(navigator.platform || navigator.userAgent)
 
 if (!activeCardId.value)
   activeCardId.value = airiCardStore.activeCardId
@@ -1018,58 +1021,33 @@ const saturationColorClass = computed(() => {
 const isSessionPopoverOpen = ref(false)
 const showManageModal = ref(false)
 
-// List of sessions for dropdown
-const characterSessions = computed(() => {
-  const cardId = activeCardId.value
-  const characterIndex = cardId ? chatSessionStore.getCharacterIndex(cardId) : null
-  const indexedList = characterIndex
-    ? Object.values(characterIndex.sessions).map(s => ({
-        ...s,
-        messageCount: s.sessionId === activeSessionId.value ? Math.max(s.messageCount || 0, messages.value.length) : (s.messageCount || 0),
-      }))
-    : []
-
-  // Ensure active session is present in the list even if index hasn't finished writing
-  const currentId = activeSessionId.value
-  if (currentId && !indexedList.some(s => s.sessionId === currentId)) {
-    const meta = sessionMetas.value[currentId]
-    indexedList.unshift({
-      sessionId: currentId,
-      userId: 'local',
-      characterId: cardId || airiCardStore.resolveCardId(),
-      title: meta?.title,
-      messageCount: messages.value.length || meta?.messageCount || 0,
-      createdAt: meta?.createdAt || Date.now(),
-      updatedAt: meta?.updatedAt || Date.now(),
-      universeId: meta?.universeId,
-    })
-  }
-
-  return indexedList.sort((a, b) => b.updatedAt - a.updatedAt)
-})
-
-function formatTimelineTitle(session: { sessionId: string, title?: string }) {
-  if (session.title && session.title !== 'Untitled Timeline')
-    return session.title
-  return chatSessionStore.getSessionDisplayTitle(session.sessionId, activeCardId.value)
-}
-
-function handleSelectSession(sessionId: string) {
-  chatSessionStore.setActiveSession(sessionId)
-  isSessionPopoverOpen.value = false
-}
-
-async function handleCreateSession() {
-  if (!activeCardId.value)
-    return
-  const newSessionId = await chatSessionStore.createSession(activeCardId.value)
-  chatSessionStore.setActiveSession(newSessionId)
-  isSessionPopoverOpen.value = false
-}
-
 function handleOpenManage() {
   isSessionPopoverOpen.value = false
   showManageModal.value = true
+}
+
+function handleBrowseCards() {
+  void openSettings({
+    route: '/settings/airi-card',
+  }).catch((err: any) => {
+    console.error('Failed to open cards settings:', err)
+  })
+}
+
+function handleCreateCard() {
+  void openSettings({
+    route: '/settings/airi-card',
+  }).catch((err: any) => {
+    console.error('Failed to open create card settings:', err)
+  })
+}
+
+function handleManageAvatars() {
+  void openSettings({
+    route: '/settings/models',
+  }).catch((err: any) => {
+    console.error('Failed to open models settings:', err)
+  })
 }
 
 // --- Token Calculations ---
@@ -1176,12 +1154,15 @@ function selectSurface(surface: typeof activeSurface.value) {
 
     <!-- Header Toolbar: Flush to top, frosted glass translucent -->
     <header
-      class="relative z-10 w-full shrink-0 select-none border-b border-neutral-200/40 bg-white/30 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-neutral-800/40 dark:bg-neutral-950/20"
-      drag-region
+      class="relative z-10 w-full shrink-0 select-none border-b border-neutral-200/40 bg-white/30 py-1.5 shadow-sm backdrop-blur-md dark:border-neutral-800/40 dark:bg-neutral-950/20"
+      :class="[
+        isMac ? 'pl-20 pr-3' : isWin ? 'pl-3 pr-36' : 'px-3',
+      ]"
+      style="-webkit-app-region: drag;"
     >
-      <div class="relative w-full flex items-center justify-between" drag-region>
+      <div class="relative w-full flex items-center justify-between" style="-webkit-app-region: drag;">
         <!-- Left: Brand Logo, Hamburger Toggle, & Premium Session Selector -->
-        <div class="no-drag flex select-none items-center gap-3 outline-none">
+        <div class="flex select-none items-center gap-3 outline-none" style="-webkit-app-region: no-drag;">
           <!-- Hamburger menu toggle -->
           <button
             class="flex cursor-pointer items-center justify-center rounded-xl p-1.5 text-neutral-500 transition-all duration-200 ease-in-out hover:bg-neutral-200 dark:text-neutral-400 hover:text-neutral-700 hover:dark:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1202,8 +1183,17 @@ function selectSurface(surface: typeof activeSurface.value) {
             </div>
           </div>
 
-          <PopoverRoot v-model:open="isSessionPopoverOpen">
-            <PopoverTrigger as-child>
+          <ChatWorkspacePopover
+            v-model:open="isSessionPopoverOpen"
+            :character-id="activeCardId"
+            :character-name="activeCharacterName"
+            @open-card-settings="handleOpenCharacterConfig"
+            @open-manage-sessions="handleOpenManage"
+            @browse-cards="handleBrowseCards"
+            @create-card="handleCreateCard"
+            @manage-avatars="handleManageAvatars"
+          >
+            <template #trigger>
               <button
                 type="button"
                 class="flex cursor-pointer select-none items-center gap-2 border border-neutral-200/50 rounded-xl bg-neutral-100/30 px-3 py-1 text-xs font-bold transition-all duration-200 ease-in-out dark:border-neutral-800 dark:bg-neutral-900/40 hover:bg-neutral-200/50 hover:dark:bg-neutral-800/40"
@@ -1222,77 +1212,12 @@ function selectSurface(surface: typeof activeSurface.value) {
                   :class="isSessionPopoverOpen ? 'rotate-180' : ''"
                 />
               </button>
-            </PopoverTrigger>
-            <PopoverPortal>
-              <PopoverContent
-                side="bottom"
-                :side-offset="6"
-                align="center"
-                class="animate-in fade-in slide-in-from-top-1 z-[10000] w-72 flex flex-col border border-neutral-200/60 rounded-2xl bg-white/95 p-2.5 shadow-2xl backdrop-blur-xl duration-150 dark:border-neutral-800 dark:bg-neutral-950/95"
-              >
-                <!-- Header: Story Timelines & New Timeline Button -->
-                <div class="mb-2 flex items-center justify-between border-b border-neutral-200/40 px-1 pb-2 dark:border-neutral-800/40">
-                  <div class="flex items-center gap-1.5 text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">
-                    <div class="i-solar:history-bold-duotone text-primary-500" />
-                    <span>Story Timelines</span>
-                  </div>
-                  <button
-                    type="button"
-                    class="flex cursor-pointer items-center gap-1 rounded-lg bg-primary-500/10 px-2 py-0.5 text-[10px] text-primary-600 font-bold transition active:scale-95 hover:bg-primary-500/20 dark:text-primary-400"
-                    @click="handleCreateSession"
-                  >
-                    <div class="i-solar:add-circle-bold size-3" />
-                    <span>New Timeline</span>
-                  </button>
-                </div>
-
-                <!-- Session List -->
-                <div class="max-h-60 overflow-y-auto pr-1 scrollbar-thin space-y-1">
-                  <div
-                    v-for="session in characterSessions"
-                    :key="session.sessionId"
-                    class="flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium transition-all duration-150"
-                    :class="activeSessionId === session.sessionId
-                      ? 'bg-primary-500/10 text-primary-700 font-bold dark:bg-primary-950/50 dark:text-primary-300'
-                      : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900'"
-                    @click="handleSelectSession(session.sessionId)"
-                  >
-                    <div class="min-w-0 flex flex-col pr-2">
-                      <div class="flex items-center gap-1.5">
-                        <div
-                          v-if="activeSessionId === session.sessionId"
-                          class="size-1.5 shrink-0 rounded-full bg-primary-500"
-                        />
-                        <span class="truncate">{{ formatTimelineTitle(session) }}</span>
-                      </div>
-                      <span v-if="session.universeId && session.universeId !== 'global'" class="mt-0.5 truncate text-[9px] text-neutral-400 font-normal">
-                        Universe: {{ session.universeId }}
-                      </span>
-                    </div>
-                    <span class="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[9px] text-neutral-500 font-mono dark:bg-neutral-800 dark:text-neutral-400">
-                      {{ session.messageCount || 0 }} msgs
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Footer: Manage All Timelines -->
-                <div class="mt-2 border-t border-neutral-200/40 pt-2 dark:border-neutral-800/40">
-                  <button
-                    type="button"
-                    class="w-full flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-neutral-100/70 py-1.5 text-[10px] text-neutral-600 font-semibold transition active:scale-95 dark:bg-neutral-800/60 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
-                    @click="handleOpenManage"
-                  >
-                    <div class="i-solar:settings-bold-duotone size-3.5 text-neutral-400" />
-                    <span>Manage All Timelines</span>
-                  </button>
-                </div>
-              </PopoverContent>
-            </PopoverPortal>
-          </PopoverRoot>
+            </template>
+          </ChatWorkspacePopover>
         </div>
 
         <!-- Right: Stacked Metrics, Memory & Context placeholder, Brain LLM Icon -->
-        <div class="no-drag flex items-center gap-3">
+        <div class="flex items-center gap-3" style="-webkit-app-region: no-drag;">
           <!-- Stacked Metrics: one icon, two stats vertically (opens Response Limit Settings) -->
           <PopoverRoot v-model:open="isStatsPopoverOpen">
             <PopoverTrigger as-child>

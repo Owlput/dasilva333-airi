@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path'
 
 import { BrowserWindow, shell } from 'electron'
 import { throttle } from 'es-toolkit'
+import { isMacOS, isWindows } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
 
@@ -71,6 +72,16 @@ export function setupChatWindowReusableFunc(params: {
       show: false,
       backgroundColor: '#121212',
       icon,
+      frame: false,
+      titleBarStyle: 'hidden',
+      trafficLightPosition: isMacOS ? { x: 14, y: 13 } : undefined,
+      titleBarOverlay: isWindows
+        ? {
+            color: '#121214',
+            symbolColor: '#A1A1AA',
+            height: 38,
+          }
+        : undefined,
       webPreferences: {
         preload: join(getElectronMainDirname(), '../preload/index.cjs'),
         sandbox: true,
