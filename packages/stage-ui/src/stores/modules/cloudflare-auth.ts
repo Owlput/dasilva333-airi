@@ -177,6 +177,19 @@ export interface CorsProxyOptions {
 }
 
 /**
+ * Cloudflare API statuses that are deterministic per request: retrying the
+ * identical call through another CORS proxy cannot change the outcome
+ * (auth, validation, preconditions such as DO migration tags). Return these
+ * to the caller immediately instead of fanning out and losing the real
+ * status/body to a generic 'Failed to fetch' throw. 429/5xx stay on the
+ * failover path since a different route may succeed.
+ */
+export function isDeterministicCfErrorStatus(status: number): boolean {
+  return status === 400 || status === 401 || status === 403 || status === 404
+    || status === 409 || status === 412 || status === 422
+}
+
+/**
  * Constructs an ordered list of fallback URLs to access Cloudflare REST APIs via CORS proxies.
  */
 export function getCorsProxiedEndpoints(rawUrl: string, options: CorsProxyOptions = {}): string[] {

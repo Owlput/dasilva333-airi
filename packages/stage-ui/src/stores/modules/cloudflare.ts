@@ -27,6 +27,7 @@ import {
   deriveCodeChallenge,
   formatEdgeVaultPayload,
   getCorsProxiedEndpoints,
+  isDeterministicCfErrorStatus,
   parseEdgeVaultPayload,
   parseOAuthCallbackInput,
   resolveAccountId,
@@ -206,7 +207,12 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
         if (res.ok) {
           return res
         }
-        if (res.status === 401 || res.status === 403 || res.status === 404) {
+        // NOTICE: deterministic 4xx errors must be returned, not fanned out.
+        // A 401/412/etc. from one proxy is the Cloudflare API answering — the
+        // same call through another proxy answers identically, and falling
+        // through converts the real status/body into a generic 'Failed to
+        // fetch' throw (which also starves the DO-migration retry below).
+        if (isDeterministicCfErrorStatus(res.status)) {
           return res
         }
       }
@@ -853,7 +859,11 @@ export const useCloudflareStore = defineStore('cloudflare', () => {
     })
     if (!uploadRes.ok) {
       const errText = await uploadRes.text().catch(() => '')
-      if (metadata.migrations && (errText.includes('migration') || errText.includes('tag') || errText.includes('already'))) {
+      // A 412 here is almost always the DO migration tag already being
+      // applied (e.g. redeploying the same EmbassyDO tag). Retry without
+      // migrations regardless of the exact wording — the stripped upload is
+      // a no-op if migrations were never the problem.
+      if (uploadRes.status === 412 || (metadata.migrations && (errText.includes('migration') || errText.includes('tag') || errText.includes('already')))) {
         delete metadata.migrations
         const retryFormData = new FormData()
         retryFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata')

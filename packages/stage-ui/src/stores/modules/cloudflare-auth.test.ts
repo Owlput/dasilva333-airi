@@ -10,6 +10,7 @@ import {
   deriveCodeChallenge,
   formatEdgeVaultPayload,
   getCorsProxiedEndpoints,
+  isDeterministicCfErrorStatus,
   parseEdgeVaultPayload,
   parseOAuthCallbackInput,
   resolveAccountId,
@@ -199,6 +200,20 @@ describe('cloudflare-auth functional seams', () => {
       expect(endpoints.some(u => u.includes('airi-cors-proxy.my-custom-subdomain.workers.dev'))).toBe(true)
       expect(endpoints.some(u => u.includes('airi-cors-proxy.r1ch4rd.workers.dev'))).toBe(true)
       expect(endpoints[endpoints.length - 1]).toBe(rawUrl)
+    })
+  })
+
+  describe('isDeterministicCfErrorStatus', () => {
+    it('treats auth, validation, and precondition failures as deterministic', () => {
+      for (const status of [400, 401, 403, 404, 409, 412, 422]) {
+        expect(isDeterministicCfErrorStatus(status)).toBe(true)
+      }
+    })
+
+    it('keeps rate limits, server errors, and edge statuses on the failover path', () => {
+      for (const status of [200, 408, 425, 429, 500, 502, 503]) {
+        expect(isDeterministicCfErrorStatus(status)).toBe(false)
+      }
     })
   })
 })
