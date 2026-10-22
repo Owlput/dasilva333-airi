@@ -310,9 +310,77 @@ sequenceDiagram
 
 ---
 
-## 8. Future Horizons
+## 8. Phase 3 Runtime Integration: TTS Override Architecture & Open Questions
 
-1. **Per-Bubble Sentence-Sync Audio Playback:**
-   When speech synthesis is enabled alongside cadence, queue TTS generation per virtual bubble so that each bubble's audio playback is timed to dispatch exactly as the corresponding virtual bubble pops into the chat surface.
-2. **Cross-Surface Discord Relay Parity:**
+### 8.1 The Core Invariant: Cadence as Master Conductor Overriding Eager Streaming TTS
+
+In standard AIRI dialogue, tokens stream immediately into `intent.writeLiteral(literal)`, causing the speech pipeline to synthesize and speak sentences in real time. However, when `multiBubbleEnabled` is active, the assistant chat UI intentionally masks the spoken text behind a typing indicator (`three-dots-loading`).
+
+If streaming TTS remains eager, the avatar will audibly blurt out the entire response while the user is still looking at a loading spinner, causing complete cognitive dissonance. Therefore:
+> **Core Architectural Rule:** Conversational Cadence acts as the master conductor. When enabled, it strictly **overrides eager streaming speech synthesis**. Speech generation and playback are bound directly to the staggered virtual bubble lifecycle.
+
+---
+
+### 8.2 The Dual-Clock Problem: Audio-Driven vs Velocity-Driven Timing
+
+When scheduling the delay before Bubble $i+1$ appears, the system must choose which clock governs the transition:
+
+```mermaid
+flowchart TD
+    A["Stream Finishes & Jev Resolves Bubbles"] --> B{"Is TTS Active & Voiced?"}
+
+    B -- Yes --> C["Mode A: Audio-Clock Driven"]
+    C --> C1["Reveal Bubble i"]
+    C1 --> C2["Avatar Speaks Bubble i Audio Track"]
+    C2 --> C3["Audio Track Finishes Playing"]
+    C3 --> C4["Wait Jev Semantic Beat Duration (beatPauseMs)"]
+    C4 --> C5["Reveal Bubble i+1"]
+
+    B -- No / Muted --> D["Mode B: Velocity-Clock Driven"]
+    D --> D1["Reveal Bubble i"]
+    D1 --> D2["Compute Hybrid Pacing Delay: clamp(beatPauseMs + charCount * msPerChar)"]
+    D2 --> D3["Hold Typing Dots for Computed Duration"]
+    D3 --> D4["Reveal Bubble i+1"]
+```
+
+* **Mode A (Voiced Turns):** Audio playback duration physically governs pacing. A bubble cannot be considered "finished" until the avatar concludes speaking it. Bubble $i+1$ pops in only after Bubble $i$'s audio finishes **plus** the Jev semantic beat delay ($574\text{ms}$ or $1075\text{ms}$).
+* **Mode B (Text-Only / Muted Turns):** Governed by the Hybrid Velocity Curve ($\text{charCount} \times \text{msPerChar} + \text{beatMs}$), keeping pauses natural even without audio.
+
+---
+
+### 8.3 Open Architectural Questions for Consultation
+
+The following questions require alignment before beginning the Phase 3 implementation sprint:
+
+#### Question 1: Audio Pre-Warming vs Sequential Synthesis
+* **Option 1A (Pre-Warming - Recommended):** As soon as Jev returns virtual bubbles on `onEnd`, fire TTS synthesis requests for all bubbles in parallel in the background. Hold playback until each bubble's visual turn arrives.
+  * *Advantage:* Zero latency between bubbles; speech begins immediately when the bubble pops into view.
+  * *Trade-off:* If the user clicks "Stop" during Bubble 1, pre-warmed audio for Bubble 2 and 3 consumed synthesis resources.
+* **Option 1B (Sequential On-Demand Synthesis):** Synthesize Bubble $i+1$ only when Bubble $i$ finishes speaking.
+  * *Advantage:* Saves synthesis resources on interrupted turns.
+  * *Trade-off:* Cloud TTS synthesis latency (300–800ms) could create awkward silent gaps between bubbles.
+
+#### Question 2: Architectural Interception Layer
+* **Option 2A (Chat Store Event Dispatch):** `chat.ts` emits a typed event `onCadenceBubblesResolved({ bubbles, pausesMs })`. The speech runtime and the UI subscribe independently.
+  * *Advantage:* Decoupled architecture. Neither `chat.ts` nor `assistant-item.vue` depends directly on low-level speech handles.
+* **Option 2B (Speech Host Guard in `ControlStripHost.vue`):** `ControlStripHost.vue` checks `activeCard?.cadence?.multiBubbleEnabled` and gates `onTokenLiteral`, delegating delivery to an internal `playCadenceAudioQueue()`.
+  * *Advantage:* Keeps speech routing centralized inside the existing `ControlStripHost` speech pipeline.
+
+#### Question 3: Interruption & Stop Contract (Contract 4)
+* When the user clicks **"Stop"** or submits a new turn while Bubble 1 is playing:
+  1. Does the visual stack freeze at Bubble 1, or reveal all remaining text statically without audio?
+  2. The speech pipeline must drop all pending audio buffers immediately without draining them.
+
+#### Question 4: Chat History Voice Replay
+* When a user clicks the "Play Audio" / speaker icon on an old message in chat history:
+  * Does it play the full message as a single continuous audio stream?
+  * Or does it replay the staggered multi-bubble cadence with inter-bubble pauses?
+
+---
+
+## 9. Future Horizons
+
+1. **Cross-Surface Discord Relay Parity:**
    In Discord bot channels, when `multiBubbleEnabled` is active, dispatch separate message deliveries over the Discord webhook rather than a single 2000-character wall of text.
+2. **Dynamic Affective Tempo Curves:**
+   Modulate typing velocity and pause durations based on live emotion tags (e.g. panic/excitement triggers snappier typing at 20ms/char; melancholy/fatigue triggers longer 60ms/char pauses).
