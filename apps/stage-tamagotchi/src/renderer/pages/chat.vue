@@ -48,7 +48,7 @@ const chatSessionStore = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
 const liveSessionStore = useLiveSessionStore()
 const backgroundStore = useBackgroundStore()
-const { chatboxActiveBackgroundUrl, chatboxActiveAtmosphereId } = storeToRefs(backgroundStore)
+const { chatboxActiveBackgroundUrl, chatboxActiveBackgroundColor, chatboxActiveAtmosphereId } = storeToRefs(backgroundStore)
 const activeChatAtmosphereComponent = computed(() => resolveAtmosphereComponent(chatboxActiveAtmosphereId.value))
 
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
@@ -1122,7 +1122,7 @@ function selectSurface(surface: typeof activeSurface.value) {
 
 <template>
   <div class="relative h-full w-full flex flex-col overflow-hidden">
-    <!-- Layer 1: Chatbox Wallpaper -->
+    <!-- Layer 1: Chatbox Background (Wallpaper or Solid) -->
     <Transition
       enter-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
       enter-from-class="opacity-0"
@@ -1130,10 +1130,11 @@ function selectSurface(surface: typeof activeSurface.value) {
       leave-active-class="transition-opacity duration-700 ease-in-out will-change-opacity"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
+      mode="out-in"
     >
       <div
         v-if="chatboxActiveBackgroundUrl"
-        :key="chatboxActiveBackgroundUrl"
+        :key="`url-${chatboxActiveBackgroundUrl}`"
         class="pointer-events-none absolute inset-0 z-0"
         :style="{
           backgroundImage: `url(${chatboxActiveBackgroundUrl})`,
@@ -1145,6 +1146,14 @@ function selectSurface(surface: typeof activeSurface.value) {
         <!-- Subtle readability scrim so message bubbles remain clear and distinct -->
         <div class="absolute inset-0 bg-white/75 backdrop-blur-[1px] dark:bg-neutral-950/75" />
       </div>
+      <div
+        v-else-if="chatboxActiveBackgroundColor"
+        :key="`color-${chatboxActiveBackgroundColor}`"
+        class="pointer-events-none absolute inset-0 z-0"
+        :style="{
+          backgroundColor: chatboxActiveBackgroundColor,
+        }"
+      />
     </Transition>
 
     <!-- Layer 2: Animated Ambient Atmosphere Particles -->

@@ -1,36 +1,76 @@
-# Chat Options & Customizable Dashboard
+# Quick Settings (Chat Options Popover) & Customizable Dashboard
 
 ## Overview & Ownership
 
-- **Chat Options Popover**: `packages/stage-layouts/src/components/Layouts/ChatOptionsPopover.vue` (exported as `ChatOptionsPopover` from `@proj-airi/stage-layouts`).
-  - Desktop trigger: `pages/chat.vue` (`triggerVariant="dots"`).
-  - Mobile header trigger: `packages/stage-layouts/src/components/Layouts/MobileUtilityPopover.vue` (`triggerVariant="circle"`).
+- **Quick Settings Popover**: `packages/stage-layouts/src/components/Layouts/ChatOptionsPopover.vue` (exported as `ChatOptionsPopover` from `@proj-airi/stage-layouts`).
+  - Desktop trigger: `apps/stage-tamagotchi/src/renderer/pages/chat.vue` (`triggerVariant="dots"` on `...` header button).
+  - Mobile header trigger: `packages/stage-layouts/src/components/Layouts/MobileHeader.vue` (`triggerVariant="circle"` on gear button).
+  - Popover Title / Tooltip in UI: **"Quick settings"** (header renders `< Quick settings` back navigation and close button `(X)`).
 - **Dashboard Context Panel**: Right panel in `apps/stage-tamagotchi/src/renderer/pages/chat.vue`.
   - State manager: `useChatDashboard()` (persisted in `localStorage` key `airi:chat:dashboard-layout`).
   - Active modules: `Widgets`, `Virtual Terminal`, `Memories`, `Stage`, `Current Scene`, `Media Gallery`, `Nan0 Cognition`.
 
 ---
 
-## 1. Chat Options Popover (`ChatOptionsPopover.vue`)
+## 1. Quick Settings Popover (`ChatOptionsPopover.vue`)
 
 ### Decomposed Modular Architecture
 The popover is decomposed into isolated subviews located in `packages/stage-layouts/src/components/Layouts/ChatOptions/`:
-- **`ChatOptionsPopover.vue`**: Root orchestrator (~200 lines) owning `PopoverRoot`, header bar, dynamic view switching, and dialog wrappers (`StageBackgroundDialogPicker`).
-- **`ChatOptionsRootView.vue`**: Image spawn mode segmented control (`bg`, `widget`, `inline`), chat layout presets (`mini`, `medium`, `large`, `full`), and 6 category navigation buttons.
+- **`ChatOptionsPopover.vue`**: Root orchestrator (~325 lines) owning Reka UI `PopoverRoot`, `PopoverContent`, header bar (`< Quick settings`), dynamic view routing, and dialog wrappers (`StageBackgroundDialogPicker`, `ChatSessionModal`, `CharacterContextDialog`).
+- **`ChatOptionsRootView.vue`**: Image spawn mode segmented control (`bg`, `widget`, `inline`), chat layout presets (`mini`, `medium`, `large`, `full`), and 7 category navigation buttons.
+- **`ChatOptionsAppearanceView.vue`**: Theme/color mode widget (`SettingsThemeHeaderWidget`), 6-card particle atmosphere grid, and quick wallpaper grid with scene browser picker trigger.
 - **`ChatOptionsCapabilitiesView.vue`**: Heartbeats, screen watching, offline dreams, visual novel / autonomous artistry, sticker widgets, auto-cues, and cognitive pipeline.
 - **`ChatOptionsToolsView.vue`**: Terminal sandbox (`bash`), local filesystem access, web search, screenshots, MCP tools, generative motion, and text/image journals.
 - **`ChatOptionsInjectionsView.vue`**: System sensors telemetry, 3-day recent memory summaries, Universe RAG retrieval, visual scene state scratchpad, and dream/journal/artistry intrusions.
-- **`ChatOptionsAppearanceView.vue`**: Theme/color mode widget (`SettingsThemeHeaderWidget`), 3-column particle atmosphere cards, and quick wallpaper grid with scene browser picker trigger.
+- **`ChatOptionsMemoriesView.vue`**: Quick memory context modal, session manager modal, memory search jump, deep links to memory & card settings.
 - **`ChatOptionsStagingView.vue`**: Dialogue text color customization. Supports card default swatch picker and per-actor color overrides with hex input and live preview box. Emits `openStagingSettings`.
 - **`ChatOptionsVoiceView.vue`**: Speech playback and actor voice assignments. Emits `openVoiceSettings`.
 
 ### Navigation State Machine
 ```ts
-type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appearance' | 'staging' | 'voice'
+type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'memories' | 'appearance' | 'staging' | 'voice'
 ```
 - Closing the popover resets `currentView` to `'root'`.
 - Horizontal subview navigation uses `<Transition mode="out-in">` with 200ms ease-out enter and 150ms ease-in leave.
-- Back button (`< Chat options`) returns to `'root'`.
+- Back button (`< Quick settings`) returns to `'root'`.
+
+---
+
+### Appearance Subview Structure (`ChatOptionsAppearanceView.vue`)
+
+- **Appearance Header Banner**:
+  - Amber magic-wand icon (`i-solar:magic-stick-3-bold-duotone`) in rounded badge.
+  - Title: **Appearance**; Subtitle: `Atmosphere and wallpaper`.
+  - **Theme Widget**: `<SettingsThemeHeaderWidget shrink-0 />` embedded in the header banner. Controls dark/light mode and 24-color preset primary accent popover (`z-[10050]`).
+
+- **ATMOSPHERE Section**:
+  - Section header: `ATMOSPHERE` on left, `⊘ Clear effect` button on right (`handleClearAtmosphere`, sets atmosphere to `'none'`).
+  - **6-card Visual Grid (2×3)**:
+    - Card options mapped from `ATMOSPHERE_OPTIONS` in `packages/stage-layouts/src/components/Backgrounds/patterns/index.ts`:
+      1. `Hearts` (`hearts`)
+      2. `Sakura` (`petals`)
+      3. `Anime Stars` (`stars`)
+      4. `Dreamy Bubbles` (`bubbles`)
+      5. `Cyber Crosses` (`crosses`)
+      6. `Melody` (`notes`)
+    - Each pattern component renders a mini canvas with `preview` and `transparent-bg` props for throttled background rendering.
+    - Active selection shows a top-right checkmark badge (`i-solar:check-read-bold`) and primary ring border.
+
+- **WALLPAPER Section**:
+  - Section header: `WALLPAPER` on left, `⊘ None` button on right (`handleClearBackground`, sets background to `'none'`).
+  - **2×3 Wallpaper Thumbnail Grid**: Renders first 6 backgrounds (`quickWallpapers`) resolved for the active card via `availableBackgrounds` from `useBackgroundStore`. Active background displays checkmark badge.
+  - **Browse All Scenes Button**: Full-width button `"Browse all scenes"` emitting `browseScenes`, which opens `StageBackgroundDialogPicker`.
+
+- **Store & Crossfade Pipeline**:
+  - Stores:
+    - Electron desktop chat: `backgroundStore.setChatboxActiveAtmosphere(id)` and `backgroundStore.setChatboxActiveBackground(id)`.
+    - Web stage: `backgroundStore.setActiveAtmosphere(id)` and `backgroundStore.setActiveBackground(id)`.
+  - Persistence keys in `localStorage`:
+    - Atmosphere: `airi:chatbox-active-atmosphere-id`
+    - Background: `airi:chatbox-active-background-id`
+  - Rendering in `apps/stage-tamagotchi/src/renderer/pages/chat.vue`: Crossfades `chatboxActiveBackgroundUrl` with 700ms GPU opacity transition (`will-change-opacity`).
+
+---
 
 ### Voice & Audio Subview Contracts (`ChatOptionsVoiceView.vue`)
 - **Speaker Volume (0%–100%)**: Range slider bound to `settings/speech/output-volume`. Subtext: *"At 0%, speech still generates; lip-sync and captions continue."*
@@ -43,14 +83,6 @@ type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appea
     - **Card default row**: Document icon, system default voice selection, audition preview.
     - **Actor override rows**: Iterates `actorConcepts`, displaying `CharacterAvatar`, actor name, current voice name (*"Uses card default"* with link chain icon or override voice name), audition preview (`▶`), voice dropdown selector, and reset button.
 - **Deep Link**: *"Manage voice profiles ↗"* button emitting `openVoiceSettings`.
-
-### Appearance Subview Structure
-- **Theme Widget**: `<SettingsThemeHeaderWidget shrink-0 />` embedded in the header banner. Controls dark/light mode and 24-color preset primary accent popover (`z-[10050]`).
-- **Atmosphere Visual Cards**: 3-column grid rendering mini-particle preview canvases (`Hearts`, `Sakura`, `Stars`, `Bubbles`, `Crosses`, `Melody`).
-  - Each pattern component accepts `preview?: boolean` and `transparent-bg?: boolean` to run a lightweight, throttled simulation (6–8 particles) suitable for multi-canvas rendering.
-- **Wallpaper Gallery**: Quick thumbnail grid + "Browse all scenes" (`StageBackgroundDialogPicker`).
-  - Changes dispatch to `backgroundStore.setChatboxActiveBackground()`.
-  - `pages/chat.vue` crossfades background changes with 700ms GPU transitions (`will-change-opacity`).
 
 ---
 
@@ -84,6 +116,6 @@ type ChatOptionsView = 'root' | 'capabilities' | 'tools' | 'injections' | 'appea
 
 ## Verification
 
-1. **Popover**: Navigate into each subview (`capabilities`, `tools`, `injections`, `appearance`, `staging`, `voice`), verify slide transition, test volume slider and TTS toggle, test atmosphere selection, toggle dark/light mode, pick a color swatch, and verify popup closes properly.
+1. **Quick Settings Popover**: Open via `...` header button. Verify view transition into each subview (`capabilities`, `tools`, `injections`, `memories`, `appearance`, `staging`, `voice`), test volume slider and TTS toggle, test atmosphere card selection, test wallpaper selection, toggle dark/light mode, pick an accent color swatch, and verify popup closes and resets to `root`.
 2. **Dashboard**: Test reordering modules, collapsing cards, hiding/showing via customize mode, toggling sandbox availability, and refreshing page to ensure layout persists.
 3. **Typecheck**: Run `pnpm -F @proj-airi/stage-layouts typecheck` and `pnpm -F @proj-airi/stage-tamagotchi typecheck`.

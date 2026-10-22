@@ -49,6 +49,15 @@ const BUILTIN_BACKGROUNDS = [
   },
 ]
 
+export const DEFAULT_SOLID_PALETTE = [
+  '#18181B', // Deep Ink
+  '#272E38', // Dark Slate
+  '#382C45', // Plum
+  '#D8C2A7', // Warm Sand
+  '#E8B4B8', // Sakura Pink
+  '#B8D8E8', // Sky Blue
+]
+
 export const useBackgroundStore = defineStore('background', () => {
   const STORAGE_PREFIX = 'bg-'
 
@@ -359,12 +368,45 @@ export const useBackgroundStore = defineStore('background', () => {
     return resolveBackgroundUrl(activeBackgroundId.value)
   })
 
+  const activeBackgroundColor = computed(() => {
+    const bgId = activeBackgroundId.value
+    if (!bgId || bgId === 'none') {
+      return null
+    }
+    if (bgId.startsWith('color:')) {
+      return bgId.slice(6)
+    }
+    if (bgId.startsWith('#')) {
+      return bgId
+    }
+    return null
+  })
+
+  function setActiveSolidColor(color: string) {
+    activeBackgroundId.value = color.startsWith('color:') ? color : `color:${color}`
+  }
+
   // --- Desktop Chatbox Background & Atmosphere ---
   const chatboxActiveBackgroundId = useLocalStorage<string>('airi:chatbox-active-background-id', 'none')
   const chatboxActiveAtmosphereId = useLocalStorage<StageAtmosphere>('airi:chatbox-active-atmosphere-id', 'none')
+  const chatboxSolidPalette = useLocalStorage<string[]>('airi:chatbox-solid-palette', [...DEFAULT_SOLID_PALETTE])
 
   const chatboxActiveBackgroundUrl = computed(() => {
     return resolveBackgroundUrl(chatboxActiveBackgroundId.value)
+  })
+
+  const chatboxActiveBackgroundColor = computed(() => {
+    const bgId = chatboxActiveBackgroundId.value
+    if (!bgId || bgId === 'none') {
+      return null
+    }
+    if (bgId.startsWith('color:')) {
+      return bgId.slice(6)
+    }
+    if (bgId.startsWith('#')) {
+      return bgId
+    }
+    return null
   })
 
   function setChatboxActiveBackground(id: string) {
@@ -373,6 +415,21 @@ export const useBackgroundStore = defineStore('background', () => {
 
   function setChatboxActiveAtmosphere(id: StageAtmosphere) {
     chatboxActiveAtmosphereId.value = id
+  }
+
+  function setChatboxActiveSolidColor(color: string) {
+    chatboxActiveBackgroundId.value = color.startsWith('color:') ? color : `color:${color}`
+  }
+
+  function updateChatboxSolidPaletteColor(index: number, newColor: string) {
+    if (index >= 0 && index < chatboxSolidPalette.value.length) {
+      chatboxSolidPalette.value[index] = newColor
+      setChatboxActiveSolidColor(newColor)
+    }
+  }
+
+  function resetChatboxSolidPalette() {
+    chatboxSolidPalette.value = [...DEFAULT_SOLID_PALETTE]
   }
 
   // List of available backgrounds for the current character
@@ -589,11 +646,18 @@ export const useBackgroundStore = defineStore('background', () => {
     activeAtmosphereId,
     setActiveAtmosphere,
     activeBackgroundUrl,
+    activeBackgroundColor,
+    setActiveSolidColor,
     chatboxActiveBackgroundId,
     chatboxActiveAtmosphereId,
     chatboxActiveBackgroundUrl,
+    chatboxActiveBackgroundColor,
+    chatboxSolidPalette,
     setChatboxActiveBackground,
     setChatboxActiveAtmosphere,
+    setChatboxActiveSolidColor,
+    updateChatboxSolidPaletteColor,
+    resetChatboxSolidPalette,
     addBackground,
     removeBackground,
     onBackgroundAdded,

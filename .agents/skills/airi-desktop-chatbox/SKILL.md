@@ -6,26 +6,87 @@ description: >-
 
 # Desktop Chatbox
 
-Own desktop chat surfaces and shared transcript presentation. Read only the reference matching the change; load multiple for changes crossing those boundaries.
+Own desktop chat surfaces, Quick Settings popover, right dashboard panel, and shared transcript presentation.
 
-| Task | Reference |
-| --- | --- |
-| Workspace routes, subviews, window shell, right panel | [Workspace navigation](references/workspace-navigation.md) |
-| Chat options popover, atmosphere, wallpaper, customize dashboard panel | [Chat options & Dashboard](references/chat-options-and-dashboard.md) |
-| Drafts, send/stop buttons, attachments, suggestions, composer variants | [Composer](references/composer.md) |
-| Bubbles, action menus, grounding, journal chips, streaming performance | [Transcript rendering](references/transcript-rendering.md) |
+## Quick Reference & Specialized Topics
 
-## Ownership
+| Task / Domain | Reference Guide |
+| :--- | :--- |
+| **Quick Settings Popover** (Atmosphere, Wallpaper/Backgrounds, Staging, Voice, Capabilities, Injections, Tools) & **Dashboard Context Panel** | [Chat options & Dashboard](references/chat-options-and-dashboard.md) |
+| **Workspace Routes & Left Nav** (`messages`, `director`, `world`, `characters`, `media`, `archives`, `event-log`, `notes`, `rehearsal`) | [Workspace navigation](references/workspace-navigation.md) |
+| **Composer & Input** (Drafts, attachments, suggestions, send/stop, `InteractiveArea.vue`, `WhisperDock`) | [Composer](references/composer.md) |
+| **Transcript & Bubbles** (Streaming rendering, action menus, grounding panel, journal chips, virtual scroll) | [Transcript rendering](references/transcript-rendering.md) |
 
-- Desktop shell: `apps/stage-tamagotchi/src/renderer/pages/chat.vue`.
-- Desktop input: `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue`.
-- Shared rendering: `packages/stage-ui/src/components/scenarios/chat/`.
-- Input dispatch, hooks, cancellation: [interaction pipelines](../airi-interaction-pipelines/SKILL.md).
-- Actor grammar: [ACT tokens](../airi-acting-cue-act-tokens/SKILL.md); Studio decisions: [Director](../airi-director-orchestration/SKILL.md).
-- Memory generation/persistence belongs to the corresponding memory skill. A preview or grounding toggle is not the injection implementation.
+---
 
-Paths in references are repository-relative. Verify source before applying older design documents. Desktop, portrait mobile, landscape web/pocket, and WhisperDock have different composition paths; do not assume shared bubbles mean shared input state.
+## Canonical Surface & Component Inventory
+
+### 1. Window Shell & Desktop Layout
+- **Desktop Chat Shell**: `apps/stage-tamagotchi/src/renderer/pages/chat.vue`
+  - Left navigation sidebar (`messages`, `director`, `world`, `characters`, `media`, etc.).
+  - Right collapsible Dashboard context panel (`useChatDashboard()`).
+  - Active background crossfader (`chatboxActiveBackgroundUrl`, GPU opacity transition).
+- **Desktop Input Area**: `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue`
+  - Composer input, file drop & attachment tray, producer magic wand suggestions, send/stop lifecycle.
+
+### 2. Quick Settings Popover ("Chat Options")
+- **Root Orchestrator**: `packages/stage-layouts/src/components/Layouts/ChatOptionsPopover.vue`
+  - Triggered via `triggerVariant="dots"` in `chat.vue` (header action `...`) and `triggerVariant="circle"` in `MobileHeader.vue`.
+  - Header renders `< Quick settings` back navigation and close button `(X)`.
+  - Houses 7 isolated subviews under `packages/stage-layouts/src/components/Layouts/ChatOptions/`:
+
+| Subview | File Path | Responsibilities & UI Features |
+| :--- | :--- | :--- |
+| **Root** | `ChatOptionsRootView.vue` | Spawn mode segmented control (`bg`, `widget`, `inline`), chat layout presets (`mini`, `medium`, `large`, `full`), 7 navigation tiles. |
+| **Appearance** | `ChatOptionsAppearanceView.vue` | Header theme widget (`SettingsThemeHeaderWidget`), 6 atmosphere cards (`Hearts`, `Sakura`, `Anime Stars`, `Dreamy Bubbles`, `Cyber Crosses`, `Melody`), wallpaper thumbnail grid, scene picker modal trigger. |
+| **Capabilities** | `ChatOptionsCapabilitiesView.vue` | Proactive heartbeats, screen watching, offline dreams, autonomous artistry (visual novel), auto-cues, cognitive loop. |
+| **Tools** | `ChatOptionsToolsView.vue` | In-memory POSIX terminal sandbox (`bash`), local filesystem access, web search, screenshots, MCP integrations, generative motion. |
+| **Injections** | `ChatOptionsInjectionsView.vue` | System sensors telemetry, 3-day recent memory summaries, Universe RAG retrieval, visual scene state scratchpad. |
+| **Memories** | `ChatOptionsMemoriesView.vue` | Character context viewer modal, session management modal, memory search jump, deep links to memory & card settings. |
+| **Staging** | `ChatOptionsStagingView.vue` | Character speech text color picker, per-actor color overrides with hex input and preview bubble. |
+| **Voice** | `ChatOptionsVoiceView.vue` | Speaker output volume slider (0–100%), TTS toggle, single-actor / multi-actor voice dropdown selectors, audition preview buttons (`▶`). |
+
+### 3. Atmosphere & Background Subsystems
+- **Atmosphere Particle Patterns**: `packages/stage-layouts/src/components/Backgrounds/patterns/index.ts`
+  - Defines `ATMOSPHERE_OPTIONS` (`hearts`, `petals` -> *Sakura*, `stars` -> *Anime Stars*, `bubbles` -> *Dreamy Bubbles*, `crosses` -> *Cyber Crosses*, `notes` -> *Melody*).
+  - Individual components in `packages/stage-layouts/src/components/Backgrounds/patterns/`.
+- **Background Store**: `packages/stage-ui/src/stores/background.ts` (`useBackgroundStore`)
+  - Desktop chat keys: `chatboxActiveAtmosphereId` (`airi:chatbox-active-atmosphere-id`), `chatboxActiveBackgroundId` (`airi:chatbox-active-background-id`).
+  - Stage keys: `activeAtmosphereId`, `activeBackgroundId`.
+  - Scene Picker Dialog: `StageBackgroundDialogPicker` from `@proj-airi/stage-ui/components`.
+
+### 4. Right Dashboard Context Panel
+- **State & Layout**: `useChatDashboard()` inside `apps/stage-tamagotchi/src/renderer/pages/chat.vue`.
+  - Persisted layout state: `localStorage` key `airi:chat:dashboard-layout`.
+  - Built-in Modules: `Widgets`, `Virtual Terminal`, `Memories`, `Stage`, `Current Scene`, `Media Gallery`, `Nan0 Cognition`.
+  - View vs. Customize mode: Click `i-solar:tuning-2-linear` to reorder, hide/show, or restore defaults.
+
+### 5. Shared Transcript Rendering
+- **Shared Chat Scenario Components**: `packages/stage-ui/src/components/scenarios/chat/`
+  - Message bubble presentation, action menus, grounding panel, echo chips, and journal chips.
+
+---
+
+## Key Code Anchors & Jump Targets
+
+| Symbol / Target | Exact Path & Location | Purpose |
+| :--- | :--- | :--- |
+| Quick Settings Popover Root | `packages/stage-layouts/src/components/Layouts/ChatOptionsPopover.vue:L178` | Reka UI `PopoverContent` styling, subview navigation router |
+| Quick Settings Title | `packages/stage-layouts/src/components/Layouts/ChatOptionsPopover.vue:L197` | Header text `Quick settings` |
+| Appearance View Root | `packages/stage-layouts/src/components/Layouts/ChatOptions/ChatOptionsAppearanceView.vue:L84` | Appearance subview template |
+| Atmosphere Options Definition | `packages/stage-layouts/src/components/Backgrounds/patterns/index.ts:L30` | `ATMOSPHERE_OPTIONS` array of particle effects |
+| Wallpaper Quick Grid | `ChatOptionsAppearanceView.vue:L192` | 2×3 thumbnail grid for active character backgrounds |
+| Desktop Chat Background Layer | `apps/stage-tamagotchi/src/renderer/pages/chat.vue:L1135` | Crossfaded `backgroundImage` container |
+| Dashboard Layout Composable | `apps/stage-tamagotchi/src/renderer/pages/chat.vue:L157` | `useChatDashboard()` active modules, ordering & collapse |
+| Desktop Input Submission | `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue:L330` | `handleSend()` draft dispatch and optimistic clear |
+
+---
 
 ## Verification
 
-Check the affected surface with streaming text, tool output, empty history, and a switched character/session. For code changes, typecheck affected workspaces: `@proj-airi/stage-tamagotchi`, `@proj-airi/stage-ui`, or `@proj-airi/stage-layouts`, using `pnpm -F <workspace> typecheck`. Shared renderer changes also need a web/pocket smoke check. Use the selected reference's behavioral checks.
+Check the affected surface with streaming text, tool output, empty history, and a switched character/session.
+For code changes, run typechecks on affected packages:
+- `pnpm -F @proj-airi/stage-layouts typecheck`
+- `pnpm -F @proj-airi/stage-tamagotchi typecheck`
+- `pnpm -F @proj-airi/stage-ui typecheck`
+Shared renderer changes also require a web/pocket smoke check. Follow the selected reference guide's verification checklist.
