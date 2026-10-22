@@ -2121,10 +2121,17 @@ Format your output as a raw thought log.`
             const splitRes = await evaluateCadenceSplits(buildingMessage.content, {
               splitThreshold: cadenceConfig.splitThreshold ?? 0.45,
               maxBubbles: cadenceConfig.maxBubblesPerTurn ?? 4,
+              dynamicPacing: cadenceConfig.dynamicPacingEnabled ?? true,
+              rapidBurstMs: cadenceConfig.rapidBurstMs,
+              conversationalBeatMs: cadenceConfig.conversationalBeatMs,
+              thoughtfulPauseMs: cadenceConfig.thoughtfulPauseMs,
+              typingCadenceMsPerChar: cadenceConfig.typingCadenceMsPerChar,
+              maxDelayCeilingMs: cadenceConfig.maxDelayCeilingMs,
               systemOneExecute: (state, questions) => systemOneStore.execute(state, questions),
             })
             if (splitRes.bubbles.length > 1) {
               buildingMessage.cadenceBubbles = splitRes.bubbles
+              ;(buildingMessage as any).cadencePausesMs = splitRes.pausesMs
             }
           }
           catch (cadenceErr) {

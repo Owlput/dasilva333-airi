@@ -11,13 +11,19 @@ describe('evaluateCadenceSplits', () => {
 
     expect(result.bubbles).toEqual(['Hello there world!'])
     expect(result.evaluations).toHaveLength(0)
+    expect(result.pausesMs).toHaveLength(0)
     expect(mockExecute).not.toHaveBeenCalled()
   })
 
-  it('splits when score meets or exceeds default splitThreshold (0.45)', async () => {
+  it('splits when score meets or exceeds default splitThreshold (0.45) and bundles choice rhythm question', async () => {
     const mockExecute = vi.fn().mockResolvedValue({
       answers: {
         b_0: { type: 'noul', noul: 0.47 },
+        c_0: {
+          type: 'choice',
+          choice: 'conversational_beat',
+          probabilities: { rapid_burst: 0.2, conversational_beat: 0.7, thoughtful_pause: 0.1 },
+        },
       },
     })
 
@@ -30,17 +36,30 @@ describe('evaluateCadenceSplits', () => {
     const callArgs = mockExecute.mock.calls[0]
     expect(callArgs[0]).toContain('You are splitting one outgoing text into casual chat bubbles.')
     expect(callArgs[1].b_0.instructions).toBe('Would a casual texter hit send after "Wait really?" and start a new bubble at "I had no idea that happened!"?')
+    expect(callArgs[1].c_0.type).toBe('choice')
+    expect(callArgs[1].c_0.criteria).toHaveProperty('rapid_burst')
+    expect(callArgs[1].c_0.criteria).toHaveProperty('conversational_beat')
+    expect(callArgs[1].c_0.criteria).toHaveProperty('thoughtful_pause')
 
     expect(result.bubbles).toEqual(['Wait really?', 'I had no idea that happened!'])
     expect(result.evaluations).toHaveLength(1)
     expect(result.evaluations[0].isSplit).toBe(true)
     expect(result.evaluations[0].score).toBe(0.47)
+    expect(result.evaluations[0].rhythmCategory).toBe('conversational_beat')
+
+    // Expected beat = 350*0.2 + 900*0.7 + 1800*0.1 = 70 + 630 + 180 = 880ms
+    // Typing length = "I had no idea that happened!".length (28) * 35 = 980ms
+    // Total delay = 880 + 980 = 1860ms
+    expect(result.evaluations[0].expectedBeatMs).toBe(880)
+    expect(result.evaluations[0].calculatedDelayMs).toBe(1860)
+    expect(result.pausesMs).toEqual([1860])
   })
 
   it('keeps lines joined when score is below splitThreshold', async () => {
     const mockExecute = vi.fn().mockResolvedValue({
       answers: {
         b_0: { type: 'noul', noul: 0.25 },
+        c_0: { type: 'choice', choice: 'rapid_burst' },
       },
     })
 
@@ -53,6 +72,7 @@ describe('evaluateCadenceSplits', () => {
     expect(result.evaluations).toHaveLength(1)
     expect(result.evaluations[0].isSplit).toBe(false)
     expect(result.evaluations[0].score).toBe(0.25)
+    expect(result.pausesMs).toHaveLength(0)
   })
 
   it('respects maxBubbles ceiling', async () => {
@@ -85,5 +105,6 @@ describe('evaluateCadenceSplits', () => {
 
     expect(result.bubbles).toEqual([text])
     expect(result.evaluations).toHaveLength(0)
+    expect(result.pausesMs).toHaveLength(0)
   })
 })

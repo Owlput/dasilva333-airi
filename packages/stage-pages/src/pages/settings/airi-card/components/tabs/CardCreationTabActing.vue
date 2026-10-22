@@ -138,6 +138,11 @@ const cadenceSplitThreshold = defineModel<number>('cadenceSplitThreshold', { def
 const cadenceInterBubblePauseMs = defineModel<number>('cadenceInterBubblePauseMs', { default: 800 })
 const cadenceTypingCadenceMsPerChar = defineModel<number>('cadenceTypingCadenceMsPerChar', { default: 45 })
 const cadenceMaxBubblesPerTurn = defineModel<number>('cadenceMaxBubblesPerTurn', { default: 4 })
+const cadenceDynamicPacingEnabled = defineModel<boolean>('cadenceDynamicPacingEnabled', { default: true })
+const cadenceRapidBurstMs = defineModel<number>('cadenceRapidBurstMs', { default: 350 })
+const cadenceConversationalBeatMs = defineModel<number>('cadenceConversationalBeatMs', { default: 900 })
+const cadenceThoughtfulPauseMs = defineModel<number>('cadenceThoughtfulPauseMs', { default: 1800 })
+const cadenceMaxDelayCeilingMs = defineModel<number>('cadenceMaxDelayCeilingMs', { default: 3500 })
 
 // Sticker Directives & Desktop Slappers Models
 const selectedActingStickerDirectivesPrompt = defineModel<string>('selectedActingStickerDirectivesPrompt', { default: '' })
@@ -267,6 +272,11 @@ const subTabs = [
         v-model:inter-bubble-pause-ms="cadenceInterBubblePauseMs"
         v-model:typing-cadence-ms-per-char="cadenceTypingCadenceMsPerChar"
         v-model:max-bubbles-per-turn="cadenceMaxBubblesPerTurn"
+        v-model:dynamic-pacing-enabled="cadenceDynamicPacingEnabled"
+        v-model:rapid-burst-ms="cadenceRapidBurstMs"
+        v-model:conversational-beat-ms="cadenceConversationalBeatMs"
+        v-model:thoughtful-pause-ms="cadenceThoughtfulPauseMs"
+        v-model:max-delay-ceiling-ms="cadenceMaxDelayCeilingMs"
       />
 
       <!-- 5. STICKERS SUB-TAB -->

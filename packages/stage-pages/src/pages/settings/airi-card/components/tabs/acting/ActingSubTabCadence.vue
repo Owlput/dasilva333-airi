@@ -9,16 +9,26 @@ import { useRouter } from 'vue-router'
 const multiBubbleEnabled = defineModel<boolean>('multiBubbleEnabled', { default: false })
 const splitThreshold = defineModel<number>('splitThreshold', { default: 0.45 })
 const interBubblePauseMs = defineModel<number>('interBubblePauseMs', { default: 800 })
-const typingCadenceMsPerChar = defineModel<number>('typingCadenceMsPerChar', { default: 45 })
+const typingCadenceMsPerChar = defineModel<number>('typingCadenceMsPerChar', { default: 35 })
 const maxBubblesPerTurn = defineModel<number>('maxBubblesPerTurn', { default: 4 })
+const dynamicPacingEnabled = defineModel<boolean>('dynamicPacingEnabled', { default: true })
+const rapidBurstMs = defineModel<number>('rapidBurstMs', { default: 350 })
+const conversationalBeatMs = defineModel<number>('conversationalBeatMs', { default: 900 })
+const thoughtfulPauseMs = defineModel<number>('thoughtfulPauseMs', { default: 1800 })
+const maxDelayCeilingMs = defineModel<number>('maxDelayCeilingMs', { default: 3500 })
 
 const systemOneStore = useSystemOneStore()
 const router = useRouter()
 
 const isSystemOneConfigured = computed(() => systemOneStore.configured)
+const showAdvancedPacing = ref(false)
 
 // Audition Sandbox State
 const SAMPLE_PRESETS = [
+  {
+    name: 'Grocery List (Benchmark)',
+    text: `Hey dont forget to bring the grocery list tonight\n\nmake sure to bring\n-bananas\n-pears\n-lettuce\n-milk\n-eggs\n\nlove ya see you soon`,
+  },
   {
     name: 'Casual Quips',
     text: `Wait really?\n\nI had no idea that happened!\n\nTell me everything right now.`,
@@ -39,6 +49,7 @@ const evaluationError = ref<string | null>(null)
 const evalLatency = ref<number | null>(null)
 const boundaryEvaluations = ref<CadenceBoundaryEvaluation[]>([])
 const resolvedBubbles = ref<string[]>([])
+const evalPausesMs = ref<number[]>([])
 
 // Playback Simulation State
 const isPlayingSimulation = ref(false)
@@ -50,6 +61,7 @@ function applyPreset(presetText: string) {
   testText.value = presetText
   resolvedBubbles.value = []
   boundaryEvaluations.value = []
+  evalPausesMs.value = []
   evalLatency.value = null
   evaluationError.value = null
   stopSimulation()
@@ -67,11 +79,18 @@ async function runEvaluation() {
     const res = await evaluateCadenceSplits(testText.value, {
       splitThreshold: splitThreshold.value,
       maxBubbles: maxBubblesPerTurn.value,
+      dynamicPacing: dynamicPacingEnabled.value,
+      rapidBurstMs: rapidBurstMs.value,
+      conversationalBeatMs: conversationalBeatMs.value,
+      thoughtfulPauseMs: thoughtfulPauseMs.value,
+      typingCadenceMsPerChar: typingCadenceMsPerChar.value,
+      maxDelayCeilingMs: maxDelayCeilingMs.value,
       systemOneExecute: (state, questions) => systemOneStore.execute(state, questions),
     })
 
     resolvedBubbles.value = res.bubbles
     boundaryEvaluations.value = res.evaluations
+    evalPausesMs.value = res.pausesMs
     evalLatency.value = res.latencyMs ?? null
   }
   catch (err: any) {
@@ -116,10 +135,10 @@ async function playBurstSimulation() {
     const currentText = bubbles[index]
     isSimulatedTyping.value = true
 
-    // Simulated typing duration clamped between 300ms and 1800ms for demo feel
+    // Simulated typing duration clamped between 250ms and 1500ms
     const typeDelay = Math.min(
-      1800,
-      Math.max(300, currentText.length * typingCadenceMsPerChar.value),
+      1500,
+      Math.max(250, currentText.length * typingCadenceMsPerChar.value),
     )
 
     simulationTimeout = setTimeout(() => {
@@ -128,9 +147,11 @@ async function playBurstSimulation() {
       index++
 
       if (index < bubbles.length) {
+        // Dynamic pacing delay calculated from Jev semantic expectation + upcoming physical length
+        const pauseDelay = evalPausesMs.value[index - 1] ?? interBubblePauseMs.value
         simulationTimeout = setTimeout(() => {
           stepNext()
-        }, interBubblePauseMs.value)
+        }, pauseDelay)
       }
       else {
         isPlayingSimulation.value = false
@@ -184,7 +205,7 @@ onBeforeUnmount(() => {
             System 1 Coprocessor Required
           </div>
           <p class="leading-relaxed opacity-90">
-            Conversational Cadence evaluates newline split boundaries using non-autoregressive discrete decisions (Jev 1.13 or on-device Laya). Multi-bubble cadence cannot be enabled without an active System 1 provider.
+            Conversational Cadence evaluates newline split boundaries and semantic delay pacing using non-autoregressive discrete decisions (Jev 1.13 or on-device Laya). Multi-bubble cadence cannot be enabled without an active System 1 provider.
           </p>
           <div class="mt-2 flex items-center gap-2">
             <button
@@ -234,11 +255,21 @@ onBeforeUnmount(() => {
       class="border border-neutral-200/80 rounded-xl bg-white p-4 shadow-sm dark:border-neutral-700/80 dark:bg-neutral-900/60"
       :class="{ 'opacity-60 pointer-events-none': !multiBubbleEnabled || !isSystemOneConfigured }"
     >
-      <div class="mb-3 flex items-center gap-2">
-        <div class="i-solar:tuning-square-2-bold-duotone text-base text-primary-500" />
-        <h4 class="text-xs text-neutral-800 font-semibold tracking-wider uppercase dark:text-neutral-200">
-          Cadence Tuning Parameters
-        </h4>
+      <div class="mb-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="i-solar:tuning-square-2-bold-duotone text-base text-primary-500" />
+          <h4 class="text-xs text-neutral-800 font-semibold tracking-wider uppercase dark:text-neutral-200">
+            Cadence Tuning Parameters
+          </h4>
+        </div>
+        <button
+          type="button"
+          class="flex items-center gap-1 text-[11px] text-primary-600 font-medium dark:text-primary-400 hover:underline"
+          @click="showAdvancedPacing = !showAdvancedPacing"
+        >
+          <span>{{ showAdvancedPacing ? 'Hide Rhythm Weights' : 'Tune Rhythm Weights' }}</span>
+          <span :class="showAdvancedPacing ? 'i-solar:alt-arrow-up-linear' : 'i-solar:alt-arrow-down-linear'" class="text-xs" />
+        </button>
       </div>
 
       <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -261,7 +292,7 @@ onBeforeUnmount(() => {
             class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
           >
           <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-            Jev probability required to split a boundary (0.45 recommended). Lower values split more eagerly into separate bubbles; higher values keep paragraphs joined.
+            Jev probability required to split a boundary (0.45 recommended). Lower values split more eagerly; higher values keep paragraphs joined.
           </span>
         </div>
 
@@ -288,34 +319,11 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
-        <!-- Inter-Bubble Pause -->
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-xs text-neutral-700 font-medium dark:text-neutral-300">
-              Inter-Bubble Pause Delay
-            </label>
-            <span class="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700 font-medium font-mono dark:bg-neutral-800 dark:text-neutral-300">
-              {{ interBubblePauseMs }} ms
-            </span>
-          </div>
-          <input
-            v-model.number="interBubblePauseMs"
-            type="range"
-            min="300"
-            max="2500"
-            step="50"
-            class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
-          >
-          <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-            Staggered pause interval between consecutive bubbles popping into view.
-          </span>
-        </div>
-
         <!-- Typing Cadence Per Character -->
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center justify-between">
             <label class="text-xs text-neutral-700 font-medium dark:text-neutral-300">
-              Simulated Typing Cadence
+              Simulated Typing Velocity
             </label>
             <span class="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700 font-medium font-mono dark:bg-neutral-800 dark:text-neutral-300">
               {{ typingCadenceMsPerChar }} ms/char
@@ -324,14 +332,102 @@ onBeforeUnmount(() => {
           <input
             v-model.number="typingCadenceMsPerChar"
             type="range"
-            min="15"
-            max="100"
+            min="10"
+            max="80"
             step="5"
             class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
           >
           <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-            Rate at which the typing indicator holds between bursts before dispatching each bubble.
+            Physical typing speed modeling character output length (25–40 ms/char recommended).
           </span>
+        </div>
+
+        <!-- Dynamic Semantic Pacing Toggle -->
+        <div class="flex flex-col justify-center gap-1.5">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col gap-0.5">
+              <label for="dynamic-pacing-toggle" class="cursor-pointer text-xs text-neutral-700 font-medium dark:text-neutral-300">
+                Jev Semantic Delay Pacing
+              </label>
+              <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
+                Evaluates conversational rhythm (rapid burst vs beat vs pause) in parallel with boundary splits.
+              </span>
+            </div>
+            <input
+              id="dynamic-pacing-toggle"
+              v-model="dynamicPacingEnabled"
+              type="checkbox"
+              class="h-4 w-4 border-gray-300 rounded text-primary-600 focus:ring-primary-500"
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Pacing Weights (Collapsible) -->
+      <div v-if="showAdvancedPacing" class="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+        <h5 class="mb-3 text-[11px] text-neutral-500 font-semibold tracking-wider uppercase dark:text-neutral-400">
+          Rhythm Softmax Durations & Safety Ceiling
+        </h5>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-neutral-600 dark:text-neutral-400">Rapid Burst</span>
+              <span class="font-mono">{{ rapidBurstMs }}ms</span>
+            </div>
+            <input
+              v-model.number="rapidBurstMs"
+              type="range"
+              min="150"
+              max="700"
+              step="25"
+              class="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
+            >
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-neutral-600 dark:text-neutral-400">Conversational Beat</span>
+              <span class="font-mono">{{ conversationalBeatMs }}ms</span>
+            </div>
+            <input
+              v-model.number="conversationalBeatMs"
+              type="range"
+              min="400"
+              max="1600"
+              step="50"
+              class="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
+            >
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-neutral-600 dark:text-neutral-400">Thoughtful Pause</span>
+              <span class="font-mono">{{ thoughtfulPauseMs }}ms</span>
+            </div>
+            <input
+              v-model.number="thoughtfulPauseMs"
+              type="range"
+              min="800"
+              max="3000"
+              step="100"
+              class="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
+            >
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-neutral-600 dark:text-neutral-400">Safety Ceiling</span>
+              <span class="font-mono">{{ maxDelayCeilingMs }}ms</span>
+            </div>
+            <input
+              v-model.number="maxDelayCeilingMs"
+              type="range"
+              min="1500"
+              max="6000"
+              step="250"
+              class="h-1 w-full cursor-pointer appearance-none rounded bg-neutral-200 accent-primary-600 dark:bg-neutral-700"
+            >
+          </div>
         </div>
       </div>
     </div>
@@ -345,12 +441,17 @@ onBeforeUnmount(() => {
             Cadence Audition Sandbox
           </h4>
         </div>
-        <div class="flex items-center gap-1.5">
+        <div class="flex flex-wrap items-center gap-1.5">
           <button
             v-for="preset in SAMPLE_PRESETS"
             :key="preset.name"
             type="button"
-            class="border border-neutral-200 rounded-lg px-2.5 py-1 text-[11px] text-neutral-600 font-medium transition-colors dark:border-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            :class="[
+              'px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-colors',
+              testText === preset.text
+                ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 dark:border-primary-600'
+                : 'border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800',
+            ]"
             @click="applyPreset(preset.text)"
           >
             {{ preset.name }}
@@ -361,7 +462,7 @@ onBeforeUnmount(() => {
       <div class="flex flex-col gap-3">
         <textarea
           v-model="testText"
-          rows="4"
+          rows="5"
           placeholder="Enter dialogue text with newline splits to test..."
           class="w-full border border-neutral-200 rounded-lg p-2.5 text-xs font-mono transition-colors dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-950/60 dark:text-neutral-200 focus:outline-none"
         />
@@ -404,27 +505,56 @@ onBeforeUnmount(() => {
 
         <!-- Boundary Decisions Matrix -->
         <div v-if="boundaryEvaluations.length > 0" class="mt-2 flex flex-col gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-          <div class="text-[11px] text-neutral-600 font-semibold uppercase dark:text-neutral-400">
-            Boundary Classification Decisions ({{ boundaryEvaluations.length }} boundaries evaluated)
+          <div class="flex items-center justify-between text-[11px] text-neutral-600 font-semibold uppercase dark:text-neutral-400">
+            <span>Boundary Decisions & Pacing ({{ boundaryEvaluations.length }} boundaries evaluated)</span>
+            <span class="text-[10px] text-neutral-400 font-normal lowercase">
+              Threshold: {{ splitThreshold.toFixed(2) }}
+            </span>
           </div>
           <div class="flex flex-col gap-2">
             <div
               v-for="b in boundaryEvaluations"
               :key="b.index"
-              class="flex items-center justify-between border border-neutral-100 rounded-lg bg-neutral-50/70 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-950/40"
+              class="flex flex-wrap items-center justify-between gap-2 border border-neutral-100 rounded-lg bg-neutral-50/70 p-2.5 text-xs dark:border-neutral-800 dark:bg-neutral-950/40"
             >
-              <div class="flex items-center gap-2 overflow-hidden">
+              <div class="min-w-48 flex flex-1 items-center gap-2 overflow-hidden">
                 <span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-mono dark:bg-neutral-800">
                   #{{ b.index + 1 }}
                 </span>
-                <span class="max-w-60 truncate text-neutral-500 font-mono">
+                <span class="truncate text-neutral-500 font-mono">
                   "{{ b.before }}" → "{{ b.after }}"
                 </span>
               </div>
+
               <div class="flex shrink-0 items-center gap-2">
+                <!-- Rhythm Category Badge -->
+                <template v-if="b.rhythmCategory">
+                  <span
+                    v-if="b.rhythmCategory === 'rapid_burst'"
+                    class="border border-cyan-200 rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] text-cyan-800 font-medium dark:border-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300"
+                  >
+                    Rapid {{ Math.round((b.rhythmProbabilities?.rapid_burst ?? 1) * 100) }}%
+                  </span>
+                  <span
+                    v-else-if="b.rhythmCategory === 'conversational_beat'"
+                    class="border border-amber-200 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 font-medium dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                  >
+                    Beat {{ Math.round((b.rhythmProbabilities?.conversational_beat ?? 1) * 100) }}%
+                  </span>
+                  <span
+                    v-else
+                    class="border border-purple-200 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-800 font-medium dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
+                  >
+                    Pause {{ Math.round((b.rhythmProbabilities?.thoughtful_pause ?? 1) * 100) }}%
+                  </span>
+                </template>
+
+                <!-- P(split) -->
                 <span class="text-[11px] text-neutral-500 font-mono">
                   P(split) = {{ b.score.toFixed(2) }}
                 </span>
+
+                <!-- Split / Joined Badge -->
                 <span
                   :class="[
                     'px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider',
@@ -434,6 +564,14 @@ onBeforeUnmount(() => {
                   ]"
                 >
                   {{ b.isSplit ? 'Split' : 'Joined' }}
+                </span>
+
+                <!-- Calculated Stagger Delay if Split -->
+                <span
+                  v-if="b.isSplit && b.calculatedDelayMs"
+                  class="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] text-primary-700 font-mono dark:bg-primary-950/60 dark:text-primary-300"
+                >
+                  +{{ b.calculatedDelayMs }}ms
                 </span>
               </div>
             </div>
@@ -447,20 +585,25 @@ onBeforeUnmount(() => {
               Resolved Output ({{ resolvedBubbles.length }} {{ resolvedBubbles.length === 1 ? 'bubble' : 'bubbles' }})
             </div>
             <span v-if="isPlayingSimulation" class="animate-pulse text-[11px] text-primary-500 font-medium">
-              Playing burst cadence...
+              Simulating dynamic delivery...
             </span>
           </div>
 
-          <div class="flex flex-col gap-2 border border-neutral-200/80 rounded-xl bg-neutral-100/50 p-4 dark:border-neutral-800 dark:bg-neutral-950/40">
+          <div class="flex flex-col gap-3 border border-neutral-200/80 rounded-xl bg-neutral-100/50 p-4 dark:border-neutral-800 dark:bg-neutral-950/40">
             <!-- Normal preview when not running simulation -->
             <template v-if="!isPlayingSimulation && simulatedRevealedBubbles.length === 0">
               <div
                 v-for="(bubble, bIdx) in resolvedBubbles"
                 :key="bIdx"
-                class="max-w-[85%] self-start border border-primary-500/20 rounded-2xl bg-white px-3.5 py-2.5 text-xs text-neutral-800 shadow-sm transition-all dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                class="flex flex-col self-start gap-1"
               >
-                <div class="whitespace-pre-wrap">
-                  {{ bubble }}
+                <span v-if="bIdx > 0 && evalPausesMs[bIdx - 1]" class="text-[10px] text-neutral-400 font-mono">
+                  ↳ +{{ evalPausesMs[bIdx - 1] }}ms stagger
+                </span>
+                <div class="max-w-[85%] border border-primary-500/20 rounded-2xl bg-white px-3.5 py-2.5 text-xs text-neutral-800 shadow-sm transition-all dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
+                  <div class="whitespace-pre-wrap">
+                    {{ bubble }}
+                  </div>
                 </div>
               </div>
             </template>
@@ -470,10 +613,15 @@ onBeforeUnmount(() => {
               <div
                 v-for="(bubble, bIdx) in simulatedRevealedBubbles"
                 :key="bIdx"
-                class="max-w-[85%] animate-fade-in self-start border border-primary-500/20 rounded-2xl bg-white px-3.5 py-2.5 text-xs text-neutral-800 shadow-sm transition-all dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                class="flex flex-col self-start gap-1"
               >
-                <div class="whitespace-pre-wrap">
-                  {{ bubble }}
+                <span v-if="bIdx > 0 && evalPausesMs[bIdx - 1]" class="text-[10px] text-primary-500 font-mono">
+                  ↳ +{{ evalPausesMs[bIdx - 1] }}ms stagger
+                </span>
+                <div class="max-w-[85%] animate-fade-in border border-primary-500/20 rounded-2xl bg-white px-3.5 py-2.5 text-xs text-neutral-800 shadow-sm transition-all dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
+                  <div class="whitespace-pre-wrap">
+                    {{ bubble }}
+                  </div>
                 </div>
               </div>
 

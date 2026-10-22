@@ -266,6 +266,11 @@ export const AiriCadenceSchema = object({
   interBubblePauseMs: optional(pipe(number(), integer(), minValue(200), maxValue(5000))),
   typingCadenceMsPerChar: optional(pipe(number(), integer(), minValue(10), maxValue(200))),
   maxBubblesPerTurn: optional(pipe(number(), integer(), minValue(1), maxValue(10))),
+  dynamicPacingEnabled: optional(boolean()),
+  rapidBurstMs: optional(pipe(number(), integer(), minValue(100), maxValue(1000))),
+  conversationalBeatMs: optional(pipe(number(), integer(), minValue(300), maxValue(3000))),
+  thoughtfulPauseMs: optional(pipe(number(), integer(), minValue(500), maxValue(5000))),
+  maxDelayCeilingMs: optional(pipe(number(), integer(), minValue(1000), maxValue(10000))),
 })
 
 export type AiriCadence = InferOutput<typeof AiriCadenceSchema>
