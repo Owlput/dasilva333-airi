@@ -415,11 +415,11 @@ export class EmbassyDO {
 
     if (url.pathname === '/ws') {
       if (request.headers.get('Upgrade') !== 'websocket') {
-        return new Response('Expected websocket', { status: 426 });
+        return new Response('Expected websocket', { status: 426, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' } });
       }
       var ownerId = request.headers.get('x-owner-id') || url.searchParams.get('owner');
       if (!this.env.OWNER_ID || !ownerId || ownerId !== this.env.OWNER_ID) {
-        return new Response('Forbidden', { status: 403 });
+        return new Response('Forbidden', { status: 403, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' } });
       }
       var machineId = url.searchParams.get('machine') || 'unknown-device';
       var pair = new WebSocketPair();

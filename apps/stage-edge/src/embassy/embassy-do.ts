@@ -163,11 +163,23 @@ export class EmbassyDO {
     const url = new URL(request.url)
 
     if (url.pathname === '/ws') {
-      if (request.headers.get('Upgrade') !== 'websocket')
-        return new Response('Expected websocket', { status: 426 })
+      // NOTICE: these early returns must carry CORS headers. The web health
+      // probe reads the 426 status via fetch() to detect a live EmbassyDO —
+      // without ACAO the browser rejects the response and a healthy worker
+      // looks dead (probe falls back to socket status only).
+      if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('Expected websocket', {
+          status: 426,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' },
+        })
+      }
       const ownerId = request.headers.get('x-owner-id') ?? url.searchParams.get('owner')
-      if (!this.env.OWNER_ID || !ownerId || ownerId !== this.env.OWNER_ID)
-        return new Response('Forbidden', { status: 403 })
+      if (!this.env.OWNER_ID || !ownerId || ownerId !== this.env.OWNER_ID) {
+        return new Response('Forbidden', {
+          status: 403,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' },
+        })
+      }
       const machineId = url.searchParams.get('machine') ?? undefined
       const pair = new WebSocketPair()
       const client = (pair as unknown as Record<string, WebSocket>)[0]
