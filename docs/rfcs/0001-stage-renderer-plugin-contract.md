@@ -14,23 +14,6 @@
 > the contract could not express together with its current status — most are closed
 > by a ruling, and the ones that remain open are the part most worth arguing about.
 >
-> **Revision 0.2 (2026-10-20) locks the multi-window decisions:** the host keeps a
-> mount registry and cue broker in the Electron main process; capture is a cue, not an
-> exposed method; lip sync is a plugin-level analyzer capability, not a renderer
-> contract member; imports are two-phase (parts, then AIRI-minted selections) and reject
-> an existing id unless the caller explicitly overwrites; cue acks are settled
-> `resolved`/`rejected` outcomes rather than a parallel `reason` array; IPC uses
-> `@moeru/eventa`. Sections 5.2, 5.4, 5.5, 5.7, 5.8, 8 and 9.12/9.13 reflect this revision.
->
-> **Revision 0.2 follow-up (2026-10-21):** imports carry one `files` set (no `file`/companion
-> split) and AIRI imports models only; `saveProfile` needs no mount; actor/chat share one semantic
-> `stateScope` (preview is the only private scope); the control strip picker is a driver panel;
-> head-tethered captions are driver-rendered when the driver declares `caption` and `HeadPose` is
-> removed; storage namespace isolation is AIRI-side; cue targets may name a `stateScope`, but the
-> first broker is single-mount and fan-out is deferred.
-> This release is **first-party only**; the static manifest is read before the runtime, and the
-> main-process registry holds manifest/enable state only — real capabilities come from a renderer
-> instance.
 
 ---
 
@@ -41,24 +24,14 @@ Spine, MMD). The host knows all four by name: it statically imports their scene
 components, branches on a format enum for import, repair, capability parsing and
 preview generation, and reaches into their Pinia stores for state it does not own.
 
-This RFC proposes replacing that with **one plugin contract**: a model driver publishes a manifest,
-a runtime and a model provider; the host mounts a component it never imported and talks to it through
-three channels chosen by *shape* rather than by convenience — **props** for what the host samples
-every frame plus the live decisions about a mount, **services** for what a renderer pulls, and
-**cues** for discrete, acknowledgeable, refusable intent.
+This RFC proposes replacing that with one plugin contract for better separation of responsibilities.
+What AIRI really need is a way to reference a model for a character card and a way to manipulate the model,
+while the model itself is not of concern.
 
-The contract contains no format strings (`vrm`, `live2d`, …), no storage layout, and no UI. Its
-governing rule is one sentence: **AIRI owns the named model and every record about it; the model
-driver owns the raw model, the model, the renderer, the profiles and the storage.** The only handles
-the two sides share are `modelId` and `profileId`, both minted by AIRI.
-
-A note on names: the plugin is called a **model driver** throughout — what it drives is a *model*, and
+A note on names: the plugin is called a **model driver** throughout — what it drives is a model, and
 what it drives directly is a *renderer* — and the types follow it (`ModelDriverManifest`,
 `ModelDriverRuntime`, `ModelProvider`, `ModelDriverHostServices`). Only the rendering side keeps the
 `Renderer*` prefix: `RendererMount*`, `RendererPointerService`.
-
-Nothing in the app changes until a renderer is migrated behind it, and each of the
-four can be migrated independently (section 8).
 
 ---
 
@@ -78,8 +51,6 @@ import { ThreeScene, useModelStore } from '@proj-airi/stage-ui-three'
 
 Consequences that are structural rather than cosmetic:
 
-- **Declaring a renderer unwanted does not remove it.** A user who never uses MMD
-  still ships and parses its code.
 - **The prop surface is a hand-maintained union.** Each scene accepts a different
   subset of props, and the host calls exposed methods through optional chaining.
 - **Adding a renderer means editing the host** in several places: the format enum,
@@ -95,7 +66,7 @@ they carry no mount target and return no ack. Host UI reads renderer stores
 directly for "what is active right now":
 
 | Consumer                                                                                     | Reads                                                                                                                                                 |
-| :------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| :--- | :--- |
 | `stage-ui/src/components/scenarios/layout/ControlStrip.vue:945-1144`                         | `modelStore.activeExpressions`, `live2dStore.currentMotion`, `live2dStore.activeExpressions`, `mmdStore.currentMotion`, `spineStore.currentAnimation` |
 | `stage-ui/src/components/scenarios/settings/model-settings/ModelCustomizer.vue:361,430,441`  | the same, per format                                                                                                                                  |
 | `stage-ui/src/components/scenarios/settings/model-settings/live2d.vue:338-406`               | writes `modelParameters.angleX/angleY/angleZ/leftEyeOpen/...`                                                                                         |
@@ -147,21 +118,21 @@ For every one of the four formats the host builds its own list by parsing the
 package and the renderer builds another from the loaded runtime:
 
 | Format | Host parse                                                                                                                                                             | Runtime truth                           |
-| :----- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------- |
+| :--- | :--- | :--- |
 | VRM    | glTF JSON chunk: VRM 0.x `blendShapeGroups`, `VRMC_vrm.expressions`, `extras.targetNames` (`display-models.ts:2036-2085`)                                              | `VRMModel.vue:691` (expression manager) |
 | Live2D | `.exp3` scan + `FileReferences.Motions` (`display-models.ts:1957-2009`)                                                                                                | `live2d/Model.vue:777,1211,1222,1255`   |
 | Spine  | JSON skeletons when readable; **hardcoded 5-skin / 40-animation candidate tables plus a length-prefixed byte scan** for binary `.skel` (`display-models.ts:2149-2221`) | `spine/Model.vue:271,469,470`           |
 | MMD    | UTF-16 regex over PMX, **`slice(0, 30)`** (`display-models.ts:2268-2285`)                                                                                              | `MMD.vue:714,737`                       |
 
 The settings UI then deliberately ignores the runtime list
-(`ModelCustomizer.vue:350-353`), and neither list is obviously the truth.
+(`ModelCustomizer.vue:350-353`), and neither list is the truth.
 
 ### 2.6 The input surfaces differ in ways nobody declared
 
 Audited divergences between the four implementations:
 
 | aspect          | Live2D                                                | VRM                                         | Spine                             | MMD                 |
-| :-------------- | :---------------------------------------------------- | :------------------------------------------ | :-------------------------------- | :------------------ |
+| :--- | :--- | :--- | :--- | :--- |
 | mouth input     | `0..100` -> `0..1`                                    | `0..1` (x0.75)                              | `0..1` (x15, boolean edge)        | `0..1` (x0.7)       |
 | audio source    | no                                                    | yes (`wlipsync`)                            | no                                | wired, never fed    |
 | focus/gaze      | `focusAt` in **window** space                         | `useMouse()` in **viewport** space          | none                              | cursor position     |
@@ -170,25 +141,6 @@ Audited divergences between the four implementations:
 | occlusion query | none queried (WebGL alpha read works)                 | offscreen render target (call site stubbed) | none                              | none                |
 | native hit test | native `hitTest` used internally, not exposed         | none                                        | parsed, never surfaced            | none                |
 | readiness       | 3-value enum, `finally` sets `mounted` after an error | same                                        | same                              | resets to `pending` |
-
-None of it is declared anywhere: it is discovered by reading four implementations.
-Three of the divergences are load-bearing for this RFC:
-
-- **The mouth row is why there is no mouth prop.** Four renderers scale the same number four
-  different ways — by 0.75, by 15 as a boolean edge, by 0.7, or by dividing by 100 — so a single
-  normalized scalar was a fifth opinion rather than a shared meaning. The renderer taps the speech
-  stream and measures it itself (5.7).
-
-- **Head pose is no longer a contract concept.** The three producers returned
-  `{screenX, screenY, yaw, pitch, roll, modelHeightPx}` in slightly different shapes, and the
-  proposed `HeadPose` would have had to reconcile them. The decision instead moves head-tethered
-  caption rendering into a driver that declares `caption`: `CaptionCue` carries the text and
-  timing, that driver owns the presentation, and AIRI never asks for a head position. The host may still add its own overlay
-  layers outside the renderer's canvas; those layers do not depend on a driver pose.
-- **No renderer produces a point of interest.** `ViewCue` has no address today in
-  any of the four (VRM/MMD have an enumerable 10-name socket list behind
-  `VrmSocketResolver`/`MmdSocketResolver`, neither of which is exposed, and the
-  MMD resolver is never even constructed).
 
 ### 2.7 Pointer interaction cannot be centralized today
 
@@ -215,34 +167,7 @@ pointer" has to give renderers a replacement, and this one does: one host-side c
 `RendererPointerService` (5.7), so the conventions above become migration inputs instead of four
 permanent coordinate spaces.
 
-### 2.8 An unwired performance runtime sketch
-
-`packages/stage-ui-three-performance-runtime` (currently imported by nothing)
-defines a `PerformanceTimeline` of `speech | viseme | expression | body | marker`
-events with millisecond timestamps and an `ActorState` blackboard
-(`speech.playheadMs`, `gaze.type: 'screen' | 'world'`, `markers`, `flags`). That is
-a *scheduled* model of performance, and the cue model in section 5.4 deliberately
-has no timeline. 9.10 records it and **closes** it: nothing implements a scheduler,
-so a timeline is a future proposal rather than a gap this contract must express.
-
-It is a sketch, not an implementation: `SchedulerHandlers` is a type nothing invokes, no code
-advances `playheadMs`, and there is no clock, no player and no adapter — 210 lines total, being
-event/timeline types plus one Pinia store. Upstream deleted the package whole in #1194 ("vrm
-performance tracing and better lifecycle management"); this fork re-added it verbatim in a
-rebase-restore commit, which is why it is back with nothing importing it. Its value is the data
-model, not the code.
-
-### 2.9 There is no profile concept at all
-
-`LoadCue.profileId`, `ProfileCue`, `HostModelProfileRecord` and
-`ModelScopedState.profileId` have **no host-side reality**: no `profileId`
-exists anywhere in the mount path, and "outfits" are instead an `AiriOutfit[]` on
-the character card (`airi-card.ts:102-111`) plus a copy on the model record, with
-the composition algorithm ("a base zeroes the other bases", "an overlay toggles
-off when already on") implemented in host code and followed by a poke into one
-renderer's store (`airi-card.ts:1423-1469` -> `shouldUpdateView()`).
-
-### 2.10 Why a contract rather than a fifth refactor
+### 2.8 Why a contract rather than a fifth refactor
 
 Every previous fix in this area was local: a new prop, a new store, another
 `if (format === ...)`. The costs above are not bugs in those fixes, they are the
@@ -277,7 +202,7 @@ rather than five host edits.
 - No forcing the four existing renderers to share behavior they genuinely do not
   share (Live2D has no camera, VRM has no hit regions). Differences are *declared*
   through capabilities instead of inferred.
-- **No scripting language and no VM.** A script that sequences motions, expressions and outfit
+- No scripting language and no VM. A script that sequences motions, expressions and outfit
   changes is character content: it belongs to the card, AIRI interprets it, and what reaches a driver
   is the action it can already perform (a cue). The contract carries the actions, never the script
   that picks them — which also means a model bundle is not a place to author behaviour.
@@ -291,7 +216,7 @@ Two rules of modularity, and then the ownership they produce.
 **One should know what it needs to know, and do what it is best at.**
 
 Holding only minimal knowledge is not being lazy, it is about modularity. Trying to
-"do it all" only results in increased maintenance load and poorly readable code.
+"do it all" only results in poorly readable code and increased maintenance load.
 
 **Never hesitate to ask for help, but do so at an well-defined interface.**
 
@@ -302,21 +227,21 @@ efficiency.
 
 Take model import as an example.
 
-| Knowledge                                        | Owner        | Result                                                       |
-| :----------------------------------------------- | :----------- | :----------------------------------------------------------- |
-| What the model is in its binary form.            | User         | User can do "import anyways".                                |
-| How to parse the model from its binary form.     | Model driver | Renderers only need to be responsible for their own format.  |
-| How to store the model in its binary form.       | AIRI         | AIRI does not need to understand any model format.           |
+| Knowledge | Owner | Result |
+| :--- | :--- | :--- |
+| What the model is in its binary form. | User | User can do "import anyways". |
+| How to parse the model from its binary form. | Model driver | Renderers only need to be responsible for their own format. |
+| How to store the model in its binary form. | AIRI | AIRI does not need to understand any model format. |
 
 | Interface               | Reason                                            |
-| :---------------------- | :------------------------------------------------ |
+| :--- | :--- |
 | `ModelProvider`         | AIRI does not know what a model physically is.    |
 | `HostStorageInterface`  | Model driver does not know where to store the bytes. |
 
 ### 4.1 Ownership
 
-| Concept         | Owner        | What it is                                                                        |
-| :-------------- | :----------- | :-------------------------------------------------------------------------------- |
+| Concept | Owner | What it is |
+| :--- | :--- | :--- |
 | Character       | AIRI         | A virtual, "conscious" being, with a "mind" and optionally a "body".              |
 | Named model     | AIRI         | A model that a character can reference.                                           |
 | Raw model       | Model driver | The model itself, its behaviors, parameters, textures, etc.                       |
@@ -331,7 +256,7 @@ Take model import as an example.
 | Motion          | Model driver | An action performed by an avatar that involves animations.                        |
 
 | Responsibility       | Owner        |
-| :------------------- | :----------- |
+| :--- | :--- |
 | Storage primitives   | AIRI         |
 | User input primitives| AIRI         |
 | Storage layout       | Model driver |
@@ -339,109 +264,98 @@ Take model import as an example.
 | Rendering            | Model driver |
 | Model manipulation   | Model driver |
 
-`Cue` and `ACT token` are the pair this RFC is most often misread on: the *transport* and the cue
-kinds are compile-time facts (AIRI ships them), while the vocabulary an ACT token may use is known
-only at runtime and belongs to the model driver. That is why `ActCue` travels on the cue channel
-rather than on a channel of its own: how a token is delivered is decided when AIRI is built, and what
-it means is decided when a model is loaded.
-
-### 4.2 The governing rule
-
-> **AIRI owns the named model and every record about it. The model driver owns the raw model, the
-> model, the renderer, the profiles and the storage.**
-
-- AIRI stores *records*: the id a character card points at, the catalogue row, tags
-  and groups, and a preview snapshot for when the owning driver is unavailable.
-- The model driver owns *the rest*: bytes, format validation and repair, preview
-  generation, capability enumeration, every per-model setting and every migration.
-
-The only handles the two sides share are `modelId` and `profileId`. AIRI mints
-both — the `modelId` before the import, the default `profileId` before the import
-too — so a driver never invents an AIRI-facing name, and AIRI never holds a
-driver-internal one.
-
-One part of the rule already holds end to end and can be kept as is: the single
-model identity that flows card -> `settings/stage/model` -> `stageModelSelected` ->
-`:model-id` is exactly the value `LoadCue.modelId` carries, and stored previews are
-already a compressed data URL on the record with an AIRI-stamped `updatedAt`
-(`local:sync-metadata/preview-updated/<id>`), which is the `ModelPreview` shape.
-
-
-
----
-
 ## 5. Design
+
+### Overall architecture
+
+With electron's main-renderer process split in mind, the driver consists of two parts:
+ - one on electron main process, called `manager`.
+ - another on renderer process, called `runtime`.
+
+A manager helps with driver-specific component enumeration, routes messages from runtimes on
+different renderer processes, and provides a unified interface for AIRI to obtain model information.
+
+A runtime manages a renderer instance or other code for interfacing with services that are
+only available on a renderer process(e.g. storage).
+
+A `registry` is on electron main process for hosting driver managers, and provide communication
+channels from managers to their runtimes.
+
+An `adapter` is spawned when the caller wants to communicate
+with the registry, and potentially spawn a runtime of a specific driver. Adapters are also responsible
+for handling renderer process specific resources and message channels for driver runtimes.
+
+For communication, the channels are defined and created with `moeru/eventa`.
+
+| Concept | Owner | Process | Count |
+| :--- | :--- | :--- | :--- |
+| Registry | AIRI | electron main| 1 |
+| Adapter | AIRI | electron renderer | many |
+| Manager | Model driver | electron main | 1 |
+| Runtime | Model driver | electron renderer | many |
 
 ### 5.1 Identity (`model.ts`)
 
-```ts
-type ModelId = string // AIRI-minted, e.g. `display-model-<nanoid>`
-type ModelProfileId = string // AIRI-minted
-```
+AIRI use IDs to uniquely identify a model and its profiles. AIRI MUST be the only source of such ID.
+AIRI cannot reference or use a model or a profile without an ID.
 
-Nothing else identifies a model. In particular `modelDriverId` answers "who serves
-this right now", not "what is this", so a reference survives its renderer being
-disabled or replaced.
+For builtin models, user MUST manually import the model through UI provided by the driver,
+since AIRI cannot name or reference models that do not have an ID.
 
-### 5.2 The plugin (`manifest.ts`, `lifecycle.ts`, `provider.ts`)
+For imported models, an ID is created and assigned after the user confirmed the import.
 
-A model driver publishes:
+The internal structure of a model is opaque to AIRI. Only the way to manipulate it is known.
 
-```ts
-interface ModelDriverManifest {
-  id: ModelDriverId // e.g. `ai.moeru.airi.stage.live2d`
-  name: string
-  driverVersion: string
-  contractVersion: ModelDriverContractVersion // checked when the host reads the manifest
-  capabilities: ModelDriverCapabilities // static hint (5.3)
-  requirements: ModelDriverRequirements // webgl/wasm/opfs/worker/audioContext/dom/globals/storage
-  entry: { runtime: string } // required; the loader resolves it
-}
+### 5.2 Adapter
 
-interface ModelDriverRuntime {
-  readonly manifest: ModelDriverManifest
-  readonly provider: ModelProvider // required
-  activate: (services: ModelDriverHostServices) => Promise<ContractResult<ModelDriverActivationReport>>
-  deactivate?: () => Promise<void>
-  rendererCapabilities: () => MaybePromise<ContractResult<ModelDriverCapabilities>> // the probe
-  resolveMountComponent: () => Promise<RendererMountComponentFactory> // a factory, not a module path
-  readonly panels?: ModelDriverPanelDeclaration[]
-  export?: () => MaybePromise<ContractResult<ModelDriverTransferBundle>>
-  import?: (bundle: ModelDriverTransferBundle) => MaybePromise<ContractResult<ModelDriverImportReport>>
-  migrate?: (hostState: ModelDriverMigrationInput) => MaybePromise<ContractResult<ModelDriverMigrationReport>> // 5.9
-}
-```
+An adapter lives on electron renderer process, that handles resource access and communication. The
+implementation detail is of AIRI's concern.
 
-**Why activation exists at all.** Today a renderer is "whatever the host statically imported": there is
-no activation step, no way to be disabled, no place to report "I am running degraded", and no agreed
-teardown semantics. No renderer in this workspace handles `webglcontextlost`, Live2D and Spine force
-`window.location.reload()` on HMR dispose, and VRM needs a deep/shallow dispose distinction the host
-cannot express. Activating explicitly, reporting requirements and declaring a dispose strategy turn all
-of that into contract instead of folklore. Activation itself MUST NOT mount anything: it wires services,
-checks requirements (globals, WASM, OPFS) and reports degradations.
+An adapter is created whenever AIRI wants to communicate with the driver registry. AIRI sends intent to
+start a runtime via an adapter, then get the entrypoints back. The entrypoint MUST contain a piece of code
+to run and/or a component to mount. The component will receive a service getter and a manager channel getter
+from its associated adapter.
 
-**Why the capability probe is on the runtime and not on the manifest.** `ModelDriverManifest.capabilities`
-is a static claim, readable without executing the driver, so a loader or a picker can use it and the host
-has something before activation. `rendererCapabilities()` is the truth under the resources actually in
-effect, and only a running instance can answer it. A *failed* probe means "could not determine", not
-"nothing is available", so the hint stays a usable fallback rather than a verdict that the driver is
-useless. What activation deliberately cannot report is a capability the driver had to give up: that is
-the probe's answer, and a second list here would be two sources for one answer.
+When fetching the entrypoints, AIRI will inform the manager of what surface it is on and what action
+AIRI want the code to perform. For example, the entrypoint for rendering a model, or the entrypoint
+for handling driver settings page, or the entrypoint for a resource getter.
 
-**Why `ModelDriverHostRegistry` carries no availability state.** The registry is the *only* static fact
-AIRI has about whether a named model can be served: that its driver exists and is enabled. Everything
-past that — whether the driver still holds the asset, whether it can still read or load it — is only
-knowable from an instance, so it is produced at runtime (`ModelProvider.list`, a `ContractResult`
-failure, the mount's own `error` emit). Availability is therefore a runtime fact, not a stored one, and
-there is no enum to keep in sync with those answers.
+A manager channel is for the spawned runtime to communicate with its manager. The channel requires
+authenticating with the manager, but the details are implemented by the driver.
 
-This registry is **renderer-side**: `get()` returns a live `ModelDriverRuntime`. The main process keeps
-a separate manifest/enable registry, whose information is no richer than the static manifest; it never
-holds a runtime and never answers `rendererCapabilities()`.
+Getting services also require authenticating with its manager. After a successful authentication,
+the registry will authorize the runtime to access available resources.
 
-**Why the cue sink is on the mount, not the runtime.** One renderer can be mounted on a live stage, in a
-settings preview and in a rehearsal room at once; each mount receives only the transactions addressed to
-it (5.4).
+The cue channel getter on the adapter is for cue producers. It needs to authenticate with the registry.
+
+### 5.3 Registry
+
+AIRI creates a driver registry on electron main process. It scans the filesystem for driver manifests
+to detect loadable model driver at startup. At runtime, it hosts managers of all loaded model driver,
+and handles bidirectional communication among AIRI, managers, adapters and runtimes.
+
+### 5.4 Driver manifest
+
+A model driver announces its presence by manifest.
+
+- The driver MUST be uniquely identified by an ID, and SHOULD provide a human-readable name
+for users.
+- Drivers MUST provide a version that follows SemVer conventions, it will be used for migration and upgrades by
+AIRI and by itself.
+- AIRI MUST only accept drivers whose contract version matches AIRI's contract version by SemVer rules.
+- Drivers SHOULD present a list of capabilities as an indication of functionality before the driver is imported, and
+MAY be used as a fallback when a live probe of driver capability failed.
+- When `requirements` are not fully satisfied, the driver and AIRI MUST notify the user about degraded
+performance, and MUST NOT report as a hard error.
+- An entrypoint to manager code MUST be provided, because the manager is responsible for
+bootstrapping the driver.
+
+### 5.5 Manager
+
+The active code on main process is called `manager`. The manager is responsible for telling AIRI about
+all the models and profiles the driver holds.
+
+
 
 **Why the provider is a member of the runtime rather than an injected service.** "The models I hold" is
 the driver's own implementation, not a capability the host grants it. It is reached from the runtime but
@@ -462,6 +376,11 @@ snapshot itself — only the mounted instance does — so two windows cannot rac
 the control strip's expression/motion/wardrobe picker; the host supplies only the popover shell and
 anchor, and a driver that does not declare `popover` is simply not offered there. Absent means
 `settings` only, so a settings panel is never pushed into the strip by default.
+
+
+### 5.3 The plugin on electron renderer
+
+The part
 
 The provider is the non-mount half:
 
@@ -577,42 +496,44 @@ the envelope instead.
 
 ### 5.3 Capabilities (`capabilities.ts`, `manifest.ts`)
 
+
+Model driver MUST announce its capabilities to the registry both when at discovery,
+and when queried by the registry at runtime.
 ```ts
 interface ModelDriverCapabilities {
+  // supports unified model import
   probe: boolean
+  // can generate preview images for its models
   previewModel: boolean
-  capabilityDiscovery: 'static' | 'runtime' | 'none'
-  profiles: boolean
+  // can package a model for migration
   modelTransfer: boolean
+  // can be packaged entirely for migration
   driverTransfer: boolean
-  panels: boolean
+  // can be deactivated at runtime
   deactivate: boolean
+  // can be purged cleanly
   purge: boolean
+  // can handle migration
   migration: boolean
-  cues: Exclude<CueKind, CueKind.LOAD>[]
+  // cues that this driver supports
+  cues: CueKind[]
+  // can determine whether the cursor is hovering on drawn pixels
   occupiesPoint: boolean
+  // can report a named region when the cursor clicks on the canvas
   hitTest: boolean
-  stopAll: boolean
-  dispose: boolean
 }
 ```
 
-Every field is required in **both** answers. This is the shape of two things, and
-the difference is the point:
+Every field is required in both answers. The reason for two places to report is:
 
-- `ModelDriverManifest.capabilities` — a **static claim**, readable without running
-  the renderer, so a loader or a picker has something before activation;
-- `ModelDriverRuntime.rendererCapabilities()` — the **truth** under the
-  resources actually in effect (a missing OPFS grant, a GPU that cannot hold the
-  model, or memory pressure). Whoever holds the probe uses the probe; a *failed*
-  probe means "could not determine", so the hint stays a usable fallback rather
-  than a verdict that the renderer is useless.
+- `ModelDriverManifest.capabilities` so that users and AIRI can learn about the
+  driver's capabilities without running or installing it.
+- `ModelDriverRuntime.rendererCapabilities()` so that changes in resource availability,
+  e.g. a missing OPFS grant, a GPU that cannot hold the model, can be reflected by a probe.
+  Whoever holds the probe uses the probe; a *failed* probe means "could not determine",
+  and the capability list in the manifest stays a usable fallback.
 
-`'caption'` is an **optional** entry in `cues`: a driver that can show text, including head-tethered
-presentation, declares it and owns that rendering; one that cannot omits it and the host does not
-send the cue. Omission is a supported answer. Whether AIRI draws its own host overlay fallback is a
-host decision outside this contract — permitted, not required, and not allowed to depend on a driver
-`HeadPose`. Sending a caption to a driver that did not declare it is `unsupported-cue`.
+
 
 `profiles` is one field for all three profile members (`listProfiles`, `saveProfile`, `removeProfile`)
 because they are one ability: a renderer that can list a profile can store it. `saveProfile` itself
@@ -679,13 +600,14 @@ vocabulary that changes every turn destroys prompt-prefix caching.
 
 ### 5.4 Cues (`cues.ts`)
 
-**A cue is a discrete, acknowledgeable, refusable intent.** An envelope is a
-transaction:
+A cue is a discrete, one-shot, acknowledgeable intent. An envelope is provided to
+attach additional information for how to handle the cues it contains.
 
 ```ts
 interface CueEnvelope<C extends Cue = Cue> {
   cues: C[] // applied together, never in sequence
   source: 'user' | 'agent' | 'card' | 'renderer' | 'host' | 'external'
+  override: boolean
   persistent?: boolean // false = preview: transient, never saved
   nonce: OperationNonce
   at: number
@@ -697,7 +619,18 @@ interface CueEnvelope<C extends Cue = Cue> {
     surface?: RendererMountSurfaceKind
   }
 }
+```
 
+Driver implementation MUST commit the cues in one envelope together as a transaction.
+If one cue failed, all changes MUST be reverted.
+
+The sender MUST NOT assume the ordering of cue execution in the same envelope. Envelopes
+MUST be sent in FIFO order from source, while the sink MAY implement a different ordering,
+and MAY process later incoming envelopes while a former envelope is still being processed.
+When an envelope with `override: true` arrives, the driver MUST
+
+
+```ts
 interface CueAck {
   nonce: OperationNonce
   mountId?: string // required on the wire: the single mount that answered
@@ -727,18 +660,17 @@ type CueRejection
     | 'suppressed-by-mode' | 'superseded' | 'busy'
 ```
 
-The rules that matter for review:
+`'caption'`: a driver that can show text, including head-tethered
+presentation, declares it and owns that rendering; one that cannot omits it and the host does not
+send the cue. Omission is a supported answer. Whether AIRI draws its own host overlay fallback is a
+host decision outside this contract — permitted, not required, and not allowed to depend on a driver
+`HeadPose`. Sending a caption to a driver that did not declare it is `unsupported-cue`.
 
-**A scope can be a target — in a later revision.** `target.stateScope` is the long-term way to keep
-the actor window and a chat-side stage in lockstep, and `target.mountId` remains the way to address
-exactly one. The first broker accepts only `mountId`; a `stateScope` target is rejected with
-`INVALID_ENVELOPE` rather than silently routed to one of its mounts. Fan-out and its aggregate ack
-(one slot resolved only when every target resolved it, no single `mountId`) are a follow-up, because
-the settle and timeout rules for several answerers are not settled yet.
+The rules that matter for review:
 
 1. **Refusal is not failure.** Every `CueRejection` value is an ordinary outcome:
    the send resolves `ok: true` with `handled: false`. `ok: false` is reserved for
-   an operation that was *attempted and broke*, which is why a dropped transaction
+   an operation that was attempted and broke, which is why a dropped transaction
    (`dropIfNotReady`), a refused cue and a superseded one all look the same from
    the caller's side.
 2. **Exactly one order is requested, as a recommendation:** apply a `load` member
@@ -772,10 +704,10 @@ the settle and timeout rules for several answerers are not settled yet.
 The vocabulary (11 kinds). The kinds themselves are the *compile-time* half — AIRI ships them — while
 the token a `ACT` cue carries belongs to the renderer and is known only at runtime (§4.1):
 
-| Kind         | Payload                                                                      | Notes                                                                                 |
-| :----------- | :--------------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
-| `load`       | `modelId`, `profileId?`                                                      | the only way a mount is told what to show; accepted by every renderer                 |
-| `ACT`        | `actToken`                                                                   | **the renderer projects the token**; AIRI never learns the projection                 |
+| Kind | Payload | Notes |
+| :--- | :--- | :--- |
+| `load` | `modelId`, `profileId?` | the only way a mount is told what to show; accepted by every renderer |
+| `ACT` | `actToken` | driver presents the tokens for LLM to choose from, and projects the token to actual instructions for manipulating the model |
 | `expression` | `key`, `value?` (0..1), `resetAfterMs?`                                      | direct addressing of one renderer-native unit                                         |
 | `motion`     | `key`, `repeat?` (-1 forever / 1 once), `crossfadeMs?`                       | one id, whatever addressing the format uses underneath                                |
 | `vfx`        | `effect`, `durationMs?`                                                      |                                                                                       |
@@ -836,7 +768,7 @@ Smaller choices, recorded because each one replaced a shape that drifted:
   decision, so a dropped envelope comes back `ok: true` with `renderer-not-ready` in every slot, and the
   renderer is never consulted about a model it is not rendering. That is also why a refusal, a drop and
   a supersede all look the same from the caller's side.
-- **The channel is deliberately transport-agnostic**: in-process for the mounted stage,
+- **The channel is transport-agnostic**: in-process for the mounted stage,
   `BroadcastChannel` between windows, IPC for remote actors. Today those are three per-driver
   implementations with different channel names, and a window that forgets to instantiate the matching
   store silently drops every cue.
@@ -857,6 +789,13 @@ Smaller choices, recorded because each one replaced a shape that drifted:
   not retry".
 - **Eligibility is not failure.** A reference this renderer does not hold is a rejected outcome
   (`unknown-key`), so the send succeeds with `handled: false` rather than failing.
+
+### ACT tokens
+
+ACT tokens are a way of telling how to manipulate a model to LLMs. Driver presents the tokens to AIRI,
+and AIRI presents the tokens to LLM for it choose from. AIRI intercepts ACT tokens when parsing LLM output,
+notifies the driver via a cue, then the driver projects the token to actual instructions for manipulating
+the model.
 
 ### 5.5 One mounted viewport (`renderer-mount.ts`)
 
@@ -992,67 +931,6 @@ Design rules that generated this shape:
   (`target.mountId`) and for a per-mount service subscription alike. A cue that *should* hit every
   mount sharing a scope names `target.stateScope` instead; that is the actor + chat case.
 
-### 5.6 State (`persistence.ts`)
-
-```ts
-interface ModelScopedState {
-  stateScope: string // the whole key
-  surface: RendererMountSurfaceKind // a label, not a key
-  modelId: ModelId
-  modelDriverId: ModelDriverId
-  values: Record<string, unknown> // opaque to AIRI
-  vocabulary: CapabilityVocabularySnapshot // required
-  profileId: ModelProfileId // required
-  revision: number
-  updatedAt: number
-}
-
-interface HostStateTransferPort {
-  writeSnapshot: (snapshot: ModelScopedState) => Promise<void>
-  readSnapshot: (stateScope: string) => Promise<ModelScopedState | undefined>
-}
-```
-
-- **A scope, not a model and not a mount.** Every mount in a scope reads and writes
-  the same state; a scope outlives any particular mount; one scope is one record —
-  which is why `readSnapshot` takes the scope and nothing else. A scope has semantic
-  identity and does **not** include `modelId`: switching the model updates the record,
-  it does not mint a new scope. **Every non-preview mount reuses the shared scope**
-  (actor, chat, rehearsal, main stage); only each `preview` mount gets its own. That
-  policy is the host's and can change without touching the contract.
-- **The name is opaque and host-minted**, under a reserved prefix, and never equal
-  to a `RendererMountSurfaceKind` value, so a renderer cannot learn the policy by
-  reading names.
-- **The authoritative copy lives in the main process in Electron.** A renderer publishes over
-  IPC; main keeps the snapshot, broadcasts the accepted revision, and is what builds prompts even
-  when the actor is in another window. A mount unmount clears that scope's prompt publication.
-- **The renderer is the only writer**, and every hand-over is the *complete* state —
-  never a patch, a delta or a per-value negotiation, because only the renderer
-  knows the shape of what it stored.
-- **`vocabulary` and `profileId` are required**, because "this renderer has no
-  vocabulary" and "nothing is written yet" must not be the same `undefined`: a
-  prompt builder cannot act on that ambiguity. An empty `items` is how a renderer
-  states the first. AIRI reads these from the **shared** scope (actor, chat and the main stage all
-  publish into it), never a preview scope, so a draft the user is still trying cannot become what a
-  prompt believes the model looks like.
-- **Unconfirmed changes never reach the snapshot**: that is what `persistent: false`
-  on a cue expresses.
-- **A preview scope is discarded when its mount unmounts.** Nothing else can read it, and keeping it
-  would let a later preview inherit a draft.
-- **A scope's name is stable while its state lives.** Renaming orphans the records, so the host either
-  migrates them with the rename or discards them deliberately; it never leaves a renderer reading an
-  empty scope and concluding that the model has no state.
-- **`values` is where a renderer puts its own per-model settings** — transform, selection, expression
-  overrides, and the camera for a renderer that owns one — under its own keys, which is what lets
-  "reset this model's state" and "move this model's settings with the model" have a single home.
-- **Only a mounted instance writes.** A settings panel edits the renderer's own store and lets the
-  mount of its scope publish; if nothing is mounted, nothing writes, and the edit lands the next time
-  one of that scope's mounts is up. That is also what stops two windows racing on `revision`.
-- **Active state is not part of this record**, even when `values` happens to hold the same facts: a
-  snapshot is persist-shaped, complete and revision-guarded, while a prompt wants one volatile line
-  that AIRI phrases itself. That travels on `prompt` (5.7), from the same scope and under the same
-  "publish what the model is, not what the user is trying" rule.
-
 ### 5.7 Host services (`host-services.ts`)
 
 Injected at activation: `modelDriverId`, `contract` (a mirror of the manifest
@@ -1118,12 +996,6 @@ is a host-wide appearance decision, so it cannot move into renderer storage with
 every renderer inventing its own idea of the current theme.
 
 ### 5.8 Versioning (`shared.ts`, `host-services.ts`)
-
-`MODEL_DRIVER_CONTRACT_VERSION = { major: 0, minor: 2 }`. The host checks
-`manifest.contractVersion` **when it reads the manifest**, before activation, and
-refuses a plugin it cannot speak — so no service container is ever built for it,
-and `ModelDriverHostServices.contract` can only ever repeat the validated value. There
-is no downgrade path and no negotiated subset of the service interface.
 
 `RendererMountReadinessState` is a vocabulary a renderer *produces* rather than only
 type-checks against:
