@@ -1,5 +1,13 @@
 # Stage renderer migration outline
 
+> **Superseded by RFC 0002.** The contract is now
+> [`rfcs/0002-model-driver-contract.md`](./rfcs/0002-model-driver-contract.md), and the
+> fork-facing implementation plan lives at
+> [`packages/stage-renderer-sdk/IMPLEMENTATION_PLAN.md`](../packages/stage-renderer-sdk/IMPLEMENTATION_PLAN.md).
+> This document's architecture (state scopes, per-scope snapshots, `mountId`-addressed
+> cues, per-scope prompt publication) no longer describes the target; its per-renderer
+> inventories and deletion candidates remain useful input to the driver phases.
+
 Companion to [`rfcs/0001-stage-renderer-plugin-contract.md`](./rfcs/0001-stage-renderer-plugin-contract.md).
 The RFC is the upstream-facing design; this file is the fork-facing work plan for
 moving the four existing renderers behind it.
