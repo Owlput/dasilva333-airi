@@ -2,12 +2,14 @@
 
 | Field | Value |
 | :--- | :--- |
-| Status | **Proposal, for review.** Docs only — nothing below authorizes application changes until the decisions in §2 are signed off. |
+| Status | **Approved for implementation (2026-11-22).** Decisions D1–D8 are signed off (§2). Implementation has not started; this document is still docs-only, and beginning a phase does not commit or push anything by itself. |
 | Normative source | [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md) (RFC 0002). Where this plan and the RFC disagree, the RFC wins; where the RFC is silent, this plan chooses and says so. |
 | Contract package | `@proj-airi/stage-renderer-sdk` — revision `{ major: 0, minor: 2 }` in this working tree, 13 contract files, **no integration** |
 | Supersedes | [`docs/design-stage-renderer-migration.md`](../../docs/design-stage-renderer-migration.md) (the RFC 0001 companion plan) wherever that document conflicts with RFC 0002 — see Appendix B |
 | Scope | Host integration for Electron + Web + Pocket, four first-party drivers (Spine, MMD, Live2D, VRM), and migration of the data AIRI already holds |
 | Out of scope | Third-party driver packaging/distribution, a plugin loader or discovery mechanism, a driver-side cloud-sync channel, a scripting VM, beat sync, progress reporting, a cancellation channel outside cue transactions |
+
+**Decision record.** The project owner signed off on all eight decisions (D1–D8) on **2026-11-22**. The review accepted each proposal and added binding constraints, all incorporated below: D1 (renderer-hosted manager, election only if moved, state in web storage, thin manager), D4 (keep existing extensions, add new ones), D5 (publication is mandatory; an empty prompt + empty token list is a real publication and is kept as-is). A later change to D1, D4, D5 or D8 is a plan revision, not an implementation detail.
 
 Notation: **MUST** / **MAY** / **SHOULD** carry the RFC's meaning. A `→` names a repository path that the task touches. "Phase" is a shippable slice, not a calendar estimate. Every phase ends with an exit criterion that can be observed, not with "code written".
 
@@ -19,7 +21,7 @@ Execution note: each phase is cut into PR-sized tasks at implementation time. Th
 
 This plan starts from a specific, verifiable state, because most of its sequencing is about moving one working system without pausing it.
 
-1. **The contract package exists and is uncommitted.** `packages/stage-renderer-sdk` holds 13 contract files. The working tree already contains the RFC 0002 reshuffle: `adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` (the RFC 0001 state-scope channel) and `renderer.ts` (renamed to `components.ts`) deleted; ten files modified. `src/index.ts` re-exports 12 of the 13 — `adapters` is not exported. Its only validation is `pnpm -F @proj-airi/stage-renderer-sdk typecheck` (`tsc --noEmit`), and it has no tests.
+1. **The contract package exists and is uncommitted.** `packages/stage-renderer-sdk` holds 13 contract files. The working tree already contains the RFC 0002 reshuffle: `adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` (the RFC 0001 state-scope channel) and `renderer.ts` (renamed to `components.ts`) deleted; ten files modified. `src/index.ts` re-exports 12 of the 13 — `adapter` is not exported. Its only validation is `pnpm -F @proj-airi/stage-renderer-sdk typecheck` (`tsc --noEmit`), and it has no tests.
 2. **Nothing imports the package.** A repository-wide grep for `stage-renderer-sdk` outside its own `src/index.ts`/`README.md` returns nothing. This is the cheapest possible starting point: the contract can still change without touching a consumer.
 3. **The app renders through one component and four stores.** `RendererStage.vue` statically imports the four scene components; `ControlStripHost.vue`, `ControlStrip.vue`, `ModelCustomizer.vue`, the card store and the settings pages read and write the four renderer stores directly. The compiler still sees every format.
 4. **The data model has no identities beyond a display-model string.** `display-model-${nanoid}` is minted in the host store; there is no `profileId`; there is no driver id on a model; a character card points at `modules.displayModelId`. No `modelPrompt` field exists.
@@ -145,20 +147,20 @@ The load-bearing observation: **the coupling is not 466 independent decisions.**
 
 ---
 
-## 2. Decisions that need sign-off
+## 2. Decisions (signed off 2026-11-22)
 
-RFC 0002 deliberately leaves several host choices open ("where the host runs it is the host's decision", "which transport carries which kind is the host's implementation"). This plan makes a call for each and records the alternative. Four decisions (D1, D4, D5, D8) materially change the implementation or its user-visible outcome and need explicit approval; the rest are implementation-level defaults that can be revisited without changing the contract.
+RFC 0002 deliberately leaves several host choices open ("where the host runs it is the host's decision", "which transport carries which kind is the host's implementation"). The choices below were signed off on 2026-11-22 and are now binding. The alternative column is kept as the record of what was rejected, not as an open question.
 
-| # | Decision | Proposed | Alternative | Needs sign-off |
+| # | Decision | Chosen | Alternative (rejected) | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| D1 | Where managers run on desktop | A dedicated hidden **driver-host renderer window** owns managers and their storage; the main-process registry holds declarations + enabled flags + the broker | Managers in Electron main with a new file-based storage medium | **Yes** |
-| D2 | Driver packaging | Driver modules colocated in each renderer package (`src/driver/*`, subpath exports) for the first-party release; a separate `@proj-airi/stage-driver-*` package only if third-party distribution is revisited | Four new packages now | No |
-| D3 | Transport | `@moeru/eventa` invoke/event for registry requests, delivery and observation on desktop; direct in-process calls on Web/Pocket; `BroadcastChannel` never carries an acknowledgement | BroadcastChannel + polling | No |
-| D4 | Identity preservation | Legacy model ids become `modelId` verbatim; one default `profileId` per import; the card keeps `displayModelId` and gains `extensions.airi.avatar` for driver/profile/prompt | Rename the card field and migrate all cards | **Yes** (scope) |
-| D5 | Existing model prompt | Hand `acting.modelExpressionPrompt` to the driver in the migration bag; after cutover the card field is the driver's last publication (read-only in host UI) | Keep it as a host fallback/override | **Yes** |
-| D6 | Format order | Spine → MMD → Live2D → VRM | VRM first (most visible) | No |
-| D7 | First-party scope | No loader, no discovery, no third-party install | Reuse `plugin-sdk` host | No |
-| D8 | Backup compatibility | Keep a legacy backup reader until the pre-contract backup format's version cutoff; the driver migration runs during restore | Drop old backups | **Yes** (product) |
+| D1 | Where managers run on desktop | A dedicated hidden **driver-host renderer window** owns managers and their storage; the main-process registry holds declarations + enabled flags + the broker | Managers in Electron main with a new file-based storage medium | Signed off |
+| D2 | Driver packaging | Driver modules colocated in each renderer package (`src/driver/*`, subpath exports) for the first-party release; a separate `@proj-airi/stage-driver-*` package only if third-party distribution is revisited | Four new packages now | Signed off |
+| D3 | Transport | `@moeru/eventa` invoke/event for registry requests, delivery and observation on desktop; direct in-process calls on Web/Pocket; `BroadcastChannel` never carries an acknowledgement | BroadcastChannel + polling | Signed off |
+| D4 | Identity preservation | Legacy model ids become `modelId` verbatim; one default `profileId` per import; the card keeps `displayModelId` and gains `extensions.airi.avatar` for driver/profile/prompt | Rename the card field and migrate all cards | Signed off |
+| D5 | Existing model prompt | Hand `acting.modelExpressionPrompt` to the driver in the migration bag; after cutover the card caches the driver's last publication (`avatar.prompt`, host UI read-only) | Keep it as a host fallback/override | Signed off |
+| D6 | Format order | Spine → MMD → Live2D → VRM | VRM first (most visible) | Signed off |
+| D7 | First-party scope | No loader, no discovery, no third-party install | Reuse `plugin-sdk` host | Signed off |
+| D8 | Backup compatibility | Keep a legacy backup reader until the pre-contract backup format's version cutoff; the driver migration runs during restore | Drop old backups | Signed off |
 
 ### D1 — Manager hosting on desktop
 
@@ -170,22 +172,29 @@ RFC 0002 deliberately leaves several host choices open ("where the host runs it 
   - Pros: literal two-process split; no extra renderer.
   - Cons: model bytes live in IndexedDB today and are multi-GB; this creates a second storage medium, a second migration for every model, a main-side implementation of `keys`/`watch`, and a permanent split between BYOS/sync (renderer) and driver bytes (main). Main also cannot run the provider's parsing code without bundling renderer dependencies.
 - **B. Managers in one hidden driver-host renderer window, created at startup and alive for the app lifetime.**
-  - Pros: one storage medium (the existing IndexedDB origin); provider and manager can share the same storage adapter and even the same parsing code; no Vue/Three code in the main bundle; window destruction is already observable by main, so window-gone settlement stays correct.
+  - Pros: one storage medium (the existing IndexedDB origin); the manager and provider instances share the same storage adapter; no Vue/Three code in the main bundle; window destruction is already observable by main, so window-gone settlement stays correct.
   - Cons: one extra renderer process (tens of MB), a startup ordering dependency, and a nuance: the manager outlives all *display* windows but is itself hosted in a window. Mitigation: the host window has no route, no UI and no stage; it is an implementation detail, and web/pocket co-locate managers in-process.
 - **C. Managers in the always-on control-strip window.**
   - Rejected: reloading or closing that window kills managers, which contradicts "outlives every window".
 
-**Proposed: B.** The registry and cue broker remain AIRI's and live in the main process (global correlation values, window-gone detection, authorization); the host window hosts managers and is reached through main. If B is rejected, only §4.1–§4.4 and the eventa contract change; driver code does not.
+**Decided: B.** The registry and cue broker remain AIRI's and live in the main process (global correlation values, window-gone detection, authorization); the host window hosts managers and is reached through main. The startup/recovery consequences are specified in §4.2–§4.3.
+
+**Signed-off interpretation.** The review accepts a manager in the renderer process, which is this plan's **Option B** (the hidden driver-host window); the main-process manager (Option A) stays rejected. The review's constraints are binding:
+
+- **Election.** None is required on desktop: the hidden host window is the single manager host, and main owns the registry. It **is** required where the host can be duplicated — Web/Pocket in several tabs of one origin — so those hosts elect one manager owner per profile (Web Locks where available, otherwise a `BroadcastChannel` claim with a tab id), and the other tabs proxy to the owner. If the manager ever moves into a user window or into main, the same one-owner election applies; never two managers for one driver.
+- **State.** The manager keeps no essential state in memory. Enabled flags, rows, records and migration markers live in host web storage (IndexedDB/localStorage); anything the manager caches is disposable and re-read after a restart.
+- **Thinness.** The manager does lifecycle and model listing only. Parsing, preview generation, capability discovery and rendering stay in runtimes/provider instances; the manager is not computation- or persistence-intensive.
+- **Movability.** The host service interface is the boundary. Moving the manager later is a host wiring change, never a driver change, and its state survives because it already lives in host web storage.
 
 **Status: Accept Option A.** Manager in renderer process may require election. Manager state must be persisted on web storage, if any at all. The manager is not computation intensive or persistence state intensive. The manager may be moved in the future if there is a performance or stability issue, but the general model persists.
 
 ### D2 — Driver packaging
 
-**Option A (proposed): driver modules live in the renderer package they belong to**, e.g. `packages/stage-ui-three/src/driver/{manifest,manager,provider,mount,panels,picker}.ts`, exposed through subpath exports. The host never imports a renderer package directly; a single first-party driver table names manifest module specifiers, and a guard test (§7.3) fails on any other host import.
+**Option A (chosen): driver modules live in the renderer package they belong to**, e.g. `packages/stage-ui-three/src/driver/{manifest,manager,provider,mount,panels,picker}.ts`, exposed through subpath exports. The host never imports a renderer package directly; a single first-party driver table names manifest module specifiers, and a guard test (§7.3) fails on any other host import.
 
 **Option B: four new `@proj-airi/stage-driver-*` packages.** Cleaner long-term boundary and a prerequisite for third-party distribution, but it duplicates package plumbing now and moves code that is still churning.
 
-**Proposed: A now, B later.** The manifest indirection means moving to B is a package move, not a host change.
+**Decided: A now, B later.** The manifest indirection means moving to B is a package move, not a host change.
 
 **Status: Accepted as proposed.**
 
@@ -194,15 +203,37 @@ RFC 0002 deliberately leaves several host choices open ("where the host runs it 
 - **Desktop:** typed `@moeru/eventa` invoke/event for registry requests (register, update, unregister, list/query, deliver, withdraw, ack) and for observation; the main process relays between the driver-host window and each mounting window. A driver never sees a transport, only its channel.
 - **Web / Pocket:** the same interfaces implemented with direct in-process calls; no serialization and no relay.
 - **BroadcastChannel is observation-only.** It has no return path and no ordering guarantee; it cannot carry an acknowledgement, and today's five renderer channels silently do nothing when the receiving window did not instantiate the matching store. It survives only where an observer genuinely needs latest-wins state (theme, row refresh).
+
 **Status: Accepted.**
 
 ### D4 — Identity preservation
 
 RFC 0002 §5.1 requires the adapter to mint identities and guarantees stability across transfer/restore. The cheapest way to keep every existing reference valid is:
 
+**Decided shape.**
+
 - `modelId` = the existing `DisplayModel.id` (including `preset-live2d-1`, `display-model-<nanoid>`), adopted at import/restore. No card migration.
-- One default `profileId` minted per imported model before its first load, so `LoadCue.profileId` is never empty.
-- The card keeps `modules.displayModelId` as the **model id**, and adds `extensions.airi.avatar = { driverId, profileId, prompt? }`. The driver can therefore be resolved even when it is disabled (via the record's `modelDriverHint`).
+- One default `profileId` minted per imported model before its first load, so `LoadCue.profileId` is never empty. Only the adapter mints it; a driver persists it and never rewrites it.
+- The card keeps `modules.displayModelId` as the **model id**, and adds one new schema object:
+
+```ts
+// packages/stage-ui/src/types/card.schema.ts — AiriAvatarBindingSchema (new)
+extensions.airi.avatar = {
+  driverId: string,
+  profileId: string,
+  prompt?: {            // cache of the driver's last publication, never host-authored
+    modelId: string,
+    profileId: string,
+    text: string,
+    version: number,
+    publishedAt: number,
+  },
+}
+```
+
+  The full publication (text + ACT token list + version) is kept in the host's prompt store; the card keeps only what must survive a driver that is not running, which is the text plus the identity/version it belongs to. A card without `avatar` is a legacy card: resolve its driver from the model record's `modelDriverHint` and mint/attach the binding during the cutover. Valibot schema tests cover the new object, a legacy card, and a mismatched `modelId`.
+
+**Additive schema, per review.** Every existing `extensions.airi.*` field stays (`modules`, `acting`, `outfits`, `active_state`, the legacy per-format blocks); `avatar` is added beside them. Nothing is renamed or removed, so existing readers keep working. Only data changes at cutover: the legacy prompt text is copied into the cache and cleared, and outfits are converted to driver profiles.
 
 The alternative — renaming the card field to `avatar` and migrating all cards — touches 307 references for no user-visible gain and creates a second failure mode during cutover.
 
@@ -212,12 +243,15 @@ The alternative — renaming the card field to `avatar` and migrating all cards 
 
 Today `extensions.airi.acting.modelExpressionPrompt` is generated by the user (or an LLM) from live capability lists and injected verbatim into the system prompt (`buildSystemPrompt`, `airi-card.ts:1521-1531`). RFC 0002 §7.4/§10.4 replaces this with a **driver-published prompt + ACT token list pair**, versioned per model and profile, with no fallback.
 
-**Proposed migration:** the per-driver legacy bag carries the card's current `modelExpressionPrompt` plus the model id it was written for (already needed for window-global settings). The driver may adopt that text as the initial publication for that model/profile and republish it. After the cutover:
+**Decided migration:** the per-driver legacy bag carries the card's current `modelExpressionPrompt` plus the model id it was written for (already needed for window-global settings). The driver may adopt that text as the initial publication for that model/profile and republish it; adoption is optional, but the driver must still publish (possibly empty) once it is activated. After the cutover:
 
-- the card field is the **cache of the driver's last publication** for the current binding;
-- the host never generates or edits it;
-- if the driver publishes nothing, the field is cleared and the prompt has no model section (RFC's "no fallback");
-- the "generate prompt" UI becomes a driver panel action.
+- the card cache is `extensions.airi.avatar.prompt.text` (D4), not `acting.modelExpressionPrompt`;
+- `buildSystemPrompt` reads the avatar prompt and never the acting field;
+- `acting.modelExpressionPrompt` stays in the schema as **legacy input only**: it is read once during migration, then cleared from the card so two texts cannot disagree;
+- the host never generates or edits the avatar prompt;
+- a driver **MUST** publish at least once per model/profile; an empty prompt string and an empty ACT token array are a valid publication and are kept exactly as published (the cache exists with that empty text, and `buildSystemPrompt` contributes no model section);
+- "no publication yet" (the driver has not been activated for that model/profile) is the only case with no cache; it is not the same as an empty publication;
+- the "generate prompt" UI moves into the driver's panel and writes the driver's publication, not the card directly.
 
 **Rejected alternative:** keep it as a host override. It would contradict RFC 0002 §7.4, reintroduce a second writer of a driver-owned text, and keep the host coupled to capability vocabulary.
 
@@ -225,9 +259,11 @@ Today `extensions.airi.acting.modelExpressionPrompt` is generated by the user (o
 
 ### D6–D8
 
+Signed off as proposed:
+
 - **D6 (order).** Spine first because it has no camera, no lip sync and a static capability package; then MMD (asset companions), Live2D (profiles, captions, pointer, OPFS), VRM last (camera, transform, meshes, Stage-Mate). Each phase is shippable on its own.
 - **D7 (no loader).** The first-party driver table is a static list of manifest specifiers. `@proj-airi/plugin-sdk` already hosts server/WebSocket plugins with a different lifecycle and is not reused: RFC 0002 non-goals forbid a loader, and a first-party static table is smaller than adapting an unrelated host.
-- **D8 (backups).** A pre-contract backup is restored by a versioned legacy reader that imports through the two-phase path and writes deletion markers; the cutoff is declared explicitly. Product decision because it commits us to maintaining the reader for at least one release.
+- **D8 (backups).** A pre-contract backup is restored by a versioned legacy reader that imports through the two-phase path and writes deletion markers. The reader lives beside the host core and asserts the backup manifest's format version; the cutoff is a named constant with a test that an older bundle is refused with a readable message. Product commitment: maintain the reader for at least one release after the migration completes.
 
 **Status: Accepted.**
 
@@ -247,7 +283,7 @@ The current package is close but not conformant. The audit found the following g
 | C4 | No cancellation (`§9.7`) | `CueTransactionState` enum (`submitted`/`queued`/`running`/`complete`/`cancelled`/`aborted`/`error`); `CueWithdrawalRequest` union (`cancel`/`abort`/`pop`/`pop-all`/`abort-current`/`dump`); per-target results (`cancelled`/`requested`/`running`/`unknown`/`empty` + correlations + count); bounds on named correlations and report size | Tests cover each request against a fake transaction table |
 | C5 | Acknowledgement shape incomplete (`§9.3`) | Add the answering `modelDriverId`; allow a debug message on resolved outcomes; split acceptance from settlement (`send` returns `{ nonce, settled }`; `settled` resolves to the ack); drop the second correlation notion (`requestId`) | A test accepts a transaction, cancels it before settlement, and observes `cancelled` |
 | C6 | Failure vocabulary incomplete (`§9.4`, `§9.6`, `§6.2`) | Add `cancelled`, `window-gone`, `contract-version-mismatch`, `model-referenced`, `profile-referenced`; rename `RENDERER_UNAVAILABLE` to `DRIVER_UNAVAILABLE`; keep `ABORTED` for "started and stopped" | Enum exhaustive in tests; no rejection reason is ever reported as a failure |
-| C7 | Prompt and ACT token list are not a pair (`§10.4`) | Replace `ModelPrompt` with `ModelPromptPublication { modelDriverId, modelId, profileId, prompt, actTokens, version, publishedAt }`; `HostPromptService.publish(publication)`; document that AIRI stores only the latest and compares versions | Test: publishing profile B does not overwrite profile A's cached pair for the card |
+| C7 | Prompt and ACT token list are not a pair (`§10.4`) | Replace `ModelPrompt` with `ModelPromptPublication { modelDriverId, modelId, profileId, prompt, actTokens, version, publishedAt }`; `HostPromptService.publish(publication)`; document that AIRI stores only the latest, compares versions, and treats an **empty** prompt + empty token array as a real publication (not as absence); publication is mandatory once the driver is activated for that model/profile | Test: publishing profile B does not overwrite profile A's cached pair; publishing `('', [])` stores the empty publication and does not delete the cache |
 | C8 | Capability vocabulary deltas (`§6.4`, `§9.5`) | Rename `vfx` → `effect`, `VfxCue` → `EffectCue`, `CueKind.VFX` → `EFFECT`, `CueKind.ACT = 'act'`; add `interactionModes: RendererMountInteractionMode[]`; add `effect` to `ResetScope`; add a point-of-interest target to `GazeMode`; type `capabilities.cues` as "beyond load"; forbid `persistent: false` on load/reset/caption | Typecheck + grep: no `vfx`/`VFX` in exported names |
 | C9 | Readiness transitions are absent (`§8.4`) | A transition table (`READINESS_TRANSITIONS`) and `isReady(state)` (only `model-loaded` and `ready-for-model` are ready); document that a transition outside the table is a major-version change | A test walks every declared transition and rejects one undeclared one |
 | C10 | Cross-window mount queries are missing (`§8.6`) | Manager-level `queryMount(request)` / `commandMount(request)` addressed by surface+purpose for `occupiesPoint`, `hitTest`, `stopAll`, `dispose`; keep the live-instance members for the creating window | A test from a second adapter reaches a mount by surface+purpose |
@@ -255,7 +291,7 @@ The current package is close but not conformant. The audit found the following g
 | C12 | `pending-import` contradicts the RFC (`§5.1`, `§13.2`) | Remove it from `ModelState`; add an **AIRI-only** `PendingModelPayload` record to `references.ts` (payload ref, driver hint, legacy id label, createdAt; no model identity) | Test: the host cannot construct a `LoadCue` from a pending payload |
 | C13 | Migration bag is per-entry, not whole-bag (`§13.1`) | `migrate(bag)` returns `{ absorbed: boolean, warnings? }`; the host deletes the whole bag only on `absorbed: true`, then writes a marker; idempotency documented | A test calls twice with the same bag and observes no change |
 | C14 | No compatibility predicate (`§6.2`) | `isContractCompatible(driver, host)` (same minor below 1.0, same major from 1.0, patch-compatible); rejection carries a readable reason | Table-driven test |
-| C15 | `entry` declares five modules vs "only manager is static" (`§6.5`) | Reconcile by documentation: the manifest names module **specifiers**, but the host loads only `manager` at startup and resolves the rest on demand through the adapter. If the RFC text must stay literal, move the four specifiers behind `ModelDriverManager.resolveEntry(kind)` — one decision, one file | A host-side startup test imports no renderer module |
+| C15 | `entry` declares five modules vs "only manager is static" (`§6.5`) | **Decided: RFC errata, no contract change.** The manifest names module specifiers, but nothing evaluates them at startup — the host loads only `manager` and resolves the rest on demand through the adapter. Phase 0 updates RFC §6.5 to say declaration, not load. Moving specifiers behind a manager method would add an indirection with no behavioral gain for a first-party static table | A host-side startup test imports no renderer module |
 | C16 | Two driver-status vocabularies (`§7.3`) | Keep `DriverStatus` and `UnavailableModelReason`, and document the mapping (`NOT_INSTALLED`→`driver-unknown`, `DISABLED`→`driver-disabled`, `ERROR`→`driver-error`) | Mapping test |
 | C17 | No validators or tests | Add runtime validators: `validateManifest`, `validateCueEnvelope`, `assertCapabilityCompleteness`, `assertAckShape`; add `vitest` + `test` script to the package | `pnpm -F @proj-airi/stage-renderer-sdk test` and `typecheck` green |
 | C18 | Stale RFC 0001 citations | Update `src/index.ts` and `README.md` to cite RFC 0002; add the adapter and this plan to the README file map | README links resolve |
@@ -263,7 +299,17 @@ The current package is close but not conformant. The audit found the following g
 | C20 | The host passes a size (`§8.3`) | Remove `RendererMountProps.viewport`; the container's box is the viewport and the mount measures it. Pointer points stay relative to that box | No size reaches a driver; a mount measures its own container; pointer math remains box-relative |
 | C21 | Commit does not carry the imported input and cannot settle per entry (`§5.3`) | `confirmImport` receives the input handle/copies alongside the selection, and each committed entry settles independently — a failing commit MUST NOT undo another | A stub commit with one failing and one succeeding entry persists only the success |
 
-**Also in this phase (docs, not code):** update `docs/data-catalog.md` §3.2 to the real `DisplayModel` shape and add the new host record keys the later phases introduce. The catalog currently documents fields the source no longer writes and omits three storage keys (`local:display-models/metadata-cache`, `local:sync-metadata/remote-catalog-cache`, `local:sync-metadata/preview-updated/{id}`).
+**Also in this phase (docs, not code):** update `docs/data-catalog.md` §3.2 to the real `DisplayModel` shape and add the new host record keys the later phases introduce. The catalog currently documents fields the source no longer writes and omits three storage keys (`local:display-models/metadata-cache`, `local:sync-metadata/remote-catalog-cache`, `local:sync-metadata/preview-updated/{id}`). Also apply the RFC §6.5 errata (C15) and the stale-citation fixes (C18).
+
+**Execution units** (each is one reviewable change; do them in this order)
+
+| Unit | Contents | Done when |
+| :--- | :--- | :--- |
+| P0.1 | Adapter (C1), envelope addressing (C2), delivery members (C3), prompt publication (C7), vocabulary deltas (C8), pointer wording (C19), no viewport prop (C20) | `tsc --noEmit` clean; no consumer yet |
+| P0.2 | Cancellation model (C4), ack/acceptance split (C5), failure codes (C6), readiness transitions (C9), cross-window queries (C10), compatibility (C14) | Type-level tests for each table/union |
+| P0.3 | Records and migration types (C11–C13, C16), import commit input (C21), RFC errata (C15) | Types compile; mapping tests |
+| P0.4 | Validators + `vitest` (C17), exports/citations (C18) | `pnpm -F @proj-airi/stage-renderer-sdk test` green |
+| P0.5 | `docs/data-catalog.md` correction and new keys | Catalog matches source for the model domain |
 
 **Exit criteria**
 
@@ -271,6 +317,8 @@ The current package is close but not conformant. The audit found the following g
 2. A grep over `packages/stage-renderer-sdk/src` finds no format string (`vrm|live2d|spine|mmd`) outside comments and no `stateScope`/`persistence` residue.
 3. Every RFC 0002 section maps to at least one exported symbol; the mapping is recorded in Appendix C.
 4. The package still has **zero importers** in the app.
+
+**Next action:** start with P0.1. Phase 1 begins only when all four exit criteria hold; do not scaffold a host against a contract that has not passed them.
 
 ---
 
@@ -285,7 +333,7 @@ The current package is close but not conformant. The audit found the following g
 | Host core (pure TS, no Vue/Pinia) | `packages/stage-driver-host/` | Registry, cue broker, transaction table, cancellation, mount registry, id minting, host record types, driver storage adapter contract, the static first-party driver table |
 | Contract validators | `packages/stage-renderer-sdk/src/validate.ts` | Manifest, envelope, capability completeness, compatibility, ack shape (Phase 0) |
 | Main-process wiring | `apps/stage-tamagotchi/src/main/services/model-drivers/` | Registry ownership, eventa contracts, manager proxy, window-gone settlement, enabled flags |
-| Driver-host window | `apps/stage-tamagotchi/src/main/windows/driver-host/`, `apps/stage-tamagotchi/src/renderer/pages/driver-host.vue` | Hidden window that hosts managers (decision D1-B) |
+| Driver-host window | `apps/stage-tamagotchi/src/main/windows/driver-host/`, `apps/stage-tamagotchi/src/renderer/pages/driver-host.vue` | Hidden window that hosts managers (decision D1) |
 | Renderer adapter | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/adapter.ts` | Per-window adapter: mint, resolve entry points, services, authenticated channels |
 | Vue-facing host | `packages/stage-ui/src/libs/model-drivers/` | Records store, mount host, panel/picker frames, unavailable view, prompt cache |
 | Web / Pocket host | `apps/stage-web/src/libs/model-drivers/`, `apps/stage-pocket/src/libs/model-drivers/` | In-process registry + managers + adapters, same interfaces |
@@ -298,19 +346,26 @@ The current package is close but not conformant. The audit found the following g
 Startup sequence, matching RFC 0002 Appendix A:
 
 1. **Read declarations before executing driver code.** The static first-party table names one manifest module per driver; main imports only the manifest module and validates `id`, `driverVersion`, `contractVersion`, `requirements`, `capabilities` (C14/C17). A mismatch is rejected here with a readable reason; no service container is ever built.
-2. **Register the driver** with its static capability hint, requirements, `enabled` flag and persisted `DriverInfo`. Enabled flags live in the existing global app config (`apps/stage-tamagotchi/src/main/configs/global`); Web/Pocket use `localStorage`.
-3. **Create the manager** in the driver-host window (D1-B). Main records `hasManager` only after the manager reports ready. A failed manager load becomes `DriverStatus.ERROR`; rows persisted by the host keep the catalog usable.
+2. **Register the driver** with its static capability hint, requirements, `enabled` flag and persisted `DriverInfo`. Enabled flags live in host web storage (`airi:model-drivers:enabled`, read through the driver-host window on desktop and directly on Web/Pocket); main keeps the last known values as a cache and refreshes them when a manager reports ready.
+3. **Create the manager** in the driver-host window (D1). The host window reads the enabled flags and boots managers for enabled drivers; main records `hasManager` only after the manager reports ready. A failed manager load becomes `DriverStatus.ERROR`; rows persisted by the host keep the catalog usable.
 4. **Create the broker and mount registry** (one each, in main).
 5. **Broadcast `onChange`** whenever a driver is enabled, disabled, updated or a manager comes up/down, so the host re-enumerates rows (RFC §5.8).
 
-Main holds **no runtime, no mount, no probe result**. It holds declarations, enabled flags, manager proxies, mount descriptors and the transaction table.
+Main holds **no runtime, no mount, no probe result**. It holds declarations, cached enabled flags, manager proxies, mount descriptors and the transaction table.
 
-### 4.3 Driver-host window (desktop only)
+### 4.3 Manager hosting (desktop window; Web/Pocket in-process)
 
-- A hidden `BrowserWindow` created after app-ready, with `show: false`, `skipTaskbar: true`, `backgroundThrottling: false` (a throttled timer would make managers unresponsive), and a dedicated route `#/driver-host` that renders no UI.
+- A hidden `BrowserWindow` created after `app.whenReady()`, with `show: false`, `skipTaskbar: true`, `backgroundThrottling: false` (a throttled timer would make managers unresponsive), and a dedicated route `#/driver-host` that renders no UI.
 - It owns the managers. Managers receive a host-provided service container: logger, namespaced storage (4.6), prompt channel, cue channel, pointer service, theme, UI, i18n, runtime facts, optional bridge/diagnostics (RFC §10.1).
-- Manager crash or window crash: main marks the managers unavailable, settles every pending transaction for their mounts (`aborted`), recreates the window, and re-registers. Rows persisted by AIRI keep the catalog visible as unavailable.
+- **Thin by design (D1 review constraint).** A manager does lifecycle and `listModels`, nothing else: no parsing, no preview generation, no capability discovery, no rendering. Those run in runtimes or lightweight provider instances in the window that asked for them. The manager is therefore neither computation- nor persistence-intensive, which is what makes it safe to host here and movable later.
+- **No essential in-memory state.** Enabled flags, rows, records, markers and the prompt cache are host web storage (IndexedDB/localStorage), so a manager restarted after a crash re-reads its own list instead of losing it.
+- **No election on desktop.** The hidden window is the single manager host and main owns the registry, so there is no contender to elect. Election applies only where hosts can duplicate (Web/Pocket tabs, below) or if the manager later moves into a user window or into main: one owner at a time, a deterministic winner, and re-election on crash.
+- **Startup ordering.** Window creation is not a startup barrier: the main/actor windows appear immediately and catalogs render from persisted rows. A mount request or a cue that needs a manager waits on `whenManagerReady(driverId)`; if the manager has not reported ready before the transaction deadline (or a host-side 10 s default for foreground actions), the caller gets a `driver-unavailable` failure or an unapplied outcome, never a hang. This is the only place the hidden window touches user-visible latency.
+- **Crash and reload.** Manager or window crash marks the driver `ERROR`, settles every pending transaction for its mounts (`aborted`), recreates the window with backoff (3 attempts, then a user-visible "retry driver" action), and re-registers. Rows persisted by AIRI keep the catalog visible as unavailable throughout.
+- **Quit.** On app shutdown, `deactivate` is called on every active runtime, managers are released, and pending transactions settle `aborted` before the window is destroyed.
 - The window is not a mount surface and never hosts a renderer. Preview generation that needs WebGL runs in the window that imported/asked for it (`provider.preview`), not here.
+
+**Web / Pocket.** Managers run in-process in the app renderer, with the same interfaces. If the host permits several tabs of one origin, the election above picks one manager owner and the rest proxy to it; the shared IndexedDB is still the storage, and concurrent writes remain the driver's responsibility. No Electron APIs are used on this path.
 
 ### 4.4 Broker and transaction table (main)
 
@@ -341,6 +396,8 @@ State is a table `nonce → { state, driver, target, deliveredTo[], acknowledged
 | Pending payload | `PendingModelPayload` (C12): a host-owned blob in localforage plus a record under `local:model-drivers/pending/{id}` carrying the driver hint, the legacy id **as a label**, and a timestamp. No identity, never loadable. |
 | Deletion markers | Generalize the existing `local:sync-metadata/deleted-models/{id}` into the durable marker RFC §13.2 requires; export and restore must respect it. |
 
+Everything in this table is web storage, not manager memory. That is the persisted-state half of the D1 review constraint: the manager can be restarted, moved, or re-elected without a data migration, because the records were never inside it.
+
 `docs/data-catalog.md` gains every new key in the same change.
 
 ### 4.6 Driver storage service
@@ -367,6 +424,18 @@ A complete stub driver is built in this phase, not after it, because every host 
 
 It is used by broker/registry unit tests and by a dev-only smoke route (`/devtools/model-driver-stub`) that exercises mount → load → cue → cancel → capture across two windows.
 
+**Execution units** (each is one reviewable change; P1.1–P1.2 need no Electron wiring)
+
+| Unit | Contents | Done when |
+| :--- | :--- | :--- |
+| P1.1 | `stage-driver-host` types, registry, transaction table, broker logic, cancellation, mount registry, id minting | Unit tests pass without a transport |
+| P1.2 | Driver storage adapter: namespaces, `keys()`, `watch`, isolation | Isolation/watch tests pass; no host reads a driver key |
+| P1.3 | Driver-host window (D1): creation, boot, manager load, crash/reload, `backgroundThrottling: false` | A manager answers `listModels` with no display window open |
+| P1.4 | Eventa contracts + main service: registry requests, delivery relay, window-gone settlement, enabled flags | Two-window cue round trip with the stub; close-window settles `aborted` |
+| P1.5 | Host records, adapter minting, `extensions.airi.avatar` schema (D4), prompt cache store | Card schema tests; a stub binding loads by binding |
+| P1.6 | Stub driver + harness + `/devtools/model-driver-stub` route | The full Phase 1 exit list runs from the dev route |
+| P1.7 | Backup enumeration and clean-profile restore with the stub (D8 groundwork) | Round trip restores rows, prompt and the stub bundle |
+
 ### 4.8 Exit criteria
 
 1. `pnpm -F @proj-airi/stage-driver-host test` covers: registration and version rejection; manager readiness and crash recovery; envelope validation; correlation uniqueness; FIFO; drop; deadline; each withdrawal request and its result table; window-gone settlement; storage isolation and `keys()`; id minting and duplicate rejection.
@@ -374,6 +443,7 @@ It is used by broker/registry unit tests and by a dev-only smoke route (`/devtoo
 3. A backup on one profile and a restore on a clean profile bring back the stub's catalogue, rows, prompt and `driverTransfer` bundle — the backup path is exercised in this phase, not left to Phase 8.
 4. No real renderer package is imported by the host core, main, or the driver-host window (`grep` guard in §7.3).
 5. The app's existing behavior is unchanged: the legacy `RendererStage` path still renders all four formats, and nothing in the UI invokes the new host yet.
+6. **Manager restart and empty prompt.** Killing the driver-host window and letting it recover leaves the catalog, rows and bindings intact, and a driver publishing `('', [])` round-trips that empty publication instead of deleting the cache.
 
 ---
 
@@ -427,8 +497,8 @@ The host container is the viewport. The host passes no size and does not hold a 
 
 ### 5.4 Prompt
 
-- `HostPromptService` keeps the latest publication per `(driver, model, profile)`; AIRI writes it into `extensions.airi.avatar.prompt` **only** while that model/profile is the character's binding (RFC §10.4).
-- `buildSystemPrompt` reads that field instead of `acting.modelExpressionPrompt`. The context provider that imported two renderer stores (`stores/chat/context-providers/expressions.ts:4-5`) is deleted: RFC 0002 keeps the prompt as driver text that AIRI does not parse, so acting guidance travels inside the publication rather than in a host-composed second line.
+- `HostPromptService` keeps the latest publication per `(driver, model, profile)`; AIRI writes it into `extensions.airi.avatar.prompt` **only** while that model/profile is the character's binding (RFC §10.4). Publication is mandatory once the driver is activated for that model/profile; an empty prompt and empty token array are stored as-is and the card cache holds an empty text, which is different from "no publication yet".
+- `buildSystemPrompt` reads that field instead of `acting.modelExpressionPrompt`. The context provider that imported two renderer stores (`stores/chat/context-providers/expressions.ts:4-5`) is deleted: RFC 0002 keeps the prompt as driver text that AIRI does not parse, so acting guidance travels inside the publication rather than in a host-composed second line. The legacy `acting.modelExpressionPrompt` is cleared during migration and never written again, so the card cannot hold two competing texts.
 - A mismatch between the token-list version and the prompt version is surfaced to the user (fault), not silently used.
 - Switching profiles republishes, and the card cache updates; the cost to prefix caching is accepted (RFC §10.4).
 
@@ -460,7 +530,7 @@ The host container is the viewport. The host passes no size and does not hold a 
 1. The stub driver mounts on `actor`, `stage`/`chat`, `rehearsal` and `preview`, registers in the mount registry, and reports all readiness transitions; an illegal transition is logged and rejected in dev.
 2. A cue reaches the stub only on the addressed surface/purpose; capture returns bytes through the ack; cancel/abort/pop/pop-all/abort-current/dump behave per the result table.
 3. A driver panel renders in the settings frame and the control-strip popover; a driver picker returns an imported pair; the AIRI picker writes a binding for an unavailable model.
-4. A stub-published prompt lands in a test card and is injected into a system prompt; no host code imports a renderer store for it.
+4. A stub-published prompt lands in a test card and is injected into a system prompt; an empty publication is stored as empty text (not as "no prompt"); no host code imports a renderer store for it.
 5. Pointer events arrive box-relative for one mount while a second mount is unaffected; no component binds its own listener in the stub.
 6. Speech frames drive the stub's mouth value; the host no longer sends a `mouthOpenSize` prop on the new path.
 7. All legacy behavior still works; no format is cut over yet.
@@ -486,7 +556,7 @@ These are driver-side obligations, not host changes:
 | D-7 | **Capability discovery.** Replace host parsing with `modelCapabilities()` (static or runtime as declared). | Host capability lists and runtime lists already disagree (RFC 0001 §2.5). |
 | D-8 | **Preview.** Move the format's preview pipeline into the driver and expose `provider.preview` / `ModelDescriptor.preview`. | The host stores a copy; it must not render a format. |
 | D-9 | **Profiles.** Represent the appearance state (skin/outfit/mesh set) as driver-owned profiles; `saveProfile` must work with no mount. | RFC §5.2, §7.2; today `AiriOutfit` is host data and `applyOutfit` only pokes VRM weights. |
-| D-10 | **Prompt publication.** Publish `(prompt, actTokens, version)` per model/profile, republish on profile change. | RFC §10.4; replaces `acting.modelExpressionPrompt`. |
+| D-10 | **Prompt publication.** Publish `(prompt, actTokens, version)` per model/profile at least once (empty prompt/tokens allowed and kept), republish on profile change. | RFC §10.4; replaces `acting.modelExpressionPrompt`. |
 | D-11 | **Panel + picker.** Own the settings UI for the format's capability record and the model list. | RFC §11; replaces `ModelCustomizer.vue` and per-format panels. |
 | D-12 | **Speech subscription.** Subscribe to `SpeechAnalysisFrame`; delete the mouth prop path. | RFC §12. |
 | D-13 | **Capture, stopAll, dispose.** Implement the declared queries; `dispose(shallow\|deep)` only when declared. | RFC §8.6; replaces exposed `captureFrame` and host teardown ladders. |
@@ -664,7 +734,7 @@ Run once per legacy `DisplayModel`, in this order. Every step is per item and id
 3. **Settings.** Build the driver's legacy bag (§8.3) and call `migrate`; write `driver-migration/{driverId}` only after `absorbed: true`.
 4. **Bytes.** Build `ModelProbeInput` from the host's own store — the localforage blob plus `{id}-textures` files in one `files` set with aligned names, or the URL for URL models — call `probe`, then `confirmImport` with the preserved `modelId`, the minted `profileId`, `overwrite: true`, and a migration marker. Delete the legacy blob **only after** `ok: true`; write `model-migration/{modelId}`.
 5. **Profiles.** Convert card `outfits` into driver profiles through the bag (the driver owns the composition); write the default profile; keep the card's outfit names as annotations only.
-6. **Prompt.** Hand `acting.modelExpressionPrompt` to the driver in the bag (D5), scoped to the legacy selected model; the first publication becomes the card cache.
+6. **Prompt.** Hand `acting.modelExpressionPrompt` to the driver in the bag (D5), scoped to the legacy selected model; the first publication becomes `extensions.airi.avatar.prompt.text`, and the legacy acting field is cleared.
 7. **Binding.** Ensure the card's `modules.displayModelId` still resolves and write `extensions.airi.avatar = { driverId, profileId }`. No card re-binding is required for models whose ids were preserved.
 8. **Placement.** Delete the model's `settings/positioning/models` entry only after step 3 or 4 confirmed the driver absorbed it.
 9. **Delete legacy.** Remove the `DisplayModel` row and that format's settings keys, then the host code that read them.
@@ -741,7 +811,7 @@ Validation is layered because the risk is layered: contract shapes, broker seman
 
 | Suite | What it asserts |
 | :--- | :--- |
-| `packages/stage-renderer-sdk/src/validate.test.ts` | manifest validation, compatibility predicate, capability completeness, envelope rules (capture alone, target required), ack shape, token-list/prompt version comparison |
+| `packages/stage-renderer-sdk/src/validate.test.ts` | manifest validation, compatibility predicate, capability completeness, envelope rules (capture alone, target required), ack shape, token-list/prompt version comparison, mandatory publication + empty-publication semantics |
 | `packages/stage-driver-host/src/broker.test.ts` | accept → settle, correlation uniqueness, FIFO, drop, deadline + late-ack discard, six withdrawals and the §9.7 result table, window-gone, bounds |
 | `packages/stage-driver-host/src/registry.test.ts` | declaration registration, version rejection, enable/disable, manager ready/crash, re-enumeration |
 | `packages/stage-driver-host/src/storage.test.ts` | namespace isolation, `keys()` scope, `watch` propagation, concurrent writes |
@@ -782,6 +852,8 @@ Run the same list once on Web and once on Pocket for each format, and once with 
 - A model skipped on a simulated quota shortfall remains listed as legacy/pending and retryable.
 - Backup round trip on a clean profile for each driver that declares `driverTransfer`.
 - Deletion + restore: marker respected.
+- Manager restart: kill the driver-host window during a pending transaction; the catalog and bindings survive, the transaction settles, and a fresh manager re-enumerates the same rows.
+- Empty publication: `('', [])` persists with its version and does not clear the cache.
 
 ### 9.4 Builds
 
@@ -799,7 +871,8 @@ WebGL/WebGPU, Cubism runtime, Spine runtime, audio devices, multi-monitor DPI an
 
 | Risk | Impact | Mitigation |
 | :--- | :--- | :--- |
-| Manager placement (D1-B) adds a hidden renderer and a startup dependency | Boot complexity; catalog temporarily empty | Persist rows; create the host window after app-ready without blocking the main window; recreate on crash; web/pocket use in-process |
+| Manager placement (D1) adds a hidden renderer and a startup dependency | Boot complexity; catalog temporarily empty | Persist rows; create the host window after app-ready without blocking the main window; recreate on crash; web/pocket use in-process |
+| The manager host restarts or is moved later | Model list or enabled state lost; duplicate owners | All essential state is in host web storage (§4.5); no election while one host exists; if moved, one-owner election + re-read, never two managers |
 | Contract churn after Phase 1 | Rework across four drivers | Phase 0 closes C1–C21 before any consumer; revision bump discipline; validators |
 | A driver keeps a store singleton (`activeVrm`, Live2D `model`) | Two mounts overwrite each other | D-1 is a per-driver exit criterion; settings preview is the mandatory second mount in every smoke list |
 | Re-import doubles storage during migration | Quota exhaustion on Pocket/low-end | One model at a time, gated on `estimate()`; skip with warning; delete legacy only after success |
@@ -996,7 +1069,7 @@ Per-renderer **inventories** in the old document (Spine/MMD/Live2D/VRM legacy ke
 | §4.2 communication | `CueChannel`, `CueSink`, manager delivery/withdrawal, observation events | Complete (C2/C3/C5) |
 | §5.1 identity | `ModelId`, `ModelProfileId`, adapter minting, `ModelState` | Complete; `pending-import` moved out (C12) |
 | §5.2 profiles | `ModelProvider.*Profile`, reference gate | Complete (C11) |
-| §5.3 two-phase import | `probe` → `parts`, `confirmImport(selections)` | Complete; input carried to commit |
+| §5.3 two-phase import | `probe` → `parts`, `confirmImport(selections)` | Complete (C21); input carried to commit, per-entry settlement |
 | §5.4 builtins | `ModelDescriptor.modelId?` | Already conformant |
 | §5.5 duplicates | `MODEL_ID_CONFLICT`, `overwrite`, `resetProfiles` | Already conformant |
 | §5.6 provenance | `ModelImportMigration` + host marker | Complete (C13 host side) |
@@ -1007,7 +1080,7 @@ Per-renderer **inventories** in the old document (Spine/MMD/Live2D/VRM legacy ke
 | §6.1–§6.3 declaration | `ModelDriverManifest`, requirements, activation report | Complete; version validation (C14) |
 | §6.4 claim vs probe | `ModelDriverCapabilities`, `rendererCapabilities`, `interactionModes` | Complete (C8) |
 | §6.5 loading | `ModelDriverEntryPoints` + lazy resolution | Reconciled by documentation/choice (C15) |
-| §7.1–§7.4 selection/replacement/prompt | picker contract, `CharacterModelBinding`, `ModelPromptPublication` | Complete (C7) |
+| §7.1–§7.4 selection/replacement/prompt | picker contract, `CharacterModelBinding`, `ModelPromptPublication` | Complete (C7); mandatory publication, empty publication retained |
 | §8.1–§8.6 mounting | `RendererMountProps/Emits/Exposed`, readiness transitions, queries | Complete (C9/C10) |
 | §9.1–§9.7 cues | `CueEnvelope`, vocabulary, ack, delivery, cancellation | Complete (C2/C4/C5/C6/C8) |
 | §10.1–§10.5 services | `HostServices`, storage, pointer, prompt, theme | Complete (pointer wording fixed: a runtime MAY attach its own listeners where the host offers none) |
@@ -1017,7 +1090,7 @@ Per-renderer **inventories** in the old document (Spine/MMD/Live2D/VRM legacy ke
 
 ---
 
-## Appendix D — Proposed work order at a glance
+## Appendix D — Work order at a glance
 
 | Phase | Slice | Ships when |
 | :--- | :--- | :--- |
