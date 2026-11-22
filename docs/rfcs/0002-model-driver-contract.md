@@ -39,6 +39,8 @@ window that can load, draw or describe a model.
 **Non-goals**
 
 - No plugin loader, dependency-injection container or discovery mechanism.
+- No installation, consent or sandboxing: the drivers are the ones AIRI ships.
+- No cloud sync. AIRI and a driver sync separately; a channel for driver-side sync is a later layer.
 - No storage medium, key layout, versioning scheme or migration rules for a driver.
 - No uniformity forced on formats that genuinely differ. Differences are *declared* through
   capabilities rather than inferred by the host.
@@ -136,12 +138,13 @@ an import is confirmed, adopts the identities a bundle carries when a model is r
 guarantees uniqueness. A driver persists the values it is given, and MUST NOT invent, derive or
 rewrite one.
 
-Identities are opaque, globally unique and stable across devices.
+Identities are opaque, globally unique, and stable across transfer, restore and backup. They are not
+stable across independent imports: the same payload imported on two hosts MAY yield two identities.
 
 AIRI cannot reference a model or a profile without their identities. Consequently an import always
 produces a profile, even for a driver that holds no meaningful profiles.
 
-A model can be in one of four states, discriminated by who may enumerate and reference it.
+A model can be in one of four states, discriminated by who may enumerate and reference it. The states are descriptive only.
 
 | State            | AIRI enumerates | AIRI references | Driver enumerates | Driver references | Persists |
 | :--------------- | :-------------- | :-------------- | :---------------- | :---------------- | :------- |
@@ -153,8 +156,8 @@ A model can be in one of four states, discriminated by who may enumerate and ref
 Builtin models can be enumerated and referenced by the driver, but cannot be linked to a character
 unless they go through an import. `pending-import` is a payload AIRI holds with a character but
 cannot import yet because no installed driver serves it. It has no identity, so AIRI cannot
-enumerate or reference it as a model; it is reachable by the identity of the character that holds
-it.
+enumerate or reference it as a model; it is listed under the character that holds it, not as a
+model of its own.
 
 ### 5.2 Profiles
 
@@ -169,6 +172,11 @@ Saving a profile requires an activated driver. A driver reports the state it cur
 is why a profile can be created during migration or from a settings window while the avatar is
 closed. Removal MUST be idempotent.
 
+A model or a profile AIRI still references is not removed. The driver asks AIRI before removing and
+AIRI answers with the references it holds; a referenced one is refused with a distinguishable
+outcome. The check covers the references AIRI holds, and AIRI promises nothing about a record it
+cannot see.
+
 ### 5.3 Two-phase import
 
 Import is split into two calls.
@@ -178,15 +186,18 @@ installed driver that claims unified import, and each driver answers with what i
 models, each with a stable index within that answer, a display name, descriptive metadata such as
 format, size, a suggested profile name and at most a small encoded preview, and a confidence score
 for its own answer. The index is the driver's own handle on the input and means nothing to AIRI.
-Inspection SHOULD not modify persistent states or the supplied input.
+Inspection MUST NOT write to the input. A driver that writes anyway writes into its own namespace and owns what
+it wrote; the input and AIRI's own state are untouched.
 
 AIRI orders the reports by confidence and presents them to the user. Import is never automatic, so
 the score need not be precise: it orders reports, and the user confirms.
 
 The second call is a commitment. AIRI sends the entries the user confirmed, each paired with a model
 identity and a profile identity the adapter minted. The driver answers with one record per imported
-model, echoing the identities it was given. AIRI transfers the ownership of the input when the
-transaction ends.
+model, echoing the identities it was given. AIRI copies the input once per committed entry and
+transfers each copy to the ownership of the input when the
+transaction ends. A commit settles on its own, a failing one MUST NOT
+undo another.
 
 The driver MUST NOT leave a partially written model when a commit fails.
 
@@ -195,13 +206,19 @@ The driver MUST NOT leave a partially written model when a commit fails.
 A driver MAY ship models of its own: presets, samples, a default it can create on demand.
 
 Importing a builtin is handled by the driver: the driver's own UI offers it, the adapter mints
-identities, and the result is an imported model that AIRI can reference. A builtin cannot be
-previewed through a mount, bound to a card, or referenced by a default, before it is imported.
+identities, and the result is an imported model that AIRI can reference. A builtin may be presented
+and previewed by the driver's own UI, including its picker (§7.1). It cannot be bound to a card, or
+named by a default, before it is imported.
 
 ### 5.5 Duplicates and replacement
 
-An existing identity is rejected by default. AIRI's ordinary paths — a file drop, a directory pick,
-a character card, a migration in progress — MUST report duplicates as a distinguishable conflict.
+An identity that is already taken is rejected: a restore or a bundle carrying an identity AIRI holds
+is a conflict.
+
+Two models are the same model only when they carry the same identity. AIRI compares no content and
+no path reports a duplicate on AIRI's behalf: an ordinary import mints a new identity, so importing
+one payload twice produces two models. A driver MAY warn that a payload resembles one it already
+holds.
 
 Replacement happens only on the user's explicit "replace" action. It substitutes the model payload
 and keeps profiles and settings, unless a reset is also requested. The operations MUST be atomic.
@@ -216,6 +233,9 @@ identity, and whether it is in progress or done — and passes that provenance w
 
 A driver produces a model's thumbnail, and AIRI stores its own copy. The stored copy is used for
 preview without requiring a running driver.
+
+A preview that cannot be produced is reported and MUST NOT fail the import; AIRI stores the copy
+when one exists.
 
 Authorship is part of the model, not a decoration on AIRI's side: a name, an optional avatar and an
 optional source link travel with the model record and are cached the same way.
@@ -233,24 +253,18 @@ an advisory size and an import timestamp. A failure to answer is an error and MU
 
 AIRI persists these rows: a disabled driver cannot answer, so its models stay listed and are
 presented as unavailable until the driver is enabled again. AIRI uses them for its catalogue, a
-character's model chip, duplicate detection and the unavailable-model view, and they are the source
-of AIRI's own picker for models that are unavailable for a driver reason (§7.3). Rows are not the
-source of a driver's picker (§7.1).
+character's model chip and the unavailable-model view, and they are the source of AIRI's own picker
+for models that are unavailable for a driver reason (§7.3). Rows are not the source of a driver's
+picker (§7.1).
 
-### 5.9 Capabilities and vocabulary per model
+AIRI re-enumerates when it needs rows and whenever a manager reports a change (§4.2).
+
+### 5.9 Capabilities per model
 
 What a model can do is discovered on demand, at model level, under the resources currently
 available: the expressions, motions, parameters, effects, points of interest and profiles the driver
 can actually offer for that model. The answer is not fixed by the model's files, because a
 texture-heavy outfit or a memory-hungry motion may be unavailable on this device.
-
-The ACT token vocabulary a model accepts is answered separately, so AIRI can extract tokens from a
-model's response without the driver reading that response. AIRI stores neither answer: both can
-change without anyone being told, and a cached copy would describe a model that no longer exists.
-Both SHOULD be stable while a model is loaded, because AIRI injects tokens into prompts and a
-vocabulary that changes every turn destroys prefix caching.
-
-The vocabulary reaches prompts only through the publication in §10.4.
 
 ### 5.10 Transfer and deletion
 
@@ -260,7 +274,7 @@ the original import established, which is what keeps every existing reference va
 
 A driver that persists anything SHOULD be able to delete everything it persisted. Deletion covers
 models, profiles, per-model state and the driver's own settings; AIRI clears its records after that
-succeeds.
+succeeds. A model or profile AIRI still references is refused (§5.2).
 
 ## 6. Driver declaration
 
@@ -282,6 +296,9 @@ versioning: the same minor version below one point zero, the same major version 
 and a patch difference is compatible. Rejection SHOULD include a readable reason, because the
 failure MUST be presented to the user.
 
+A driver built against an older minor of the same major runs. What its own revision did not define it
+does not report, and the host does not offer the surfaces that depend on it (§6.4).
+
 ### 6.3 Requirements and degradation
 
 Requirements state what must exist for the driver to run at all. When a requirement cannot be
@@ -292,14 +309,18 @@ situation as a hard failure.
 
 A driver states what it can do twice, and the two answers have different standing.
 
-The declaration carries a static claim, available without executing anything, so a loader, a picker
-or a settings page can reason about the driver before it runs, and so the host has something to show
+The declaration carries a static claim, available without executing anything, so a settings page or
+AIRI's own picker can reason about the driver before it runs, and so the host has something to show
 when a probe fails.
 
 The live probe is the truth: it reports availability under the resources actually in effect in that
 window. A missing grant, a device that cannot hold the model, or memory pressure each take a surface
 away, so the claim is a hint and the probe is what a running host acts on. The probe MUST be
-complete rather than sparse.
+complete for the revision the driver was built against: a key that revision did not define is not
+reported, and the host does not offer what the key gates. The set of keys is fixed by that revision,
+and adding one is a minor change (§6.2).
+
+A host probes, caches the answer and acts on it. A driver may still refuse a cue the probe allowed.
 
 Capabilities cover at least: participation in unified import, preview generation, capability
 discovery mode, profile support, per-model transfer, whole-driver transfer, settings panels,
@@ -348,14 +369,17 @@ A character may name a model that cannot be shown right now. The reasons may be:
 | `runtime-error`   | The mount itself failed to render the model.                   |
 
 The model is kept and presented to the user, marked as unavailable. The fallback offers what can
-actually be done: enable the driver, install it when an install source exists, choose another model
-through AIRI's picker, or clear the binding. Availability is not state (§5.1): an imported model
-whose driver is temporarily absent is still imported, and returns unchanged when the driver does.
+actually be done: enable the driver, choose another model through AIRI's picker, or clear the
+binding. Availability is not state (§5.1): an imported model whose driver is temporarily absent is
+still imported, and returns unchanged when the driver does.
+
+A legacy reference that no longer resolves is not `model-missing`: it was never a model (§13.2).
 
 ### 7.4 Prompt
 
-A model's prompt describes how that model should behave and which tokens it accepts, so only its
-driver can write it. The driver publishes the prompt of a model, and keeps the history itself.
+The prompt of a model in a profile describes how that model should behave and which tokens it
+accepts, so only its driver can write it. The driver publishes the prompt of a model and profile,
+and keeps the history itself.
 Publishing requires an activated driver. A card whose model has published no prompt simply has no
 prompt, there is no fallback.
 
@@ -378,7 +402,11 @@ previewing — without the two concepts collapsing into one list of every combin
 carries meaning: a driver MAY vary its behaviour by it.
 
 A caller names a surface and a purpose; a cue never names a mount. The adapter mints a mount's
-identity before the mount and passes it in. The driver's own handle for it is internal.b
+identity before the mount and passes it in. The driver's own handle for it is internal.
+
+Surfaces and purposes are fixed by the contract revision: a driver treats an unknown value as an
+opaque address, varies its behaviour only for purposes the revision defines, and a new one is a
+minor change (§6.2).
 
 ### 8.3 What the host assigns
 
@@ -411,8 +439,9 @@ them into "mounted":
 
 The distinction matters because "this model is broken" and "this renderer is broken" lead to
 different recoveries, and a mount that reports success after a failed load makes every downstream
-decision wrong. Which transitions are legal, and which states count as ready, are the host's policy. The change to semantics
-MUST be reflected as a new minor version.
+decision wrong. The states, the transitions between them and which states count as ready are part of
+the contract. A host decides what to do about an illegal transition, never what is legal. A change
+to any of it is a new major version.
 
 ### 8.5 Events
 
@@ -441,7 +470,9 @@ to offer the UI that needs it:
 - release resources, with the host choosing shallow or deep release.
 
 These are questions about one viewport. The window that created the mount asks its own instance; a
-request from anywhere else names a surface and a purpose, and the driver resolves it.
+request from anywhere else names a surface and a purpose, and the driver resolves it. Capture follows
+the same rule (§9.6): from outside the creating window it names a surface and a purpose, and the
+driver decides which mount answers.
 
 Capture is deliberately not a query. It is a transaction addressed to one driver, it can be refused,
 and it can fail — so it is a cue with a result (§9.6).
@@ -498,6 +529,7 @@ when the outcome is decided.
 A refusal means the cue was considered and not applied: not supported, unknown key, renderer not
 ready, no model loaded, suppressed by policy, made moot by a newer transaction, or busy. Each is a
 successful transaction with an unapplied outcome, never an exception and never a transport failure.
+The reasons are fixed by the contract revision; adding one is a minor change.
 
 A failure means the operation did not succeed: the asset is missing or corrupt, the input could not
 be read at all, the driver is unavailable, a required service was never provided, the identity
@@ -532,7 +564,8 @@ and every message wrong.
   a profile, a gaze override, the camera, the model's transform, a caption, or all of them.
 - **capture** — encode what this mount currently shows (§9.6).
 
-A driver declares the cue kinds it accepts beyond loading, and may refuse the rest.
+A driver declares the cue kinds it accepts beyond loading, and may refuse the rest. The kinds are
+fixed by the contract revision; adding one is a minor change.
 
 ### 9.6 Delivery guarantees
 
@@ -546,7 +579,8 @@ older one is stale.
 A caller may ask that a transaction be dropped rather than delivered when the target is not ready.
 Dropping is a choice and not a failure: it resolves successfully with an unapplied outcome in every
 slot. A caller may also give a deadline, after which a transaction that has not settled ends as
-`error` rather than waiting forever.
+`error` rather than waiting forever. The deadline is final and stops nothing: the work may continue, and
+an acknowledgement that arrives afterwards is discarded rather than settling it a second time.
 
 When a window goes away its mounts leave the registry and every pending transaction for them ends:
 `cancelled` if the broker never delivered it, `aborted` if it did. A caller is never left waiting on
@@ -572,44 +606,49 @@ A transaction is in one of these states:
 
 `complete`, `cancelled`, `aborted` and `error` are terminal state.
 
-Six different requests for withdraw work. Two name the transactions they target; three name a driver and act on
-its queue:
+Six requests withdraw work. Each names its target: correlation values, or a surface and purpose. A
+request that names no target is malformed, and a request addresses one driver: values belonging to
+two drivers are not named together.
 
-| Request | Names targets | Withdraws | When a target is already running |
-| :--- | :--- | :--- | :--- |
-| `cancel` | one or more correlation values | transactions that have not started | refused: the transaction continues |
-| `abort` | one or more correlation values | any non-terminal transaction | the receiver decides |
-| `pop` | a queue | the receivers's newest transaction that has not started | not applicable |
-| `pop-all` | a queue | every transaction of that receiver that has not started | not applicable |
-| `abort-current` | a queue | the running transaction | the receiver decides |
-| `dump` | a queue | every non-terminal transaction of that receiver | the receiver decides |
+| Request | Withdraws, within the target | When a target is already running |
+| :--- | :--- | :--- |
+| `cancel` | transactions that have not started | refused: the transaction continues |
+| `abort` | any non-terminal transaction | the receiver decides |
+| `pop` | the receiver's newest transaction that has not started | not applicable |
+| `pop-all` | every transaction of that receiver that has not started | not applicable |
+| `abort-current` | the running transaction | the receiver decides |
+| `dump` | every non-terminal transaction of that receiver | the receiver decides |
 
 `cancel`, `pop` and `pop-all` withdraw a transaction that has not started and settle it `cancelled`;
 they never stop one that is running. `abort` and `dump` also reach a running one: the receiver decides
 whether to stop it, which settles it `aborted`, or to finish it, which settles it with its own
 outcome. Withdrawing a transaction that has not started settles it `cancelled`.
 
+Queue boundaries are the driver's own: it may keep one queue or several, as long as the target it was
+given selects the transactions the request withdraws. A withdrawal request has no deadline; a caller
+that no longer cares stops waiting, and reports nothing.
+
 A request resolves against the state the transaction has reached. One the broker has not delivered is
 settled by the broker and never reaches the receiver; one it has delivered is settled by the receiver. A
-queue request applies first to what the broker still holds, then to the receiver's queue.
+targeted request applies first to what the broker still holds, then to the receiver's queue.
 
 A request answers with one result per target it was given or selected:
 
 | Request | Target not started (`submitted`, `queued`) | Target running | Target terminal | Target without a record |
 | :--- | :--- | :--- | :--- | :--- |
 | `cancel` | `cancelled` | refused; reports `running`, and the transaction continues | reported as it settled | `unknown` |
-| `abort` | `cancelled` | `requested`; settles `aborted` or with its own outcome | reported as it settled | `unknown`, or `empty` when targeting a queue |
+| `abort` | `cancelled` | `requested`; settles `aborted` or with its own outcome | reported as it settled | `unknown`, or `empty` when the target is a surface and purpose |
 | `pop` | `cancelled` for the receiver's newest that has not started | not applicable | not applicable | `empty` |
 | `pop-all` | `cancelled` for each | not applicable; running transactions are left alone | not applicable | `empty` |
 | `dump` | `cancelled` for each | `requested`; settles `aborted` or with its own outcome | not applicable | `empty` |
 
-A request naming one correlation answers
-with that result; one naming several answers with one entry per correlation and a count; a queue
-request answers with the correlations it affected and a count. The broker MAY keep a record of what has
-been handled, and answer with a non-`unknown` result for recent transactions.
+A request naming one correlation answers with that result; one naming several answers with one entry
+per correlation and a count; a request naming a surface and purpose answers with the correlations it
+affected and a count. The broker MAY keep a record of what has been handled, and answer with a
+non-`unknown` result for recent transactions.
 
-The host bounds the number of correlation values a
-request may name and the size of a report; a malformed request fails.
+The host bounds the number of correlation values a request may name and the size of a report; a
+malformed request fails.
 
 A correlation value names a transaction for the whole application; any caller that holds one may
 address it.
@@ -661,28 +700,29 @@ the renderer window can only be listened on the service.
 
 ### 10.4 Prompt
 
-The prompt channel is the container's only push member.
-
 The prompt is text, not structure. AIRI does not parse it and composes nothing into it.
 
-A driver publishes a model's prompt and its ACT token list as one pair, versioned per model. The
-list is what AIRI extracts cues with. The driver guarantees the two are in sync and owns the
-version's monotonicity. AIRI compares them and surfaces a mismatch to the user: a list older than
-the prompt is a fault.
+A driver publishes the prompt and the ACT token list of a model in a profile as one pair, versioned
+per model and profile. The list is what AIRI extracts cues with. The driver guarantees the two are
+in sync and owns the version's monotonicity. AIRI compares them and surfaces a mismatch to the user:
+a list older than the prompt is a fault.
 
-AIRI keeps the last publication per driver and model, and writes the prompt into a character card
-only while that model is the one the character uses. The copy exists so a model's prompt survives a
-driver that is not running.
+A driver republishes when the profile changes, whether or not either half changed. AIRI keeps the
+last publication it received, writes the prompt into a character card only while that model and
+profile are the ones the character uses, and holds no history and no version ledger. The copy exists
+so a model's prompt survives a driver that is not running.
 
-The prompt SHOULD stay stable for the length of a conversation. It may change while the user is
-experimenting with prompting or ACT tokens, and a change takes effect only when both halves are
-published.
+AIRI never waits for a publication and never falls back to an older pair. It composes with the newest
+pair it holds; a model with no publication has no prompt (§7.4) and still loads.
+
+The prompt SHOULD stay stable for the length of a conversation. A profile switch is the exception:
+it changes the pair and the prompt in the card, and the cost to prefix caching is accepted.
 
 ### 10.5 Theme, messaging, localization and runtime facts
 
 Theme is the one setting whose ownership runs host to renderer: accent hue and light or dark is a
 host-wide appearance decision, so it cannot move into driver storage without every driver inventing
-its own idea of the current theme. A driver re-tints when notified and never writes it.
+its own idea of the current theme. A driver re-tints on an observation (§4.2) and never writes it.
 
 Everything else that looks like a setting — render scale, physics switches, blink and idle flags,
 camera framing — belongs to the driver and lives in its storage. The container also carries its host
@@ -698,10 +738,9 @@ in a card editor. A panel is the driver's own UI for its own capability record �
 favorite toggles, idle selection, ACT mappings, outfit profiles, calibration — because only the
 driver can parse the asset and only the driver can express how its capabilities combine.
 
-The host provides the frame and the panel fills the body. A panel is told which mount it is paired with when there is one, which surface and which host
-chrome it is rendered into, the readiness of its mount, and whether it is read-only. It is also told
-the same service container the runtime received, so a panel edits driver storage directly instead of
-asking the host to hold a draft.
+The host provides the frame and says which surface and host chrome the panel is rendered into. The
+panel carries driver code and a channel to the driver's manager. How it finds a mount, whose
+readiness it reads and what it edits is the driver's implementation.
 
 Panels declare where they are worth appearing. The host lists a panel only in the chrome it
 declared; a driver that declares nothing for a surface is simply not offered there, and the host does
@@ -723,9 +762,11 @@ The host owns the audio graph and publishes low-rate frames
 carrying a timestamp, an amplitude, and optionally mouth openness or a detected viseme. The stream is
 observer-style: latest-wins, no acknowledgement.
 
-AIRI provides a default analyzer. A driver that measures differently provides its own; the
-declaration does not name it, and the manager answers a request for it and knows where it is. A
-driver that wants lip sync subscribes to the frames and maps them onto its own rig. It never receives raw audio input
+AIRI provides a default analyzer, and the host runs it once for every driver that does not provide
+its own. A driver that measures differently provides its own; the declaration does not name it, and
+the manager answers a request for it and knows where it is. A driver's analyzer produces its own
+frames only and never changes another driver's. A driver that wants lip sync subscribes to the frames
+and maps them onto its own rig. It never receives raw audio input.
 
 ## 13. Migration of pre-contract data
 
@@ -736,44 +777,58 @@ key names. They are AIRI's data in AIRI's shape, have no home in driver storage,
 unrecoverable once the legacy code is deleted, so the contract carries exactly one channel for them.
 
 The host offers the bag once per driver, after activation and before the first mount: the legacy
-values by AIRI's own names, plus the model that was selected when the bag was written, because some
-of those values are window-global and applied to whichever model happened to be on screen. Without
-that identity a driver could only guess which model they described.
+values that belong to that driver by AIRI's own names, plus the model that was selected when the bag
+was written, because some of those values are window-global and applied to whichever model happened
+to be on screen. Without that identity a driver could only guess which model they described. The bag
+is scoped to one driver.
 
-The driver absorbs what it recognises and reports the rest. The host deletes only the entries a
-driver did not report as unused, and then writes a marker. A crash between the driver's write and the
-marker re-offers the same bag, so absorbing it must be idempotent.
+The driver absorbs the whole bag. The host deletes the bag once the driver acknowledges it, then writes a marker. A
+crash between the driver's write and the marker re-offers the same bag, so absorbing it must be
+idempotent.
 
 The bag is not a schema. Its keys are AIRI's history and disappear with the migration code that
 writes them; a driver must not store them and the host must not interpret what the driver did with
 them. A driver that never existed outside this contract answers that it has nothing to inherit, and
 the host drops the bag instead of keeping it forever.
 
-### 13.2 Models and presets
+### 13.2 Models and references
 
-Legacy models, presets and model-bearing character cards are imported inside the transaction that
-reads them. The user confirms the models, the adapter mints identities, the import commits, and only
-then does the card or the migration record point at them. Writing a card first and importing
-afterwards is forbidden: a crash in between leaves a reference nothing can serve.
+Legacy models and model-bearing character cards are imported inside the transaction that reads them.
+The user confirms the models, the adapter mints identities, the import commits, and only then does
+the card or the migration record point at them. Writing a card first and importing afterwards is
+forbidden: a crash in between leaves a reference nothing can serve.
+
+A legacy reference is not an identity. AIRI resolves it by exact legacy id, then by the alias table
+the migration ships, then by asking the user what the model was. A reference that none of these
+resolves is no model: the binding is cleared, the user chooses another through a driver's picker, and
+the result is never presented as an unavailable model (§7.3).
+
+A model the user does not confirm is neither deleted nor imported. It becomes a pending payload:
+AIRI keeps it, lists it and keeps it operable, and it can be imported later. The legacy id travels
+with the payload as a label, not as an identity, and resolves to no model.
 
 A preset is a builtin (§5.4), so it is imported rather than special-cased, and the imported copy is
-thereafter an ordinary model. A legacy preview that is an address rather than an image is fetched
-during migration and stored, or skipped with a warning — never stored as if the address were the
-image.
+thereafter an ordinary model. A card that references a builtin imports it inside the card's own
+confirmation.
+
+A legacy preview that is an address rather than an image is fetched during migration and stored, or
+skipped with a warning — never stored as if the address were the image.
 
 Legacy deletions are recorded rather than performed silently. A deleted key or asset that is not
-remembered will come back from an old backup, a second device, or a cloud restore; the contract
-therefore requires deletion to leave a durable marker that export, restore and remote reconciliation
-all respect.
+remembered will come back from an old backup or a second device; the contract therefore requires
+deletion to leave a durable marker that export and restore both respect.
 
 ### 13.3 The two stores during migration
 
 Formats migrate one at a time, so AIRI holds two sources at once: models still in its own storage,
-and the rows a migrated driver reports. AIRI lists the models it holds separately
+and the rows a migrated driver reports. AIRI lists everything it holds without a model identity as
+one list — legacy models under their legacy identities, pending payloads, and driver rows beside
+them.
 
-A model has one owning source. A driver's cutover imports and commits every model in its legacy
-slice before the legacy rendering path for that format is removed. After the cutover that slice leaves AIRI's storage, and the
-legacy store is deleted when the last driver has migrated.
+A model has one owning source. A driver's cutover imports and commits every model the user
+confirmed, moves the rest into AIRI's pending payloads, and only then removes the legacy rendering
+path for that format. After the cutover that slice leaves AIRI's storage, and the legacy store is
+deleted when the last driver has migrated.
 
 A backup written before this contract is read by a legacy reader that imports fully during restore
 and writes deletion markers for what it consumed. The reader SHOULD live as long as the legacy backup
