@@ -2586,6 +2586,15 @@ importers:
         specifier: ^3.1.8
         version: 3.2.5(typescript@5.9.3)
 
+  packages/stage-renderer-sdk:
+    devDependencies:
+      vitest:
+        specifier: catalog:vitest
+        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@24.10.14)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@30.0.1(@noble/hashes@2.0.1)(canvas@3.2.1))(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+      vue:
+        specifier: 'catalog:'
+        version: 3.5.29(typescript@5.9.3)
+
   packages/stage-shared:
     dependencies:
       '@moeru/eventa':

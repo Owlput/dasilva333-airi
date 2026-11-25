@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "vitest": "catalog:",
+    "vitest": "catalog:vitest",
     "vue": "catalog:"
   }
 }
