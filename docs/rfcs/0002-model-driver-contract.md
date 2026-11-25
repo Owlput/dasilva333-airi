@@ -846,9 +846,9 @@ unsupported.
 
 A component is mounted
 
-1. When AIRI needs to render or select a model, it tells the adapter what it wants — which driver,
-   which surface and purpose, and the mount identity the adapter minted beforehand — and the adapter
-   resolves the corresponding entry point.
+1. When AIRI needs to render or select a model, it asks the registry for a mount identity — which
+   driver, which surface and purpose — and the registry issues one; the adapter then resolves the
+   corresponding entry point by asking that driver's manager.
 2. The interface mounts the returned component, then receives its services as props.
 3. Driver UI is mounted the same way, from its own entrypoint.
 
@@ -857,3 +857,153 @@ containing code to run and/or a component to mount; a channel to the driver's ma
 container. The last two require authenticating with the manager, and the registry grants a runtime
 access to resources only after that succeeds. The authentication between runtimes and managers is the
 driver's implementation.
+
+## Amendment 1 — contract `0.1` (Phase 0)
+
+This amendment is normative. It records what the published contract of `0.1` contains beyond the body
+above, so that the conformance map in the implementation plan is true rather than aspirational. Every
+item below landed in `@proj-airi/stage-renderer-sdk` before any host code depended on it; nothing in
+the application imports the package yet.
+
+### A1.1 Added symbols
+
+| Symbol | What it fixes |
+| :--- | :--- |
+| `RegistryHandle` (`log`, `requestRenderer`, `listDrivers`, `isEnabled`, `onChange`) | A manager runs where there is no DOM, so it needs a way to ask for a renderer — and it gets **no storage**, because main has no IndexedDB. |
+| `ModelDriverManagerFactory` | The shape the `entry.manager` module exports: `createManager(handle)`, called once, owning no window and no storage. |
+| `RequestRendererResult` / `RendererRequestRefusal` | The four host-owned refusal reasons (`window-unavailable`, `entry-failed`, `driver-disabled`, `shutting-down`), so a driver never invents one. |
+| `ManagerChannel` | The opaque manager↔window message pair (`send`/`onMessage`). The host transports it and does not interpret it; the pair `(window, driver)` is the whole authentication. |
+| `MountId` + `HostRegistryClient.registerMount` | Mount identities are **issued by the registry**, never minted by a renderer. A mount is unaddressable between creation and the answer, and readiness does not begin before it. |
+| `ModelDriverEntryKind` + `EntrypointRequest` + `EntrypointResolution` | `ModelDriverManager.resolveEntrypoint` answers which module implements `provider`/`mount`/`panels`/`picker` for a given surface and purpose, and `null` for a kind the driver does not ship. |
+| `LegacyRestorePayload` | The data path for a revert: one model's retained pre-contract entry, carrying the **legacy identity** the legacy record is recreated under. |
+| `PendingModelPayload` | A payload the user did not confirm: AIRI's record, with **no `modelId` and no `profileId`**, so it cannot construct a `LoadCue` and `pending-import` is not a model state. This supersedes the `pending-import` row of §5.1: a state that only exists inside a transaction was a fifth value every reader had to handle, while a payload with no identity is not a model at all. |
+| `isContractCompatible` + `compatibility.ts` | The compatibility predicate, with a readable rejection. A pre-1.0 revision must match the host minor exactly, which is what refuses a `0.0.x` manifest. |
+| `ContractFailureCode.PROFILE_MISSING` | The one unavailable-model reason that is an error rather than a lost referent: a binding whose model resolves and whose profile does not. |
+| `ContractFailureCode.INVALID_ENTRYPOINT` | The manager named a module the adapter cannot import. The adapter never substitutes a default. |
+| `ContractFailureCode.MODEL_REFERENCED` / `PROFILE_REFERENCED` / `CANCELLED` / `WINDOW_GONE` | The reference gate's two refusals (with `ContractFailure.references` naming the character), the never-ran settlement, and the window that went away — distinct from `aborted`, which ran and was stopped. |
+| `ContractFailureCode.CONTRACT_VERSION_MISMATCH` | The revision refusal, raised when the declaration is read. |
+| `READINESS_TRANSITIONS`, `isReady`, `isReadinessTransitionAllowed`, `assertReadinessTransition` | §8.4's states, transitions and readiness as data rather than prose. Only `ready-for-model` and `model-loaded` are ready; a redundant re-emit is legal and is not a transition. |
+| `ModelDriverManager.deliver` / `withdraw` / `onModelsChanged` / `queryMount` / `commandMount` / `resolveSpeechAnalyzer` | Manager-side delivery, the six withdrawals, the enumeration-change nudge, the two cross-window query paths of §8.6, and the analyzer request of §12. |
+| `CueTransactionState`, `CueWithdrawalKind`, `CueWithdrawalRequest`, `CueWithdrawalReport`, `CueWithdrawalOutcome`, `CUE_WITHDRAWAL_LIMITS` | §9.7 as values: seven states, six requests, one result per target, and the host's bounds (64 correlations per request, 256 report entries). |
+| `CueTransactionReceipt` | The acceptance/settlement split of §9.3: `{ nonce, settled }`, where `settled` resolves when the outcome is decided. |
+| `ModelPromptPublication` + `ModelPromptSnapshot` | §10.4's pair, versioned per model **and** profile. |
+| `ModelCapabilityKind.EFFECT`, `EffectCue`, `ResetScope.EFFECT`, `GazeMode.POINT_OF_INTEREST`, `CueRejection.NO_TARGET`, `OptionalCueKind` | The §9.5 vocabulary deltas, and "those beyond loading" as a type. |
+| Host reference evidence, `classifyBindingAvailability` | The one documented bridge between `DriverStatus` and `UnavailableModelReason`, with a fixed precedence. |
+
+### A1.2 Cue addressing and acknowledgement
+
+§9.2's rule is now the only shape: `CueEnvelope.target` is required and names
+`{ modelDriverId, surface?, purpose? }`, and the envelope names **no mount**. §9.3's split is explicit:
+`send` resolves with a receipt (`{ nonce, settled }`), the broker mints the nonce on acceptance, and
+the acknowledgement — which names the answering `modelDriverId` and may carry driver debug text —
+arrives when the outcome is decided. The host-minted `requestId` is removed; it was a second
+correlation value for the same fact.
+
+`CueAck.mountId` remains, for one purpose only: a broker that crosses a process boundary rejects an ack
+attributed to a window that does not own the mount. It is **not** an address, and no caller routes by
+it.
+
+`NO_TARGET` is the broker's decision, delivered to the originating adapter as a settled transaction with
+`handled: false` and one rejected outcome per slot. It is not delivered to, or decided by, a renderer.
+
+### A1.3 The declaration, and where the rest of the code lives
+
+§6.1 is now literal. `ModelDriverEntryPoints` is `{ manager: string }` and nothing else; a declaration
+that also names `provider`, `mount`, `panels` or `picker` is refused by `validateManifest`, because that
+is the shape that lets a DOM-free process pull renderer code into main. Everything else is resolved at
+the moment a window needs it (§6.5), by the manager, and imported by the adapter through its own loader
+table. `capabilities.interactionModes` (§6.4) and `capabilities.prompt` (§10.4, D5) join the capability
+key set, which a probe must report completely.
+
+### A1.4 Mounts, readiness and queries
+
+A mount's identity comes from the registry (§A1.1), not from the adapter; Appendix A's earlier wording
+("the mount identity the adapter minted beforehand") is superseded. No size is passed: the container's
+box **is** the viewport, and a mount measures its own container — `RendererMountProps.viewport` is
+removed, along with the `RendererMountViewport` shape.
+
+§8.6's queries are reachable from outside the creating window: `ModelDriverManager.queryMount` and
+`commandMount` take a selection (`surface`, `purpose`, and optionally `modelId`/`characterId`) and
+answer one entry per mount that matched. An empty answer is a successful "nothing matched", not an
+error. The live-instance members stay for the window that created the mount.
+
+### A1.5 Pre-contract data is per model, in both directions
+
+§13.1's bag is superseded by a **per-model** handover, because the offer is made per model and
+materialised lazily — one model's bytes in memory at a time, never the whole library:
+
+```ts
+interface ModelDriverLegacyHandoverEntry {
+  schemaVersion: 1
+  driverId: ModelDriverId
+  createdAt: number
+  modelId: ModelId // fresh, adapter-minted
+  legacyModelId: string // provenance, and what a revert restores
+  meta: { name: string, nsfw?: boolean, groups?: string[], tags?: string[], searchKeyInputs?: string[] }
+  settings: { selectedModelId?: string, values: Record<string, unknown> } // window-global values, and the model they described
+  values?: Record<string, unknown>
+  placement?: { x: number, y: number, scale: number }
+  outfits?: unknown[]
+  prompt?: string
+  files?: Array<{ name: string, mimeType?: string, bytes: Uint8Array }>
+  url?: string
+  assets?: Array<{ key: string, mimeType?: string, bytes: Uint8Array, deleted?: boolean }>
+}
+
+interface ModelDriverLegacyHandoverReport {
+  retained: boolean // the driver kept the payload in its own storage
+  unused?: string[]
+  warnings?: string[]
+}
+```
+
+`migrate(entry)` absorbs one entry and reports `retained`; a `retained: false` means the host writes no
+migration marker and the model stays legacy-shaped. There is no `absorbed` boolean and no per-driver
+aggregate — "did this model transfer" is `retained`, and "did the whole driver transfer" is a marker per
+model. The driver MUST retain what it received and consume it **by reference** on import, so the
+retained entry and the imported row are never two copies of the same bytes.
+
+The reverse direction is `ModelDriverRuntime.restoreLegacy(modelId) → LegacyRestorePayload`, which
+carries the same members back plus the legacy identity. It refuses — readably, never by returning an
+empty payload — when the model has no retained pre-contract origin. `capabilities.migration` covers both
+directions.
+
+`confirmImport` gains the probe input (`input?`, absent for a retry, a restore, or a payload already
+retained) and settles **one entry per selection**, so one uncommittable part of a package leaves the
+others committed. `ModelImportMigration` is provenance only: no migration path sets `overwrite`, because
+migration's import is the create.
+
+### A1.6 The prompt is one versioned pair
+
+§10.4's pair is `ModelPromptPublication` — `{ modelDriverId, modelId, profileId, text, tokens, version,
+publishedAt }` — and the card's copy is `ModelPromptSnapshot`, the same value without the driver id. A
+publication that is not **strictly newer by `version`** never supersedes the held one and is discarded;
+`publishedAt` is not an ordering input, because device clocks disagree. An empty publication
+(`text: ''`, `tokens: []`) is a valid publication and is stored as one; a prompt-capable driver that has
+published nothing for a model it serves is a runtime fault surfaced in its panel, never an implicit
+empty prompt and never a migration gate.
+
+### A1.7 Vocabulary deltas
+
+- The surface, purpose and host-window value `ACTOR` is renamed **`ACTING`** (`'acting'`).
+- The cue kind and capability kind are `effect`; `ActTokenKind.VFX` keeps its spelling because it names
+  a family that appears inside prompt text.
+- `CueKind.ACT` is spelled `'act'`.
+- `ResetScope` gains `effect`.
+- `GazeMode` gains `pointOfInterest`, and `GazeCue` carries `pointOfInterestId` for it.
+- A declared cue list is "the kinds **beyond** loading": `load` cannot be declared, because every mount
+  must handle it.
+- `load`, `reset` and `caption` have no transient form: an envelope with `persistent: false` carrying
+  one of them is malformed.
+- `ContractFailureCode.RENDERER_UNAVAILABLE` is renamed **`DRIVER_UNAVAILABLE`**, because the missing
+  thing is the driver and not one of its mounts.
+- `UnavailableModelReason` gains **`profile-missing`**, the only reason that is an error rather than a
+  lost referent, and it is reported by the driver (via `ContractFailureCode.PROFILE_MISSING`) rather
+  than derived from a driver's health.
+
+### A1.8 What this amendment does not change
+
+Capture remains a cue, not a query (§8.6). A mount remains independent, with no state scope and no
+snapshot. Speech stays latest-wins observation and never travels as a cue (§12). Panels still never
+write AIRI state (§11.1), and settings remain separate from selection (§11.2).
+

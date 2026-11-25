@@ -2,30 +2,16 @@
  * Runtime cues: everything AIRI asks the avatar to *do* while it is on stage.
  *
  * Owner: AIRI (and the character card, the ACT pipeline, or the user) sends cues; the renderer
- * implements a sink and reports whether it handled each one.
- *
- * Which channel a host signal travels on is decided by its shape, never by convenience:
- *   - a **prop** (`renderer-mount.ts`) carries the live host decisions about one mount
- *     (`paused`, `visible`, `reducedMotion`, `qualityHint`) and what the host assigns to it;
- *   - a **service** (`host-services.ts`) carries what a renderer pulls when it wants it, plus
- *     the streams it subscribes to (`pointer`; speech analysis is plugin-level and deliberately
- *     outside this contract, so no audio node or mouth scalar is a service member);
- *   - a **cue** (this file) carries a discrete, ackable, rejectable intent.
- *
- * A per-frame stream MUST NOT become a cue: `send` answers with an ack whose `results` array is
- * sized to the transaction, so one frame per cue would allocate an ack per frame and ask a
- * question a stream cannot answer.
+ * implements a sink and reports whether it handled each one. The **manager** is what actually
+ * delivers a transaction to the mounts that match its target, and what a withdrawal is addressed to.
  *
  * Three rules shape everything below:
- *   - an envelope is a **transaction**: its cues are applied together, never in sequence, and
- *     the ack reports per-slot outcomes aligned by index;
- *   - the renderer owns its own state and its own settings UI, so a cue states an *intent*,
- *     never a mechanism;
- *   - a cue AIRI cannot decompose into others (a profile whose composition only the renderer
- *     knows) is addressed by id instead of being translated or forwarded;
- *   - **appearance is one of those.** Which parts are visible, which outfit composes them and
- *     how two outfits interact are the renderer's, so AIRI names a profile and never sets a part
- *     or a raw parameter. There is deliberately no cue for either.
+ *   - an envelope is a **transaction**: its cues are applied together, ordered by the driver.
+ *     The sender MUST NOT assume the ordering. But the reported per-slot outcomes MUST be aligned by index;
+ *   - sender MUST NOT stream cues for prolonged continuous manipulation of the model. Use props
+ *     or service instead.
+ *   - an action AIRI cannot decompose into others (a profile whose composition only the renderer
+ *     knows) is addressed by id instead.
  */
 import type { ModelId, ModelProfileId } from './model'
 import type {
@@ -34,26 +20,46 @@ import type {
   ModelDriverId,
   OperationNonce,
   RendererMountPoint,
+  RendererMountPurpose,
   RendererMountSurfaceKind,
   Unsubscribe,
 } from './shared'
 
 /** The compile-time cue vocabulary. `ACT` carries a token whose vocabulary is known at runtime. */
 export enum CueKind {
+  /** Load a model by its ID. */
   LOAD = 'load',
-  ACT = 'ACT',
+  /** Perform the action identified by an ACT token. */
+  ACT = 'act',
+  /** Change expression. */
   EXPRESSION = 'expression',
+  /** Play animation */
   MOTION = 'motion',
-  VFX = 'vfx',
-  /** Apply a renderer-managed profile, addressed by id. */
+  /** Apply a visual effect. */
+  EFFECT = 'effect',
+  /** Apply a renderer-managed profile by its id. */
   PROFILE = 'profile',
+  /** Temporarily override where the model is looking at. */
   GAZE = 'gaze',
+  /** Move the camera to a specific POI. */
   VIEW = 'view',
+  /** Render a caption. */
   CAPTION = 'caption',
+  /** Reset to a default state. */
   RESET = 'reset',
-  /** Encode the current frame and return it in the ack's `results`. */
+  /** Capture the current frame on the canvas. */
   CAPTURE = 'capture',
 }
+
+/**
+ * The cue kinds a driver may declare it accepts.
+ *
+ * `load` is deliberately not in this union: it is the one cue every mount must handle, because it is
+ * the only way a mount is ever told which model to show. A declaration that could list `load` would
+ * let a driver claim a viewport that can never load anything, so `ModelDriverCapabilities.cues` is
+ * typed as this and a `load` in it does not typecheck.
+ */
+export type OptionalCueKind = Exclude<CueKind, CueKind.LOAD>
 
 /** Where a cue came from. Renderers may treat agent and user cues differently. */
 export enum CueSource {
@@ -65,84 +71,62 @@ export enum CueSource {
   EXTERNAL = 'external',
 }
 
+/**
+ * Where a transaction applies: a driver, and where inside it.
+ *
+ * This is the whole of cue addressing (RFC §9.2). A surface is stable while mount identity is not,
+ * and a window can be duplicated, so a target may match several mounts — the driver decides how to
+ * answer a transaction whose cues produce several results, and a caller MUST NOT assume which
+ * viewport answered.
+ *
+ * `modelDriverId` is required: a transaction is addressed to one driver. `surface` and `purpose` are
+ * an AND filter, and an absent member means "any". Nothing may resolve a surface to "the" mount, and
+ * no field here names a mount.
+ */
+export interface CueTarget {
+  modelDriverId: ModelDriverId
+  surface?: RendererMountSurfaceKind
+  purpose?: RendererMountPurpose
+}
+
+/**
+ * A semi-transaction envelope for cues. A single cue is the length-1 case.
+ *
+ * ### Atomicity
+ * Members are applied together, and the cues MUST NOT be in half-applied state.
+ *
+ * ### Ordering
+ * The sender MUST NOT assume the ordering. Ordered cues are not yet supported.
+ *
+ * Envelopes themselves are FIFO from source per addressed driver. Although not recommended,
+ * the sink MAY implement a different ordering, and MAY process later envelopes while a
+ * former envelope is still being processed.
+ */
 export interface CueEnvelope<C extends Cue = Cue> {
   /**
-   * One transaction; a single cue is the length-1 case.
-   *
-   * Members are applied together, never in sequence — sequencing is deliberately not
-   * expressible. Grouping matters because a multi-part change (a profile and an expression
-   * together) must not be half-applied, and because `nonce`, `persistent` and `target` then
-   * describe the whole change rather than three unrelated ones.
-   *
-   * Ordering belongs to the renderer, and this contract asks for exactly one order — as a
-   * recommendation, not a rule: **apply a `load` member before the others, and the rest
-   * together once it has landed**, because every other kind presupposes a model already on this
-   * mount. A renderer that takes the recommendation and then fails the load is expected to
-   * leave the rest unapplied and to report that same reason in every remaining slot
-   * (`no-model`, `renderer-not-ready`, `unknown-key`, `busy`, `superseded`), so `handled: false`
-   * never means "half of the group landed".
-   *
-   * At most one `load` per envelope is recommended: if several arrive, applying the last and
-   * reporting `superseded` for the others keeps an envelope the caller built wrong inside the
-   * existing vocabulary.
-   *
-   * Across envelopes the host owes exactly one property: **FIFO per addressed mount**. It
-   * delivers transactions to one mount in the order they were sent — no dependency analysis and
-   * no priority, because an envelope carries no statement about the envelopes around it. FIFO is
-   * a delivery order rather than a serialization: two envelopes for the same mount may be in
-   * flight at once, which is why `superseded` stays a real outcome and why the ack echoes the
-   * `nonce`. A renderer may rely on receiving transactions in send order, and MUST NOT rely on
-   * one having finished before the next arrives.
+   * Grouping matters because a multi-part change (a profile and an expression
+   * together) must not be half-applied.
    */
   cues: C[]
   source: CueSource
   /**
-   * `false` = preview: apply transiently, never persist, never touch the renderer's saved state
-   * or its snapshot revision. Default `true`.
+   * Whether the cues in this envelope should override existing ones.
+   */
+  override: boolean
+  /**
+   * `false` = preview: apply transiently, never persist, never touch the renderer's saved state.
+   * Default `true`.
    *
-   * Meaningless for `load` / `reset` / `caption`: a load and a reset have no transient form, and
-   * a caption must never be saved as state at all.
+   * Meaningless for `load` / `reset` / `caption`, and a transaction that sets it to `false` while
+   * carrying one of them is malformed (`INVALID_ENVELOPE`): a load and a reset have no transient
+   * form, and a caption must never be saved as state at all.
    */
   persistent?: boolean
   nonce: OperationNonce
   /** Epoch milliseconds, so late deliveries can be discarded by age. */
   at: number
-  target?: {
-    modelDriverId?: ModelDriverId
-    modelId?: ModelId
-    /**
-     * One mount, when a surface holds more than one (`RendererMountProps.mountId`).
-     *
-     * The live stage plus a settings preview, or two previews, are two mounts on one surface, so
-     * a surface alone cannot say which of them a transaction is for. This is the same identity a
-     * per-mount service subscription names. The first broker requires it; there is no implicit
-     * "the only mount" routing, because a silently chosen mount is exactly the ambiguity this
-     * field exists to remove.
-     */
-    mountId?: string
-    /**
-     * All mounts sharing this state scope, when the transaction is about the shared surface
-     * rather than one viewport.
-     *
-     * This is how the actor window and a chat-side stage would stay in lockstep: they mount with
-     * one `stateScope`, and a transaction naming that scope would be applied by every one of them.
-     * The control strip would use it so one cue changes both views instead of picking a "main"
-     * stage.
-     *
-     * **Not implemented by the first broker.** It accepts only `mountId`, because a scope
-     * transaction has several answerers and the aggregate ack rules are not settled yet. Until
-     * then a `stateScope` target is rejected with `ContractFailureCode.INVALID_ENVELOPE`, and
-     * callers that need both views must address each mount explicitly. Once fan-out lands, a slot
-     * is `resolved` only when every target resolved it and `CueAck.mountId` is absent; `mountId`
-     * takes precedence when both are present.
-     */
-    stateScope?: string
-    /**
-     * The host delivers only to the mount of this surface, so a preview never animates the live
-     * stage. A cue without a surface is never delivered to a `preview` mount.
-     */
-    surface?: RendererMountSurfaceKind
-  }
+  /** Where this transaction applies. Required: a transaction with no target is unroutable. */
+  target: CueTarget
 }
 
 /**
@@ -152,8 +136,8 @@ export interface CueEnvelope<C extends Cue = Cue> {
  * `at` is stamped by the bus, which is the side that knows when the transaction entered it.
  * `nonce` is optional here for the same reason — the bus mints the next one — and a caller
  * supplies it only to pin the transaction to a value it already tracks. Everything else is the
- * caller's: in particular `persistent`, which is what makes a preview expressible, and
- * `target`, which decides which mount receives it.
+ * caller's: in particular `persistent`, which is what makes a preview expressible, and `target`,
+ * which decides which mounts receive it.
  */
 export type CueEnvelopeInput<C extends Cue = Cue>
   = Omit<CueEnvelope<C>, 'at' | 'nonce'> & { nonce?: OperationNonce }
@@ -187,10 +171,18 @@ export enum CueRejection {
    *
    * Deliberately not `ContractFailureCode.ABORTED`, which is the abnormal side of a
    * similar-looking event — the work was dropped because the mount went away or the caller
-   * cancelled it, with nothing newer replacing it. A renderer MUST NOT report one as the other.
+   * aborted it, with nothing newer replacing it. A renderer MUST NOT report one as the other.
    */
   SUPERSEDED = 'superseded',
   BUSY = 'busy',
+  /**
+   * Nothing matched the transaction's target.
+   *
+   * The broker's decision, not a renderer's: it fills every slot with this value, settles
+   * `handled: false`, and delivers the settlement to the originating adapter. It is a settled,
+   * successful transaction — "no mount on `stage`/`acting` right now" is an answer, not an error.
+   */
+  NO_TARGET = 'no-target',
 }
 
 /** The encoded canvas a `CaptureCue` resolves to. The renderer chooses the format. */
@@ -226,6 +218,11 @@ export type CueResult = CaptureResult | {
 export interface CueResolved {
   status: 'resolved'
   value: CueResult
+  /**
+   * Debug text the driver attached. Never parsed, never shown as an error: the applied outcome is
+   * already complete, and this exists so a driver can say *how* it applied something.
+   */
+  message?: string
 }
 
 /**
@@ -238,6 +235,8 @@ export interface CueResolved {
 export interface CueRejected {
   status: 'rejected'
   reason: CueRejection
+  /** Debug text the driver attached, for a refusal the reason alone does not explain. */
+  message?: string
 }
 
 export type CueOutcome = CueResolved | CueRejected
@@ -246,28 +245,30 @@ export interface CueAck {
   /** Echo of the envelope's `nonce`, so a caller with several transactions in flight can match an answer to its own. */
   nonce: OperationNonce
   /**
+   * The driver that answered.
+   *
+   * Required, and the manager fills it from the driver it delivered for rather than from the
+   * envelope it received: an ack that names a different driver is a forged or misrouted answer, and
+   * the broker discards it rather than settling the caller's transaction with someone else's
+   * outcome.
+   */
+  modelDriverId: ModelDriverId
+  /**
    * The mount that answered.
    *
-   * Required whenever the ack crosses a process boundary: the broker uses it to reject an ack
-   * from a window that does not own the mount. A direct in-process sink may leave it out. A
-   * future scope-fan-out aggregate has several answerers and would leave it empty; that
-   * aggregation is not part of the first broker.
+   * **Not an address.** The one surviving mount identity on the cue path: it exists so a broker that
+   * crosses a process boundary can reject an ack attributed to a window that does not own the mount.
+   * A direct in-process sink may leave it out. Nothing asserts which viewport a caller will hear
+   * from, and a caller MUST NOT route anything by it.
    */
   mountId?: string
-  /**
-   * Host-minted correlation id.
-   *
-   * Required on the broker path: one mount can have several transactions in flight, and the
-   * ack is routed by `(requestId, mountId)`. Only an in-process direct sink may omit it.
-   */
-  requestId?: string
   /**
    * Index-aligned with `CueEnvelope.cues`: exactly one settled outcome per cue.
    *
    * There is deliberately no `undefined`: an applied cue always reports `CueResolved`, even when
    * it carries no data (`value: { kind }`), and one that was not applied reports `CueRejected`.
    * A wholesale refusal (not ready, no model, suppressed by mode) fills every slot with the same
-   * reason. The host answers `no-model` by itself when the addressed surface has no mount, so a
+   * reason. The host answers `no-target` by itself when nothing matches the target, so a
    * renderer is never asked about a model it is not rendering. A transport-level failure never
    * reaches here — it is the `ContractResult` error branch instead.
    */
@@ -279,21 +280,49 @@ export interface CueAck {
    * partially applied transaction reports `false` and a mixed `results` array.
    */
   handled: boolean
+  /**
+   * Driver-level debug note about this transaction as a whole.
+   *
+   * The place for "delivered to three mounts, two applied it" without putting a wording on a slot
+   * that already reports its own outcome. Never parsed, never an error.
+   */
+  message?: string
+}
+
+/**
+ * A transaction that has been **accepted** but has not been settled.
+ *
+ * Acceptance and settlement are two different facts and arrive at different times (RFC §9.3): the
+ * broker can say "I have this transaction, its correlation is 42" the moment it accepts one, while
+ * the outcome is decided only when the work is done — a load settles at `model-loaded`, not at the
+ * first frame. A caller that only wants fire-and-forget ignores `settled`; one that wants the
+ * outcome awaits it.
+ */
+export interface CueTransactionReceipt {
+  /** The correlation value the broker minted for this transaction. */
+  nonce: OperationNonce
+  /**
+   * Resolves when the outcome is decided.
+   *
+   * Never left pending by a vanished receiver: the host settles it (`cancelled`, `aborted` or
+   * `window-gone`) rather than leaving a caller waiting on a renderer that is gone.
+   */
+  settled: Promise<ContractResult<CueAck>>
 }
 
 export interface CueSendOptions {
   /**
-   * Drop the whole transaction instead of delivering it when the addressed mount is not ready.
-   * Default `false`: the transaction waits for the mount.
+   * Drop the whole transaction instead of delivering it when the addressed target is not ready.
+   * Default `false`: the transaction waits for the target.
    *
    * Dropping is a **choice, not a failure**: a dropped transaction answers `ok: true`, with
    * `CueAck.results` filled with `{ status: 'rejected', reason: CueRejection.RENDERER_NOT_READY }`
    * in every slot and `handled: false`. The host answers it, because not delivering is the host's
    * decision — which also means the renderer is never consulted about a model it is not rendering.
    *
-   * Independent of ordering *between* transactions, which the host guarantees as FIFO per
-   * addressed mount (`CueEnvelope.cues`). One ack is returned per transaction, and a caller that
-   * does not await one accepts that a newer transaction for the same mount may overtake it — in
+   * Independent of ordering *between* transactions, which the host guarantees as FIFO per addressed
+   * driver (`CueEnvelope.cues`). One ack is returned per transaction, and a caller that
+   * does not await one accepts that a newer transaction for the same driver may overtake it — in
    * which case the renderer reports `CueRejection.superseded` rather than dropping it silently.
    */
   dropIfNotReady?: boolean
@@ -302,7 +331,8 @@ export interface CueSendOptions {
    *
    * Host-side. A timeout ends the send with `ContractFailureCode.TIMEOUT` instead of leaving it
    * pending forever; the renderer is not asked to cancel work it has already started. Capture is
-   * the slow case and should pass a shorter deadline than an ordinary cue.
+   * the slow case and should pass a shorter deadline than an ordinary cue. The deadline is final
+   * and stops nothing: a later ack is discarded rather than settling the transaction twice.
    */
   timeoutMs?: number
 }
@@ -318,18 +348,20 @@ export interface CueChannel {
    * Send one transaction.
    *
    * Takes the envelope rather than a bare cue so everything describing the whole change travels
-   * with it: `persistent` (a preview), `target` (which mount), and `nonce`. The bus stamps `at`
-   * and mints `nonce` when the caller leaves it out.
+   * with it: `persistent` (a preview), `target` (which driver, surface and purpose), and `nonce`.
+   * The bus stamps `at` and mints `nonce` when the caller leaves it out.
+   *
+   * Resolves with a **receipt**, not an ack: acceptance is immediate and settlement is
+   * `receipt.settled` (RFC §9.3).
    */
-  send: (envelope: CueEnvelopeInput, options?: CueSendOptions) => Promise<ContractResult<CueAck>>
+  send: (envelope: CueEnvelopeInput, options?: CueSendOptions) => Promise<ContractResult<CueTransactionReceipt>>
   /**
    * Observe transactions crossing the bus.
    *
    * For observers only — a host overlay, diagnostics, a renderer's own bookkeeping in another
    * window. It is deliberately **not** how a mounted stage receives cues: one renderer can be
-   * mounted on several surfaces at once, so the host delivers each transaction to the mount its
-   * `target.mountId` names — or, once fan-out lands, to every mount in a `stateScope` — through
-   * each mount's own sink (`RendererMountExposed.cues`). The first broker accepts only `mountId`.
+   * mounted several times at once, so the host delivers each transaction to the mounts its
+   * `target` names, through each mount's own sink (`RendererMountExposed.cues`).
    */
   subscribe: (handler: CueSink) => Unsubscribe
 }
@@ -355,11 +387,135 @@ export interface CueSink {
 }
 
 /**
+ * Where a transaction is in its life (RFC §9.7).
+ *
+ * `COMPLETE`, `CANCELLED`, `ABORTED` and `ERROR` are terminal; everything else means work is still
+ * outstanding and a withdrawal can still reach it. This is the vocabulary a withdrawal report names,
+ * and it is why `cancelled` and `aborted` are distinct: the first never started, the second started
+ * and was stopped.
+ */
+export enum CueTransactionState {
+  /** The broker has accepted it and it has not reached the receiver. */
+  SUBMITTED = 'submitted',
+  /** The receiver holds it and has not started it. */
+  QUEUED = 'queued',
+  /** The receiver is performing it. */
+  RUNNING = 'running',
+  /** It finished and its acknowledgement is settled. */
+  COMPLETE = 'complete',
+  /** It was withdrawn before it started and will not be performed. */
+  CANCELLED = 'cancelled',
+  /** It started and was stopped before it finished. */
+  ABORTED = 'aborted',
+  /** It did not succeed: it broke, or its deadline passed. */
+  ERROR = 'error',
+}
+
+/** Whether a state cannot change again. */
+export function isTerminalTransactionState(state: CueTransactionState): boolean {
+  return state === CueTransactionState.COMPLETE
+    || state === CueTransactionState.CANCELLED
+    || state === CueTransactionState.ABORTED
+    || state === CueTransactionState.ERROR
+}
+
+/**
+ * The six requests that withdraw work (RFC §9.7).
+ *
+ * They are one enum rather than six methods because they share a request shape, a report shape and
+ * one set of bounds, and because a manager has to route all of them the same way — to the broker
+ * first for what it still holds, then to its own queue.
+ */
+export enum CueWithdrawalKind {
+  /** Withdraw transactions that have not started. Refused for one already running. */
+  CANCEL = 'cancel',
+  /** Withdraw any non-terminal transaction; the receiver decides on a running one. */
+  ABORT = 'abort',
+  /** Withdraw the receiver's newest transaction that has not started. */
+  POP = 'pop',
+  /** Withdraw every transaction of that receiver that has not started. */
+  POP_ALL = 'pop-all',
+  /** Withdraw the running transaction. */
+  ABORT_CURRENT = 'abort-current',
+  /** Withdraw every non-terminal transaction of that receiver. */
+  DUMP = 'dump',
+}
+
+/** How one withdrawal target ended up (RFC §9.7's result table). */
+export enum CueWithdrawalOutcome {
+  /** It had not started and will not be performed. */
+  CANCELLED = 'cancelled',
+  /** A running transaction was asked to stop; it settles `aborted` or with its own outcome. */
+  REQUESTED = 'requested',
+  /** `cancel` was refused because the transaction had already started. It continues. */
+  RUNNING = 'running',
+  /** The transaction was already terminal; reported as it settled. */
+  SETTLED = 'settled',
+  /** No record of that correlation value. */
+  UNKNOWN = 'unknown',
+  /** A surface/purpose target matched nothing. */
+  EMPTY = 'empty',
+}
+
+/** One target of a withdrawal request, and what happened to it. */
+export interface CueWithdrawalTargetResult {
+  /** The correlation value, when the request or the selection named one. */
+  nonce?: OperationNonce
+  outcome: CueWithdrawalOutcome
+  /** The state observed when the request was applied, when the broker still knew it. */
+  state?: CueTransactionState
+}
+
+/**
+ * One withdrawal request.
+ *
+ * Names exactly one target family — correlation values, or a surface and purpose — and exactly one
+ * driver: values belonging to two drivers are not named together, and a request that names no target
+ * is malformed (RFC §9.7, `validateWithdrawalRequest`).
+ */
+export interface CueWithdrawalRequest {
+  kind: CueWithdrawalKind
+  /** The driver this request addresses. Required: the request is routed to one manager. */
+  modelDriverId: ModelDriverId
+  /** Correlations to withdraw. Mutually exclusive with `address`. */
+  nonces?: OperationNonce[]
+  /** A selection inside the driver. Mutually exclusive with `nonces`. */
+  address?: {
+    surface?: RendererMountSurfaceKind
+    purpose?: RendererMountPurpose
+  }
+}
+
+/** What a withdrawal request did. */
+export interface CueWithdrawalReport {
+  kind: CueWithdrawalKind
+  /** One entry per target the request named or selected. */
+  results: CueWithdrawalTargetResult[]
+  /** How many targets were affected, even when `results` was capped. */
+  count: number
+  /** `results` was capped by `CUE_WITHDRAWAL_LIMITS.maxReportEntries`. */
+  truncated?: boolean
+}
+
+/**
+ * The host's bounds on a withdrawal request.
+ *
+ * Both exist so a single request cannot be turned into unbounded work in the main process: a caller
+ * names at most `maxNoncesPerRequest` correlations, and a report carries at most
+ * `maxReportEntries` results however many were affected (`count` stays exact). A request outside
+ * these bounds is malformed and fails.
+ */
+export const CUE_WITHDRAWAL_LIMITS = {
+  maxNoncesPerRequest: 64,
+  maxReportEntries: 256,
+} as const
+
+/**
  * Put one model on this mount: the whole of AIRI's knowledge about *what* to load.
  *
  * This is the only way a mount is ever told which model to show. The model is named here, not
- * only in `target.modelId`: a cue has to be self-contained, because `target` decides routing and
- * is optional, while a load without a model is not expressible. When both are present they agree.
+ * only in `target`: a cue has to be self-contained, because `target` decides routing and is
+ * optional, while a load without a model is not expressible. When both are present they agree.
  *
  * `profileId` is a parameter of the load, not a second operation: "load model X showing profile
  * Y" is one intention, and keeping it here reports a bad profile against the load's own slot
@@ -379,7 +535,7 @@ export interface CueSink {
  * caller must never be left waiting on a renderer that is gone.
  *
  * Reporting a failure: the error branch of the send carries what went wrong to the caller
- * (`asset-missing`, `asset-corrupt`, `aborted`, `renderer-unavailable`, `internal`), while
+ * (`asset-missing`, `asset-corrupt`, `aborted`, `driver-unavailable`, `internal`), while
  * `state-change` to `MODEL_ERROR` and the mount's `'error'` emit carry the same failure to
  * everyone else — both derived from that one outcome.
  *
@@ -394,7 +550,7 @@ export interface LoadCue {
   kind: CueKind.LOAD
   /** The model to show: AIRI's own id, the only handle either side uses (`model.ts`). */
   modelId: ModelId
-  /** The profile to show it in, when the caller has one in mind. AIRI mints it too. */
+  /** The profile to show it in if any. */
   profileId?: ModelProfileId
 }
 
@@ -402,7 +558,7 @@ export interface LoadCue {
  * Run one ACT token.
  *
  * The token string travels verbatim and the renderer projects it: the vocabulary behind it is
- * the renderer's and is known only at runtime (`CapabilityVocabularySnapshot`). AIRI never
+ * the renderer's and is known only at runtime (`CapabilityVocabulary`). AIRI never
  * learns what a token played; a caller that wants one specific unit uses `ExpressionCue`.
  */
 export interface ActCue {
@@ -453,9 +609,15 @@ export interface MotionCue {
   crossfadeMs?: number
 }
 
-/** Visual effect trigger (VRM auras today). */
-export interface VfxCue {
-  kind: CueKind.VFX
+/**
+ * Trigger one visual effect family for an optional duration.
+ *
+ * `effect` names a `ModelCapabilityKind.EFFECT` descriptor the renderer listed, exactly as `key`
+ * names an expression or a motion. There is no host-side effect vocabulary: "VRM auras today" is
+ * where the first family came from, not something the contract knows.
+ */
+export interface EffectCue {
+  kind: CueKind.EFFECT
   effect: string
   durationMs?: number
 }
@@ -464,11 +626,10 @@ export interface VfxCue {
  * Switch to, or try on, a renderer-managed model profile.
  *
  * A profile is a named configuration the renderer stores and knows how to compose — an outfit,
- * an alt model, a set of mesh and expression weights — together with the rules that make the
- * parts interact. AIRI only names the result and MUST NOT decompose it.
+ * an alt model, a set of mesh and expression weights. AIRI only names the result and MUST NOT decompose it.
  *
- * `persistent: false` on the envelope is what a try-on is: applied transiently, never saved,
- * never bumping the renderer's snapshot. `ResetCue` with `scope: ResetScope.PROFILE` takes it
+ * `persistent: false` on the envelope is what a try-on is: applied transiently, never saved, and
+ * never becoming the renderer's state. `ResetCue` with `scope: ResetScope.PROFILE` takes it
  * back off again.
  */
 export interface ProfileCue {
@@ -479,7 +640,7 @@ export interface ProfileCue {
 /**
  * Which target replaces the live pointer.
  *
- * All four answer the same question, with `POINTER` being the answer that ends the override — so
+ * All five answer the same question, with `POINTER` being the answer that ends the override — so
  * this stays one override rather than a gaze configuration.
  */
 export enum GazeMode {
@@ -487,6 +648,8 @@ export enum GazeMode {
   POINTER = 'pointer',
   CAMERA = 'camera',
   TARGET = 'target',
+  /** Look at a place in the model the renderer named (`ModelCapabilityKind.POINT_OF_INTEREST`). */
+  POINT_OF_INTEREST = 'pointOfInterest',
 }
 
 /**
@@ -502,10 +665,13 @@ export interface GazeCue {
   kind: CueKind.GAZE
   /**
    * `POINTER` = follow the live pointer again (the default), `TARGET` = use `point`,
-   * `CAMERA` = look at the viewer, `NONE` = rest.
+   * `POINT_OF_INTEREST` = use `pointOfInterestId`, `CAMERA` = look at the viewer, `NONE` = rest.
    */
   mode: GazeMode
+  /** Required when `mode` is `TARGET`; refused as `unknown-key` for a place the renderer never listed. */
   point?: RendererMountPoint
+  /** Required when `mode` is `POINT_OF_INTEREST`. */
+  pointOfInterestId?: string
 }
 
 /**
@@ -513,12 +679,8 @@ export interface GazeCue {
  *
  * Which part of a model is worth looking at is a fact about the rig, so it belongs to whoever
  * resolved the rig. A caller addresses a target by the `key` of a `ModelCapabilityDescriptor` of
- * kind `'pointOfInterest'` (`capabilities.ts`), enumerated for this model at runtime, and the
- * mapping from that id to a bone, a hit area or a framed bounding box stays behind the renderer.
- *
- * Deliberately no absolute camera values, and no way to grow them: position, distance, field of
- * view and the look-at target are the renderer's own state. A caller says *where* and *how
- * tight*; everything else is the renderer's.
+ * kind `'pointOfInterest'` (`capabilities.ts`), enumerated for this model at runtime. How to move
+ * the camera is up to the model driver.
  *
  * `ResetCue` with `scope: 'view'` hands the framing back to the renderer's own default.
  */
@@ -531,42 +693,25 @@ export interface ViewCue {
   pointOfInterestId: string
   /**
    * How tight, relative to the renderer's own framing of that target: `1` is that framing,
-   * greater moves closer, smaller pulls back. Absent = `1`.
-   *
-   * Relative on purpose: an absolute distance is a rig fact in units AIRI cannot know, and the
-   * renderers whose "camera" is a 2D transform have no distance at all.
+   * smaller moves closer, larger pulls back. Absent = `1`.
    */
-  zoom?: number
+  distance?: number
 }
 
 /**
  * Text the renderer shows.
  *
  * The cue carries the utterance and, when the host knows it, the sentence split with each
- * sentence's timing — which is what sentence-sync highlighting needs. It carries content only:
- * never position, font or colour.
- *
- * This is an **optional capability**: a driver that can show text, including head-tethered
- * presentation, declares `'caption'` and owns that rendering. One that cannot leaves it out of
- * `ModelDriverCapabilities.cues`; the host then does not send it. AIRI may choose to show its own
- * host overlay fallback, which is host policy and outside this contract, but that fallback cannot
- * use a driver `HeadPose`. Sending the cue anyway is `unsupported-cue`. `ResetCue` with
- * `scope: 'caption'` takes it down again.
+ * sentence's timing — which is what sentence-sync highlighting needs. Formatting or styling
+ * is unsupported by design.
  */
 export interface CaptionCue {
   kind: CueKind.CAPTION
-  /**
-   * The whole utterance, as one string.
-   *
-   * Replacement, not append: a later cue with the same `utteranceId` supersedes the earlier text,
-   * so a host that synthesizes a sentence at a time re-sends the growing utterance instead of
-   * sending fragments for the renderer to concatenate.
-   */
+  /** The whole utterance, as one string. */
   text: string
   /**
    * Which utterance this belongs to, minted by the caller: several cues may carry the same
-   * utterance — the first, then updates incrementally — and the renderer uses it to keep its own
-   * progress instead of restarting the highlight on every update.
+   * utterance ID for incremental updates.
    */
   utteranceId: string
   /** The sentence split, in order, for sentence-sync highlighting. */
@@ -597,30 +742,20 @@ export interface CaptionSegment {
 export enum ResetScope {
   EXPRESSION = 'expression',
   MOTION = 'motion',
+  /** Take down an `EffectCue` family's effect. */
+  EFFECT = 'effect',
   PROFILE = 'profile',
+  /** Releases a `GazeCue` override back to the live pointer */
   GAZE = 'gaze',
+  /** Gives the camera back to the renderer's own default framing */
   VIEW = 'view',
-  /**
-   * Put the model back where the renderer keeps it: position, scale and rotation.
-   *
-   * The renderer owns its transform, so the host cannot reset it by writing a value back; this is
-   * how "reset this model's placement" stays a host action without a second copy of the numbers.
-   */
+  /** Put the model back where the renderer keeps it: position, scale and rotation. */
   TRANSFORM = 'transform',
+  /** Takes down text that a `CaptionCue` put up */
   CAPTION = 'caption',
   ALL = 'all',
 }
 
-/**
- * Hand an expression/pose back to the renderer's saved state.
- *
- * `PROFILE` is what a previewed outfit or alt model reverts through, since a transient
- * (`persistent: false`) `ProfileCue` has no duration of its own; `GAZE` releases a `GazeCue`
- * override back to the live pointer; `VIEW` gives the camera back to the renderer's own default
- * framing; `TRANSFORM` does the same for the model's placement, which the renderer also owns;
- * `CAPTION` takes down text a `CaptionCue` put up, because an utterance has no duration of its own
- * either.
- */
 export interface ResetCue {
   kind: CueKind.RESET
   scope: ResetScope
@@ -629,20 +764,13 @@ export interface ResetCue {
 /**
  * Encode this mount's current canvas.
  *
- * A cue rather than an exposed method because capture is a discrete, refusable transaction
- * addressed to one mount: the caller that wants a selfie may be in another window and does not
- * hold the component reference. The encoded bytes come back in `CueAck.results`.
- *
- * **The payload is empty on purpose.** The renderer captures everything its own canvas holds,
- * chooses the encoding and returns the actual `CaptureResult` (format and pixel size included).
- * The caller does not specify a background, a format, a quality or a target width: it does not
- * know what the canvas contains, and a capture that only returns part of the canvas would be a
- * different, much less predictable operation.
- *
  * Capture is slow and its failure is reported through the `ContractResult` error branch, so it
  * MUST be the only cue in its envelope. The broker rejects a mixed envelope with
  * `ContractFailureCode.INVALID_ENVELOPE`; a caller that wants to combine a capture with another
- * intent sends two transactions and correlates them by `requestId`.
+ * intent sends two transactions and correlates them by `nonce`.
+ *
+ * Capture also follows the addressing rule rather than the query rule (RFC §8.6): from outside the
+ * creating window it names a surface and a purpose, and the driver decides which mount answers.
  */
 export interface CaptureCue {
   kind: CueKind.CAPTURE
@@ -653,7 +781,7 @@ export type Cue
     | ActCue
     | ExpressionCue
     | MotionCue
-    | VfxCue
+    | EffectCue
     | ProfileCue
     | GazeCue
     | ViewCue

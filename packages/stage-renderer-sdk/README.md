@@ -3,9 +3,11 @@
 Contract between AIRI and a **model driver** (VRM / Live2D / Spine / MMD
 today, and anything else later).
 
-> **Status: contract only.** No implementation. Nothing in this workspace imports
+> **Status: contract only, at `0.1`.** No implementation. Nothing in this workspace imports
 > this package yet — it exists so the model driver boundary can be reviewed before
-> any existing code moves behind it. This release is **first-party only**: the package
+> any existing code moves behind it. `0.1` is the first shipped contract shape, produced by Phase 0
+> of [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md); `0.0.x` was a draft and is refused by
+> `isContractCompatible`. This release is **first-party only**: the package
 > stays `private` and source-only; third-party distribution is deferred until the
 > contract and renderer host are stable. See "Deliberate non-goals".
 >
@@ -13,7 +15,10 @@ today, and anything else later).
 > behind every shape in the package — what the current tree does instead, what was
 > rejected, and what the contract still cannot express — lives in
 > [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md)
-> (RFC 0002). The original
+> (RFC 0002). The choices this package makes *beyond* that RFC — `RegistryHandle`,
+> `LegacyRestorePayload`, `PendingModelPayload`, `isContractCompatible`, `profile-missing` — are
+> recorded in [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md), and RFC 0002 carries an amendment
+> section listing them. The original
 > [`docs/rfcs/0001-stage-renderer-plugin-contract.md`](../../docs/rfcs/0001-stage-renderer-plugin-contract.md)
 > is kept as the historical record and is superseded where it conflicts.
 >
@@ -72,20 +77,21 @@ file map and the RFC.
 Two absences are deliberate and load-bearing:
 
 - **No state scope.** Every mount is independent; actor and chat are two mounts, not two views of one
-  state. Control that must reach both is sent to each `mountId`.
+  state. A cue names a driver plus a surface/purpose, and the manager fans it out to the mounts that
+  match.
 - **No per-model snapshot.** AIRI never stores, restores or interprets renderer state. A driver's
-  state is its own storage; the one value AIRI carries across a mount is the current model's prompt,
-  which the driver writes and AIRI keeps in the character card.
+  state is its own storage; the one value AIRI carries across a mount is the current model's prompt
+  and token list, published as one versioned pair and kept in the character card as a snapshot.
 
 ## Driver registration and loading mounts
 
 note: move this to design document. this section only covers behaviors on electron.
 
-1. On driver discovery, AIRI reads the driver's static manifest, registers the driver in the main-process registry, instantiates its `ModelDriverManager`, and stores both in the registry. **This happens before any driver code runs.**
-2. When a window first needs to render a model, that interface creates the window's Adapter and states a mount intent to the registry: a `modelDriverId`, a `purpose`, and a `mountId` the wrapper has already minted. The Adapter resolves the manifest's `mount` entry and returns the component; the interface mounts it.
-3. The mounted component receives its services as props, is registered by the Adapter (registry `register`, `update` on readiness changes, `unregister` on unmount), and starts rendering when a `LoadCue` arrives.
+1. On driver discovery, AIRI reads the driver's static manifest, registers the driver in the main-process registry, instantiates its `ModelDriverManager`, and stores both in the registry. **This happens before any driver code runs.** The declaration names only `entry.manager`; everything else the manager resolves on demand.
+2. When a window first needs to render a model, that interface says so to the registry, which **issues the `mountId`** through `HostRegistryClient.registerMount({ driverId, surface, purpose, windowId })` (`registerMount` is the adapter's registry client). A mount is unaddressable until that resolves. The Adapter then asks the manager which module implements `ModelDriverEntryKind.MOUNT` (`requestEntrypoint`) and imports what the manager named through its own build-time loader table.
+3. The mounted component receives its services as props, is tracked by the registry (readiness `update`s, `unregister` on unmount), and starts rendering when a `LoadCue` arrives.
 4. The Manager reaches the renderer side only through the adapter channel the registry hands it. No main-process object holds a runtime, a mount or a probed capability.
-5. Panels and the model picker are mounted the same way, from their own manifest entries, and need no mount and no loaded model. Choosing a model is not a panel: it is the driver's `modelPicker`, and it emits only imported ids.
+5. Panels and the model picker are resolved the same way, through `resolveEntrypoint` with their own entry kinds, and need no mount and no loaded model. Choosing a model is not a panel: it is the driver's picker module, and it emits only imported ids.
 
 AIRI directly manages the registry on the main process, and communicates with adapters in renderer windows for actually mounting a specified runtime and providing resources and channels to the runtime.
 The emitted events from the mount are interpreted by AIRI.
@@ -94,18 +100,23 @@ The emitted events from the mount are interpreted by AIRI.
 
 | File | Implements | Purpose |
 | :--- | :--- | :--- |
-| `src/contract/shared.ts` | both | ids, result envelope, failure codes, readiness, mount surface and purpose, geometry, the stored preview and author shapes |
-| `src/contract/model.ts` | AIRI | the identities (`ModelId`, `ModelProfileId`, `CharacterId`) and a model's state (`unimported` / `builtin` / `imported` / `pending-import`) |
-| `src/contract/manifest.ts` | driver | what a driver declares statically: id, capability hint, requirements, and the module entry points for each half |
-| `src/contract/lifecycle.ts` | both | the main-process manager, the renderer runtime (capability probe, transfer, purge, migrate), the host registry, and the cross-window mount registry |
-| `src/contract/provider.ts` | driver | model provider: two-phase probe (`files`/`url` → `parts`) + `confirmImport(selections)` / list / remove / preview / modelCapabilities / vocabulary / profiles / model transfer |
+| `src/contract/shared.ts` | both | ids (including `MountId`), result envelope, failure codes, readiness states, `READINESS_TRANSITIONS` + `isReady`, mount surface and purpose, geometry, the stored preview and author shapes, reference-gate evidence |
+| `src/contract/model.ts` | AIRI | the identities (`ModelId`, `ModelProfileId`, `CharacterId`) and a model's state (`unimported` / `builtin` / `imported`) |
+| `src/contract/manifest.ts` | driver | what a driver declares statically: id, capability hint (including whether it publishes a prompt and which interaction modes it supports), requirements, and the one entry point it names — its manager |
+| `src/contract/registry.ts` | AIRI | the manager's registry handle (`log`, `requestRenderer`, `listDrivers`, `isEnabled`, `onChange`), the opaque `ManagerChannel`, entry kinds and resolution types, and the adapter's registry client with `registerMount` — the only source of mount ids |
+| `src/contract/adapter.ts` | AIRI (renderer) | the window's adapter: mints `modelId`/`profileId`, never a mount id; requests entry points; loads and activates the runtime; hands out the service container and the manager channel |
+| `src/contract/lifecycle.ts` | both | the main-process manager (rows, entry resolution, delivery, withdrawal, mount queries/commands, analyzer request) with its `createManager(handle)` factory shape, and the renderer runtime (capability probe, transfer, purge, per-model migration and revert), plus the cross-window mount registry |
+| `src/contract/provider.ts` | driver | model provider: two-phase probe (`files`/`url` → `parts`) + `confirmImport(selections, input)` settling each entry on its own / list / remove / preview / modelCapabilities / vocabulary / profiles / model transfer |
 | `src/contract/components.ts` | driver | driver-level UI: settings panels, the model picker and its `select` contract, and the opaque bundle that moves a whole driver |
-| `src/contract/capabilities.ts` | driver | capability kinds, the renderer's descriptors, and the ACT token vocabulary |
-| `src/contract/renderer-mount.ts` | renderer | one mounted viewport: props, emits, exposed methods (the cue sink, the occlusion query, the interaction hit test), readiness; capture travels as a cue, not as a method |
-| `src/contract/cues.ts` | both | one transactional cue vocabulary and one ack shape for everything the avatar is asked to do |
-| `src/contract/host-services.ts` | AIRI | the service container injected at activation: log, driver-namespaced storage, the prompt channel, cues, the pointer stream, theme, runtime facts, bridge |
-| `src/contract/references.ts` | AIRI | every record and view AIRI keeps with no driver available: the named model, its profiles, the character's model binding, the lightweight model summary, driver status, and why a model is unavailable |
+| `src/contract/capabilities.ts` | driver | capability kinds (including `effect` and `pointOfInterest`), the renderer's descriptors, and the ACT token vocabulary |
+| `src/contract/renderer-mount.ts` | renderer | one mounted viewport: props (no size — the container is the viewport), emits, exposed methods (the cue sink, the occlusion query, the interaction hit test), readiness; capture travels as a cue, not as a method |
+| `src/contract/cues.ts` | both | one transactional cue vocabulary addressed by driver + surface + purpose, the ack (answering driver, per-slot outcomes, no `requestId`), the acceptance/settlement split, seven transaction states and six withdrawal requests with their bounds |
+| `src/contract/migration.ts` | both | one legacy model going into a driver (`ModelDriverLegacyHandoverEntry` → report `retained`/`unused`) and one coming back out for a revert (`LegacyRestorePayload`, carrying the legacy id) |
+| `src/contract/host-services.ts` | AIRI | the service container injected at activation: log, driver-namespaced storage, the prompt channel (`ModelPromptPublication` — text and tokens as one versioned pair), cues, the pointer stream, theme, runtime facts, bridge |
+| `src/contract/references.ts` | AIRI | every record and view AIRI keeps with no driver available: the named model, its profiles, the character's model binding, the lightweight model summary, the pending payload, driver status, why a model is unavailable, and the one mapping between those last two |
 | `src/contract/plugin-port.ts` | AIRI | the plugin-level speech analyzer: the frame stream that replaced a driver-side `AudioNode` |
+| `src/compatibility.ts` | AIRI | `isContractCompatible`: same minor below 1.0, same-or-older minor from 1.0, with a readable rejection |
+| `src/validate.ts` | AIRI | the executable checks: declaration (including that `entry` names nothing but the manager), capability completeness, envelope rules, ack shape, withdrawal requests, prompt publication and its fault state, readiness transitions |
 
 ## Deliberate non-goals
 
@@ -121,14 +132,19 @@ The emitted events from the mount are interpreted by AIRI.
 - No audio graph: a renderer never receives an `AudioContext` or an `AudioNode`, because neither
   crosses a realm. Lip sync arrives as frames.
 - No runtime value that is not a closed vocabulary a renderer must produce, plus the contract
-  revision. Every closed vocabulary is an `enum`, so its members are named, documented and
-  exhaustively checkable where a consumer switches on one. Everything else is a type. There is also
-  no `./types` subpath, because `.` is already the whole contract.
+  revision, the declared readiness transitions, the withdrawal bounds, the capability key set, the
+  validators and the compatibility predicate. Every closed vocabulary is an `enum`, so its members are
+  named, documented and exhaustively checkable where a consumer switches on one. Everything else is a
+  type. There is also no `./types` subpath, because `.` is already the whole contract.
 
 ## Validation
 
 ```bash
 pnpm -F @proj-airi/stage-renderer-sdk typecheck
+pnpm -F @proj-airi/stage-renderer-sdk test
 ```
 
-`tsc --noEmit` only; there is no runtime to test.
+`tsc --noEmit` covers `src/**` (so the `@ts-expect-error` assertions in `contract.test.ts` are checked
+at compile time). The `vitest` suite has no runtime to exercise: it checks the shapes, the enums, the
+one status mapping, the readiness transition table, the withdrawal bounds and the validators. There is
+still **no implementation** — nothing in this workspace imports the package.

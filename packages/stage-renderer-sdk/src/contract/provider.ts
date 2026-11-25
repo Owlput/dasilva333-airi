@@ -11,7 +11,7 @@
  *    together in `ModelProbeInput.files`; AIRI does not label one of them the main file or mint
  *    an id for another, because a half-model is not something AIRI may ever hold. The driver
  *    decides which files belong to which model and reports the models as `parts`.
- * 2. **AIRI only knows about models.** A model has the AIRI-minted `modelId` it was imported
+ * 2. **AIRI only knows about models.** A model has the Adapter-minted `modelId` it was imported
  *    under; AIRI enumerates it, stores its metadata and points at it by that id. Everything else
  *    inside the renderer — motions, presets, textures replaced after import, and every other
  *    asset — has no id from AIRI and therefore cannot be enumerated by AIRI: it either stays
@@ -19,11 +19,12 @@
  *    persists verbatim and never interprets. Those assets are imported through the driver's own
  *    panel or bridge, never through `probe`/`confirmImport`.
  */
-import type { ModelCapabilityDescriptor } from './capabilities'
+import type { CapabilityVocabulary, ModelCapabilityDescriptor } from './capabilities'
 import type { ModelId, ModelProfileId } from './model'
 import type {
   ContractResult,
   MaybePromise,
+  ModelAuthor,
   ModelDriverId,
   ModelPreview,
 } from './shared'
@@ -65,6 +66,10 @@ export interface ModelProvider {
    * **Idempotent success**: removing a model that is already gone is `ok: true`, not
    * `asset-missing` — there is nothing left to remove, which is the outcome the caller asked for.
    *
+   * **The reference gate runs before this call.** A character that still binds the model is the
+   * host's fact, not the driver's, so the host refuses first with `MODEL_REFERENCED` and the
+   * evidence in `ContractFailure.references` (C11). A driver never has to know a card exists.
+   *
    * "Everything" includes the model's profiles: a profile *body* does not outlive its model, so a
    * profile that has to survive the model is one AIRI keeps a record for
    * (`HostModelProfileRecord`) and that `saveProfile` can write again.
@@ -92,7 +97,7 @@ export interface ModelProvider {
    * live state. There is deliberately no second query on the stage component — capabilities are a
    * renderer concept, not something mounting a viewport needs.
    *
-   * This is `ModelDriverRuntime.rendererCapabilities()`' question at model scope, and for the same
+   * This is `ModelDriverRuntime.rendererCapabilities()`' question at model level, and for the same
    * reason: what a model can do is not fixed by its files, because the renderer may have to
    * withhold a texture-heavy outfit, a motion that needs more memory than is left, or a parameter
    * set this device cannot drive. It probes the live model rather than replaying a stored catalogue.
@@ -102,6 +107,19 @@ export interface ModelProvider {
    * what one *model* contains.
    */
   modelCapabilities?: (modelId: ModelId) => MaybePromise<ContractResult<ModelCapabilityDescriptor[]>>
+
+  /**
+   * Enumerate the ACT tokens this model accepts right now.
+   *
+   * The card editor and the rehearsal room need the token list to offer choices and to check what a
+   * card has already mapped; only the driver knows it, and only at runtime (`capabilities.ts`).
+   *
+   * A live answer, not a stored projection: AIRI keeps no copy, and a driver that has not loaded the
+   * model yet may answer with an empty `items` rather than failing. It is **not** the token list a
+   * prompt publication carries — that one is bound to one text by one version
+   * (`ModelPromptPublication`, `host-services.ts`).
+   */
+  vocabulary?: (modelId: ModelId) => MaybePromise<ContractResult<CapabilityVocabulary>>
 
   /**
    * Enumerate the profiles this renderer holds for one model, including the answer "none".
@@ -139,6 +157,9 @@ export interface ModelProvider {
    * Drop one profile.
    *
    * **Idempotent success** like `remove`: a profile that is already gone is `ok: true`.
+   *
+   * Gated by the host before the call, exactly like `remove`: a character still bound to the profile
+   * is refused with `PROFILE_REFERENCED` and evidence (C11).
    */
   removeProfile?: (modelId: ModelId, profileId: ModelProfileId) => MaybePromise<ContractResult<void>>
 
@@ -166,14 +187,29 @@ export interface ModelProbeInput {
    * AIRI decide which file is the model and which is an attachment — a driver-native distinction
    * AIRI cannot make. It has to reach `probe`, not only `confirmImport`: `probe` is the only place
    * the input is ever handed over. The input carries **no ids**: `probe` is a read-only
-   * inspection, and AIRI mints the ids only after the user has chosen which parts to import.
+   * inspection, and the Adapter mints the ids only after the user has chosen which parts to import.
    */
-  files?: File[]
-  /** The host sets exactly one of `files` or `url`. */
-  url?: string
+  files: File[]
   /** Names aligned with `files`, when the payload came from a directory pick. */
   fileNames?: string[]
+  /**
+   * A remote input, for a model that is not on disk yet.
+   *
+   * Mutually exclusive with `files`: a probe reads one input, and mixing a download with a picked
+   * directory would make `parts` describe two unrelated packages.
+   */
+  url?: string
 }
+
+/**
+ * The same input, as `confirmImport` receives it.
+ *
+ * The commit gets the input itself and not only the part indices, because a driver that must **move**
+ * rather than copy (D-16) has to consume the payload the probe read. An absent input is legal and
+ * means "no bytes this time": a retry after a crash, a restore, or a migration whose payload the
+ * driver already retained by reference all commit without re-reading anything.
+ */
+export type ModelImportInput = ModelProbeInput
 
 /** Display metadata for one model inside an import package. */
 export interface ModelImportPartMeta {
@@ -194,16 +230,23 @@ export interface ModelImportPart {
   meta: ModelImportPartMeta
 }
 
-/** One part the user chose to import, with the ids AIRI minted for it. */
+/** One model the user chose to import, with the ids the Adapter minted for it. */
 export interface ModelImportSelection {
   partIndex: number
   /**
-   * AIRI-minted model id. The renderer MUST persist the asset under exactly this value and MUST
+   * Adapter-minted model id. The renderer MUST persist the asset under exactly this value and MUST
    * NOT invent or rewrite an AIRI-facing id.
    */
   modelId: ModelId
-  /** AIRI-minted default profile id, when the caller wants to name it explicitly. */
-  profileId?: ModelProfileId
+  /**
+   * Adapter-minted default profile id.
+   *
+   * Always supplied, so an imported model is addressable as `{ modelId, profileId }` from the moment
+   * it exists — the same pair a `LoadCue`, a `ModelSelection` and a `CharacterModelBinding` carry. A
+   * driver that cannot hold profiles ignores it; there is no import path that produces a model with
+   * no profile, because that would be a model AIRI could not fully address.
+   */
+  profileId: ModelProfileId
   /** Override the part's display name. */
   name?: string
 }
@@ -214,19 +257,36 @@ export type ModelImportSource = 'legacy-display-model' | 'legacy-backup' | 'lega
 /**
  * Migration provenance.
  *
- * The host writes a marker before the import and only sets `overwrite` for this path. Repeating
- * the same `sourceId` + `payloadHash` after a crash is how D13 retries without turning normal
- * imports into upserts.
+ * Purely informational: it tells a catalogue row where the model came from. It is **not** an
+ * authorization to overwrite — migration's import *is* the create (D8), so there is nothing to
+ * overwrite and no marker that could authorize it.
  */
 export interface ModelImportMigration {
   source: ModelImportSource
+  /** The legacy identity the model came from, for provenance display only. */
   sourceId: string
+  /** A hash of the payload, so a retried import can be recognised as the same work. */
   payloadHash: string
 }
 
 export interface ModelConfirmOptions {
-  /** One entry per part to import; parts not listed are not written. */
+  /**
+   * The models to import, in one transaction.
+   *
+   * An array even for one part, so a multi-model package is the same call as a single-file import
+   * rather than a second shape: the caller selects, mints ids, and passes them together. The driver
+   * MUST import exactly these parts — no more, no fewer — and MUST write them atomically, so a
+   * failure leaves none of them behind.
+   */
   selections: ModelImportSelection[]
+  /**
+   * The input the probe read, when the driver still needs its bytes.
+   *
+   * Present for an ordinary import; absent for a migration that retained its payload by reference, a
+   * retry after a crash, or a restore. Receiving the input here — and not a file per selection — is
+   * what lets a driver **move** the bytes instead of copying them (D-16, D17).
+   */
+  input?: ModelImportInput
   /**
    * Import despite `blockingFindings`.
    *
@@ -237,28 +297,39 @@ export interface ModelConfirmOptions {
   /**
    * Replace an existing `(modelDriverId, modelId)`.
    *
-   * Normal imports MUST NOT set this. Only an explicit "replace this model" user action or a
-   * migration with a marker may; otherwise a duplicate id is `MODEL_ID_CONFLICT`.
-   *
-   * The conflict carries no payload: the caller supplied the `modelId`, so it already knows
-   * which id collided and looks the existing record up in its own catalogue. For a batch, it
-   * checks the ids it sent. The failure is atomic: no part of the selection is written.
+   * **The user's "replace this model" action only.** A normal import MUST NOT set this, and no
+   * migration path ever does (D18): migration's import is the create, so a duplicate id there is a
+   * `MODEL_ID_CONFLICT` to resolve with the user — reassign, skip, or explicitly replace — never a
+   * silent overwrite.
    */
   overwrite?: boolean
   /** Clear the stored profiles when overwriting. Default `false`: keep the user's profiles. */
   resetProfiles?: boolean
-  /** Migration-only provenance; absent for user-initiated imports. */
+  /** Migration-only provenance; absent for user-initiated imports. Never authorization. */
   migration?: ModelImportMigration
 }
 
+/**
+ * One selection's own outcome, inside a commit.
+ *
+ * **Per-entry settlement** (C21): one part failing does not fail the commit and does not roll back
+ * the others, so a package with one bad model still yields the good ones. The driver MUST settle every
+ * selection it was given, in the order it was given them.
+ */
+export interface ModelImportCommitEntry {
+  /** The selection this entry answers, echoed exactly. */
+  selection: ModelImportSelection
+  /** This entry's outcome: the stored descriptor, or why this one part could not be committed. */
+  result: ContractResult<ModelDescriptor>
+}
+
+/** What a commit did, one entry per selection. */
+export interface ModelImportCommit {
+  entries: ModelImportCommitEntry[]
+}
+
 export interface ModelProbeResult {
-  /**
-   * 0..1: how well this renderer can host the input. `0` is a legitimate answer —
-   * "probably not mine" — not a refusal.
-   *
-   * The host preselects the highest-confidence claimant and still lets the user confirm any
-   * renderer, low score included.
-   */
+  /** 0..1: how well this renderer can host the input. */
   confidence: number
   /** Suggested package display name, usually derived from the file name. */
   name?: string
@@ -266,31 +337,29 @@ export interface ModelProbeResult {
   warnings?: string[]
   /** Repairs the renderer would apply on import, described for the user. */
   plannedFixes?: string[]
-  /**
-   * Why this renderer cannot read the input as-is, when it cannot.
-   *
-   * This, together with a low `confidence`, is how a renderer says "not mine" — and it is a
-   * success rather than a refusal: the renderer looked at the input and reports what it found,
-   * the host shows the user, and the user may still overrule it (`force` below). The failure
-   * branch is not a way to decline anything: `unsupported-input` means the probe could not read
-   * the payload at all.
-   */
+  /** Why this renderer cannot read the input as-is. */
   blockingFindings?: string[]
   /**
    * Every model this input expands to.
    *
    * A single-model package has exactly one part. `probe` writes nothing: the parts are a
    * description, and the host only commits the ones the user selects. This is also the
-   * multi-model id boundary — the driver reports names and metadata, AIRI mints ids.
+   * multi-model id boundary — the driver reports names and metadata, the Adapter mints ids.
    */
   parts: ModelImportPart[]
   /**
-   * Import the selected parts under the ids AIRI minted.
+   * Import the selected parts under the ids the Adapter minted.
    *
-   * Returns one descriptor per imported part. The driver MUST echo the selected `modelId` and
-   * MUST NOT return a descriptor for a part the caller did not select.
+   * Answers **one entry per selection**, in the order given, each with its own outcome (C21): a part
+   * that cannot be committed is reported there and leaves the rest committed, and the whole call fails
+   * only when the transaction itself could not run. A driver MUST NOT return an entry for a part the
+   * caller did not select, and MUST NOT mint or rewrite an id — the Adapter guarantees uniqueness, and
+   * a second identity for one asset is an asset AIRI can never address again.
+   *
+   * The descriptors a successful entry carries echo the exact `modelId` and `profileId` they were
+   * given.
    */
-  confirmImport: (options: ModelConfirmOptions) => MaybePromise<ContractResult<ModelDescriptor[]>>
+  confirmImport: (options: ModelConfirmOptions) => MaybePromise<ContractResult<ModelImportCommit>>
 }
 
 /**
@@ -318,20 +387,13 @@ export interface ModelDescriptor {
   /** The driver that owns this model. */
   modelDriverId: ModelDriverId
   /**
-   * The identity AIRI minted before this asset was imported (`ModelImportSelection.modelId`).
+   * The identity the Adapter minted before this asset was imported (`ModelImportSelection.modelId`).
    *
-   * The whole identity of a model, and the only key AIRI ever holds: AIRI produces it and nothing
-   * else does, so it is the same value no matter which renderer serves the model. Whatever the
-   * renderer calls the asset inside its own storage stays private, and `modelDriverId` says who
-   * currently serves the model rather than forming a second half of its identity.
+   * The whole identity of a model, and the only key AIRI ever holds.
    *
-   * Optional, and its absence means exactly one thing: **this row can be enumerated but not
-   * addressed.** A renderer may list a model AIRI holds no reference for — a builtin it ships,
-   * which never went through the import path — and `list()` is how such a row becomes visible at
-   * all. Nothing else in this interface can reach it, because `remove`, `preview`,
-   * `modelCapabilities`, `listProfiles`, `saveProfile`, `removeProfile` and `export` all address a
-   * model by this value. AIRI MUST NOT mint a reference to a row that has none, and a renderer
-   * MUST NOT invent one to fill the gap.
+   * Optional, and its absence is what makes a model `builtin`: the driver ships it and can enumerate
+   * and load it, while AIRI can neither list it nor reference it. Importing it
+   * (`probe` → `confirmImport`) gives it an id, and from then on the row is `imported`.
    */
   modelId?: ModelId
   /**
@@ -340,6 +402,13 @@ export interface ModelDescriptor {
    */
   name: string
   importedAt: number
+  /**
+   * Who made it, when the driver knows.
+   *
+   * Travels with the model rather than in a driver-side settings blob, so AIRI can show attribution
+   * with the driver uninstalled. `shared.ts` explains the shape's ownership.
+   */
+  author?: ModelAuthor
   /**
    * Advisory; the renderer computes it, the host only displays it.
    * The value CAN be an estimate.
@@ -357,8 +426,12 @@ export interface ModelDescriptor {
    * both sources deliver the same value in the same shape.
    */
   preview?: ModelPreview
-  profiles: ModelProfileDescriptor[]
-  /** Metadata opaque to AIRI. AIRI MUST NOT interpret it, and SHOULD present it as-is. */
+  /**
+   * Metadata opaque to AIRI. AIRI MUST NOT interpret it, and SHOULD present it as-is.
+   *
+   * Deliberately where renderer-specific extras belong: this record carries no profile list, because
+   * `listProfiles` is the one authority for that and a second one here would drift from it.
+   */
   meta?: unknown
 }
 

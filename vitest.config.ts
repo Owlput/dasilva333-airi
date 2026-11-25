@@ -17,6 +17,7 @@ export default defineConfig({
       'packages/server-runtime',
       'packages/live2d-runtime',
       'packages/i18n',
+      'packages/stage-renderer-sdk',
     ],
   },
 })

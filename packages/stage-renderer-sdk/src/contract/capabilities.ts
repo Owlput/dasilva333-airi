@@ -6,9 +6,11 @@
  *     labels, the usable/favourite toggles, idle-cycle selection and every ACT mapping —
  *     because it is the only side that can parse or introspect the asset, and the only side
  *     that can render the UI for how capabilities combine with each other;
- *   - **AIRI** keeps one projection of it, read-only: the vocabulary snapshot below, which it
- *     needs to build prompts while no renderer is mounted, plus the card-level profile
- *     reference (`HostModelProfileRecord`).
+ *   - **AIRI** asks, and keeps no copy: a capability list is produced on demand by
+ *     `ModelProvider.modelCapabilities()`, and the token list a card editor needs comes from
+ *     `ModelProvider.vocabulary()`. There is no projection AIRI stores, because the driver may
+ *     change what a model can do without telling anyone (a reloaded asset, a downgraded device, a
+ *     repaired package) and a stored copy would then describe a model that no longer exists.
  */
 
 export enum ModelCapabilityKind {
@@ -16,41 +18,31 @@ export enum ModelCapabilityKind {
    * One expression unit, in the format's own vocabulary.
    *
    * What backs it — a blend shape, a vertex morph, a parameter preset, a compiled clip — is the
-   * driver's business, and so is resolving its own token onto it. One unit is one descriptor:
-   * there is deliberately no second kind for the same unit under a geometry name, because that
-   * asks a driver to enumerate it twice while one cue addresses all of them.
+   * driver's business, and so is resolving its own token onto it. One unit is one descriptor.
    */
   EXPRESSION = 'expression',
   /** Playable motion/animation. */
   MOTION = 'motion',
-  /** A defined alternative style of the same outfit. e.g. difference in color and accessories. */
-  OUTFIT_STYLE = 'outfitStyle',
-  /** A defined alternative outfit. e.g. a shirt instead of a coat. */
-  OUTFIT_GROUP = 'outfitGroup',
-  /** Selectable models shipped in one package. */
-  ALT_MODEL = 'altModel',
+  /**
+   * A defined set of parameters and settings of a model,
+   * including outfit, alternate model, raw parameters, etc.
+   */
+  PROFILE = 'profile',
   /** Raw numeric parameter a renderer can drive. */
   PARAMETER = 'parameter',
   /**
-   * Addressable mesh or material.
+   * One visual effect family, addressed by `EffectCue.effect`.
    *
-   * Inventory the renderer's own wardrobe UI addresses; AIRI toggles appearance through a
-   * `ProfileCue`, so no cue names one of these.
+   * Renamed from `vfx` at contract `0.1` so the descriptor kind and the cue that names it read the
+   * same: an effect family is what a renderer *offers*, and the cue is how AIRI triggers it.
+   * (`ActTokenKind.VFX` keeps its name: that is a token family inside prompt text, which is a
+   * different vocabulary.)
    */
-  MESH = 'mesh',
-  /** Visual effect family. */
-  VFX = 'vfx',
+  EFFECT = 'effect',
   /**
    * A place the renderer can put its camera on (`ViewCue.pointOfInterestId`), enumerated at
-   * runtime by `ModelProvider.modelCapabilities()`.
-   *
-   * Deliberately NOT part of `CapabilityVocabularySnapshot`: that snapshot is the text AIRI
-   * injects into prompts, and a camera target is not a token family (`ActTokenKind`), so a
-   * point of interest never belongs in a prompt.
-   *
-   * A renderer that declares the `'view'` cue MUST NOT declare
-   * `capabilityDiscovery: CapabilityDiscoveryMode.NONE`: this is the only way a camera target is
-   * ever named, so the two contradict each other.
+   * runtime by `ModelProvider.modelCapabilities()`. Also the target of `GazeCue` with
+   * `mode: GazeMode.POINT_OF_INTEREST`.
    */
   POINT_OF_INTEREST = 'pointOfInterest',
 }
@@ -78,8 +70,13 @@ export interface ModelCapabilityDescriptor {
  * ACT token families AIRI's marker parser resolves.
  *
  * The token *vocabulary* is the renderer's and is known only at runtime
- * (`CapabilityVocabularySnapshot`); these three families are the compile-time half, and
+ * (`CapabilityVocabulary`); these three families are the compile-time half, and
  * `stage-ui/src/constants/emotions.ts` declares the same three values.
+ *
+ * `VFX` keeps this spelling deliberately: it names the family that appears inside prompt text
+ * (`ACT vfx(...)`), which is character content written years ago, whereas the descriptor a
+ * renderer lists and the cue AIRI sends are `ModelCapabilityKind.EFFECT` / `EffectCue`. Renaming
+ * this one would invalidate every card that already contains a token.
  */
 export enum ActTokenKind {
   EMOTION = 'emotion',
@@ -102,20 +99,22 @@ export interface CapabilityVocabularyItem {
 }
 
 /**
- * The one capability projection AIRI reads.
+ * The token list a driver accepts right now, as `ModelProvider.vocabulary()` reports it.
  *
- * The renderer writes it into its own per-model snapshot (`persistence.ts`); AIRI only reads
- * it, because prompt building happens with no renderer mounted: chat and the autonomous
- * Director run with the stage window closed, and a renderer like VRM only knows its
- * expressions after the model is loaded.
+ * A **live answer, not a projection AIRI keeps**: the card editor and the rehearsal room need to
+ * know which tokens a model understands, and only the driver can say. Nothing writes one, and
+ * nothing is restored from one.
  *
- * The list MUST stay stable for a given `(model, selection)`: AIRI injects it into prompts,
- * and prompt-prefix caching is destroyed by a vocabulary that changes every turn. Anything
- * volatile belongs in a separate, tail-placed section rather than here.
+ * The list MUST stay stable for a given `(model, selection)`: AIRI injects the tokens into prompts
+ * as instructions, and prompt-prefix caching is destroyed by a vocabulary that changes every turn.
+ * Anything volatile belongs in a separate, tail-placed field rather than here.
+ *
+ * This is **not** the token list that travels with a prompt publication: that one is the plain
+ * `string[]` on `ModelPromptPublication` (`host-services.ts`), bound to one text by one version.
+ * This is the live enumeration a UI offers choices from.
  */
-export interface CapabilityVocabularySnapshot {
+export interface CapabilityVocabulary {
   items: CapabilityVocabularyItem[]
   /** Renderer-authored usage notes to carry alongside the list. */
   instructions?: string
-  updatedAt: number
 }

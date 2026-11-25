@@ -2,9 +2,9 @@
 
 | Field | Value |
 | :--- | :--- |
-| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. Host implementation has not started; this document is docs-only. |
+| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. **Phase 0 is implemented in the working tree** at contract `0.1` (§0, [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md)) and is uncommitted, as is the RFC amendment; host implementation has not started. |
 | Normative source | [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md) (RFC 0002). Where this plan and the RFC disagree, the RFC wins. Phase 0 adds contract surface the RFC does not yet contain (§3.1), so **RFC 0002 is amended as Phase 0's last commit** (§3.2) and the contract's additions become normative text rather than private convention. Host choices the RFC leaves open are recorded in §2. |
-| Contract package | `@proj-airi/stage-renderer-sdk` — `0.0.3` in this working tree (pinned as Phase 0's first unit, P0.0), 13 contract files, **no integration**; becomes `0.1` at Phase 0 close. |
+| Contract package | `@proj-airi/stage-renderer-sdk` — 15 contract files (`src/contract/`), plus `index.ts`, `compatibility.ts`, `validate.ts` and its `vitest` suite; `0.1.0` in this working tree, **no integration** (D12, §0). The `0.0.3` baseline commit P0.0 asks for is still owed by a human (§0, P0-D1). |
 | Supersedes | [`docs/design-stage-renderer-migration.md`](../../docs/design-stage-renderer-migration.md) (the RFC 0001 companion plan) wherever that document conflicts with RFC 0002 — see Appendix B |
 | Scope | Host integration for Electron + Web + Pocket, four first-party drivers (Spine, MMD, Live2D, VRM), migration of existing data on user request, and a three-release reversal window |
 | Out of scope | Third-party driver packaging/distribution and a loader, a driver-side cloud-sync channel, a scripting VM, beat sync, per-cue progress reporting (migration status is host-level, §5.9), cancellation outside cue transactions, a per-driver compilation pipeline, a dedicated onboarding update mode, Stage-Mate's own migration (§1.7) |
@@ -30,11 +30,14 @@ Notation: **MUST** / **MAY** / **SHOULD** carry the RFC's meaning. "Phase" is a 
 
 ## 0. Starting point
 
-1. **The contract package exists and is uncommitted at `0.0.3`.** `packages/stage-renderer-sdk` holds 13 contract files. The uncommitted working tree is the RFC 0002 reshuffle: `adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` and `renderer.ts` deleted; ten files modified. `src/index.ts` re-exports 12 of the 13 — `adapter` is not exported. Its only validation is `tsc --noEmit`, and it has no tests. Phase 0's first unit (P0.0) commits exactly this tree as `0.0.3`, and Phase 0 closes at `0.1`.
-2. **Nothing imports the package.** A repository-wide grep for `stage-renderer-sdk` outside its own `src/index.ts`/`README.md` returns nothing.
-3. **The app renders through one component and four stores.** `RendererStage.vue` statically imports the four scene components; `ControlStripHost.vue`, `ControlStrip.vue`, `ModelCustomizer.vue`, the card store and the settings pages read and write the four renderer stores directly.
-4. **The data model has no identities beyond a display-model string.** `display-model-${nanoid}` is minted in the host store; there is no `profileId`; there is no driver id on a model; a character card points at `modules.displayModelId`. No model-prompt publication exists.
-5. **No host machinery for the contract exists**: no registry, adapter, manager, runtime, cue broker, mount registry, model rows, profile records, prompt publication, or driver panels/picker.
+1. **The contract package exists and is uncommitted.** `packages/stage-renderer-sdk` held 13 contract files when Phase 0 opened; the uncommitted working tree is the RFC 0002 reshuffle (`adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` and `renderer.ts` deleted; ten files modified), `src/index.ts` re-exported 12 of the 13 — `adapter` was not exported — and its only validation was `tsc --noEmit`, with no tests. P0.0's baseline commit (`0.0.3`, exactly that tree) is **still owed by a human**, because this workspace does not let an agent commit; §0 is corrected here rather than after it.
+2. **Phase 0's contract work is in the working tree at `0.1.0`.** 15 contract files in `src/contract/` (`registry.ts` and `migration.ts` are new), plus `src/index.ts`, `src/compatibility.ts`, `src/validate.ts` and the `vitest` suite (`src/validate.test.ts`, `src/contract.test.ts`, 82 tests). `tsc --noEmit` is clean, `vitest run` is green, and `MODEL_DRIVER_CONTRACT_VERSION` is `{ major: 0, minor: 1 }`. The RFC amendment (§3.2) is written as one appended section and is likewise uncommitted.
+3. **Nothing imports the package.** A repository-wide grep for `stage-renderer-sdk` outside its own `src/`/`README.md`/`DECISIONS-PHASE0.md` returns nothing.
+4. **The app renders through one component and four stores.** `RendererStage.vue` statically imports the four scene components; `ControlStripHost.vue`, `ControlStrip.vue`, `ModelCustomizer.vue`, the card store and the settings pages read and write the four renderer stores directly.
+5. **The data model has no identities beyond a display-model string.** `display-model-${nanoid}` is minted in the host store; there is no `profileId`; there is no driver id on a model; a character card points at `modules.displayModelId`. No model-prompt publication exists.
+6. **No host machinery for the contract exists**: no registry, adapter, manager, runtime, cue broker, mount registry, model rows, profile records, prompt publication, or driver panels/picker.
+
+The choices Phase 0 made while closing each gap are recorded once, outside this plan, in [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md).
 
 Three risks govern the sequencing:
 

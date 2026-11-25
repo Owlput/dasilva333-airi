@@ -36,7 +36,8 @@
 | [`packages/plugin-sdk`](../packages/plugin-sdk) | 1 | 22 | Plugin SDK Host Core Lifecycle |
 | [`packages/server-runtime`](../packages/server-runtime) | 1 | 9 | Server Route Middleware |
 | [`packages/i18n`](../packages/i18n) | 1 | 3 | Canonical Locales Discovery, Base YAML Syntax/Duplicates, Onboarding V3 100% Parity Assertion |
-| **Monorepo Vitest Baseline** | **135 Suites** | **1,526 Tests** | **Automated Zero-Failure Headless Test Baseline** |
+| [`packages/stage-renderer-sdk`](../packages/stage-renderer-sdk) | 2 | 82 | Model Driver Contract Shape: Manifest/Compatibility, Cue Envelope & Ack, Withdrawal Bounds, Readiness Transitions, Prompt Publication, Vocabulary Enums |
+| **Monorepo Vitest Baseline** | **137 Suites** | **1,608 Tests** | **Automated Zero-Failure Headless Test Baseline** |
 
 *(Note: 4 additional test files across `@proj-airi/stage-ui` and `@proj-airi/live2d-runtime` contain 8 tests conditional on external models or live API keys, yielding 114 total test files cataloged and audited).*
 
@@ -279,6 +280,12 @@
 | Invariant / Subsystem | Test Path | Tests | Runner / Env | CI Inclusion | What Assertions Directly Establish | Coverage Boundary & Known Limits |
 |---|---|:---:|:---:|:---:|---|---|
 | **Locale Integrity & Parity** | [`packages/i18n/src/locales.test.ts`](../packages/i18n/src/locales.test.ts) | 3 | Node / Pure TS | Blocking in CI | Discovery of all 9 canonical locales, syntax and zero duplicate keys in YAML files, 100% key parity across all languages for onboarding.yaml. | Asserts file existence, YAML validity, duplicate key absence, and key parity; does not translate or evaluate semantic grammatical correctness of prose. |
+
+#### Model Driver Contract (Phase 0)
+| Invariant / Subsystem | Test Path | Tests | Runner / Env | CI Inclusion | What Assertions Directly Establish | Coverage Boundary & Known Limits |
+|---|---|:---:|:---:|:---:|---|---|
+| **Contract Validators** | [`packages/stage-renderer-sdk/src/validate.test.ts`](../packages/stage-renderer-sdk/src/validate.test.ts) | 43 | Node / Pure TS | Blocking in CI | Declaration acceptance and rejection (including `entry` naming nothing but the manager), contract compatibility table including the 0.0 rejection, capability-completeness for every key of the revision, cue-envelope rules (required target, capture-alone, no transient load/reset/caption, per-kind addressing), ack alignment (`results` length, derived `handled`, answering `modelDriverId`), withdrawal-request malformation and the 64/256 bounds, prompt publication acceptance of `('', [])`, the missing-publication fault versus an empty one, strictly-newer versioning, and every declared readiness transition. | Pure shape assertions over hand-built data. There is no implementation in the package yet, so nothing exercises a real driver, broker, manager or mount; those suites arrive with `packages/stage-driver-host` in Phase 1. |
+| **Contract Vocabulary** | [`packages/stage-renderer-sdk/src/contract.test.ts`](../packages/stage-renderer-sdk/src/contract.test.ts) | 39 | Node / Pure TS (+ `tsc` failure-mode assertions) | Blocking in CI | The renamed and added vocabulary (`ACTING`, `act`, `effect`, `pointOfInterest`, `NO_TARGET`, `driver-unavailable`, `profile-missing`), the exhaustive failure-code and withdrawal-kind enums, seven transaction states with their terminal subset, the absence of `mintMountId`/`requestId`/`viewport`/`pending-import`/`absorbed` as compile-time errors, and the fixed precedence of `classifyBindingAvailability`. | Compile-time assertions depend on `tsc --noEmit` covering `src/**`; a runtime-only test runner would not fail if a forbidden member were reintroduced. Does not test host behaviour. |
 
 ---
 

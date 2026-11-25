@@ -4,16 +4,13 @@
  * Owner: AIRI implements these; the driver consumes them and MUST NOT reach around them.
  *
  * This container is the **pull** side: a renderer reads what it needs when it needs it, and
- * everything here is either an app-global fact or a capability the renderer may decline. A **value**
- * the host samples every frame, and the live host decisions about one mount, are props on that mount
- * instead (`renderer-mount.ts`); a **stream of events** is a subscription here (`pointer`);
- * discrete intents travel as cues (`cues.ts`). The one push member is `prompt`, and it is push
+ * everything here is either an app-global fact or a capability the renderer may decline.
+ * The one push member is `prompt`, and it is push
  * because the renderer is the only thing that knows what the model currently has on.
  */
 import type { CueChannel } from './cues'
-import type { HostStateTransferPort } from './persistence'
+import type { ModelId, ModelProfileId } from './model'
 import type {
-  ContractResult,
   MaybePromise,
   ModelDriverContractVersion,
   ModelDriverId,
@@ -29,85 +26,28 @@ export interface HostLogger {
 }
 
 /**
- * Driver-scoped persistent storage, as primitives.
+ * Driver-scoped persistent storage primitives.
  *
- * The host owns the namespace and the medium, so a driver never writes ambient keys itself.
- * Namespace isolation is **the host's implementation detail**: every key the driver passes is a
- * relative key, the host adds the driver's prefix on read and write, and `keys()` only ever returns
- * keys from that same namespace. The driver does not know the prefix and cannot reach another
- * driver's keys by naming one.
+ * **Isolation is per driver, and the host enforces it.** The driver passes a relative key; the host
+ * adds the driver's prefix on the way in and strips it on the way out, and `keys()` returns only
+ * keys of this driver. A driver therefore cannot name another driver's data even if it tries, and it
+ * never learns where its own data physically lives.
  *
- * It deliberately stops at primitives. Which keys exist, what shape their values have, which of them
- * are worth backing up and how an older value becomes a newer one are the driver's business, and AIRI
- * is never told any of it: `keys()` exists so the driver can enumerate its own namespace, not so the
- * host can. Backup and migration travel as one opaque bundle at driver scope
- * (`ModelDriverRuntime.export` / `import`).
+ * A handle is **per instance, not per driver**: every mount, panel, model picker and lightweight
+ * provider instance is handed its own object, and all of them address the same namespace. How the
+ * driver divides that namespace — one blob per model, one key per setting — is its own business;
+ * AIRI never reads a key, never interprets a value, and never restores one.
+ *
+ * `watch` is what makes cross-window settings work: a panel in the settings window writes, and the
+ * mount in the actor window is notified without either knowing about the other.
  */
 export interface HostStorageInterface {
   get: <T>(key: string) => MaybePromise<T | undefined>
   set: <T>(key: string, value: T) => MaybePromise<void>
   remove: (key: string) => MaybePromise<void>
   keys: () => MaybePromise<string[]>
-  /**
-   * Observe writes to one key in this driver's namespace.
-   *
-   * The panel and the live mount may be in different windows, so a value the user changes in
-   * settings has no other way to reach a running mount. The handler receives the new value, or
-   * `undefined` when the key was removed.
-   */
+  /** Observe writes to one key in this driver's namespace. */
   watch: <T>(key: string, handler: (value: T | undefined) => void) => Unsubscribe
-}
-
-/**
- * One low-rate speech analysis result.
- *
- * This is a **stream sample, not a cue**: it is latest-wins, carries no ack, and MUST NOT be sent
- * through `CueChannel` (a per-frame cue would allocate an ack per frame).
- */
-export interface SpeechAnalysisFrame {
-  /** Host clock, milliseconds. */
-  at: number
-  /** Root-mean-square amplitude of the analysed window, 0..1. */
-  rms: number
-  /**
-   * Mouth openness, 0..1, when the analyzer can produce one.
-   *
-   * Absent means "this analyzer has no mouth concept", which is different from `0` ("mouth
-   * closed"). A renderer MUST distinguish the two.
-   */
-  mouthOpen?: number
-  /** Optional viseme id from the analyzer's own vocabulary. */
-  viseme?: string
-}
-
-/** What a plugin hands the host to register an analyzer. */
-export interface SpeechAnalyzerRegistration {
-  /** The plugin that owns the analyzer, for diagnostics and unregister-on-disable. */
-  pluginId: string
-  /**
-   * Module specifier resolved by the host's renderer-side loader.
-   *
-   * The module must export a factory the host calls with the host's audio graph; it is loaded in
-   * the window that owns that graph, never in the Electron main process.
-   */
-  entry: string
-  /** Analyzer-specific options, opaque to the host. */
-  options?: Record<string, unknown>
-}
-
-/**
- * The host's analyzer registry and result stream.
- *
- * A plugin registers one analyzer per audio source; the host owns the graph, the tap and the
- * broadcast. The service is **plugin-level, not part of `ModelDriverHostServices`**: the model
- * renderer contract no longer knows about audio or speech at all.
- */
-export interface HostSpeechAnalyzerService {
-  register: (input: SpeechAnalyzerRegistration) => Promise<ContractResult<{ analyzerId: string }>>
-  /** Stop analysing and release the tap. Idempotent: an unknown id is a successful no-op. */
-  unregister: (analyzerId: string) => Promise<void>
-  /** Subscribe to the frames produced by the active analyzer. */
-  subscribe: (handler: (frame: SpeechAnalysisFrame) => void) => Unsubscribe
 }
 
 /** Which kind of pointer event this is. */
@@ -187,9 +127,11 @@ export interface RendererPointerEvent {
 /**
  * Pointer input for the mounted renderers.
  *
- * This is the only pointer a renderer may read, and the only conversion of a DOM event into a
- * position: the host does it once, for one named mount, and a renderer MUST NOT attach a listener of
- * its own to obtain what it already receives here.
+ * This is the service through which pointer input reaches a renderer, and the only route when the
+ * events happen **outside the renderer's own window** — a gesture captured while the pointer is over
+ * another window, for instance. A runtime MAY attach listeners of its own inside its own window;
+ * what it must not do is convert the same events a second time, because a second conversion is a
+ * second coordinate space nothing can reconcile with the first.
  *
  * **Per mount, not per plugin.** A renderer instance can be mounted several times at once and each
  * mount has its own box, so a subscription names the mount it wants, using the `mountId` that mount
@@ -258,7 +200,8 @@ export interface HostI18nService {
 export enum HostWindowKind {
   MAIN = 'main',
   STAGE = 'stage',
-  ACTOR = 'actor',
+  /** The standalone acting window (renamed from `ACTOR` at contract `0.1`). */
+  ACTING = 'acting',
   SETTINGS = 'settings',
   PREVIEW = 'preview',
   UNKNOWN = 'unknown',
@@ -284,11 +227,13 @@ export interface HostRuntimeInfo {
 }
 
 /**
- * Optional platform bridge (Electron IPC, webview messaging).
+ * Platform bridge (Electron IPC, webview messaging).
  *
- * Absent in plain web builds, so renderers MUST degrade instead of assuming it exists. Which
- * channels exist is a host-side allowlist: a driver names a channel from the set it was granted,
- * and the host rejects anything outside it.
+ * The host determines what underlying channel is used, and SHOULD provide best-effort delivery.
+ *
+ * It is an **allowlist, not a raw pipe**: the host grants this driver the channels it declared, and
+ * a channel outside that set fails rather than reaching the app's IPC surface. A driver is not
+ * trusted to name arbitrary channels — the same reason its storage is namespaced.
  */
 export interface HostBridge {
   send: (channel: string, payload?: unknown) => void
@@ -302,58 +247,82 @@ export interface HostDiagnosticsSink {
 }
 
 /**
- * What one mounted model has active right now, said in the vocabulary AIRI already holds.
+ * The prompt of one model **in one profile**, with the ACT token list that belongs to it.
  *
- * **Push, not pull.** The renderer reports; AIRI decides what a prompt does with it. There is
- * deliberately no read path back into renderer state — `ModelScopedState.values` stays opaque — so
- * this publication is the only way a prompt can describe what the character currently looks like.
+ * Text and tokens are one atomic pair with one `version`, because they are produced together and
+ * because a list that disagrees with its text is worse than no list at all: AIRI extracts cues with
+ * the tokens, so a stale pair makes the card play things the prompt no longer describes. There is
+ * nowhere in the system where a text exists without its token list (D5).
  *
- * **State, never prose.** `activeKeys` are `CapabilityVocabularyItem.key` values from this driver's
- * own vocabulary; the host renders them with the `label` it already stores, in wording it owns, in
- * the tail of the prompt. A driver that could submit text could also submit instructions, and a
- * contribution that changes every turn must not enter the cached prefix (`capabilities.ts` states
- * the same stability rule for `vocabulary`).
+ * An empty publication — `text: ''`, `tokens: []` — is a **valid** value, stored as-is. It is how a
+ * prompt-capable driver says "this model/profile has no guidance", and it is distinct from never
+ * having published at all, which is a fault in a prompt-capable driver (`ModelDriverCapabilities.prompt`).
  */
-export interface ModelDriverPromptState {
+export interface ModelPromptPublication {
+  modelDriverId: ModelDriverId
+  /** Which model this describes. */
+  modelId: ModelId
+  /** Which profile this describes: a prompt is per model **and** profile, never per model alone. */
+  profileId: ModelProfileId
+  /** The prompt text. AIRI neither parses it nor composes anything into it. */
+  text: string
   /**
-   * The state scope the publishing mount belongs to.
+   * The ACT token list the text was written against.
    *
-   * The same key as the snapshot's, and the same rule: AIRI reads the **shared** scope's
-   * publication — the scope actor, chat and the main stage all publish into — so a preview's
-   * draft never becomes what a prompt believes the model looks like. A preview scope is not read
-   * at all.
+   * Plain strings, in the form the tokens appear in model output, because AIRI's marker parser
+   * resolves them verbatim. Its shape is the driver's; AIRI only stores, injects and compares.
    */
-  stateScope: string
+  tokens: string[]
   /**
-   * The capability keys active right now, as this driver's vocabulary lists them.
+   * Monotonic per `(driver, model, profile)`, minted by the driver.
    *
-   * A key the current vocabulary does not list is dropped by the host: the vocabulary is what a
-   * prompt may name, so an unlisted key would be a name with no label behind it. An empty array is
-   * how a renderer says that nothing is on.
+   * The driver owns the monotonicity: AIRI compares versions and discards an older publication, it
+   * never invents a version of its own. A publication that is not strictly newer never supersedes the
+   * copy AIRI already holds.
    */
-  activeKeys: string[]
+  version: number
+  /** Driver clock, milliseconds, when this was produced. */
+  publishedAt: number
 }
 
 /**
- * The host's prompt channel: what the model mounted in this process is doing right now.
+ * The same pair as it lives on a character card.
  *
- * A service rather than a prop because the publication outlives any single cue, and because the
- * renderer is the only writer — AIRI never asks. It replaces the host reading renderer stores to
- * build a prompt, which could only ever describe whichever renderer happened to be mounted in the
- * same window.
+ * A **complete portable snapshot**, not a reference: it is what makes an authored prompt survive a
+ * card export, a restore on another device and a driver reinstall, where neither the driver's own
+ * storage nor AIRI's store is present. `modelId` and `profileId` are carried because a card can be
+ * imported against a different binding and the pair must be recognized as belonging to another one
+ * (`modelId`/`profileId` mismatch) rather than seeded over it.
+ */
+export type ModelPromptSnapshot = Pick<
+  ModelPromptPublication,
+  'modelId' | 'profileId' | 'text' | 'tokens' | 'version' | 'publishedAt'
+>
+
+/**
+ * The host's prompt channel: the current model's prompt, as its driver wrote it.
+ *
+ * A service rather than a mount member, because the prompt outlives every mount: it has to be
+ * publishable before the first mount of a model, and readable while nothing is mounted at all. It
+ * replaces the host reading renderer stores to build a prompt, which could only ever describe
+ * whichever renderer happened to be mounted in the same window.
+ *
+ * **A prompt-capable driver MUST publish at least once per model and profile once it is activated**
+ * (D5, D-17). Publishing is not gated on a mount and unmounting retracts nothing.
  */
 export interface HostPromptService {
   /**
-   * Replace this scope's contribution, or clear it with an empty `activeKeys`.
+   * Publish the prompt and token list of one model in one profile.
    *
-   * Only a **mounted** instance may publish, and only for its own `stateScope`; the host ignores a
-   * publication naming a scope it did not mint for a live mount, and the last writer per scope wins.
+   * The host keeps the last publication per `(modelDriverId, modelId, profileId)`, discards one that
+   * is not strictly newer, and writes it into a character card only while that model and profile are
+   * the ones the character uses — so a driver that republishes a cached pair for a model the user
+   * switched away from changes nothing visible, and switching back re-reads it.
    *
-   * Publish what the model *is*, not what the user is still trying: an unconfirmed change travels on
-   * a `persistent: false` cue and MUST NOT reach here, for the same reason it must not reach the
-   * snapshot.
+   * A character card with no model, or a model whose driver has published nothing, has no prompt.
+   * That is a state, not an error: nothing falls back to another model's text.
    */
-  publish: (state: ModelDriverPromptState) => void
+  publish: (publication: ModelPromptPublication) => void
 }
 
 /**
@@ -370,7 +339,7 @@ export interface HostPromptService {
  * it validated that manifest against — there is no downgrade path and no negotiated subset of this
  * interface.
  */
-export interface ModelDriverHostServices {
+export interface HostServices {
   modelDriverId: ModelDriverId
   /**
    * The revision this plugin's manifest was validated against.
@@ -382,23 +351,12 @@ export interface ModelDriverHostServices {
   log: HostLogger
   storage: HostStorageInterface
   /**
-   * The host's state channel: publish the snapshot your mounted instance produces, and read back the
-   * scope it belongs to.
+   * The prompt channel: publish the prompt of the model and profile you serve.
    *
-   * It is a service rather than a member of the mount because a snapshot has to be readable while
-   * nothing is mounted. Two rules hold: **only a mounted instance may call `writeSnapshot`**, and what
-   * it publishes goes into its own `stateScope` (`persistence.ts`) — so a preview's state never
-   * becomes the live stage's, and a panel edits the renderer's own store while the mount of its scope
-   * publishes. What the user has not confirmed is not published at all: that is what `persistent:
-   * false` on a cue expresses.
-   */
-  state: HostStateTransferPort
-  /**
-   * The prompt channel: publish what this model has active right now.
-   *
-   * It sits next to `state` because it shares that port's scope rules, and apart from it because
-   * the snapshot is persist-shaped — revision-guarded, complete, and deliberately opaque in
-   * `values` — while a prompt needs one volatile line that AIRI can word itself.
+   * There is deliberately no state channel next to it. AIRI keeps no per-model snapshot, reads no
+   * renderer store and restores nothing: a driver's state is its own storage
+   * (`HostStorageInterface`), and the only thing AIRI holds across a mount is the current model's
+   * and profile's prompt, in the character card.
    */
   prompt: HostPromptService
   /** Cue bus shared by the host, all windows, and this renderer. */
@@ -406,9 +364,9 @@ export interface ModelDriverHostServices {
   /**
    * Pointer input, delivered per mount.
    *
-   * The one place pointer events enter a renderer: it MUST NOT attach its own pointer, wheel or touch
-   * listeners for input the host already routes here, because a second conversion of one event is a
-   * second coordinate space that nothing can reconcile with the first.
+   * The one service route for pointer input (see `RendererPointerService` for the window-boundary
+   * rule): a second conversion of one event is a second coordinate space that nothing can reconcile
+   * with the first.
    */
   pointer: RendererPointerService
   theme: HostThemeService

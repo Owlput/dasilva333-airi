@@ -655,9 +655,10 @@ There is also a second background store in `packages/stage-layouts/src/stores/ba
 | Attribute | Value |
 | :--- | :--- |
 | **Store** | `packages/stage-ui/src/stores/display-models.ts` |
-| **Key Pattern** | `display-model-{nanoid}` (file models), `{id}-textures` (MMD textures), keys by raw `{id}` (URL models) |
-| **Type** | `DisplayModelFile` / `DisplayModelURL` |
-| **Sync** | Via `reconcileModels()` — manifest at `assets/models/manifest.json`, binaries at `assets/models/{id}.bin`, textures at `assets/models/{id}-textures.json`, previews at `assets/models/{id}-preview.png` |
+| **Key Pattern** | `{id}` for every locally stored record — a file import mints `display-model-{nanoid}`, a preset keeps its `preset-*` id, a URL model keeps its remote id; `{id}-textures` holds the MMD texture companion. Nothing is stored for a remote catalogue row. |
+| **Type** | `DisplayModelFile` / `DisplayModelURL` / `DisplayModelCloud` (`DisplayModel` union) |
+| **Sync** | Via `reconcileModels()` — manifest at `assets/models/manifest.json`, binaries at `assets/models/{id}.bin`, textures at `assets/models/{id}-textures.json`, previews at `assets/models/{id}-preview.png`; per-row cache at `local:display-models/metadata-cache`, remote catalogue at `local:sync-metadata/remote-catalog-cache` |
+| **Tombstone** | `local:sync-metadata/deleted-models/{id}` — written on removal, scanned by `reconcileModels()` |
 | **Size** | Very Large (model binaries, MBs-GBs each) |
 
 ```typescript
@@ -673,48 +674,75 @@ enum DisplayModelFormat {
   PMD = 'pmd',
 }
 
-interface DisplayModelFile {
+// Every variant carries the same annotation block; only the payload differs.
+interface DisplayModelAnnotations {
   id: string
   format: DisplayModelFormat
-  type: 'file'
-  file: File
   name: string
+  authorIcon?: string
   previewImage?: string
   importedAt: number
   nsfw?: boolean
   groups?: string[]
   tags?: string[]
-  expressions?: string[]
-  motions?: string[]
-  emotionMappings?: Record<string, string>
-  motionMappings?: Record<string, string>
-  hiddenExpressions?: string[]
-  hiddenMotions?: string[]
-  favoriteExpressions?: string[]
+  // Capability records are parsed from the asset and cached on the row.
+  expressionCapabilities?: ModelCapabilityItem[]
+  motionCapabilities?: ModelCapabilityItem[]
+  vfxMappings?: Record<string, string[]>
+  outfits?: AiriOutfit[]
+  /** Lowercased name+tags+groups, rebuilt on write; never authored. */
+  _searchKey?: string
 }
 
-interface DisplayModelURL {
-  id: string
-  format: DisplayModelFormat
+interface DisplayModelFile extends DisplayModelAnnotations {
+  type: 'file'
+  /** Optional: an IndexedDB clone can degrade; readers re-wrap it. */
+  file?: File
+}
+
+interface DisplayModelURL extends DisplayModelAnnotations {
   type: 'url'
   url: string
-  name: string
-  previewImage?: string
-  importedAt: number
-  nsfw?: boolean
-  groups?: string[]
-  tags?: string[]
-  expressions?: string[]
-  motions?: string[]
-  emotionMappings?: Record<string, string>
-  motionMappings?: Record<string, string>
-  hiddenExpressions?: string[]
-  hiddenMotions?: string[]
-  favoriteExpressions?: string[]
 }
 
-type DisplayModel = DisplayModelFile | DisplayModelURL
+/** A row from the remote catalogue: listed, not stored locally, not importable as a file. */
+interface DisplayModelCloud extends DisplayModelAnnotations {
+  type: 'cloud'
+}
+
+type DisplayModel = DisplayModelFile | DisplayModelURL | DisplayModelCloud
 ```
+
+#### 3.2.1 Model driver domain (contract `0.1`)
+
+The contract in [`packages/stage-renderer-sdk`](../packages/stage-renderer-sdk/README.md) moves the
+model domain out of `display-models.ts`: AIRI keeps only records about *named models* and *profiles*,
+and each driver keeps its own bytes and settings under its own namespace. The keys below are the
+contract's persisted layout — the shape Phase 0 froze — and **no source in this tree writes them yet**;
+Phase 1 (`packages/stage-driver-host`, `packages/stage-ui/src/libs/model-drivers`) starts writing them,
+and the legacy keys above keep working beside them until Phase 8.
+
+| Key | Type | Notes |
+| :--- | :--- | :--- |
+| `local:model-drivers/models/{modelId}` | `HostNamedModelRecord` | Name, `preview`, `author`, `note`, `nsfw`, `groups`, `tags`, `searchKey`, `importedAt`, `modelDriverId?`, `modelDriverHint?`. Never the binary, never the legacy id. |
+| `local:model-drivers/profiles/{profileId}` | `HostModelProfileRecord` | The same annotation block plus `modelId`/`createdAt`. The profile's *content* is the driver's. |
+| `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` | `ModelPromptPublication` | `{ text, tokens, version, publishedAt }` — one atomic pair, one monotonic version per driver+model+profile. An empty publication (`''`, `[]`) is stored as an entry; absence is a runtime fault for a prompt-capable driver, never an implicit empty prompt. |
+| `local:model-drivers/prompt-archive/{driverId}/{modelId}/{profileId}/{version}` | archived publication | The losing side of a user-arbitrated card/store conflict, archived entire with provenance and time. Never deleted. |
+| `local:model-drivers/pending/{payloadId}` | `PendingModelPayload` | `{ modelDriverHint?, legacyModelId?, displayName, createdAt, byteSize? }` plus the retained bytes in localforage. **No `modelId`/`profileId`**: a pending payload is not addressable and cannot construct a `LoadCue`. |
+| `local:model-drivers/deleted/{modelId}` | tombstone | Canonical from Phase 1. The legacy `local:sync-metadata/deleted-models/{id}` keeps being read during migration. |
+| `local:model-drivers/markers/model-migration/{modelId}` | marker | Written only after a model's import transaction commits. |
+| `local:model-drivers/markers/driver-migration/{driverId}` | marker | Written when every known legacy model of that driver has a `model-migration` marker. |
+
+Two more pieces live outside web storage:
+
+- **`{userData}/model-drivers/state.json`** (Electron main) — `enabled` flags, the last successful
+  row cache (display-only), and `legacy-retention/{driverId}` (`{ cutoverVersion, removeAfterRelease }`).
+  Main is the single owner of `legacy-retention`; the renderer reads it over IPC and never writes it.
+  There is deliberately no row cache in web storage.
+- **Driver storage** (renderer only) — one localforage instance `airi-driver-<driverId>` for payloads,
+  a namespaced key space for small values behind `HostStorageInterface`, and the internal
+  `airi:driver-storage:<driverId>` watch channel. AIRI never reads these keys and never interprets
+  their values; `keys()` is scoped to one driver.
 
 ### 3.3 Stickers
 
@@ -1324,6 +1352,22 @@ airiCard.extensions.airi.modules.displayModelId
 **Lookup:** The card's `displayModelId` is optional. If set, it can resolve to either a `DisplayModelFile` (imported file) or a `DisplayModelURL` (remote URL). The current `DisplayModel` interface has no `characterId` field — the only link is through the card.
 
 **Note for selective sync:** Models can be shared across characters. The sync tree should display them once and mark them as "also used by: [other chars]" rather than duplicating.
+
+**Migrated characters (contract `0.1`, from Phase 3 onward).** A character that has been migrated
+carries a second, additive binding and no longer depends on `displayModelId`:
+
+```
+airiCard.extensions.airi.avatar
+  = {}                                                     // no new-path binding (the normal pre-migration shape)
+  | { driverId, modelId, profileId, prompt?: { modelId, profileId, text, tokens, version, publishedAt } }
+      → local:model-drivers/models/{modelId}
+      → local:model-drivers/profiles/{profileId}
+      → local:model-drivers/prompt/{driverId}/{modelId}/{profileId}
+```
+
+`modules.displayModelId` is **frozen** at cutover: only the revert transaction writes it afterwards,
+so it keeps naming the character's *original* legacy model. "Is this character on the legacy path?" is
+derivable — no `avatar.modelId` — so there is no revert marker to keep in sync.
 
 ### 8.6 Character → Background Images
 

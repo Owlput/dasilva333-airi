@@ -16,14 +16,15 @@
 import type { Component } from 'vue'
 
 import type { CueKind, CueRejection, CueSink } from './cues'
+import type { CharacterId } from './model'
 import type {
   ContractFailure,
   ModelDriverId,
   OperationNonce,
   RendererMountPoint,
+  RendererMountPurpose,
   RendererMountReadinessState,
   RendererMountSurfaceKind,
-  RendererMountViewport,
 } from './shared'
 
 /**
@@ -68,9 +69,14 @@ export enum RendererQualityHint {
  * Props every model renderer mount must accept.
  *
  * Two families belong on a prop rather than in a service or a cue: the live host decisions about this
- * mount (`paused`, `visible`, `reducedMotion`, `qualityHint`, `interactionMode`, `viewport`), and what
- * the host assigns to the mount itself (`modelDriverId`, `mountId`, `stateScope`, `surface`).
- * Everything else a renderer pulls out of `ModelDriverHostServices`; discrete intents arrive as cues.
+ * mount (`paused`, `visible`, `reducedMotion`, `qualityHint`, `interactionMode`), and what
+ * the host assigns to the mount itself (`modelDriverId`, `mountId`, `characterId`, `purpose`,
+ * `surface`). Everything else a renderer pulls out of `HostServices`; discrete intents arrive as cues.
+ *
+ * **There is no `viewport` prop and no size anywhere in this contract.** The container's box *is* the
+ * viewport: the host measures nothing and passes nothing, and a mount measures its own container. A
+ * size prop looked like a convenience and was a second geometry that could disagree with the box a
+ * `RendererMountPoint` is measured against.
  *
  * There is deliberately no per-frame value here. Mouth openness used to be the exception; it is
  * now a **plugin-level** concern (`HostSpeechAnalyzerService`), outside this contract. A renderer
@@ -98,7 +104,7 @@ export enum RendererQualityHint {
  * host asks through the cue instead of restating them on every mount.
  *
  * Theme hue is the deliberate exception, and the only setting where the split runs the other way:
- * the *host* owns it and a renderer only reads it (`ModelDriverHostServices.theme`, re-tinting on
+ * the *host* owns it and a renderer only reads it (`HostServices.theme`, re-tinting on
  * its `onChange`).
  */
 export interface RendererMountProps {
@@ -108,25 +114,30 @@ export interface RendererMountProps {
    * This mount's own identity, minted and owned by the host.
    *
    * Opaque, unique within a session, and never reused: it names *this viewport*, not the model on
-   * it, not the surface it sits on and not the state it shares. Several mounts can share one
-   * `stateScope`, and several scopes can live on one `surface`, so neither of those can stand in for
-   * it — which is why a per-mount service is keyed by this value
-   * (`RendererPointerService.subscribe(mountId, …)`).
+   * it, not the surface it sits on, and not a state it might share. Two mounts can show the same
+   * model on the same surface and still be two mounts — which is why a per-mount service is keyed by
+   * this value (`RendererPointerService.subscribe(mountId, …)`).
    *
    * A cue may name it too (`CueEnvelope.target.mountId`), so a caller can address one mount when a
    * surface holds more than one.
    */
   mountId: string
   /**
-   * The state scope this mount belongs to (`persistence.ts`).
+   * The character this mount serves, when it serves one.
    *
-   * Opaque, minted and owned by the host: mounts in one scope share one state, and a mount never
-   * chooses or invents a scope. Every non-preview mount (actor, chat, rehearsal, main stage) is
-   * handed the same shared scope; only a preview mount gets its own. This is deliberately the whole
-   * of what a mount is told about sharing — the policy stays on the host's side. The name is never
-   * interpreted, and never equals a `RendererMountSurfaceKind` value.
+   * A prop rather than a service lookup because it never changes while the mount lives: the host
+   * unmounts and re-mounts when a character swaps models, so a renderer may read it once during
+   * setup. A settings preview has no character and leaves it out.
    */
-  stateScope: string
+  characterId?: CharacterId
+  /**
+   * What this mount is for, as the interface that created it decided.
+   *
+   * A prop so the renderer can adapt its own behaviour to the context it is drawn in — a preview
+   * should not start an idle cycle that a live stage would, and a chat-side stage may want a tighter
+   * framing. Several live mounts exist at once, so "the stage" is not something a renderer can infer.
+   */
+  purpose: RendererMountPurpose
   /** Host-decided pause. Renderers MUST honour it and never self-pause. */
   paused: boolean
   /**
@@ -144,7 +155,6 @@ export interface RendererMountProps {
    * the render quality automatically, unless the user explicitly disabled that.
    */
   qualityHint?: RendererQualityHint
-  viewport?: RendererMountViewport
   /**
    * Which pointer interaction this mount accepts, when the host offers one.
    *
@@ -157,10 +167,12 @@ export interface RendererMountProps {
    */
   interactionMode?: RendererMountInteractionMode
   /**
-   * Where this mount lives — used for cue routing, panel placement and host overlays.
+   * Which host surface the viewport sits on — used for panel placement, host overlays and the
+   * descriptor a caller queries.
    *
-   * Deliberately not the identity of this mount's state: that is `stateScope`, and several mounts of
-   * one surface can hold different scopes.
+   * A **label, not this mount's identity**: several mounts share one surface (the actor window and
+   * the chat-side stage are both `stage`), so it can never stand in for `mountId` when addressing
+   * one viewport, and nothing may treat a surface as "the" mount.
    */
   surface: RendererMountSurfaceKind
 }
@@ -338,15 +350,7 @@ export type RendererMountComponent = Component<
   RendererMountComponentContract['exposed']
 >
 
-/** What a lazy `resolveMountComponent()` resolves to; `default` is what the host mounts. */
+/** What `manifest.entry.mount` resolves to; `default` is what the host mounts. */
 export interface RendererMountComponentModule {
   default: RendererMountComponent
 }
-
-/**
- * The lazy factory a `ModelDriverRuntime` exposes.
- *
- * A factory rather than a module path: nothing interprets a raw `.vue` at runtime, so the renderer
- * decides its own code-splitting and the host never resolves a specifier itself (`lifecycle.ts`).
- */
-export type RendererMountComponentFactory = () => Promise<RendererMountComponentModule>
