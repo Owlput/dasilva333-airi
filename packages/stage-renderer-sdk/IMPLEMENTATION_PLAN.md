@@ -2,9 +2,9 @@
 
 | Field | Value |
 | :--- | :--- |
-| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. **Phase 0 is implemented in the working tree** at contract `0.1` (§0, [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md)) and is uncommitted, as is the RFC amendment; host implementation has not started. |
+| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. **Phase 0 is complete and committed** at contract `0.1` on branch `model-driver-throwaway`, RFC amendment included; P0.0's separate baseline commit is waived (P0-D1, §0). Host implementation has not started. |
 | Normative source | [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md) (RFC 0002). Where this plan and the RFC disagree, the RFC wins. Phase 0 adds contract surface the RFC does not yet contain (§3.1), so **RFC 0002 is amended as Phase 0's last commit** (§3.2) and the contract's additions become normative text rather than private convention. Host choices the RFC leaves open are recorded in §2. |
-| Contract package | `@proj-airi/stage-renderer-sdk` — 15 contract files (`src/contract/`), plus `index.ts`, `compatibility.ts`, `validate.ts` and its `vitest` suite; `0.1.0` in this working tree, **no integration** (D12, §0). The `0.0.3` baseline commit P0.0 asks for is still owed by a human (§0, P0-D1). |
+| Contract package | `@proj-airi/stage-renderer-sdk` — 15 contract files (`src/contract/`), plus `index.ts`, `compatibility.ts`, `validate.ts` and its `vitest` suite; `0.1.0`, committed on `model-driver-throwaway`, **no integration** (D12, §0). P0.0's separate `0.0.3` baseline commit is waived (P0-D1). |
 | Supersedes | [`docs/design-stage-renderer-migration.md`](../../docs/design-stage-renderer-migration.md) (the RFC 0001 companion plan) wherever that document conflicts with RFC 0002 — see Appendix B |
 | Scope | Host integration for Electron + Web + Pocket, four first-party drivers (Spine, MMD, Live2D, VRM), migration of existing data on user request, and a three-release reversal window |
 | Out of scope | Third-party driver packaging/distribution and a loader, a driver-side cloud-sync channel, a scripting VM, beat sync, per-cue progress reporting (migration status is host-level, §5.9), cancellation outside cue transactions, a per-driver compilation pipeline, a dedicated onboarding update mode, Stage-Mate's own migration (§1.7) |
@@ -30,8 +30,8 @@ Notation: **MUST** / **MAY** / **SHOULD** carry the RFC's meaning. "Phase" is a 
 
 ## 0. Starting point
 
-1. **The contract package exists and is uncommitted.** `packages/stage-renderer-sdk` held 13 contract files when Phase 0 opened; the uncommitted working tree is the RFC 0002 reshuffle (`adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` and `renderer.ts` deleted; ten files modified), `src/index.ts` re-exported 12 of the 13 — `adapter` was not exported — and its only validation was `tsc --noEmit`, with no tests. P0.0's baseline commit (`0.0.3`, exactly that tree) is **still owed by a human**, because this workspace does not let an agent commit; §0 is corrected here rather than after it.
-2. **Phase 0's contract work is in the working tree at `0.1.0`.** 15 contract files in `src/contract/` (`registry.ts` and `migration.ts` are new), plus `src/index.ts`, `src/compatibility.ts`, `src/validate.ts` and the `vitest` suite (`src/validate.test.ts`, `src/contract.test.ts`, 82 tests). `tsc --noEmit` is clean, `vitest run` is green, and `MODEL_DRIVER_CONTRACT_VERSION` is `{ major: 0, minor: 1 }`. The RFC amendment (§3.2) is written as one appended section and is likewise uncommitted.
+1. **The baseline was never pinned as its own commit.** `packages/stage-renderer-sdk` held 13 contract files when Phase 0 opened; that tree was the RFC 0002 reshuffle (`adapter.ts`, `components.ts`, `plugin-port.ts` added; `persistence.ts` and `renderer.ts` deleted; ten files modified), `src/index.ts` re-exported 12 of the 13 — `adapter` was not exported — and its only validation was `tsc --noEmit`, with no tests. P0.0 asked for exactly that tree to be committed as `0.0.3` before Phase 0 began; it was not, and reconstructing the history after the fact would rewrite a commit that already exists on the branch, so **P0.0 is waived** (P0-D1). What is lost is only the ability to diff "the tree the plan was approved against" from "what Phase 0 changed"; that difference is now the C-table plus [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md).
+2. **Phase 0's contract work is committed at `0.1.0`.** 15 contract files in `src/contract/` (`registry.ts` and `migration.ts` are new), plus `src/index.ts`, `src/compatibility.ts`, `src/validate.ts` and the `vitest` suite (`src/validate.test.ts`, `src/contract.test.ts`, 82 tests). `tsc --noEmit` is clean, `vitest run` is green, `MODEL_DRIVER_CONTRACT_VERSION` is `{ major: 0, minor: 1 }`, and the RFC amendment (§3.2) is in the same commit, on branch `model-driver-throwaway`.
 3. **Nothing imports the package.** A repository-wide grep for `stage-renderer-sdk` outside its own `src/`/`README.md`/`DECISIONS-PHASE0.md` returns nothing.
 4. **The app renders through one component and four stores.** `RendererStage.vue` statically imports the four scene components; `ControlStripHost.vue`, `ControlStrip.vue`, `ModelCustomizer.vue`, the card store and the settings pages read and write the four renderer stores directly.
 5. **The data model has no identities beyond a display-model string.** `display-model-${nanoid}` is minted in the host store; there is no `profileId`; there is no driver id on a model; a character card points at `modules.displayModelId`. No model-prompt publication exists.
@@ -261,7 +261,7 @@ One window owned by main, consumer-refcounted from day one, **not counted for qu
 
 ### D12 — Contract versioning
 
-`0.0.3` is the uncommitted baseline committed by P0.0; `0.1` is the first shipped contract shape; any later breaking shape is `0.2`. A manifest is compatible when its minor matches below 1.0 and its major from 1.0 (C14).
+`0.0.3` was the uncommitted baseline P0.0 was to pin — waived, so it exists only as provenance (P0-D1); `0.1` is the first shipped contract shape; any later breaking shape is `0.2`. A manifest is compatible when its minor matches below 1.0 and its major from 1.0 (C14).
 
 ### D13 — Migration runs on user request
 
@@ -344,6 +344,8 @@ A conflict — an incoming id that already exists locally — is resolved by the
 | P0.4 | Validators, `vitest`, exports/citations | `pnpm -F @proj-airi/stage-renderer-sdk test` green |
 | P0.5 | `docs/data-catalog.md` model-domain correction + new keys (`prompt`, `prompt-archive`, markers) | Catalog matches source |
 
+> **P0.0 is waived** (P0-D1): the baseline was never pinned as its own commit, and reconstructing it after the fact would rewrite a commit that already exists on the branch. P0.4's `pnpm -F @proj-airi/stage-renderer-sdk test` was executed as `vitest run` directly, because pnpm could not open its store database in the authoring session; the declared script is that same command. The evidence table is in [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md).
+
 ### 3.1 Contract surface added beyond the RFC
 
 Phase 0 adds symbols the RFC does not yet contain: `RegistryHandle` and `registerMount` (C22), `LegacyRestorePayload` (C23), `PendingModelPayload` (C12), `isContractCompatible` (C14), and the `profile-missing` failure reason (C6). Appendix C claims a 1:1 map, so that claim is false until the RFC is amended.
@@ -352,16 +354,18 @@ Phase 0 adds symbols the RFC does not yet contain: `RegistryHandle` and `registe
 
 The amendment lands **as Phase 0's last commit**, after P0.4 and P0.5, against [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md): the added symbols above, the per-model handover with the legacy label, the atomic publication pair, the `ACTING` rename, and the `profile-missing` reason. Sequencing matters: the contract freezes first, so the RFC documents what exists rather than what is planned. Until the amendment lands the contract is ahead of its normative source, which is acceptable only because nothing imports it.
 
+**Landed:** written as one appended section (A1.1–A1.8) and committed in the **same commit** as the contract rather than as a separate last commit, because the whole phase was one change by the time a human committed it. The ordering this clause protects — contract frozen before the RFC documents it — held within that change; it is recorded as a deviation in P0-D1 and the header states the outcome.
+
 **Exit criteria**
 
-1. `pnpm -F @proj-airi/stage-renderer-sdk typecheck` and the new `test` pass.
+1. `pnpm -F @proj-airi/stage-renderer-sdk typecheck` and the new `test` pass. (Verified by running the same binaries directly — see [`DECISIONS-PHASE0.md`](./DECISIONS-PHASE0.md) §Validation.)
 2. No format string (`vrm|live2d|spine|mmd`) outside comments; no `stateScope`/`persistence` residue.
 3. Every RFC 0002 section maps to an exported symbol (Appendix C); zero app importers remain.
 4. Package `version` `0.1.0` and `MODEL_DRIVER_CONTRACT_VERSION` `{ major: 0, minor: 1 }` land in one commit.
 5. A `0.0.x` manifest is rejected by `isContractCompatible` with a readable reason.
-6. The RFC amendment commit is open and the contract ↔ RFC map is true.
+6. The RFC amendment is committed and the contract ↔ RFC map is true. (It shares the Phase 0 commit rather than being its own last commit — P0-D1.)
 
-**Next action:** P0.0. Phase 1 starts only when these criteria hold.
+**Next action:** Phase 1. P0.0 is waived, every other unit is complete, and the six criteria above hold; Phase 1 starts on top of this contract.
 
 ---
 

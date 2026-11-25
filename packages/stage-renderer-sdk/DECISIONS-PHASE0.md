@@ -20,17 +20,24 @@ Each entry has the same form: **decision**, **why**, **what it rules out**. Entr
 
 ## Sequence and scope
 
-### P0-D1 — The baseline commit is left to the user, and §0 is corrected in place
+### P0-D1 — P0.0's separate baseline commit is waived; the RFC amendment shares the Phase 0 commit
 
-The plan's P0.0 asks for the `0.0.3` working tree to become its own named commit, and §3.2 asks for the
-RFC amendment to be Phase 0's **last** commit. This workspace forbids an agent from committing
-proactively, so neither commit was made: the tree is left reviewable, the plan's §0 now states what is
-actually true (file count, exports, version, and that the baseline is uncommitted), and the RFC
-amendment is written but uncommitted.
+P0.0 asked for the `0.0.3` working tree to be pinned as its own commit *before* Phase 0 began, and §3.2
+asked for the RFC amendment to be Phase 0's **last** commit. Neither happened: this workspace forbids an
+agent from committing proactively, so Phase 0 was implemented on top of the uncommitted tree and the
+whole thing landed as one change by the user (`phase 0 throwaway`, plus `manifest fix and lockfile`, on
+branch `model-driver-throwaway`), amendment included.
 
-**Consequence:** P0.0's "done when" is not satisfied as written. A reviewer has to make the two
-commits (baseline, then amendment) in that order. Nothing else in Phase 0 depends on them, because
-nothing imports the package.
+**Why waive rather than reconstruct:** reopening the baseline now means rewriting a commit that already
+exists on the branch, for no diagnostic gain. What P0.0 bought was "the reshuffle is a reviewable named
+unit, not a working-tree diff" — a single commit containing the reshuffle plus the Phase 0 changes still
+gives that. What is genuinely lost is the ability to diff *the baseline the plan was approved against*
+from *what Phase 0 changed*; from here, "what Phase 0 changed" has to be read out of this file and the
+C-table rather than out of `git diff`.
+
+**Consequence:** exit criterion 6's "the RFC amendment commit is open" is satisfied as
+content-in-a-commit, not as its own commit. §0, the plan header and this entry are the record; there is
+no baseline tag to point at.
 
 ### P0-D2 — Four new files rather than three growing ones
 
@@ -310,22 +317,30 @@ Appendix C conformance map is true rather than aspirational (§3.2).
 
 ---
 
-## Validation and deviations
+## Validation and closed-out items
 
 | Check | Result |
 | :--- | :--- |
 | `tsc --noEmit` (package tsconfig, includes `src/**/*.test.ts`) | clean |
 | `vitest run` over `src/**/*.test.ts` | 82 tests, 2 files, all passing |
 | Zero app importers (`stage-renderer-sdk` outside the package) | unchanged — still nothing imports it |
+| Lockfile importer for the package | present, with `vitest` (`4.0.18`) and `vue` resolved |
+| Catalog parity, run manually because `scripts/audit-test-catalog.mjs` shells out through `pnpm exec` | 161 suites discovered by `vitest list`, 180 paths in `docs/project-testing-parity.md`, **both new suites documented**, 0 broken catalog paths |
 
-Deviations from the plan, all consequences of the environment rather than of a design choice:
+What closed out after the fact, and how:
 
-1. **No commits** (P0-D1): the `0.0.3` baseline commit and the RFC-amendment commit are left to the
-   user.
-2. **`pnpm` could not run in the session** (its store database could not be opened), so validation ran
-   the underlying binaries directly: `node node_modules/typescript/bin/tsc` and
-   `node node_modules/vitest/vitest.mjs run --root packages/stage-renderer-sdk`. The declared
-   `test`/`typecheck` scripts are the same commands. `pnpm-lock.yaml` still needs one
-   `pnpm install` to record the newly declared `vitest` devDependency.
-3. **`docs/project-testing-parity.md`** gains the two new suites in the same change, and
-   `node scripts/audit-test-catalog.mjs` was run to confirm the catalog stays coherent.
+1. **Commits** (P0-D1): the user committed Phase 0 as one change plus a follow-up.
+2. **`pnpm`** could not open its store database in the authoring session, so validation ran the
+   underlying binaries directly (`node node_modules/typescript/bin/tsc`,
+   `node node_modules/vitest/vitest.mjs run --root packages/stage-renderer-sdk`); the declared
+   `test`/`typecheck` scripts are the same commands.
+3. **A real defect this surfaced:** the package declared `"vitest": "catalog:"`, but `vitest` lives in
+   the **named** catalog in `pnpm-workspace.yaml`, so the specifier has to be `catalog:vitest` — every
+   other package in the workspace already did that, and this one was the only outlier. Fixed in
+   `manifest fix and lockfile`, which also wrote the missing lockfile importer.
+4. **`docs/project-testing-parity.md`** gains the two new suites. Running the catalog audit's two checks
+   by hand shows **9 pre-existing undocumented suites** elsewhere in the monorepo (`image-journal`,
+   `lighting`, two browser-mode settings suites, `use-autonomous-cues`, `model-capabilities`,
+   `cache-utils`, `onboarding`, `card.schema`). They are unrelated to Phase 0 and were deliberately not
+   papered over here: `node scripts/audit-test-catalog.mjs` will fail on them until they are documented,
+   and that is a separate change.
