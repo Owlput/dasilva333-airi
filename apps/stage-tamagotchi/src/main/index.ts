@@ -7,18 +7,19 @@ import type {
   StartupSnapshot,
 } from '../shared/eventa'
 
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { env, platform, stderr, stdout } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 // @ts-ignore
 import messages from '@proj-airi/i18n-bundle'
 
-import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
+import { createConsoleLogger } from '@proj-airi/stage-renderer-sdk/host'
 import { DEFAULT_CORS_BYPASS_URLS } from '@proj-airi/stage-shared'
 import { app, BrowserWindow, ipcMain, Notification, screen, session } from 'electron'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
@@ -57,7 +58,7 @@ import { openDebugger, setupDebugger } from './app/debugger'
 import { ensureLevelDBIntegrityOrHalt } from './app/leveldb-guard'
 import { ensureLegacyUserDataMigrated } from './app/migration'
 import { createGlobalAppConfig } from './configs/global'
-import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/bootkit/lifecycle'
+import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
 import { flushAllConfigs } from './libs/electron/persistence'
 import { createI18n } from './libs/i18n'
@@ -70,10 +71,15 @@ import { createMicToggleService } from './services/airi/shortcuts/mic-toggle'
 import { createStageMateService } from './services/airi/stage-mate'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { createVisionService } from './services/electron/vision'
+import { createModelDriverHostService } from './services/model-drivers'
+import { firstPartyDriverTable } from './services/model-drivers/driver-table'
+import { createModelDriverStateStore } from './services/model-drivers/state-store'
 import { createSensorsService } from './services/sensors'
 import { cleanupMicToggleShortcut } from './services/shortcuts/mic-toggle'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
+import { setupBackgroundWindow } from './windows/background'
+import { shouldQuitNow } from './windows/background/policy'
 import { setupBeatSync } from './windows/beat-sync'
 import { setupCaptionWindowManager } from './windows/caption'
 import { setupChatWindowReusableFunc } from './windows/chat'
@@ -395,6 +401,27 @@ app.whenReady().then(async () => {
   const beatSync = injeca.provide('windows:beat-sync', () => setupBeatSync())
   const devtoolsMarkdownStressWindow = injeca.provide('windows:devtools:markdown-stress', () => setupDevtoolsWindow())
 
+  // The shared background window (D11). It is created lazily by the model-driver host, and constructed here so
+  // anything else that needs it (the migration runtime, from Phase 2) shares one instance.
+  const backgroundWindow = injeca.provide('windows:background', () => setupBackgroundWindow())
+
+  // The model-driver host: registry, managers, cue broker and live mount descriptors, all in main (§4.2).
+  // It persists nothing but its own state file — no record store, no prompt store, no IndexedDB (D1).
+  const modelDriverHost = injeca.provide('services:model-drivers', {
+    dependsOn: { app: electronApp, backgroundWindow },
+    build: ({ dependsOn }) => createModelDriverHostService({
+      context,
+      logger: createConsoleLogger(),
+      state: createModelDriverStateStore({
+        path: join(dependsOn.app.getPath('userData'), 'model-drivers', 'state.json'),
+        onWarning: message => console.warn(`[@proj-airi/stage-tamagotchi] [model-drivers] ${message}`),
+      }),
+      background: dependsOn.backgroundWindow,
+      // The stub is a fixture, so it is registered only by a development build (§4.8).
+      table: firstPartyDriverTable({ includeStub: is.dev }),
+    }),
+  })
+
   const widgetsManager = injeca.provide('windows:widgets', {
     dependsOn: { serverChannel, i18n },
     build: ({ dependsOn }) => setupWidgetsWindowManager(dependsOn),
@@ -465,8 +492,21 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow, stageWindow, splashWindow, chatWindow, customizerWindow, beatSync },
+    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow, stageWindow, splashWindow, chatWindow, customizerWindow, beatSync, modelDriverHost },
     callback: (deps) => {
+      // The host starts after the composition root exists: declarations are read, managers are created, and the
+      // persisted flags are normalized into `state.json`. Nothing waits on it — a manager's first renderer
+      // request happens on a row pull, not at boot.
+      void deps.modelDriverHost.start().catch((error) => {
+        console.error('[@proj-airi/stage-tamagotchi] [model-drivers] Failed to start the model-driver host:', error)
+      })
+
+      // Shutdown settles every pending transaction `aborted`, persists the flags and closes the background
+      // window explicitly (§4.3 `Quit`, D11).
+      onAppBeforeQuit(async () => {
+        await deps.modelDriverHost.shutdown()
+      })
+
       createServerChannelService({ serverChannel: deps.serverChannel })
       createMcpServersService({ context, manager: deps.mcpStdioManager })
       createI18nService({ context, window: deps.mainWindow, i18n: deps.i18n })
@@ -1514,11 +1554,37 @@ app.whenReady().then(async () => {
   log.withError(err).error('Error during app initialization')
 })
 
-app.on('window-all-closed', () => {
-  emitAppWindowAllClosed()
+// NOTICE: `window-all-closed` never fires while the shared background window is open, so the quit decision is
+// "the last window that *counts* closed", not "Electron says no windows are left" (D11). The background window
+// never counts: it is hidden, it exists to serve driver code and the migration runtime, and quitting is a user
+// action on a visible window.
+let allCountedWindowsClosed = false
+function onAllCountedWindowsClosed() {
+  // `window-all-closed` and the per-window `closed` handler below can both decide this for one close, so the
+  // first decision wins and the hooks run once.
+  if (allCountedWindowsClosed)
+    return
+  allCountedWindowsClosed = true
+  void emitAppWindowAllClosed()
   if (platform !== 'darwin') {
     app.quit()
   }
+}
+
+app.on('window-all-closed', onAllCountedWindowsClosed)
+
+app.on('browser-window-created', (_event, window) => {
+  // A new window opens a new close episode. On macOS the app outlives its windows and `activate` builds another
+  // one, so a latch that survived it would silently skip teardown on the second close.
+  allCountedWindowsClosed = false
+
+  window.on('closed', () => {
+    // Deferred by a tick so the window is out of `getAllWindows()` before the question is asked.
+    setImmediate(() => {
+      if (shouldQuitNow(BrowserWindow.getAllWindows()))
+        onAllCountedWindowsClosed()
+    })
+  })
 })
 
 app.on('activate', (event) => {

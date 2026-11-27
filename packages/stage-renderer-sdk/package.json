@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "description": "Stage renderer plugin SDK: the host <-> renderer contract for AIRI stage renderers (contract only, no implementation)",
+  "description": "Stage renderer plugin SDK: the host <-> renderer contract for AIRI stage renderers, plus the transport-free renderer adapter",
   "author": {
     "name": "Moeru AI Project AIRI Team",
     "email": "airi@moeru.ai",
@@ -16,10 +16,13 @@
     "directory": "packages/stage-renderer-sdk"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./host": "./src/host/index.ts",
+    "./testing": "./src/host/testing/index.ts"
   },
   "scripts": {
     "test": "vitest run",
+    "test:fallback": "node --experimental-transform-types --no-warnings scripts/run-suites.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

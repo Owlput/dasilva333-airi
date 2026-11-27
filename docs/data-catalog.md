@@ -719,15 +719,14 @@ The contract in [`packages/stage-renderer-sdk`](../packages/stage-renderer-sdk/R
 model domain out of `display-models.ts`: AIRI keeps only records about *named models* and *profiles*,
 and each driver keeps its own bytes and settings under its own namespace. The keys below are the
 contract's persisted layout — the shape Phase 0 froze — and **no source in this tree writes them yet**;
-Phase 1 (`packages/stage-driver-host`, `packages/stage-ui/src/libs/model-drivers`) starts writing them,
+Phase 1 (`packages/stage-renderer-sdk/src/host`, `packages/stage-ui/src/libs/model-drivers`) starts writing them,
 and the legacy keys above keep working beside them until Phase 8.
 
 | Key | Type | Notes |
 | :--- | :--- | :--- |
 | `local:model-drivers/models/{modelId}` | `HostNamedModelRecord` | Name, `preview`, `author`, `note`, `nsfw`, `groups`, `tags`, `searchKey`, `importedAt`, `modelDriverId?`, `modelDriverHint?`. Never the binary, never the legacy id. |
 | `local:model-drivers/profiles/{profileId}` | `HostModelProfileRecord` | The same annotation block plus `modelId`/`createdAt`. The profile's *content* is the driver's. |
-| `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` | `ModelPromptPublication` | `{ text, tokens, version, publishedAt }` — one atomic pair, one monotonic version per driver+model+profile. An empty publication (`''`, `[]`) is stored as an entry; absence is a runtime fault for a prompt-capable driver, never an implicit empty prompt. |
-| `local:model-drivers/prompt-archive/{driverId}/{modelId}/{profileId}/{version}` | archived publication | The losing side of a user-arbitrated card/store conflict, archived entire with provenance and time. Never deleted. |
+| `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` | `ModelPromptPublication` | `{ text, tokens, version, publishedAt }` — one atomic pair, one monotonic version per driver+model+profile. This is AIRI's **current copy** for prompt assembly; the driver owns the prompt and its version history, so there is no host-side archive. An empty publication (`''`, `[]`) is stored as an entry; absence is a runtime fault for a prompt-capable driver, never an implicit empty prompt. |
 | `local:model-drivers/pending/{payloadId}` | `PendingModelPayload` | `{ modelDriverHint?, legacyModelId?, displayName, createdAt, byteSize? }` plus the retained bytes in localforage. **No `modelId`/`profileId`**: a pending payload is not addressable and cannot construct a `LoadCue`. |
 | `local:model-drivers/deleted/{modelId}` | tombstone | Canonical from Phase 1. The legacy `local:sync-metadata/deleted-models/{id}` keeps being read during migration. |
 | `local:model-drivers/markers/model-migration/{modelId}` | marker | Written only after a model's import transaction commits. |
@@ -740,9 +739,10 @@ Two more pieces live outside web storage:
   Main is the single owner of `legacy-retention`; the renderer reads it over IPC and never writes it.
   There is deliberately no row cache in web storage.
 - **Driver storage** (renderer only) — one localforage instance `airi-driver-<driverId>` for payloads,
-  a namespaced key space for small values behind `HostStorageInterface`, and the internal
-  `airi:driver-storage:<driverId>` watch channel. AIRI never reads these keys and never interprets
-  their values; `keys()` is scoped to one driver.
+  and a namespaced key space for small values behind `HostStorageInterface`. That namespace is composed
+  by the renderer adapter from the window's storage primitives (`airi-driver-<driverId>/…`, above the
+  app's `local:` prefix); `keys()` is scoped to one driver and `watch` fans out inside one window only —
+  there is no cross-window relay. AIRI never reads these keys and never interprets their values.
 
 ### 3.3 Stickers
 

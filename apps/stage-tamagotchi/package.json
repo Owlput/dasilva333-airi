@@ -152,6 +152,7 @@
     "@proj-airi/iconify-meteocons": "catalog:",
     "@proj-airi/lobe-icons": "^1.0.18",
     "@proj-airi/server-runtime": "workspace:^",
+    "@proj-airi/stage-renderer-sdk": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/ui-transitions": "workspace:^",
     "@proj-airi/unplugin-fetch": "catalog:",

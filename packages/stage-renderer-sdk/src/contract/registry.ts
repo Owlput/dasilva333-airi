@@ -70,13 +70,38 @@ export interface RendererRequest {
 }
 
 /**
+ * What a manager is told changed, and the only two things it has to care about.
+ *
+ * `drivers` is the coarse signal: the driver list or an enable flag moved, so re-read `listDrivers`
+ * and `isEnabled` rather than trusting a copy. It is deliberately not sent for row-cache writes —
+ * those are the host's bookkeeping, and a manager hearing about its own completed pull would have
+ * nothing to do with it.
+ *
+ * `channel-closed` is addressed, because the channel is the registry's object: the registry opened it,
+ * cached it and is the one told when its window went away. A manager that keeps a channel — as a
+ * driver must, since reopening one restarts the entry — is therefore told *which* address it lost,
+ * instead of having to infer it from a send that cannot fail.
+ */
+export type RegistryChange
+  = | { kind: 'drivers' }
+    | {
+      kind: 'channel-closed'
+      driverId: ModelDriverId
+      /** The window whose entry went away. */
+      windowId: string
+      surface?: RendererMountSurfaceKind
+      purpose?: RendererMountPurpose
+    }
+
+/**
  * The registry, as a driver's manager sees it.
  *
  * `requestRenderer` reuses a live renderer first — one serving the named surface, then any live
  * renderer — and starts the driver's provider entry there, or reuses the channel the manager already
  * has to it. With no live renderer able to serve it, the host starts the shared background window and
- * runs the entry there. A channel that closes later counts as a refusal on the next request and never
- * reaches into the row cache.
+ * runs the entry there. A channel that closes later is reported through `onChange`; the manager drops
+ * it, and the next `requestRenderer` for that address opens it again rather than reaching into the row
+ * cache.
  *
  * There is deliberately **no `storage` here**: main has no IndexedDB (D1). A manager that needs
  * storage asks for a renderer and uses `HostStorageInterface` inside it.
@@ -88,7 +113,8 @@ export interface RegistryHandle {
   /** Ordinary registry operations; the manager may use them directly. */
   listDrivers: () => DriverInfo[]
   isEnabled: (driverId: ModelDriverId) => boolean
-  onChange: (handler: () => void) => Unsubscribe
+  /** Driver-level changes and the loss of a channel this driver was using. */
+  onChange: (handler: (change: RegistryChange) => void) => Unsubscribe
 }
 
 /**

@@ -1392,6 +1392,9 @@ importers:
       '@proj-airi/server-runtime':
         specifier: workspace:^
         version: link:../../packages/server-runtime
+      '@proj-airi/stage-renderer-sdk':
+        specifier: workspace:^
+        version: link:../../packages/stage-renderer-sdk
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../../packages/stage-shared

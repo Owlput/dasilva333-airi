@@ -405,6 +405,10 @@ export const electronSetCorsBypassUrls = defineInvokeEventa<void, string[]>('eve
 export const electronAppIconGet = defineInvokeEventa<boolean>('eventa:invoke:electron:app-icon:get')
 export const electronAppIconSet = defineInvokeEventa<boolean, boolean>('eventa:invoke:electron:app-icon:set')
 
+// The model-driver host's renderer↔main surface (§4.4). Contract shapes only, so re-exporting it costs the
+// renderer nothing but types and channel constants.
+export * from './model-drivers-eventa'
+
 export { electron } from '@proj-airi/electron-eventa'
 
 export * from '@proj-airi/electron-eventa/electron-updater'

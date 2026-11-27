@@ -13,6 +13,9 @@
     "useDefineForClassFields": true,
     "baseUrl": "./src/renderer",
     "paths": {
+      "@proj-airi/stage-renderer-sdk": [
+        "../../../../packages/stage-renderer-sdk/src/index.ts"
+      ],
       "@proj-airi/stage-ui": [
         "../../packages/stage-ui/src/index.ts"
       ],

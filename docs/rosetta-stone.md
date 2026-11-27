@@ -373,6 +373,15 @@ Implementation guide: [Director orchestration](../.agents/skills/airi-director-o
 | **Artistry / ComfyUI** | `apps/stage-tamagotchi/src/main/services/airi/widgets/providers/comfyui.ts` |
 | **Artistry Bridge** | `apps/stage-tamagotchi/src/main/services/airi/widgets/artistry-bridge.ts` |
 | **Scene / Background Layer** | `packages/stage-ui/src/components/scenes/RendererStage.vue` (Layer) | `packages/stage-pages/src/pages/settings/scene/index.vue` (UI) |
+| **Model Driver Contract (RFC 0002)** | `packages/stage-renderer-sdk/src/index.ts` — contract shapes plus the transport-free renderer adapter in `src/host/`; decisions in `DECISIONS-PHASE0.md` and `DECISIONS-PHASE1.md` next to it |
+| **Model Driver Host Core & Service** | `packages/stage-renderer-sdk/src/host/index.ts` (`@proj-airi/stage-renderer-sdk/host`) — registry, cue broker, live mounts, records/prompts, backup, and the transport-free host service; no DOM, no Electron. Decisions in `DECISIONS-PHASE1.md` beside it |
+| **Model Driver Host Resources (Electron main)** | `apps/stage-tamagotchi/src/main/services/model-drivers/index.ts` — binds windows, eventa transport and `{userData}/model-drivers/state.json` to the SDK's host service |
+| **Model Driver IPC Contract** | `apps/stage-tamagotchi/src/shared/model-drivers-eventa.ts` — renderer↔main; re-exported from `shared/eventa.ts` |
+| **Model Driver Renderer Adapter** | `packages/stage-renderer-sdk/src/host/adapter.ts` — per window: identity, mounts, cue channel, provider entries, and the per-driver storage namespaces composed from the window's primitives; written against `HostClient` (`host/client.ts`), no transport of its own (P1-D24, P1-D25) |
+| **Model Driver Eventa Transport** | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/eventa-client.ts` — the only place the adapter's `HostClient` is implemented over typed IPC |
+| **Model Driver Loader Table** | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/loaders.ts` — the only renderer-side place a driver package is imported; the interface it implements is `packages/stage-renderer-sdk/src/host/loaders.ts` |
+| **Shared Background Window** | `apps/stage-tamagotchi/src/main/windows/background/` (+ `src/renderer/background.html`, `background.main.ts`); lifecycle/quit policy in `background/policy.ts` |
+| **Main-bundle DOM-free Assertion** | `scripts/assert-main-dom-free.mjs` — CI: fails if a renderer runtime module is reachable from the main entry, and if a driver manager module (`src/driver/manager.ts`, plus the SDK's `testing/stub-driver.ts`) imports a renderer-only package. Its OK line reports both counts, because a file set that silently matches nothing passes for the wrong reason |
 | **Background Picker Dialog** | `packages/stage-ui/src/components/scenarios/dialogs/stage-background-picker/StageBackgroundPicker.vue` |
 | **Image Journal Store** | `packages/stage-ui/src/stores/background.ts` |
 | **Stage Style / Gallery** | `packages/stage-pages/src/pages/settings/scene/index.vue` |

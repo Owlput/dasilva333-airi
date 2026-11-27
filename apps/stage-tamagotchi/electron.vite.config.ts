@@ -115,6 +115,11 @@ export default defineConfig({
       alias: {
         '@proj-airi/i18n-bundle': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src', 'dist-lite', 'messages.mjs')),
         '@proj-airi/server-runtime': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-runtime', 'src')),
+        // Source-only workspace packages (no build step, `exports` point at `src/*.ts`). They are bundled into
+        // main rather than externalized; the `/testing` entry has to be matched before the package root.
+        '@proj-airi/stage-renderer-sdk/testing': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'index.ts')),
+        '@proj-airi/stage-renderer-sdk/host': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'index.ts')),
+        '@proj-airi/stage-renderer-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'index.ts')),
       },
     },
   },
@@ -149,6 +154,7 @@ export default defineConfig({
         input: {
           'main': resolve(join(import.meta.dirname, 'src', 'renderer', 'index.html')),
           'beat-sync': resolve(join(import.meta.dirname, 'src', 'renderer', 'beat-sync.html')),
+          'background': resolve(join(import.meta.dirname, 'src', 'renderer', 'background.html')),
           'splash': resolve(join(import.meta.dirname, 'src', 'renderer', 'splash.html')),
         },
       },
@@ -205,6 +211,11 @@ export default defineConfig({
     resolve: {
       conditions: ['browser', 'import', 'default'],
       alias: [
+        // Source-only workspace packages, same reason as in `main`. The `/testing` and `/host` entries are
+        // matched before the package root.
+        { find: '@proj-airi/stage-renderer-sdk/testing', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'index.ts')) },
+        { find: '@proj-airi/stage-renderer-sdk/host', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'index.ts')) },
+        { find: '@proj-airi/stage-renderer-sdk', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'index.ts')) },
         { find: '@proj-airi/server-sdk', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-sdk', 'src')) },
         // Headless DSL runtime ships TS source only (no build step); alias to source for dev HMR.
         { find: '@proj-airi/live2d-runtime', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'live2d-runtime', 'src')) },

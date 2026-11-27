@@ -2,7 +2,7 @@
 
 | Field | Value |
 | :--- | :--- |
-| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. **Phase 0 is complete and committed** at contract `0.1` on branch `model-driver-throwaway`, RFC amendment included; P0.0's separate baseline commit is waived (P0-D1, §0). Host implementation has not started. |
+| Status | **Approved through Phase 1 (2026-11-23). Decision record revised 2026-11-24** (see the revision note below). Phases 2–8 are gated by the approval boundary. **Phase 0 is complete and committed** at contract `0.1` on branch `model-driver-throwaway`, RFC amendment included; P0.0's separate baseline commit is waived (P0-D1, §0). **Phase 1 is implemented** — host core, main service, background window, renderer adapter and the stub route — with its exit evidence in §4.9; its decision record is [`DECISIONS-PHASE1.md`](./DECISIONS-PHASE1.md). |
 | Normative source | [`docs/rfcs/0002-model-driver-contract.md`](../../docs/rfcs/0002-model-driver-contract.md) (RFC 0002). Where this plan and the RFC disagree, the RFC wins. Phase 0 adds contract surface the RFC does not yet contain (§3.1), so **RFC 0002 is amended as Phase 0's last commit** (§3.2) and the contract's additions become normative text rather than private convention. Host choices the RFC leaves open are recorded in §2. |
 | Contract package | `@proj-airi/stage-renderer-sdk` — 15 contract files (`src/contract/`), plus `index.ts`, `compatibility.ts`, `validate.ts` and its `vitest` suite; `0.1.0`, committed on `model-driver-throwaway`, **no integration** (D12, §0). P0.0's separate `0.0.3` baseline commit is waived (P0-D1). |
 | Supersedes | [`docs/design-stage-renderer-migration.md`](../../docs/design-stage-renderer-migration.md) (the RFC 0001 companion plan) wherever that document conflicts with RFC 0002 — see Appendix B |
@@ -212,7 +212,7 @@ The binding's shape is §4.5; the states it can be in, and what each one renders
 
 One atomic `ModelPromptPublication` — text **and** ACT token list, one `version` — covers the prompt. A driver MUST publish at least once per model/profile once activated. An empty prompt with an empty token array is valid and stored as-is. A prompt-capable driver that finishes activation without ever publishing for that model/profile is a fault, and the fault is a runtime state surfaced in the driver panel — it never blocks migration (D8). An older publication is stale and discarded.
 
-The host prompt store is the only input to prompt assembly and the card keeps a complete portable snapshot of it. The two are reconciled at activation only; a disagreement is arbitrated **by the user** and nothing is ever discarded — the losing copy is archived complete.
+The driver owns the prompt: it stores the pair, tracks its modifications, and its version history is the driver's record (D26). What AIRI holds is the current publication — the only input to prompt assembly — and the card keeps a complete portable snapshot of it. The two are reconciled at activation only; a disagreement is **detected by AIRI** and arbitrated **by the user**, and the resolved pair is what the driver records next.
 
 The reconciliation table, the conflict rules and the arbitration surface are §5.4 and §5.10.
 
@@ -377,16 +377,16 @@ The amendment lands **as Phase 0's last commit**, after P0.4 and P0.5, against [
 
 | Artifact | Path (new unless noted) | Responsibility |
 | :--- | :--- | :--- |
-| Host core (pure TS, no Vue/Pinia) | `packages/stage-driver-host/` | Registry, broker, transaction table, cancellation, live mount registry (descriptors only), id minting for `modelId`/`profileId`, mount-id issuance, host record types plus the record/profile/prompt stores behind a storage port (the renderer adapter supplies IndexedDB), `RegistryHandle` contract, entry-resolution protocol |
+| Host core (pure TS, no Vue/Pinia) | `packages/stage-renderer-sdk/src/host/` (`@proj-airi/stage-renderer-sdk/host`) | Registry, broker, transaction table, cancellation, live mount registry (descriptors only), id minting for `modelId`/`profileId`, mount-id issuance, host record types plus the record/profile/prompt stores over a storage port (the renderer supplies the window's primitives), `RegistryHandle` contract, entry-resolution protocol, and the host service that composes them behind transport/window/state ports (P1-D27) |
 | Contract validators | `packages/stage-renderer-sdk/src/validate.ts` | Manifest, envelope, capability completeness, compatibility, ack shape (Phase 0) |
-| Main-process service | `apps/stage-tamagotchi/src/main/services/model-drivers/` | Registry ownership, managers, renderer-request routing, row cache, eventa contracts, window-gone settlement, enabled flags |
+| Main-process service | `apps/stage-tamagotchi/src/main/services/model-drivers/` | Only the resources: window identity from `webContents`, the eventa transport that carries `ModelDriverHostPush`, `state.json`, and the background-window port. The host itself is the SDK's `src/host/service.ts` (P1-D27) |
 | Shared background window | `apps/stage-tamagotchi/src/main/windows/background/`, `src/renderer/background.html`, `background.main.ts` | The app's one background window: hosts manager-requested driver entries and the migration queue's runtime, with a consumer refcount, lazy start, `backgroundThrottling: false`, excluded from the quit decision and closed at shutdown. Beat sync stays separate in Phase 1 |
-| Renderer adapter | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/adapter.ts` | Per-window adapter: mint, mount registration, services, authenticated channels |
+| Renderer adapter | `packages/stage-renderer-sdk/src/host/adapter.ts` | Per-window adapter: identity, mount registration, services, authenticated channels. Transport-free — the app supplies a `HostClient` (`apps/stage-tamagotchi/src/renderer/libs/model-drivers/eventa-client.ts`), so the same adapter serves Electron, Web and Pocket (P1-D24) |
 | Renderer loader table | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/loaders.ts` | The only renderer-side table that imports driver `provider`/`mount`/`panels`/`picker` modules |
 | Web / Pocket host | `apps/stage-web/src/libs/model-drivers/`, `apps/stage-pocket/src/libs/model-drivers/` | In-process registry + managers + adapters, same interfaces |
-| Stub driver + harness | `packages/stage-driver-host/src/testing/` | Fake driver: manifest, manager, runtime, provider, mount, panel, picker, and the **full §5.10 surface** (`migrate`, `transfer`, `export`/`import`, `purge`, `LegacyRestorePayload`) |
+| Stub driver + harness | `packages/stage-renderer-sdk/src/host/testing/` (`@proj-airi/stage-renderer-sdk/testing`) | Fake driver: manifest, manager, runtime, provider, mount, panel, picker, and the **full §5.10 surface** (`migrate`, `transfer`, `export`/`import`, `purge`, `LegacyRestorePayload`) |
 
-No `stage-driver-main`: driver manifests and managers live in the driver packages, and main imports only their DOM-free subpaths (§2 D2). `packages/stage-driver-host` has no Vue dependency. The background entry is added to the renderer MPA inputs beside `index.html`/`beat-sync.html`, uses the shared preload, and does not mount `App.vue`. The Vue-facing host (`packages/stage-ui/src/libs/model-drivers/`) is Phase 2 work (§5.2, §5.9) — Phase 1 ships only the dev-only stub route, so no unreachable UI layer is written in this phase.
+No `stage-driver-main`: driver manifests and managers live in the driver packages, and main imports only their DOM-free subpaths (§2 D2). The host core has no Vue dependency. The background entry is added to the renderer MPA inputs beside `index.html`/`beat-sync.html`, uses the shared preload, and does not mount `App.vue`. The Vue-facing host (`packages/stage-ui/src/libs/model-drivers/`) is Phase 2 work (§5.2, §5.9) — Phase 1 ships only the dev-only stub route, so no unreachable UI layer is written in this phase.
 
 ### 4.2 Registry and managers (Electron main)
 
@@ -419,8 +419,19 @@ interface RegistryHandle {
   /** Ordinary registry operations; the manager may use them directly. */
   listDrivers: () => DriverInfo[]
   isEnabled: (driverId: ModelDriverId) => boolean
-  onChange: (handler: () => void) => Unsubscribe
+  /** Driver-level changes, and the loss of a channel this driver was using. */
+  onChange: (handler: (change: RegistryChange) => void) => Unsubscribe
 }
+
+type RegistryChange
+  = | { kind: 'drivers' }
+    | {
+      kind: 'channel-closed'
+      driverId: ModelDriverId
+      windowId: string
+      surface?: Surface
+      purpose?: Purpose
+    }
 
 type RequestRendererResult
   = | { ok: true, channel: ManagerChannel }
@@ -431,6 +442,8 @@ interface ManagerChannel {
   onMessage: (handler: (message: unknown) => void) => Unsubscribe
 }
 ```
+
+- **A closed channel is reported, not inferred.** The channel is *used* by the manager but *provided and maintained* by the registry: the registry opens it, caches it, and is the only party told when the window dies. `send` is `void`, so a dead channel cannot fail a send, and a manager that keeps a channel — as it must, because reopening one restarts the entry — would wait on a reply that can never arrive. So the loss is reported on `onChange` as an addressed `channel-closed`, the manager drops that channel and fails what was in flight on it, and the next `requestRenderer` for the address opens it again. `onChange` fires for driver-level changes (`drivers`) and for that report, and deliberately not for each `rows` write or for the manager's own `model-list-changed` echo.
 
 - **Mount registration.** The registry issues mount ids, so a renderer cannot construct one:
 
@@ -462,7 +475,7 @@ The broker implements RFC 0002 §4.2, §9.3, §9.6 and §9.7:
 5. **Manager fan-out:** the manager decides which mounts receive the envelope and how to combine outcomes; the host provides the pipe to each mount's window.
 6. **Settle once:** one outcome per cue plus `handled`; late/duplicate acks are discarded.
 7. **Deadline:** settles `error` with `timeout`; later acks discarded. The timer runs in main, which is never throttled.
-8. **Window gone:** unregister mounts; settle pending `cancelled` if undelivered, `aborted` if delivered.
+8. **Window gone:** settle what the window left pending **first** — `window-gone` if it was delivered, `cancelled` if it was not — then unregister its mounts, then forget every manager channel it served and report each one's address to its driver as `channel-closed` (§4.3, P1-D23). The order is load-bearing: unregistering emits a mount change that pumps the broker, and a pump with no candidates would settle queued work `NO_TARGET` instead of reporting that the window went away. The channel report comes last on purpose too: by then nothing can route a request back to the dead window. `aborted` is reserved for a host restart (§9.6, P1-D16).
 9. **Withdrawals (C4):** apply to broker-held work first, then the receiver; answer per §9.7. `cancel`/`pop`/`pop-all` never stop a running transaction; `abort`/`abort-current`/`dump` ask the receiver and settle `aborted` or with its own outcome. `abort-current` targets the running transaction only.
 10. **Bounds:** cap correlations per request and report entries; a malformed request fails.
 
@@ -477,7 +490,7 @@ State: `nonce → { state, driver, target, deliveredTo[], acknowledgedBy[], dead
 | Profile record | `HostModelProfileRecord` under `local:model-drivers/profiles/{profileId}`; one default profile per import |
 | Binding | `extensions.airi.avatar = { driverId, modelId, profileId, prompt? }` beside the frozen `modules.displayModelId` (D4) |
 | Rows | The display cache lives in main's `state.json` beside the enabled flags, is written only from a successful pull, and never overrides `ok:false` (§4.3) |
-| Prompt | `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` holds the current publication (text + tokens + version). Archived losers of an arbitration: `local:model-drivers/prompt-archive/{driverId}/{modelId}/{profileId}/{version}`. The card caches the same pair (D5) |
+| Prompt | `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` holds **the current** publication (text + tokens + version) — the driver owns the prompt and its version history, so AIRI keeps no archive of older copies (D26). The card caches the same pair (D5) |
 | Pending payload | `PendingModelPayload`: a localforage blob plus `local:model-drivers/pending/{payloadId}` (driver hint, legacy id label, timestamp; no identity) |
 | Markers | IndexedDB only: `model-migration/{modelId}` written after the import transaction commits, and `driver-migration/{driverId}` written when every known legacy model of that driver has its marker (D8). `state.json` in main is the **single owner** of `legacy-retention/{driverId}`; the renderer reads it over IPC and never writes it. Shorthand elsewhere omits the `local:model-drivers/markers/` prefix |
 | Deletion | `local:model-drivers/deleted/{modelId}` canonical; keep reading the legacy `local:sync-metadata/deleted-models/{id}` during migration |
@@ -509,9 +522,9 @@ extensions.airi.avatar =
 ### 4.6 Driver storage (renderer only)
 
 - All renderer handles of one driver — provider/runtime, panels and pickers — address the same driver namespace.
-- The media are unchanged: a per-driver localforage instance `airi-driver-<driverId>` for payloads and a namespace for small values/keys; the host prefixes and strips keys and `keys()` is scoped. `watch` uses the internal `airi:driver-storage:<driverId>` channel.
+- The media are unchanged: a per-driver localforage instance `airi-driver-<driverId>` for payloads and a namespace for small values/keys. The renderer adapter composes that namespace: it binds the window's storage primitives (`WindowStorage`) to a driver id, prefixes and strips keys, and scopes `keys()`. `watch` fans out inside one window; there is no cross-window relay (P1-D25).
 - If the manager needs storage, the steps are described in D1.
-- Isolation is enforced host-side; concurrency is last-write-wins and the driver's responsibility (RFC §10.2).
+- Isolation is structural, and the adapter is what composes it: a driver never sees a composed path, so it cannot name another driver's key. Concurrency is last-write-wins and the driver's responsibility (RFC §10.2).
 
 ### 4.7 Entry resolution and loading
 
@@ -562,13 +575,27 @@ Used by broker/registry tests and a dev-only route (`/devtools/model-driver-stub
 
 ### 4.9 Exit criteria
 
-1. `pnpm -F @proj-airi/stage-driver-host test` covers registration/version rejection, manager creation and restart, `RegistryHandle` renderer requests, mount registration and registry-issued ids, channel messaging, row pulls, envelope validation, correlation uniqueness, FIFO, drop, deadline, six withdrawals, window-gone, storage isolation and id minting.
-2. With the stub, two windows register mounts; `{ driver, surface:'acting', purpose:'acting' }` reaches only the acting mount; a cue with no matching mount settles `NO_TARGET`; a not-ready mount drops when asked and otherwise waits; closing a window settles `aborted`.
+1. `pnpm -F @proj-airi/stage-renderer-sdk test` covers registration/version rejection, manager creation and restart, `RegistryHandle` renderer requests, mount registration and registry-issued ids, channel messaging, row pulls, envelope validation, correlation uniqueness, FIFO, drop, deadline, six withdrawals, window-gone, storage isolation, id minting, and the host service's entry relay and persistence.
+2. With the stub, two windows register mounts; `{ driver, surface:'acting', purpose:'acting' }` reaches only the acting mount; a cue with no matching mount settles `NO_TARGET`; a not-ready mount drops when asked and otherwise waits; closing a window settles `window-gone` (delivered) or `cancelled` (undelivered), never `aborted` — see §4.4 step 8 and P1-D16.
 3. Manager restart (main restart) re-creates managers, preserves the row cache, and the next pull requests renderer code again.
-4. Backup/restore with the stub brings back catalogue, rows, prompt, the prompt archive and the opaque bundle.
+4. Backup/restore with the stub brings back catalogue, rows, the prompt store and the opaque bundle. (It does not bring back a prompt archive: a superseded publication is replaced, not kept — P1-D26.)
 5. No renderer runtime module is reachable from the main entry (build assertion).
-6. Legacy `RendererStage` still renders all four formats; no production UI invokes the new host except the dev-only stub route, and no host UI module is shipped in this phase.
+6. Legacy `RendererStage` still renders all four formats; no production surface imports the host, and the only new route is `/devtools/model-driver-stub`, a file-based devtools route that renders a notice instead of the page outside a development build (P1-D18). No host UI module ships in this phase.
 7. The background window starts on the first request that needs it, is excluded from the quit decision, keeps its timers at normal cadence, and is closed at shutdown — each asserted. Beat sync is untouched.
+
+**Status (2026-11-26).** Phase 1 is implemented: the host core and host service (`packages/stage-renderer-sdk/src/host/`, P1-D27 — registry, broker, mount registry, records/prompts, backup, service), the Electron main resource wiring, the shared background window and its quit gate, the renderer adapter and loader table, the dev-only stub route, and the build assertion. Decisions are recorded in [`DECISIONS-PHASE1.md`](./DECISIONS-PHASE1.md); the evidence per criterion is:
+
+| # | Evidence | State |
+| :--- | :--- | :--- |
+| 1 | `pnpm -F @proj-airi/stage-renderer-sdk test`: all nine suites executed by hand, 193 tests — the contract, the adapter's 11, the host core's four suites (broker 34, registry 24, records 17, host 8), the host service's 7 and the in-process host's 10 (P1-D21, P1-D24, P1-D27, P1-D28, P1-D29). The same assertions had been run green through the committed fallback runner (`test:fallback`) while `vitest` could not spawn in the authoring environment (P1-D17); the literal `vitest` run has since been executed by the project owner: **9 files, 193 tests, 1.72 s** (2026-11-27) | **executed** |
+| 2 | `host.test.ts` covers two windows, addressing, `NO_TARGET`, drop, wait and window-gone, and a manager whose channel died being told and asking again; `registry.test.ts` adds the case the first manual run of the dev route failed: an addressed delivery follows the mount, not the channel a row pull happened to open (P1-D19), and the address a closed window was serving (P1-D23). **`in-process.test.ts` now asserts the whole chain the dev route demonstrated** — pull → entry relay → mount → readiness → cue → settlement → capture, two windows, the withdrawal path, prompt publication on activation — so the route is smoke for the Electron-specific half only (P1-D29) | executed (host core and in-process); Electron smoke pending |
+| 3 | `registry.test.ts` manager restart with the row cache preserved — the case that exposed the fixture's shared channel cache (P1-D17) | executed |
+| 4 | `records.test.ts` backup/restore round trip | executed |
+| 5 | `node scripts/assert-main-dom-free.mjs` green (142 modules reachable, no renderer runtime module; 1 manager/convention module inspected — the SDK's `testing/stub-driver.ts`); verified red twice, with an injected `vue` import in a main-side module and again in the stub driver | **executed** (re-run 2026-11-27; the manager half was found inspecting zero files and fixed — P1-D15 correction) |
+| 6 | `RendererStage.vue` and every production surface are untouched; the only new route is `/devtools/model-driver-stub`, which is inert outside a development build (P1-D18) | **holds** |
+| 7 | `windows/background/policy.test.ts` asserts lazy start, single flight, retry after failure, quit exclusion and shutdown close; the `BrowserWindow` itself owns `backgroundThrottling: false` | **executed** (2026-11-27: the app project ran 10 files / 66 tests green, 13 of them this suite) |
+
+Three deviations from §4.1's table, all recorded rather than implicit: Web/Pocket in-process hosts are deferred to Phase 2 because Phase 1 has no consumer for them (P1-D13); the app-level policy suite could not be executed in the authoring environment and was run by the project owner instead — 10 files / 66 tests (P1-D17); and the Electron-only half of criterion 2 (the eventa hop, `webContents` identity, `state.json` on disk, `BrowserWindow` and the shared background window) remains manual smoke, because a headless suite would have to fake precisely the parts it would then claim to prove (P1-D29). Two changes landed after the phase was implemented: the renderer adapter moved into this package because its only application dependency was its transport, now an injected port (P1-D24), and the host core and the Electron service moved here for the same reason — the SDK owns the implementation, the app supplies windows, IPC and the state file (P1-D27). A real `pnpm install` must still run before this branch is published, to relink the workspace after that move (P1-D12); the lockfile no longer carries a `packages/stage-driver-host` importer, so this is a consistency check rather than a repair.
 
 ---
 
@@ -617,7 +644,7 @@ The host never holds the renderer’s canvas, app, camera or scene graph.
 
 ### 5.4 Prompt: publication, snapshot, reconciliation
 
-**Two homes, one authority.** The host prompt store (`local:model-drivers/prompt/{driverId}/{modelId}/{profileId}`) is the **only** input to `buildSystemPrompt`; `HostPromptService` keeps the current publication per `(driver, model, profile)` and AIRI writes the card snapshots from it. The card's `avatar.prompt` is a **complete portable snapshot** — text and tokens together, because they are published together — used to survive import, restore and driver reinstall. There is nowhere in the system where a text exists without its token list.
+**Two homes, one authority.** The host prompt store (`local:model-drivers/prompt/{driverId}/{modelId}/{profileId}`) is the **only** input to `buildSystemPrompt`; `HostPromptService` keeps the current publication per `(driver, model, profile)` and AIRI writes the card snapshots from it. It is AIRI's **copy**, not the prompt's home: the driver stores and versions the prompt itself and tracks its modifications (D26). The card's `avatar.prompt` is a **complete portable snapshot** — text and tokens together, because they are published together — used to survive import, restore and driver reinstall. There is nowhere in the system where a text exists without its token list.
 
 **Reconciled at activation only.** Import and restore merely *cause* divergence; they never touch the store, because a backup already carries the store and a bare card carries only its own snapshot.
 
@@ -630,7 +657,7 @@ The host never holds the renderer’s canvas, app, camera or scene graph.
 | present, ids match, version ≥ store with different content, or equal versions with different text | **conflict** | none until the user arbitrates |
 | present, ids ≠ binding | belongs to a different binding | never injected; refreshed when the binding is right again |
 
-**Conflict.** Detected only at activation. While it stands: no model prompt is injected for that binding, the character carries a "prompt conflict" flag — a normal, non-error state that renders less — and the arbitration surface in Settings → Data (§5.10) shows both texts and token lists with version and provenance ("this device" versus "from the card"). The user picks; the winner is written with `version = max(all versions seen) + 1`; the loser is archived **complete** under `local:model-drivers/prompt-archive/{driverId}/{modelId}/{profileId}/{version}` with its provenance and time, and is never deleted. Raised once per distinct version pair, so a driver that republishes on every activation does not nag.
+**Conflict.** Detected only at activation. While it stands: no model prompt is injected for that binding, the character carries a "prompt conflict" flag — a normal, non-error state that renders less — and the arbitration surface in Settings → Data (§5.10) shows both texts and token lists with version and provenance ("this device" versus "from the card"). The user picks; the winner is written with `version = max(all versions seen) + 1` into the store and the card, and the host hands that pair back through `HostPromptService.onResolution` so the driver records the resolution in its own history — which is where a losing publication stays, because the prompt and its trail belong to the driver (D26). AIRI keeps no archive. Raised once per distinct version pair, so a driver that republishes on every activation does not nag.
 
 **A publication that is not strictly newer never supersedes the card's surviving copy** — including an empty one. It raises the conflict instead of clobbering, which is what makes the mechanism do anything at all.
 
@@ -693,7 +720,7 @@ Rules that follow from it:
 2. A cue reaches only the addressed surface/purpose; capture returns bytes in the ack; `NO_TARGET` is a settled unapplied outcome delivered to the originating adapter; cancellation requests behave per the table.
 3. A panel renders in settings and the strip popover; a picker returns an imported pair; the AIRI picker binds an unavailable model and offers the right action for each `avatar` state.
 4. A stub publication reaches a test card and its snapshot carries text **and** tokens; an empty publication stays empty; a non-migrated format still reads its legacy prompt.
-5. **Reconciliation**: a card-only snapshot seeds the store at activation with the next version strictly greater; a store-newer card is refreshed; a card-newer pair raises a conflict, injects nothing, and archives the loser complete on arbitration.
+5. **Reconciliation**: a card-only snapshot seeds the store at activation with the next version strictly greater; a store-newer card is refreshed; a card-newer pair raises a conflict, injects nothing, and on arbitration hands the losing publication back to the driver through `HostPromptService.onResolution`, which is where its history lives — AIRI keeps no archive of it (P1-D26).
 6. Pointer events arrive box-relative for one mount; a second mount is unaffected.
 7. Speech frames drive the stub; no frame crosses main except the sidecar relay, and none ever travels as a cue.
 8. All legacy behaviour still works; no format is cut over.
@@ -917,7 +944,7 @@ Included: model bytes, legacy URLs, and the legacy metadata (`meta`) — it is n
 
 ### 7.1 Backup and restore
 
-- Enumeration includes: host model/profile records, row caches, pending payloads, the prompt store **and the prompt archive**, migration/retention markers, each driver’s `driverTransfer` bundle (mandatory for first-party drivers, D-14 — once host legacy copies are deleted it is the only complete legacy copy), and any legacy copies the user chose to keep.
+- Enumeration includes: host model/profile records, row caches, pending payloads, the prompt store (one publication per binding — there is no separate archive, P1-D26), migration/retention markers, each driver’s `driverTransfer` bundle (mandatory for first-party drivers, D-14 — once host legacy copies are deleted it is the only complete legacy copy), and any legacy copies the user chose to keep.
 - **Driver bundles are byte-exact and opaque** (D14). AIRI wraps its own records in an envelope and writes each `driverTransfer` bundle as-is — no parsing, no re-encoding, no validation of the driver’s format. Unrecoverable parts are warnings, not a failed restore, and the driver validates its own bundle on import.
 - Export streams straight to the file the user picks — no temporary copy of the library, so a full export does not need its own headroom (§5.9, row 9). This is the one sanctioned byte path across IPC, and it exists only because the user asked for a file.
 - A pre-contract backup is read by a versioned legacy reader that imports through the two-phase path and writes deletion markers for what it consumed. The reader lives beside the host core; the cutoff is a named constant with a test that an older bundle is refused with a readable message.
@@ -956,7 +983,7 @@ For each format, after its cutover release:
 
 ### 7.6 Exit criteria
 
-1. A clean-profile restore brings back catalogue, prompt, the prompt archive, profiles, pending payloads and driver bundles; retained legacy copies are present until the user answers the deletion prompt.
+1. A clean-profile restore brings back catalogue, the prompt store, profiles, pending payloads and driver bundles; retained legacy copies are present until the user answers the deletion prompt.
 2. “Revert avatar migration” restores legacy rendering for a test character through the driver round trip, including after the host legacy copies were deleted, and can be re-migrated.
 3. A simulated downgrade build renders while host legacy copies remain, and fails with a readable reason once they were deleted — the documented consequence of D15.
 4. A pre-contract backup restores through the legacy reader and writes deletion markers.
@@ -1054,7 +1081,7 @@ Vitest source scans. Each guard lands in the phase that creates the invariant it
 2. A clean profile imports one model of each format, binds it, renders on acting + chat + settings preview, restarts, and sees the same result.
 3. No legacy path remains; no host file reads a renderer store or names a format, outside the guarded allowlists.
 4. A character whose model was never migrated is unavailable rather than broken, offers "migrate now", still migrates correctly through the retained collector, and no card data is lost.
-5. The prompt store, card snapshots and the prompt archive are all still readable, and no publication was lost by the removal.
+5. The prompt store and card snapshots are both still readable, no published pair was lost, and no archive prefix survives anywhere (P1-D26).
 
 ---
 
@@ -1065,19 +1092,22 @@ Vitest source scans. Each guard lands in the phase that creates the invariant it
 | Suite | Asserts |
 | :--- | :--- |
 | `stage-renderer-sdk/src/validate.test.ts` | manifest, compatibility, capability completeness, envelope rules, ack shape, mandatory/empty publication (text **and** tokens), prompt capability, the no-publication fault, stale publication |
-| `stage-driver-host/src/registry.test.ts` | declaration registration, version rejection, manager creation/restart, `RegistryHandle` renderer request, each refusal reason, registry-issued mount ids, channel messaging, row pulls, enable/disable |
-| `stage-driver-host/src/broker.test.ts` | accept→settle, correlation uniqueness, FIFO, drop, deadline/late ack, six withdrawals, `NO_TARGET` delivered to the originating adapter, window-gone, bounds |
-| `stage-driver-host/src/transport.test.ts` | speech frames are observation-only, never a cue, and the only main crossing is the sidecar relay |
-| `stage-driver-host/src/storage.test.ts` | renderer namespace isolation, `keys()` scope, `watch`, concurrent writes |
-| `stage-driver-host/src/entry.test.ts` | manager-performed entry lookup, specifier returned, every declared `provider` specifier resolves, unknown key → `invalid-entrypoint` |
-| `stage-driver-host/src/stub-driver.test.ts` | stub through every host rule, failing mount, refusing cue, migration surface |
-| `stage-ui/src/libs/model-drivers/*.test.ts` | records, binding write/clear, the `avatar` state table, frozen legacy fields, prompt store + snapshot + seed + conflict + archive, the storage gate, the migration transaction (priority, resume, park-on-failure, partial), the deletion action, reversal, retention read from `state.json` |
+| `stage-renderer-sdk/src/host/adapter.test.ts` | the renderer adapter against a faked host port and a fake driver module: identity cached, mount id from the host, a refused readiness step reported, cue nonce and pushed settlement, early settlement, settlement at acceptance, an entry started once and reused, the manager-channel round trip, one namespace per driver composed from the window's primitives, a resolved prompt handed back to the driver that owns it, dispose |
+| `stage-renderer-sdk/src/host/core/registry.test.ts` | declaration registration, version rejection, manager creation/restart, `RegistryHandle` renderer request, each refusal reason, registry-issued mount ids, channel messaging, row pulls, enable/disable, which channel a closed window was serving |
+| `stage-renderer-sdk/src/host/core/broker.test.ts` | accept→settle, correlation uniqueness, FIFO, drop, deadline/late ack, six withdrawals, `NO_TARGET` delivered to the originating adapter, window-gone, bounds |
+| `stage-renderer-sdk/src/host/core/records.test.ts` | records, prompts, backup and per-driver storage over an in-memory port |
+| `stage-renderer-sdk/src/host/core/host.test.ts` | two windows, addressing, window-gone ordering, and a manager told its channel died |
+| `stage-renderer-sdk/src/host/service.test.ts` | the host service through its ports: boot persistence, the entry relay and its deadline, an answer only from the asked window, mount ownership, shutdown |
+| `stage-renderer-sdk/src/host/transport.test.ts` | speech frames are observation-only, never a cue, and the only main crossing is the sidecar relay |
+| `stage-renderer-sdk/src/host/storage.test.ts` | renderer namespace isolation, `keys()` scope, `watch`, concurrent writes |
+| `stage-renderer-sdk/src/host/entry.test.ts` | manager-performed entry lookup, specifier returned, every declared `provider` specifier resolves, unknown key → `invalid-entrypoint` |
+| `stage-renderer-sdk/src/host/stub-driver.test.ts` | stub through every host rule, failing mount, refusing cue, migration surface |
+| `stage-ui/src/libs/model-drivers/*.test.ts` | records, binding write/clear, the `avatar` state table, frozen legacy fields, prompt store + snapshot + seed + conflict + replacement, the storage gate, the migration transaction (priority, resume, park-on-failure, partial), the deletion action, reversal, retention read from `state.json` |
 | Architecture guards (§8.5) | source scans against the generated allowlist, the shrinking assertion, the patterns-file exemption, and the main bundle assertion |
 
 ```bash
 pnpm -F @proj-airi/stage-renderer-sdk typecheck
 pnpm -F @proj-airi/stage-renderer-sdk test
-pnpm -F @proj-airi/stage-driver-host test
 pnpm -F @proj-airi/stage-ui typecheck
 ```
 
@@ -1112,7 +1142,7 @@ The automated harness covers load → ready → act → capture and the mandator
 - Three-release simulation: a build at `removeAfterRelease - 1` refuses removal; a build at cutoff allows it.
 - Reversal: revert through the round trip after the host copies were deleted, re-migrate, and a downgrade failing readably.
 - The deletion action: declined keeps the copies and stays available; accepted removes them; unavailable while a character is on the driver's legacy path.
-- Backup round trip with driver bundles (mandatory `transfer`), the prompt archive, and any retained legacy copies.
+- Backup round trip with driver bundles (mandatory `transfer`), the prompt store, and any retained legacy copies.
 - Quota shortfall: a skipped model stays legacy and retryable.
 
 ### 9.4 Builds
@@ -1380,7 +1410,7 @@ Per-renderer inventories and deletion candidates remain the starting point for �
 | 4 | MMD cutover | MMD imports with textures through the driver; migration round trip; legacy retained |
 | 5 | Live2D cutover | Caption/pointer/OPFS/DSL actions; migration round trip; legacy retained |
 | 6 | VRM cutover | Camera/transform/profiles/VRMA; Stage-Mate follows; migration round trip; legacy retained |
-| 7 | Hardening, transfer, retention/reversal | Backup round trip incl. the prompt archive; revert works after deletion through the driver; deletion is user-prompted |
+| 7 | Hardening, transfer, retention/reversal | Backup round trip incl. the prompt store; revert works after deletion through the driver; deletion is user-prompted |
 | 8 | Final removal after every cutoff | Guards green; legacy renderer/data gone; collector kept; unmigrated characters unavailable, not broken |
 
 

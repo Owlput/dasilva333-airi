@@ -5,12 +5,14 @@
  *
  * This container is the **pull** side: a renderer reads what it needs when it needs it, and
  * everything here is either an app-global fact or a capability the renderer may decline.
- * The one push member is `prompt`, and it is push
- * because the renderer is the only thing that knows what the model currently has on.
+ * The one push member is `prompt`, because the renderer is the only thing that knows what the model
+ * currently has on — and it is also the one member the host hands something *back* through, once a
+ * prompt conflict has been resolved (D26).
  */
 import type { CueChannel } from './cues'
 import type { ModelId, ModelProfileId } from './model'
 import type {
+  ContractResult,
   MaybePromise,
   ModelDriverContractVersion,
   ModelDriverId,
@@ -276,9 +278,12 @@ export interface ModelPromptPublication {
   /**
    * Monotonic per `(driver, model, profile)`, minted by the driver.
    *
-   * The driver owns the monotonicity: AIRI compares versions and discards an older publication, it
-   * never invents a version of its own. A publication that is not strictly newer never supersedes the
-   * copy AIRI already holds.
+   * The driver owns the monotonicity: AIRI compares versions and discards an older publication, and it
+   * does not invent a version of its own — the one exception is a prompt the user arbitrated, where the
+   * host writes `max(all versions seen) + 1` so the chosen copy is newer than both and the driver's next
+   * publication continues from it (D26). The driver also **stores the prompt and tracks its
+   * modifications** (its version history is the driver's record, not AIRI's); what AIRI holds is the
+   * current copy it was given.
    */
   version: number
   /** Driver clock, milliseconds, when this was produced. */
@@ -307,6 +312,12 @@ export type ModelPromptSnapshot = Pick<
  * replaces the host reading renderer stores to build a prompt, which could only ever describe
  * whichever renderer happened to be mounted in the same window.
  *
+ * **The driver owns the prompt.** It mints the version, stores the pair and tracks its modifications —
+ * the version history is the driver's record. AIRI keeps the current publication (so prompt assembly
+ * never waits for a window), keeps the card's portable snapshot, and detects a disagreement between
+ * those two; the bookkeeping of what a prompt used to be stays with the driver, which is why the
+ * channel runs both ways: the host hands a resolved publication back through `onResolution`.
+ *
  * **A prompt-capable driver MUST publish at least once per model and profile once it is activated**
  * (D5, D-17). Publishing is not gated on a mount and unmounting retracts nothing.
  */
@@ -323,6 +334,19 @@ export interface HostPromptService {
    * That is a state, not an error: nothing falls back to another model's text.
    */
   publish: (publication: ModelPromptPublication) => void
+  /**
+   * Receive the publication the host resolved, after a user arbitration (§5.4).
+   *
+   * The host writes the winner with a version strictly newer than every copy it saw, then hands that
+   * pair back here, so the driver's own history records what AIRI now holds and the driver's next
+   * publication continues from that version rather than being discarded as stale.
+   *
+   * Register once, after activation. Returning `ok: false` says the driver could not record it — a
+   * storage failure of its own — and is logged, never retried: the host has already committed the
+   * resolution to the store and the card. A host with no arbitration surface (no such surface exists
+   * yet) registers nothing and calls nothing; that is a missing capability, not an error.
+   */
+  onResolution: (handler: (publication: ModelPromptPublication) => MaybePromise<ContractResult<void>>) => Unsubscribe
 }
 
 /**

@@ -52,6 +52,7 @@
     "./workers": "./src/workers/index.ts",
     "./utils": "./src/utils/index.ts",
     "./utils/tts": "./src/utils/tts.ts",
+    "./database/storage": "./src/database/storage.ts",
     "./database/*": "./src/database/*",
     "./types/*": "./src/types/*.ts",
     "./types": "./src/types/index.ts"
