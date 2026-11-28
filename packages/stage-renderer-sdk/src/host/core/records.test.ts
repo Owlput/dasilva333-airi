@@ -8,14 +8,14 @@
  */
 import type { HostNamedModelRecord, ModelPromptPublication } from '../../contract'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ContractFailureCode } from '../../contract'
 import { PromptPublicationState } from '../../validate'
 import { createTestHost, unwrap } from '../testing/harness'
 import { STUB_DRIVER_ID } from '../testing/stub-driver'
 import { classifyHostId, createIdMinter } from './ids'
-import { HOST_STORAGE_KEYS } from './keys'
+import { HOST_STORAGE_KEYS, HOST_STORAGE_ROOT } from './keys'
 import { buildSearchKey } from './records'
 import { createMemoryStoragePort } from './storage'
 
@@ -172,6 +172,58 @@ describe('prompt store', () => {
     expect(await host.storage.keys(HOST_STORAGE_KEYS.prompts)).toHaveLength(1)
     expect(await host.storage.keys('model-drivers/prompt-archive/')).toHaveLength(0)
   })
+
+  it('keeps two drivers describing the same model and profile apart', async () => {
+    const host = await createTestHost()
+    const other = 'ai.moeru.airi.test.stub.second'
+
+    // The version is per driver, model and profile, so equal versions across two drivers are two publications
+    // rather than a stalemate — and one driver's pair can never replace another's.
+    expect(unwrap(await host.core.prompts.publish(publication({ version: 1, text: 'one' }))).state)
+      .toBe(PromptPublicationState.PUBLISHED)
+    expect(unwrap(await host.core.prompts.publish(publication({ modelDriverId: other, version: 1, text: 'two' }))).state)
+      .toBe(PromptPublicationState.PUBLISHED)
+
+    expect((await host.core.prompts.get(STUB_DRIVER_ID, 'model_a', 'profile_a'))?.text).toBe('one')
+    expect((await host.core.prompts.get(other, 'model_a', 'profile_a'))?.text).toBe('two')
+    expect(await host.core.prompts.list()).toHaveLength(2)
+  })
+
+  it('lists prompt records only, never another host record that shares the root', async () => {
+    const host = await createTestHost()
+
+    expect(await host.core.prompts.list()).toEqual([])
+
+    unwrap(await host.core.records.models.create(model()))
+    await host.storage.set(HOST_STORAGE_KEYS.pending('payload_a'), { payloadId: 'payload_a' })
+    await host.storage.set(`${HOST_STORAGE_ROOT}/markers/model-migration/model_a`, { at: 1 })
+    // Everything above lives under the host's root; none of it is a publication.
+    expect(await host.core.prompts.list()).toEqual([])
+
+    unwrap(await host.core.prompts.publish(publication()))
+    expect(await host.core.prompts.list()).toHaveLength(1)
+  })
+
+  it('returns a model to the fault state when its publication is removed', async () => {
+    const host = await createTestHost()
+    unwrap(await host.core.prompts.publish(publication()))
+
+    await host.core.prompts.remove(STUB_DRIVER_ID, 'model_a', 'profile_a')
+
+    expect(await host.core.prompts.get(STUB_DRIVER_ID, 'model_a', 'profile_a')).toBeUndefined()
+    expect(await host.core.prompts.stateFor({ driverId: STUB_DRIVER_ID, modelId: 'model_a', profileId: 'profile_a', promptCapable: true }))
+      .toBe(PromptPublicationState.MISSING)
+  })
+
+  it('reports nothing expected for a driver that is not prompt-capable, even once a pair is stored', async () => {
+    const host = await createTestHost()
+    unwrap(await host.core.prompts.publish(publication()))
+
+    // The flag comes from the driver's own declaration, so it outranks what happens to be in the store: a panel
+    // must not report "published" for a driver that never claimed it could publish.
+    expect(await host.core.prompts.stateFor({ driverId: STUB_DRIVER_ID, modelId: 'model_a', profileId: 'profile_a', promptCapable: false }))
+      .toBe(PromptPublicationState.NONE)
+  })
 })
 
 describe('driver storage', () => {
@@ -240,6 +292,87 @@ describe('id minting', () => {
     const stuck = createIdMinter({ random: () => 'forever' })
     stuck.mintModelId()
     expect(() => stuck.mintModelId()).toThrow(/unique host id/)
+  })
+
+  it('offers no path from a renderer to a mount id', () => {
+    // The contract's "no `mintMountId` on the adapter" is a fact about this module, not a sentence in a document:
+    // the registry issues mount ids, and nothing here can construct one.
+    expect(Object.keys(createIdMinter()).sort()).toEqual(['issued', 'mintModelId', 'mintProfileId'])
+  })
+
+  it('classifies only the host\'s own prefixes', () => {
+    expect(classifyHostId('model')).toBe('unknown')
+    expect(classifyHostId('display_abc')).toBe('unknown')
+    expect(classifyHostId('')).toBe('unknown')
+  })
+
+  it('records every id it issued, so a caller can ask "is this one of mine"', () => {
+    const minter = createIdMinter()
+    const modelId = minter.mintModelId()
+    const profileId = minter.mintProfileId()
+
+    expect([...minter.issued].sort()).toEqual([modelId, profileId].sort())
+    expect(minter.issued.has(modelId)).toBe(true)
+    expect(minter.issued.has('model_not_minted_here')).toBe(false)
+  })
+
+  it('still mints unique ids on a host with no `crypto.randomUUID`', () => {
+    // An older runtime, or a stripped-down test environment, may not have it. The fallback is what keeps two mints
+    // apart there — the issued set is the real guard against a repeat, but it can only help if the source varies.
+    vi.stubGlobal('crypto', {})
+    try {
+      const minter = createIdMinter()
+      const first = minter.mintModelId()
+      const second = minter.mintModelId()
+
+      expect(first).toMatch(/^model_[0-9a-f]{32}$/)
+      expect(second).toMatch(/^model_[0-9a-f]{32}$/)
+      expect(first).not.toBe(second)
+      expect(minter.issued.size).toBe(2)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('host key space', () => {
+  it('roots every key at the one prefix the host owns, and never at the backend prefix', () => {
+    const keys = [
+      HOST_STORAGE_KEYS.model('model_a'),
+      HOST_STORAGE_KEYS.profile('profile_a'),
+      HOST_STORAGE_KEYS.prompt(STUB_DRIVER_ID, 'model_a', 'profile_a'),
+      HOST_STORAGE_KEYS.pending('payload_a'),
+      HOST_STORAGE_KEYS.deleted('model_a'),
+      HOST_STORAGE_KEYS.modelMigrationMarker('model_a'),
+      HOST_STORAGE_KEYS.driverMigrationMarker(STUB_DRIVER_ID),
+      HOST_STORAGE_KEYS.driverBundle(STUB_DRIVER_ID),
+    ]
+
+    for (const key of keys) {
+      // A record outside the root is one a backup misses and a purge leaves behind, and nothing at runtime would
+      // notice — which is why the invariant is asserted rather than assumed.
+      expect(key.startsWith(`${HOST_STORAGE_ROOT}/`)).toBe(true)
+      // `local:` belongs to the unstorage instance in the renderer. A key that hard-coded it would not survive a
+      // different backend, and this package must not know which one it is.
+      expect(key).not.toContain('local:')
+    }
+  })
+
+  it('keeps every record under the directory constant that scans it', () => {
+    expect(HOST_STORAGE_KEYS.model('model_a')).toBe(`${HOST_STORAGE_KEYS.models}model_a`)
+    expect(HOST_STORAGE_KEYS.profile('profile_a')).toBe(`${HOST_STORAGE_KEYS.profiles}profile_a`)
+    expect(HOST_STORAGE_KEYS.prompt(STUB_DRIVER_ID, 'model_a', 'profile_a'))
+      .toBe(`${HOST_STORAGE_KEYS.prompts}${STUB_DRIVER_ID}/model_a/profile_a`)
+    expect(HOST_STORAGE_KEYS.pending('payload_a')).toBe(`${HOST_STORAGE_KEYS.pendingRoot}payload_a`)
+    expect(HOST_STORAGE_KEYS.deleted('model_a')).toBe(`${HOST_STORAGE_KEYS.deletedRoot}model_a`)
+    expect(HOST_STORAGE_KEYS.modelMigrationMarker('model_a')).toBe(`${HOST_STORAGE_KEYS.modelMigrationMarkers}model_a`)
+    expect(HOST_STORAGE_KEYS.driverMigrationMarker(STUB_DRIVER_ID)).toBe(`${HOST_STORAGE_KEYS.driverMigrationMarkers}${STUB_DRIVER_ID}`)
+    expect(HOST_STORAGE_KEYS.driverBundle(STUB_DRIVER_ID)).toBe(`${HOST_STORAGE_KEYS.driverBundles}${STUB_DRIVER_ID}`)
+
+    // Markers live inside the root on purpose (a backup and a purge stay one prefix scan each), which is a
+    // deliberate deviation from the plan's `model-migration/{id}` shorthand.
+    expect(HOST_STORAGE_KEYS.modelMigrationMarker('model_a').startsWith(`${HOST_STORAGE_ROOT}/markers/`)).toBe(true)
   })
 })
 

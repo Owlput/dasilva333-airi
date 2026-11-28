@@ -86,7 +86,11 @@ interface MountExposed {
   dispose?: (strategy: 'shallow' | 'deep') => void
 }
 
-const mountInstance = ref<RendererMountComponent>()
+// `shallowRef`, not `ref`: a deep `ref` wraps the component definition in a reactive proxy, and a reactive
+// component is exactly what Vue warns about (and pays for) — the definition is replaced wholesale and never
+// mutated, so there is nothing here to track. `DriverPanelHost`/`DriverPickerHost` hold their components the
+// same way.
+const mountInstance = shallowRef<RendererMountComponent>()
 const mountRef = shallowRef<unknown>()
 const mountId = ref<string>()
 const readiness = ref<RendererMountReadinessState>(Readiness.UNMOUNTED)

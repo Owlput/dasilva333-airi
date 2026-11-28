@@ -193,7 +193,7 @@ executed: the main bundle assertion (Phase 1) and the speech transport suite (th
 
 ### P2-D12 — New host surfaces ship literal English strings, and the i18n pass is owed
 
-`MountHost`, `DriverPanelHost`, `DriverPickerHost`, `AirIModelPicker`, `UnavailableModelView`,
+`MountHost`, `DriverPanelHost`, `DriverPickerHost`, `AiriModelPicker`, `UnavailableModelView`,
 `PromptArbitrationDialog` and `MigrationScreen` carry their copy inline. The repository rule is that translations
 live in `packages/i18n`, and this is a deliberate, recorded deviation rather than an oversight: adding keys needs
 the yaml manager and ten locales, and none of these surfaces is reachable by a user in Phase 2 (the only route that

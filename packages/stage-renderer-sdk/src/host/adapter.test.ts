@@ -13,14 +13,14 @@
  * plumbing: identity caching, the settlement buffer, the entry lifecycle and the message round trip.
  */
 import type { CueAck, CueEnvelopeInput, CueWithdrawalReport } from '../contract/cues'
-import type { HostServices, ModelPromptPublication, RendererPointerEvent } from '../contract/host-services'
+import type { HostLogger, HostServices, ModelPromptPublication, RendererPointerEvent } from '../contract/host-services'
 import type { DriverInfo } from '../contract/references'
 import type { ContractResult, ModelDriverId } from '../contract/shared'
 import type { HostClient, ModelDriverHostState, ModelDriverSubmitAck } from './client'
 import type { DriverProviderModule } from './loaders'
 import type { WindowStorage } from './storage'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CueKind, CueSource } from '../contract/cues'
 import { RendererPointerPhase } from '../contract/host-services'
@@ -140,6 +140,10 @@ function createFakeHost(options: {
   settleAtAccept?: boolean
   settleOnPush?: boolean
   refuseReadiness?: boolean
+  /** Refuse the unregister, as a host does when the window has already gone. */
+  failUnregister?: boolean
+  /** Refuse the enable flag write, as a host does while it is shutting down. */
+  failSetEnabled?: boolean
   /** Override what the manager answers for one entry kind; `null` means "this driver ships none". */
   entrypoints?: Partial<Record<ModelDriverEntryKind, string | null>>
 } = {}) {
@@ -173,6 +177,12 @@ function createFakeHost(options: {
     },
 
     async unregisterMount() {
+      if (options.failUnregister) {
+        return {
+          ok: false,
+          error: { code: ContractFailureCode.INTERNAL, message: 'the window that owned the mount is gone' },
+        }
+      }
       return { ok: true, value: undefined }
     },
 
@@ -219,6 +229,12 @@ function createFakeHost(options: {
     },
 
     async setEnabled() {
+      if (options.failSetEnabled) {
+        return {
+          ok: false,
+          error: { code: ContractFailureCode.INTERNAL, message: 'the host is shutting down' },
+        }
+      }
       return { ok: true, value: undefined }
     },
 
@@ -299,7 +315,7 @@ function createFakeHost(options: {
   }
 }
 
-async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {}) {
+async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {}, logger?: HostLogger) {
   const host = createFakeHost(options)
   const driver = createProviderModule()
   const memory = createMemoryWindowStorage()
@@ -312,6 +328,7 @@ async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {})
   const adapter = await createModelDriverAdapter({
     client: host.client,
     storage: memory.store,
+    ...(logger ? { logger } : {}),
     prompts: {
       async publish(publication) {
         memory.published.push(publication)
@@ -623,5 +640,44 @@ describe('model driver adapter', () => {
       receipt.value.settled.then(() => 'settled'),
       Promise.resolve('still waiting'),
     ])).toBe('still waiting')
+  })
+
+  it('warns instead of throwing when the host cannot release a mount', async () => {
+    const logger: HostLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    const { adapter } = await createAdapter({ failUnregister: true }, logger)
+    const registered = await adapter.registerMount({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
+    if (!registered.ok)
+      throw new Error('the host refused the mount')
+
+    // Unmounting is what happens when a window is already going away, so a refusal must not become an exception in
+    // the unmount path: the subscription is released either way, and the failure is reported as a warning.
+    await expect(adapter.unregisterMount(registered.mountId)).resolves.toBeUndefined()
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'model-drivers',
+      expect.stringContaining(`Could not unregister mount \`${registered.mountId}\``),
+    )
+  })
+
+  it('resolves an entrypoint through the host and does not decide for it', async () => {
+    const { adapter } = await createAdapter()
+
+    const resolved = await adapter.resolveEntrypoint({ driverId: DRIVER_ID, kind: ModelDriverEntryKind.MOUNT, surface: SURFACE, purpose: PURPOSE })
+
+    // The manager chooses and this only carries the answer: a specifier this build does not have stays the
+    // adapter's refusal, and it never substitutes one of its own.
+    expect(resolved).toEqual({ ok: true, value: { specifier: MOUNT_SPECIFIER } })
+  })
+
+  it('narrows a successful enable and passes a refusal through untouched', async () => {
+    const allowed = await createAdapter()
+    expect(await allowed.adapter.setEnabled(DRIVER_ID, true)).toEqual({ ok: true, value: undefined })
+
+    const refused = await createAdapter({ failSetEnabled: true })
+    const result = await refused.adapter.setEnabled(DRIVER_ID, false)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok)
+      expect(result.error.message).toBe('the host is shutting down')
   })
 })

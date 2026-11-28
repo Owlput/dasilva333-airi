@@ -25,6 +25,8 @@ import type {
   ContractResult,
   CueAck,
   ModelDriverAdapter,
+  RendererMountHitArea,
+  RendererMountPoint,
 } from '@proj-airi/stage-renderer-sdk'
 
 import MountHost from '@proj-airi/stage-ui/components/scenes/MountHost.vue'
@@ -36,10 +38,11 @@ import {
   RendererMountPurpose,
   RendererMountSurfaceKind,
 } from '@proj-airi/stage-renderer-sdk'
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, shallowRef } from 'vue'
 
 import { STUB_DRIVER_ID } from '../../../shared/model-driver-specifiers'
 import { bootstrapModelDriverAdapter } from '../../libs/model-drivers'
+import { stubSession } from '../../libs/model-drivers/stub-entry'
 
 interface SpikeCheck {
   id: string
@@ -60,11 +63,38 @@ const SURFACES = [
   { key: 'preview', label: 'preview / preview', surface: RendererMountSurfaceKind.PREVIEW, purpose: RendererMountPurpose.PREVIEW },
 ] as const
 
-const adapter = ref<ModelDriverAdapter>()
+// The adapter is a service object (methods plus Maps of mounts and subscriptions), not view state: a deep `ref`
+// would hand every `MountHost` a reactive proxy of it and make `adapter.pointer`/`adapter.cues` reactive reads for
+// no reason. Only its identity changes, so a shallow handle is the whole requirement.
+const adapter = shallowRef<ModelDriverAdapter>()
 const starting = ref(false)
 const checks = ref<SpikeCheck[]>(initialChecks())
 const log = ref<string[]>([])
 const mountReadiness = ref<Record<string, string>>({})
+
+/**
+ * The handles `MountHost` exposes, one per surface (`defineExpose` in the host component).
+ *
+ * These are how D-4/D-4b are answered for real: `occupiesPoint`/`hitTest` are synchronous members on the mounted
+ * instance, so the page calls them the way a stage would rather than recording that the route exists.
+ *
+ * NOTICE: a plain `Map`, deliberately not a `ref`/`shallowRef`. The template never reads it — only the buttons do —
+ * and a function ref (`:ref="el => onMountRef(...)"`) is invoked on every patch, so writing reactive state from
+ * one re-renders the page that just called it: Vue reports that as "Maximum recursive updates exceeded", and the
+ * loop is unbounded because the inline arrow is a new function each render. A non-reactive Map takes the render
+ * loop out of the picture and needs nothing from reactivity, because these handles are read on click, not drawn.
+ */
+interface MountHostHandle {
+  mountId?: string
+  occupiesPoint: (point: RendererMountPoint) => boolean
+  hitTest: (point: RendererMountPoint) => RendererMountHitArea | null
+}
+
+const mountHosts = new Map<string, MountHostHandle | undefined>()
+
+function onMountRef(key: string, element: unknown): void {
+  mountHosts.set(key, (element ?? undefined) as MountHostHandle | undefined)
+}
 
 const passing = computed(() => checks.value.filter(check => check.state === 'pass').length)
 const blocking = computed(() => checks.value.filter(check => check.state === 'fail'))
@@ -99,7 +129,7 @@ function describeAck(result: ContractResult<CueAck>): string {
   return `handled=${result.value.handled} nonce=${result.value.nonce}`
 }
 
-async function send(cues: unknown[]): Promise<ContractResult<CueAck>> {
+async function send(cues: unknown[], address?: { surface: RendererMountSurfaceKind, purpose: RendererMountPurpose }): Promise<ContractResult<CueAck>> {
   const current = adapter.value
   if (!current)
     throw new Error('no adapter')
@@ -107,7 +137,9 @@ async function send(cues: unknown[]): Promise<ContractResult<CueAck>> {
     cues,
     source: CueSource.HOST,
     override: true,
-    target: { modelDriverId: STUB_DRIVER_ID },
+    // `surface`/`purpose` are an AND filter and an absent member means "any", so an unaddressed send is the
+    // length-0 filter the other checks want and a two-mount probe passes one pair.
+    target: { modelDriverId: STUB_DRIVER_ID, ...address },
   } as never)
   if (!receipt.ok)
     return receipt
@@ -133,19 +165,28 @@ async function runSpike() {
     return
 
   // D-1: five mounts, five registry-issued ids.
-  const state = await current.hostState()
-  const mounts = state.rows[STUB_DRIVER_ID] ?? []
-  say(`Host reports ${mounts.length} row(s) for the stub driver.`)
-  mark('D-1', Object.keys(mountReadiness.value).length >= 5 ? 'pass' : 'fail', `Mounts reporting: ${Object.keys(mountReadiness.value).join(', ') || '(none)'}`)
+  //
+  // The host state carries no mount table — it is `drivers`, the **model** row cache, rejections, legacy retention
+  // and a background-window flag — so the question "how many mounts does the host think it has" has no answer to
+  // read here. What this page can attest is one `state-change` stream per mount, each reporting for the id the
+  // registry issued at registration, which is the claim D-1 makes: five independently addressed mounts rather
+  // than five renderings of one.
+  const reporting = Object.keys(mountReadiness.value)
+  const ids = SURFACES.map(entry => `${entry.key}:${mountHosts.get(entry.key)?.mountId ?? '(none)'}`)
+  mark('D-1', reporting.length >= 5 ? 'pass' : 'fail', `Mounts reporting: ${reporting.join(', ') || '(none)'} · registry ids ${ids.join(' ')}`)
 
-  // D-13: capture settles with bytes.
+  // D-13: capture settles with bytes — and with the format the ack declares, not just a length.
   const captured = await send([{ kind: CueKind.CAPTURE }])
   if (captured.ok) {
     const slot = captured.value.results[0]
-    const bytes = slot?.status === 'resolved' && slot.value.kind === CueKind.CAPTURE
-      ? slot.value.data.byteLength
-      : 0
-    mark('D-13', bytes > 0 ? 'pass' : 'fail', `${describeAck(captured)}; ${bytes} byte(s) of image data`)
+    if (slot?.status === 'resolved' && slot.value.kind === CueKind.CAPTURE) {
+      const { mime, width, height, data } = slot.value
+      const shaped = mime.length > 0 && width > 0 && height > 0 && data.byteLength > 0
+      mark('D-13', shaped ? 'pass' : 'fail', `${describeAck(captured)}; ${mime} ${width}×${height}, ${data.byteLength} byte(s) in the ack`)
+    }
+    else {
+      mark('D-13', 'fail', `${describeAck(captured)}; the first slot is not a capture result`)
+    }
   }
   else {
     mark('D-13', 'fail', captured.error.message)
@@ -164,17 +205,78 @@ async function runSpike() {
     mark('D-10', 'fail', 'The driver published nothing and enumerated nothing: a prompt-capable driver must do both.')
   }
 
+  // D-1b: the mandatory two-mount case — the obligation a singleton breaks silently.
+  //
+  // Both mounts already hold `MODEL` above (the page passes the same `:model` to all five), which is exactly the
+  // case the plan calls mandatory. What has to be shown is that a **cue addressed at one arrives at one**: address
+  // a load at `acting/acting`, then read what each mount recorded.
+  //
+  // The observable is `received`, not `modelIds`: re-loading a model both mounts already hold adds nothing to
+  // `modelIds` (the fixture dedupes), and an id the fixture does not enumerate is refused by the *driver* with
+  // `ASSET_MISSING` before the addressing question is even asked — the first version of this probe used one and
+  // therefore measured the wrong thing.
+  const session = stubSession(STUB_DRIVER_ID)
+  const acting = session?.mounts.find(mount =>
+    mount.surface === RendererMountSurfaceKind.ACTING && mount.purpose === RendererMountPurpose.ACTING)
+  const preview = session?.mounts.find(mount =>
+    mount.surface === RendererMountSurfaceKind.PREVIEW && mount.purpose === RendererMountPurpose.PREVIEW)
+  if (!session || !acting || !preview) {
+    mark('D-1b', 'fail', `No acting+preview pair in this window's stub session (${session ? `${session.mounts.length} mount(s)` : 'no session'})`)
+  }
+  else {
+    const actingBefore = acting.received.length
+    const previewBefore = preview.received.length
+    const addressed = await send(
+      [{ kind: CueKind.LOAD, modelId: MODEL.modelId, profileId: MODEL.profileId }],
+      { surface: RendererMountSurfaceKind.ACTING, purpose: RendererMountPurpose.ACTING },
+    )
+    const reachedActing = acting.received.length === actingBefore + 1
+    const leftPreview = preview.received.length === previewBefore
+    const handled = addressed.ok && addressed.value.handled
+    mark('D-1b', handled && reachedActing && leftPreview ? 'pass' : 'fail', `${describeAck(addressed)}; acting received ${acting.received.length - actingBefore} envelope(s), preview ${preview.received.length - previewBefore} (of ${previewBefore} already)`)
+  }
+
+  // D-4/D-4b: the declared queries, called through the host's own handle.
+  probeQueryRoute()
+
+  // The row cache is written *by* the pull above, so reading it before the pull can only report the empty cache a
+  // fresh window starts with — not a driver that enumerated nothing (P1-D20: `rows` means "the cache was just
+  // written", a pull means "re-read the authority"). Reading it afterwards is what makes the number an observation.
+  const state = await current.hostState()
+  const cached = state.rows[STUB_DRIVER_ID] ?? []
+  say(`Host row cache for the stub driver: ${cached.length} model(s) after the pull${cached.length > 0 ? ` — ${cached.map(row => row.modelId).join(', ')}` : ''}.`)
+
+  say(`Verdicts: ${checks.value.map(check => `${check.id}=${check.state}`).join(' ')}`)
   say('Spike run complete. D-3 and D-2 stay "attention": the stub never emits them, so their shape is confirmed by the contract and unproven by this fixture.')
 }
 
 /**
- * The two declared queries are *reachable* through the component's `defineExpose` (a synchronous member on the
- * mounted instance, which is the shape VRM gives it). This page does not keep instance handles to call them: it
- * marks them in the report as the route being present, and leaves the answer's fidelity to the first real driver.
+ * Call the two declared queries through the host's handle, rather than recording that the route exists.
+ *
+ * `MountHost` exposes `occupiesPoint`/`hitTest` as synchronous members that delegate to the mounted renderer, which
+ * is the call shape VRM needs (a click-through test cannot wait a frame). The stub answers from a rectangle, so
+ * each query is asked twice — once inside it and once outside — and it is the *pair* that is evidence: a stub that
+ * returned `true` unconditionally would pass the first call alone.
  */
-function confirmQueryRoute() {
-  mark('D-4', 'attention', 'occupiesPoint is exposed synchronously on the mounted component; this page does not hold the handle to call it')
-  mark('D-4b', 'attention', 'hitTest is exposed on the same component; the stub would answer from a rectangle, so the route is what is being checked')
+function probeQueryRoute() {
+  const host = mountHosts.get('acting')
+  if (!host) {
+    mark('D-4', 'fail', 'No handle for the acting mount: MountHost exposes nothing to call')
+    mark('D-4b', 'fail', 'No handle for the acting mount: MountHost exposes nothing to call')
+    return
+  }
+
+  const inside: RendererMountPoint = { x: 12, y: 24 }
+  const outside: RendererMountPoint = { x: -1, y: 24 }
+  const occupiedInside = host.occupiesPoint(inside)
+  const occupiedOutside = host.occupiesPoint(outside)
+  const areaInside = host.hitTest(inside)
+  const areaOutside = host.hitTest(outside)
+
+  mark('D-4', occupiedInside && !occupiedOutside ? 'pass' : 'fail', `occupiesPoint (${inside.x},${inside.y})=${occupiedInside}, (${outside.x},${outside.y})=${occupiedOutside} — synchronous through the host handle`)
+
+  const describeArea = (area: RendererMountHitArea | null) => area ? `${area.areaId}/${area.name}` : 'null'
+  mark('D-4b', areaInside && !areaOutside ? 'pass' : 'fail', `hitTest inside=${describeArea(areaInside)}, outside=${describeArea(areaOutside)}`)
 }
 
 function onReadiness(key: string, state: string) {
@@ -213,8 +315,8 @@ onUnmounted(() => {
           <button type="button" class="rounded bg-neutral-800 px-2 py-1 text-xs" @click="runSpike">
             Run spike
           </button>
-          <button type="button" class="rounded bg-neutral-800 px-2 py-1 text-xs" @click="confirmQueryRoute">
-            Confirm query route
+          <button type="button" class="rounded bg-neutral-800 px-2 py-1 text-xs" @click="probeQueryRoute">
+            Probe query route
           </button>
         </div>
       </header>
@@ -232,6 +334,7 @@ onUnmounted(() => {
             <div class="h-40">
               <MountHost
                 v-if="adapter"
+                :ref="(element) => onMountRef(entry.key, element)"
                 :adapter="adapter"
                 :driver-id="STUB_DRIVER_ID"
                 :surface="entry.surface"

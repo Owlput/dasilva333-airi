@@ -15,6 +15,7 @@ import {
 import { CapabilityDiscoveryMode } from './contract/manifest'
 import { RendererMountInteractionMode } from './contract/renderer-mount'
 import {
+  ContractFailureCode,
   isReady,
   MODEL_DRIVER_CONTRACT_VERSION,
   READINESS_TRANSITIONS,
@@ -442,5 +443,53 @@ describe('readiness', () => {
   it('declares every state in the transition table', () => {
     expect(Object.keys(READINESS_TRANSITIONS).sort()).toEqual(Object.values(RendererMountReadinessState).sort())
     expect(CUE_TRANSACTION_STATE_VALUES.size).toBe(7)
+  })
+})
+
+describe('the guards behind a refused shape', () => {
+  it('refuses a readiness pair naming a state the vocabulary does not contain', () => {
+    // The matrix above walks the declared states. A value from outside the enum is a different failure: the machine
+    // cannot be consulted about it at all, which is why this refusal is not "an undeclared transition".
+    const refused = assertReadinessTransition('hovering' as never, RendererMountReadinessState.UNMOUNTED)
+
+    expect(refused.ok).toBe(false)
+    if (refused.ok)
+      return
+    expect(refused.error.message).toContain('Unknown readiness state')
+    expect(refused.error.message).toContain('hovering')
+  })
+
+  it('refuses a negative publication version instead of accepting any number', () => {
+    // A version is monotonic and driver-minted; a negative one would silently lose to every real publication and
+    // look like a stale driver rather than a broken one.
+    const refused = validatePromptPublication({
+      modelDriverId: 'ai.moeru.airi.test.stub',
+      modelId: 'model_a',
+      profileId: 'profile_a',
+      text: '',
+      tokens: [],
+      version: -1,
+      publishedAt: 10,
+    })
+
+    expect(refused.ok).toBe(false)
+    if (refused.ok)
+      return
+    expect(refused.error.code).toBe(ContractFailureCode.INVALID_PACKAGE)
+    expect(refused.error.message).toContain('non-negative number minted by the driver')
+  })
+
+  it('refuses a withdrawal request that is not an object, naming the root path', () => {
+    for (const value of [null, 'abort', 7]) {
+      const refused = validateWithdrawalRequest(value)
+
+      expect(refused.ok).toBe(false)
+      if (refused.ok)
+        continue
+      expect(refused.error.code).toBe(ContractFailureCode.INVALID_ENVELOPE)
+      expect(refused.error.message).toContain('got a non-object')
+      // The path is the point of this helper: a caller gets `$`, not an empty issue list.
+      expect((refused.error.details as { issues?: Array<{ path: string }> })?.issues?.[0]?.path).toBe('$')
+    }
   })
 })
