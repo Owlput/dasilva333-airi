@@ -23,6 +23,7 @@ import {
   CueRejection,
   CueSource,
   LEGACY_HANDOVER_SCHEMA_VERSION,
+  RendererMountPurpose,
   RendererMountReadinessState,
 } from '../contract'
 import { createTestHost, envelope, unwrap } from './testing/harness'
@@ -118,7 +119,7 @@ describe('stub driver through the host', () => {
       cues: [{ kind: CueKind.LOAD, modelId: DEMO_MODEL.modelId, profileId: DEMO_MODEL.profileId }, { kind: CueKind.VIEW, pointOfInterestId: 'face' }],
       source: CueSource.HOST,
       override: false,
-      target: { modelDriverId: STUB_DRIVER_ID, purpose: 'acting' },
+      target: { modelDriverId: STUB_DRIVER_ID, purpose: RendererMountPurpose.ACTING },
     } as never))
     const settled = unwrap(await receipt.settled)
 
@@ -139,7 +140,7 @@ describe('stub driver through the host', () => {
       cues: [{ kind: CueKind.CAPTURE }],
       source: CueSource.HOST,
       override: false,
-      target: { modelDriverId: STUB_DRIVER_ID, purpose: 'acting' },
+      target: { modelDriverId: STUB_DRIVER_ID, purpose: RendererMountPurpose.ACTING },
     }))
     const settled = unwrap(await receipt.settled)
     const slot = settled.results[0]

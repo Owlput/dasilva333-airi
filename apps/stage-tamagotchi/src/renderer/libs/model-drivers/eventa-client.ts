@@ -14,6 +14,7 @@
  *     shape satisfies the interface's `ContractResult` directly, so there is nothing to rebuild.
  *   - **a pushed event has an envelope.** `context.on` hands over `{ body }`; the client hands over the body.
  */
+import type { EventContext } from '@moeru/eventa'
 import type { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import type { HostClient } from '@proj-airi/stage-renderer-sdk'
 
@@ -41,8 +42,17 @@ import {
 
 export type RendererEventContext = ReturnType<typeof createContext>['context']
 
+/**
+ * The eventa context this client needs: any adapter's, not one transport's.
+ *
+ * Typed against eventa's generic context on purpose. The contract is the app's, the adapter is the build's — Electron
+ * today, `broadcast-channel` or `event-target` for Web/Pocket (P2-D13) — and the client itself never learns which one
+ * it is talking to. Narrowing this back to `RendererEventContext` would make a second transport a second client.
+ */
+export type HostClientContext = EventContext<any, any>
+
 /** The host client, over the typed IPC this app ships. */
-export function createEventaHostClient(context: RendererEventContext): HostClient {
+export function createEventaHostClient(context: HostClientContext): HostClient {
   const identify = defineInvoke(context, modelDriverIdentifyInvokeEventa)
   const registerMount = defineInvoke(context, modelDriverRegisterMountInvokeEventa)
   const unregisterMount = defineInvoke(context, modelDriverUnregisterMountInvokeEventa)

@@ -222,44 +222,44 @@ spike cannot certify a shape it never exercises. Everything else it can reach, i
 
 ### P2-D15 — What this session could and could not execute
 
-The workspace has no `node_modules` (P1-D12, P1-D17), so `tsc` and `vitest` cannot run here at all — `vue` and every
-other dependency are absent, so even the fallback runner can only load files that import nothing outside this
-repository. What was executed:
+`vitest` cannot start in this environment and never could here: Vite bundles `vitest.config.ts` with `esbuild`, and the
+sandbox refuses the esbuild service spawn (`spawn EPERM`) before a single suite is loaded — so no `--pool` or reporter
+flag helps. The dependencies were installed part-way through the phase, which changed what *can* be run: `tsc` and
+`vue-tsc` need no child process, so the typechecks ran and are now part of the evidence rather than a gap. What was
+executed:
 
 - **the SDK's 17 suites through the committed fallback runner** (`node --experimental-transform-types
   scripts/run-suites.mjs`, from `packages/stage-renderer-sdk`): **17 suites, 269 tests, 0 failed**. That is the
   Phase 1 nine suites (193) plus this phase's eight — `core/binding.test.ts`, `core/prompt-service.test.ts`,
   `prompt-flow.test.ts`, `pointer.test.ts`, `transport.test.ts`, `storage.test.ts`, `entry.test.ts` and
   `stub-driver.test.ts` — plus six cases added inside the existing adapter suite (11 → 17);
-- **the stage-ui model-driver suites through the same runner**, given explicit paths: `node
-  --experimental-transform-types --no-warnings packages/stage-renderer-sdk/scripts/run-suites.mjs
-  packages/stage-ui/src/libs/model-drivers/{binding,prompt,migration}.test.ts` — **3 suites, 33 tests, 0 failed**
-  (10 + 7 + 16). Those modules import only the SDK and each other, so the runner's `vitest` shim is enough; a
-  stage-ui suite that needs Vue, Pinia or `@/` cannot run this way and says so by failing to resolve.
-  Executing them was worth it rather than ritual: **two defects surfaced that review had missed** — `withCardBinding`
-  dropped the card's existing snapshot on a rebind that carried none, contradicting its own documented rule (fixed
-  by carrying the card's copy forward; `classifyPromptPair` already reads such a snapshot as `foreign` for the new
-  binding, so it cannot leak into another model's prompt), and the quota-park scenario seeded the fake's
-  `failImport` flag while also expecting its second import to succeed, which parked both models (test fixed, not
-  the service). Both were invisible to `node --check`, which only proves a file parses;
-- **a type-only import sweep**, because `tsc` is unavailable and `import type` is erased before the suites run:
-  every changed file's relative and `@/` imports were resolved to a real module and every named import checked
-  against the target's exports. It found three imports of `RendererMountComponentModule`/`RendererMountProps` from
-  `contract/components`, where they do not live (they are in `contract/renderer-mount`) — a `TS2305` that no suite
-  could have failed on. Fixed, sweep clean over 34 changed files. This is a substitute for the typecheck, not a
-  replacement: it proves imports resolve and names exist, nothing about assignability;
-- **the Vue components' script blocks**, likewise: the eight `.vue` files this phase adds (the mount host, the panel
-  and picker frames, AIRI's picker, the unavailable view, the migration screen, the arbitration dialog, the spike page)
-  were extracted and parsed with Node's TypeScript transform. That catches a syntax error and nothing else — no
-  template, no props/emit agreement, no assignability — and it is stated as that rather than as a Vue build;
-- **the architecture guards**: `node scripts/assert-model-driver-guards.mjs` green over 1,994 files (7 guards).
+- **the stage-ui and app model-driver suites through the same runner**, given explicit paths: **5 suites, 42 tests,
+  0 failed** — the three stage-ui suites (33) and the two app suites this phase added for the IPC contract (9). The
+  app suites open a real `broadcast-channel` eventa pair per test, so the runner gained `beforeEach`/`afterEach`;
+  they are the first suites in this repository to exercise a model-driver contract over a transport that is not
+  Electron. Executing all of them was worth it rather than ritual: **two product/test defects surfaced that review had
+  missed** — `withCardBinding` dropped the card's existing snapshot on a rebind that carried none, contradicting its
+  own documented rule (fixed by carrying the card's copy forward; `classifyPromptPair` already reads such a snapshot as
+  `foreign` for the new binding, so it cannot leak into another model's prompt), and the quota-park scenario seeded the
+  fake's `failImport` flag while also expecting its second import to succeed, which parked both models (test fixed,
+  not the service). Both were invisible to `node --check`, which only proves a file parses;
+- **three typechecks, all clean**: `tsc --noEmit` in `packages/stage-renderer-sdk`, `vue-tsc --noEmit` in
+  `packages/stage-ui`, and the app's `typecheck:node` + `typecheck:web`. This is where the phase's deepest defects were
+  found, because `import type` and Vue prop declarations are erased before any suite runs: `RendererMountPoint`
+  imported from a module that only declares it (TS2459); the fixture's mount/panel/picker declared `String`/`Object`
+  props where the contract wants an enum or `HostServices`, which made all three components unassignable to their
+  contract types behind a cast; `MountHost` sending `kind: 'load'` as a string where `CueKind.LOAD` is required;
+  an unused `active` computed in the panel frame; and contract-failure codes written as string literals in the
+  migration suite instead of the enum. Ten errors in total, none reachable by a runtime suite;
+- **`node scripts/assert-main-dom-free.mjs`**, which Phase 1 recorded as unrunnable: it needs `typescript`, and now
+  that it is installed the assertion runs — **147 modules reachable from the main entry, no renderer runtime module
+  among them**, with two main-side aliases it cannot follow named explicitly. Phase 1's bundle claim is verified for
+  this tree, not merely carried forward;
+- **the architecture guards**: `node scripts/assert-model-driver-guards.mjs` green over 1,995 files (7 guards).
 
-What is **owed and not claimed**: `pnpm -F @proj-airi/stage-renderer-sdk typecheck`, the stage-ui typecheck, both app
-typechecks, and the VRM spike page by hand. `node scripts/assert-main-dom-free.mjs` also cannot run here — it imports
-`typescript` for module resolution, and that package is not installed — so Phase 1's bundle assertion is **unverified
-this phase** rather than re-run; nothing this phase added to a main-process import path imports a renderer module (the
-new host-core modules are pure TS, and the fixture's Vue components are behind `./testing/components`, which main never
-imports). The plan's §5.8 evidence table records each criterion's state against exactly this list.
+What is **owed and not claimed**: `vitest` itself (the sandbox blocks it, so the fallback runner remains the evidence
+for every suite above), `node scripts/audit-test-catalog.mjs` (it shells out through `cmd.exe`, denied here), and the
+VRM spike page by hand. The plan's §5.8 evidence table records each criterion's state against exactly this list.
 
 ### P2-D16 — Pointer input: one conversion, in the window that owns the element
 
@@ -304,3 +304,38 @@ proves the container a driver is activated with receives the adapter's own hub.
 **Not claimed:** `MountHost.vue`'s listeners and `getBoundingClientRect` are not executed by any suite here — a Node
 suite has no DOM — so the wiring at the element is review and the dev spike page, while everything it delegates to is
 asserted.
+
+### P2-D17 — The IPC half is a transport-agnostic table, so the mapping is testable
+
+The review question that produced this decision was blunt: *are these invokes testable, or is the only way to exercise
+them a running Electron app?* The answer was the latter, and the fix was not a new abstraction layer — eventa already
+is the abstraction, and this repository already uses seven of its adapters (`electron/main`, `electron/renderer`,
+`broadcast-channel`, `event-target`, `webworkers`, `webworkers/worker`, `websocket/native`). A hand-rolled
+`Transport` interface beside it would have been a second, weaker copy of the same idea.
+
+Three changes, each with the same shape — move the decision behind a value the test can supply:
+
+1. **The invoke table is its own module.** `apps/stage-tamagotchi/src/main/services/model-drivers/handlers.ts` holds
+   the thirteen `defineInvokeHandler` registrations, parameterised by `resolveSender` (which window sent this) and
+   `control` (the host service). The composition root keeps what only it can do: `webContents` → window id, the push
+   transport, `state.json`, window-closed. `resolveIpcSender` is exported and pure, so the Electron-specific
+   `raw.ipcMainEvent.sender` extraction is asserted directly, including its absence.
+2. **The client is typed against eventa's generic context**, not `ReturnType<typeof createContext>['context']` from
+   `electron/renderer`. `HostClientContext = EventContext<any, any>` means the same client can be constructed over a
+   `broadcast-channel`, `event-target` or worker context — which is what Web/Pocket (P2-D13) needs, and what makes the
+   suite real rather than mocked.
+3. **The fixture components declare their contract types.** `String as PropType<RendererMountPurpose>` and
+   `Object as PropType<HostServices>` instead of bare `String`/`Object`: a bare declaration resolves the prop to
+   `string`, which silently made the stub mount/panel/picker unassignable to `RendererMountComponent`,
+   `ModelDriverPanelComponent` and `ModelPickerComponent` — hidden by a cast until `tsc` ran.
+
+**What this buys.** Both sides of the contract now run against a real transport in Node: `handlers.test.ts` drives the
+table with a fake service and asserts sender attribution, payload pass-through and the `INTERNAL` / `shutting-down`
+refusals; `eventa-client.test.ts` drives all thirteen invokes and four pushes through `createEventaHostClient`. A
+mistyped channel name fails a test instead of hanging an invoke nobody made in development.
+
+**What it does not buy.** The section that decides *which* `webContents` is a window (`windowIdOf(sender.id)`) and the
+push transport (`emitTo` → `createContext(ipcMain, window)`) are still Electron-bound and unpinned; they are small, and
+pinning them would mean mocking `BrowserWindow`, which is a worse trade than leaving them to the manual smoke list.
+The app suite remains the honest boundary: the table is tested, the process plumbing is reviewed.
+

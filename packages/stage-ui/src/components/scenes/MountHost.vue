@@ -27,7 +27,6 @@
 import type {
   ContractFailure,
   CueEnvelopeInput,
-  CueKind,
   ModelDriverAdapter,
   ModelDriverId,
   OperationNonce,
@@ -44,6 +43,7 @@ import type { RawPointerEvent } from '@proj-airi/stage-renderer-sdk/host'
 
 import {
   ContractFailureCode,
+  CueKind,
   CueSource,
   RendererMountReadinessState as Readiness,
   RendererPointerPhase,
@@ -256,7 +256,7 @@ async function loadModelIfReady(state: RendererMountReadinessState) {
 
   loadedModelId = key
   const envelope: CueEnvelopeInput = {
-    cues: [{ kind: 'load', modelId: model.modelId, profileId: model.profileId }],
+    cues: [{ kind: CueKind.LOAD, modelId: model.modelId, profileId: model.profileId }],
     source: CueSource.HOST,
     override: true,
     target: { modelDriverId: props.driverId, surface: props.surface, purpose: props.purpose },

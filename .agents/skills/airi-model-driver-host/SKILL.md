@@ -97,19 +97,32 @@ change that fixes its violation (the check fails on a stale entry).
 
 ```bash
 # the contract, adapter, host core, host service, host UI logic and the fixture
-pnpm -F @proj-airi/stage-renderer-sdk test      # 16 suites / 254 tests at Phase 2
+pnpm -F @proj-airi/stage-renderer-sdk test      # 17 suites / 269 tests
 pnpm -F @proj-airi/stage-renderer-sdk typecheck
 pnpm -F @proj-airi/stage-ui typecheck
+pnpm -F @proj-airi/stage-tamagotchi typecheck   # node + web (vue-tsc)
 node scripts/assert-model-driver-guards.mjs
 node scripts/assert-main-dom-free.mjs
 ```
 
-If `vitest` cannot start (sandbox without child-process stdio), the package ships
-`pnpm -F @proj-airi/stage-renderer-sdk test:fallback`, which runs the same suites without Vite. A suite needing
-`vi.fn`, snapshots or module mocks cannot run there — that is the intended signal, not a bug to work around.
+The IPC contract has two suites in the app that run over a real `broadcast-channel` eventa pair, so neither needs
+Electron: `src/main/services/model-drivers/handlers.test.ts` (the invoke table) and
+`src/renderer/libs/model-drivers/eventa-client.test.ts` (the `HostClient` mapping). Run them from the repo root:
 
-Manual smoke that no suite replaces: the Electron eventa hop, `webContents` identity, `state.json` on disk, the
-shared background window, and the dev routes (`/devtools/model-driver-stub`, `/devtools/model-driver-vrm-spike`).
+```bash
+node --experimental-transform-types --no-warnings packages/stage-renderer-sdk/scripts/run-suites.mjs \
+  apps/stage-tamagotchi/src/main/services/model-drivers/handlers.test.ts \
+  apps/stage-tamagotchi/src/renderer/libs/model-drivers/eventa-client.test.ts
+```
+
+If `vitest` cannot start (sandbox without child-process stdio), the package ships
+`pnpm -F @proj-airi/stage-renderer-sdk test:fallback`, which runs the same suites — any suite in the repository, given
+its path — without Vite or esbuild. It now supports `beforeEach`/`afterEach`. A suite needing `vi.fn`, snapshots or
+module mocks cannot run there — that is the intended signal, not a bug to work around.
+
+Manual smoke that no suite replaces: the Electron eventa hop (`webContents` identity, `emitTo`, `state.json` on disk),
+the shared background window, and the dev routes (`/devtools/model-driver-stub`,
+`/devtools/model-driver-vrm-spike`).
 
 ## Pitfalls seen in practice
 
@@ -123,3 +136,10 @@ shared background window, and the dev routes (`/devtools/model-driver-stub`, `/d
   every Node suite.
 - Two windows in one process share module state: the in-process harness passes its session via a callback, never a
   module map (P1-D29).
+- The model-driver invokes are a **table** (`services/model-drivers/handlers.ts`) with `resolveSender` and the service
+  injected, not fourteen closures inside the composition root: closing over `ipcMain`/`webContents` there is what makes
+  the mapping reachable only from a running app (P2-D17).
+- Type the eventa client against `EventContext<any, any>`, not the Electron renderer's context type, or a second
+  transport means a second client (P2-D17).
+- A Vue prop declared as bare `String`/`Object` resolves to `string`/`Record<string, any>`, so a component whose
+  contract wants an enum or `HostServices` silently becomes unassignable — use `PropType<T>` (P2-D17).

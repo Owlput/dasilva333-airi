@@ -52,8 +52,6 @@ const error = ref<string>()
 
 const services = computed<HostServices | undefined>(() => props.adapter.servicesFor(props.driverId))
 
-const active = computed(() => declarations.value.find(declaration => declaration.id === activeId.value))
-
 const panelProps = computed<ModelDriverPanelProps | undefined>(() => {
   if (!services.value)
     return undefined

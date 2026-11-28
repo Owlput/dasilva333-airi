@@ -18,11 +18,11 @@ import { isDeepStrictEqual } from 'node:util'
 /** Print each test before it runs, so a suite that hangs names itself instead of the run ending silently. */
 const verbose = Boolean(process.env.SDK_SUITE_VERBOSE)
 
-const root = { name: '', parent: null, children: [], tests: [] }
+const root = { name: '', parent: null, children: [], tests: [], beforeEach: [], afterEach: [] }
 let node = root
 
 export function describe(name, body) {
-  const child = { name, parent: node, children: [], tests: [] }
+  const child = { name, parent: node, children: [], tests: [], beforeEach: [], afterEach: [] }
   node.children.push(child)
   const previous = node
   node = child
@@ -39,6 +39,21 @@ export function it(name, body) {
 }
 
 export const test = it
+
+/**
+ * Hooks, scoped to the suite that declares them (and its descendants), as vitest scopes them.
+ *
+ * Needed by the app's IPC contract suites, which open a transport per test and must close it even when an assertion
+ * fails — an undisposed `BroadcastChannel` keeps the process alive, so a leaked pair hangs the run instead of failing
+ * it. Registration is collected per suite; `runAll` applies ancestors outermost-first and unwinds innermost-first.
+ */
+export function beforeEach(body) {
+  node.beforeEach.push(body)
+}
+
+export function afterEach(body) {
+  node.afterEach.push(body)
+}
 
 export class AssertionError extends Error {}
 
@@ -189,17 +204,39 @@ export const results = { passed: 0, failed: [] }
 
 /** Run every registered suite in declaration order and collect what failed. */
 export async function runAll() {
+  /** Hooks from the root down to `suite`, so a nested suite inherits what its parent declared. */
+  const hooksOf = (suite, key) => {
+    const chain = []
+    for (let cursor = suite; cursor; cursor = cursor.parent)
+      chain.unshift(cursor)
+    return chain.flatMap(entry => entry[key])
+  }
+
   const walk = async (suite, path) => {
     const title = path.concat(suite.name ? [suite.name] : []).join(' > ')
     for (const test of suite.tests) {
       if (verbose)
         console.info(`  ${title} > ${test.name}`)
       try {
+        for (const hook of hooksOf(suite, 'beforeEach'))
+          await hook()
         await test.body()
         results.passed += 1
       }
       catch (error) {
         results.failed.push({ title: `${title} > ${test.name}`, error })
+      }
+      finally {
+        // Innermost first, so teardown can rely on what its parent set up. A hook that throws is reported as a
+        // failure of this test rather than aborting the run.
+        for (const hook of hooksOf(suite, 'afterEach').reverse()) {
+          try {
+            await hook()
+          }
+          catch (error) {
+            results.failed.push({ title: `${title} > ${test.name} > afterEach`, error })
+          }
+        }
       }
     }
     for (const child of suite.children)

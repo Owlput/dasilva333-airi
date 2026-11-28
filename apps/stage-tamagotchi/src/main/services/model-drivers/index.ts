@@ -21,17 +21,12 @@ import type {
   DriverTableEntry,
   ModelDriverHostPush,
 } from '@proj-airi/stage-renderer-sdk/host'
-import type { WebContents } from 'electron'
 
-import type { ModelDriverFailure, ModelDriverHostState } from '../../../shared/model-drivers-eventa'
+import type { ModelDriverHostState } from '../../../shared/model-drivers-eventa'
+import type { InvokeSender } from './handlers'
 import type { ModelDriverStateStore } from './state-store'
 
-import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
-import {
-  ContractFailureCode,
-  MountRegistrationRefusal,
-} from '@proj-airi/stage-renderer-sdk'
 import {
   createConsoleLogger,
   createModelDriverHostService as createHostService,
@@ -40,23 +35,11 @@ import { app, BrowserWindow, ipcMain, webContents } from 'electron'
 
 import {
   modelDriverCueSettledEventa,
-  modelDriverDeliverPromptResolutionInvokeEventa,
-  modelDriverEntryResultInvokeEventa,
-  modelDriverIdentifyInvokeEventa,
   modelDriverManagerMessageEventa,
-  modelDriverManagerMessageInvokeEventa,
-  modelDriverMountReadinessInvokeEventa,
   modelDriverOpenEntryEventa,
   modelDriverPromptResolutionEventa,
-  modelDriverPullRowsInvokeEventa,
-  modelDriverRegisterMountInvokeEventa,
-  modelDriverResolveEntrypointInvokeEventa,
-  modelDriverSetEnabledInvokeEventa,
-  modelDriverStateInvokeEventa,
-  modelDriverSubmitCueInvokeEventa,
-  modelDriverUnregisterMountInvokeEventa,
-  modelDriverWithdrawCuesInvokeEventa,
 } from '../../../shared/model-drivers-eventa'
+import { registerModelDriverHandlers, resolveIpcSender } from './handlers'
 
 /**
  * The shape of the app's global main-process context.
@@ -113,19 +96,15 @@ export function createModelDriverHostService(options: ModelDriverHostServiceOpti
   const windowIdOf = modelDriverWindowId
 
   /**
-   * The sender of an invoke.
+   * The sender of an invoke, as the handler table wants it.
    *
-   * Every handler below resolves the acting window this way and never from the payload: a renderer must not
-   * be able to send a cue as another window or register a mount in one (§4.3).
+   * Every window-scoped handler resolves the acting window this way and never from the payload: a renderer must not
+   * be able to send a cue as another window or register a mount in one (§4.3). The extraction itself lives in
+   * `./handlers.ts` so it can be asserted without Electron; this is only the app's `webContents` interpretation.
    */
-  const senderOf = (handlerOptions: unknown): WebContents | undefined => {
-    const patched = handlerOptions as { raw?: { ipcMainEvent?: { sender?: WebContents } } } | undefined
-    return patched?.raw?.ipcMainEvent?.sender
-  }
-
-  const senderWindowId = (handlerOptions: unknown): string | undefined => {
-    const sender = senderOf(handlerOptions)
-    return sender && !sender.isDestroyed() ? windowIdOf(sender.id) : undefined
+  const resolveSender = (handlerOptions: unknown): InvokeSender | undefined => {
+    const sender = resolveIpcSender(handlerOptions)
+    return sender && !sender.isDestroyed() ? { windowId: windowIdOf(sender.id), tag: sender.id } : undefined
   }
 
   const windowOf = (windowId: string): BrowserWindow | undefined => {
@@ -237,89 +216,12 @@ export function createModelDriverHostService(options: ModelDriverHostServiceOpti
   // IPC
   // ---------------------------------------------------------------------------------------------
 
-  const fail = (error: { code: ContractFailureCode, message: string }): { ok: false, error: ModelDriverFailure } => ({
-    ok: false,
-    error: { code: error.code, message: error.message },
-  })
-
-  const noWindow = (what: string) => fail({
-    code: ContractFailureCode.INTERNAL,
-    message: `No window to attribute the ${what} to`,
-  })
-
-  defineInvokeHandler(options.context, modelDriverIdentifyInvokeEventa, async (_payload, handlerOptions) => {
-    const sender = senderOf(handlerOptions)
-    if (!sender || sender.isDestroyed())
-      return { windowId: '' }
-
-    const windowId = windowIdOf(sender.id)
-    registered.set(windowId, sender.id)
-    logger.debug('model-drivers', `Renderer \`${windowId}\` identified itself as able to host driver code`)
-    return { windowId }
-  })
-
-  defineInvokeHandler(options.context, modelDriverRegisterMountInvokeEventa, async (request, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    // A registration with no sender is not a window a mount can live in. Reported as a shutdown refusal
-    // because the mount-registration vocabulary has no better word and the case is not reachable over IPC.
-    if (!windowId)
-      return { ok: false, reason: MountRegistrationRefusal.SHUTTING_DOWN }
-
-    return service.registerMount(windowId, request)
-  })
-
-  defineInvokeHandler(options.context, modelDriverMountReadinessInvokeEventa, async (request, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('readiness report')
-
-    return service.reportReadiness(windowId, request)
-  })
-
-  defineInvokeHandler(options.context, modelDriverUnregisterMountInvokeEventa, async (request, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('unregistration')
-
-    return service.unregisterMount(windowId, request.mountId)
-  })
-
-  defineInvokeHandler(options.context, modelDriverSubmitCueInvokeEventa, async (payload, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('transaction')
-
-    return service.submitCue(windowId, payload.envelope, payload.options)
-  })
-
-  defineInvokeHandler(options.context, modelDriverWithdrawCuesInvokeEventa, async request => service.withdraw(request))
-  defineInvokeHandler(options.context, modelDriverResolveEntrypointInvokeEventa, async request => service.resolveEntrypoint(request))
-  defineInvokeHandler(options.context, modelDriverStateInvokeEventa, async () => service.snapshot())
-  defineInvokeHandler(options.context, modelDriverSetEnabledInvokeEventa, async request => service.setEnabled(request))
-  defineInvokeHandler(options.context, modelDriverPullRowsInvokeEventa, async request => service.pullRows(request))
-
-  defineInvokeHandler(options.context, modelDriverEntryResultInvokeEventa, async (payload, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('entry result')
-
-    return service.entryResult(windowId, payload)
-  })
-
-  defineInvokeHandler(options.context, modelDriverManagerMessageInvokeEventa, async (payload, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('manager message')
-
-    return service.managerMessage(windowId, payload)
-  })
-
-  defineInvokeHandler(options.context, modelDriverDeliverPromptResolutionInvokeEventa, async (payload, handlerOptions) => {
-    const windowId = senderWindowId(handlerOptions)
-    if (!windowId)
-      return noWindow('prompt resolution')
-
-    return service.deliverPromptResolution(windowId, payload)
+  registerModelDriverHandlers({
+    context: options.context,
+    control: service,
+    resolveSender,
+    onIdentified: sender => registered.set(sender.windowId, sender.tag),
+    logger,
   })
 
   // ---------------------------------------------------------------------------------------------

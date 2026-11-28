@@ -1,4 +1,14 @@
-import type { CueAck, CueEnvelope, RendererMountReadinessState } from '../../contract'
+import type { PropType } from 'vue'
+
+import type {
+  ContractResult,
+  CueAck,
+  CueEnvelope,
+  RendererMountInteractionMode,
+  RendererMountPurpose,
+  RendererMountReadinessState,
+  RendererMountSurfaceKind,
+} from '../../contract'
 /**
  * The stub fixture's renderer components: a mount, a panel and a picker (§4.8, §5.2, §5.6).
  *
@@ -11,8 +21,9 @@ import type { CueAck, CueEnvelope, RendererMountReadinessState } from '../../con
  * models and the handover state. That is also the shape a real driver has: its component reads the services and
  * state its own entry established, not a module the host hands it.
  */
-import type { ModelDriverPanelProps, ModelPickerProps } from '../../contract/components'
-import type { RendererMountProps } from '../../contract/renderer-mount'
+import type { ModelDriverPanelHostSurface, ModelDriverPanelProps, ModelPickerProps } from '../../contract/components'
+import type { HostServices } from '../../contract/host-services'
+import type { RendererMountProps, RendererQualityHint } from '../../contract/renderer-mount'
 import type { StubMount } from './stub-driver'
 
 import { defineComponent, h, onUnmounted, ref, watch } from 'vue'
@@ -29,13 +40,16 @@ export const StubMountComponent = defineComponent({
     modelDriverId: { type: String, required: false, default: undefined },
     mountId: { type: String, required: true },
     characterId: { type: String, required: false, default: undefined },
-    purpose: { type: String, required: true },
-    surface: { type: String, required: true },
+    // The enum-valued props are declared with their contract type rather than `String`: a Vue `String` prop resolves
+    // to `string`, which would make this component unassignable to `RendererMountComponent` and hide a real mismatch
+    // behind a cast (P2-D6).
+    purpose: { type: String as PropType<RendererMountPurpose>, required: true },
+    surface: { type: String as PropType<RendererMountSurfaceKind>, required: true },
     paused: { type: Boolean, required: true },
     visible: { type: Boolean, required: true },
     reducedMotion: { type: Boolean, required: false, default: false },
-    qualityHint: { type: String, required: false, default: undefined },
-    interactionMode: { type: String, required: false, default: undefined },
+    qualityHint: { type: String as PropType<RendererQualityHint>, required: false, default: undefined },
+    interactionMode: { type: String as PropType<RendererMountInteractionMode>, required: false, default: undefined },
   },
   emits: [
     'state-change',
@@ -87,7 +101,7 @@ export const StubMountComponent = defineComponent({
     })
 
     const mounted = {
-      async handle(envelope: CueEnvelope): Promise<CueAck> {
+      async handle(envelope: CueEnvelope): Promise<ContractResult<CueAck>> {
         const load = envelope.cues.find(cue => cue.kind === 'load')
         if (load && load.kind === 'load') {
           moveTo(Readiness.LOADING_MODEL)
@@ -96,7 +110,7 @@ export const StubMountComponent = defineComponent({
         }
         return mount
           ? mount.handle(envelope)
-          : { nonce: envelope.nonce, modelDriverId: props.modelDriverId ?? 'unknown', mountId: props.mountId, results: [], handled: false }
+          : { ok: true, value: { nonce: envelope.nonce, modelDriverId: props.modelDriverId ?? 'unknown', mountId: props.mountId, results: [], handled: false } }
       },
       occupiesPoint: (point: { x: number, y: number }) => mount?.occupiesPoint(point) ?? false,
       hitTest: (point: { x: number, y: number }) => mount?.hitTest(point) ?? null,
@@ -158,11 +172,11 @@ export const StubPanelComponent = defineComponent({
     modelId: { type: String, required: true },
     profileId: { type: String, required: false, default: undefined },
     mountId: { type: String, required: false, default: undefined },
-    surface: { type: String, required: true },
-    hostSurface: { type: String, required: true },
-    readiness: { type: String, required: true },
+    surface: { type: String as PropType<RendererMountSurfaceKind>, required: true },
+    hostSurface: { type: String as PropType<ModelDriverPanelHostSurface>, required: true },
+    readiness: { type: String as PropType<RendererMountReadinessState>, required: true },
     readOnly: { type: Boolean, required: false, default: false },
-    services: { type: Object, required: true },
+    services: { type: Object as PropType<HostServices>, required: true },
   },
   emits: [],
   setup(props) {
@@ -212,7 +226,7 @@ export const StubPickerComponent = defineComponent({
     characterId: { type: String, required: false, default: undefined },
     currentModelId: { type: String, required: false, default: undefined },
     currentProfileId: { type: String, required: false, default: undefined },
-    services: { type: Object, required: true },
+    services: { type: Object as PropType<HostServices>, required: true },
   },
   emits: ['select', 'cancel'],
   setup(props, { emit }) {

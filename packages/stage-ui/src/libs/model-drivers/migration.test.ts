@@ -7,6 +7,7 @@
  */
 import type { LegacyModelRow, MigrationPorts } from './migration'
 
+import { ContractFailureCode } from '@proj-airi/stage-renderer-sdk'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -67,14 +68,14 @@ function createPorts(overrides: Partial<MigrationPorts> = {}, state: Partial<Por
       if (holder.retain === false)
         return { ok: true, value: { retained: false } }
       if (holder.refuseMigrate)
-        return { ok: false, error: { code: 'invalid-package', message: 'refused' } }
+        return { ok: false, error: { code: ContractFailureCode.INVALID_PACKAGE, message: 'refused' } }
       holder.imported?.set(entry.legacyModelId, { modelId: entry.modelId, profileId: 'profile_1' })
       return { ok: true, value: { retained: true } }
     },
     importModel: async () => {
       calls.import += 1
       if (holder.failImport)
-        return { ok: false, error: { code: 'internal', message: 'quota exceeded' } }
+        return { ok: false, error: { code: ContractFailureCode.INTERNAL, message: 'quota exceeded' } }
       return { ok: true, value: undefined }
     },
     commit: async () => {
@@ -217,7 +218,7 @@ describe('a run', () => {
     ports.importModel = async (input) => {
       attempted += 1
       // Only the first model runs out of space; the second proves the run continued.
-      return attempted === 1 ? { ok: false, error: { code: 'internal', message: 'quota exceeded' } } : original(input)
+      return attempted === 1 ? { ok: false, error: { code: ContractFailureCode.INTERNAL, message: 'quota exceeded' } } : original(input)
     }
 
     const report = await runDriverMigration({ driverId: 'driver', mode: 'progressive', ports })

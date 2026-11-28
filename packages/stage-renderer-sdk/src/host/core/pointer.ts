@@ -24,7 +24,8 @@
  * This module is pure: no DOM, no Vue, no window. The element, the listeners and the measurement belong to the host UI
  * (`MountHost.vue`); everything that can be asserted about the conversion is assertable in Node.
  */
-import type { RendererMountPoint, RendererPointerEvent, RendererPointerService } from '../../contract/host-services'
+import type { RendererPointerEvent, RendererPointerService } from '../../contract/host-services'
+import type { RendererMountPoint } from '../../contract/shared'
 
 import {
   RendererPointerPhase,
