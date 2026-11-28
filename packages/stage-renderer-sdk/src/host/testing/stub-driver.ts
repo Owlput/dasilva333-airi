@@ -139,6 +139,13 @@ export interface StubDriverState {
   modelBundles: Map<ModelId, Blob>
   driverBundle?: Blob
   publications: Map<string, ModelPromptPublication>
+  /**
+   * Publications the **host handed back** through `HostPromptService.onResolution` (§5.4, D26).
+   *
+   * The driver's own record of what AIRI now holds: a seeded card copy and an arbitrated winner both arrive here,
+   * and the fixture continues its version numbering from them — which is exactly the obligation a real driver has.
+   */
+  resolutions: ModelPromptPublication[]
   /** The services each window was activated with, by window id. */
   services: Map<string, HostServices>
   activations: number
@@ -150,6 +157,14 @@ export interface StubDriverState {
     deliver?: ContractFailure
     confirmImport?: ContractFailure
     restore?: ContractFailure
+    migrate?: ContractFailure
+    /**
+     * Drop a handover instead of retaining it (D8's `retained: false`).
+     *
+     * The host must then write no migration marker and delete nothing, so the fixture has to be able to refuse by
+     * reporting rather than by failing.
+     */
+    retain?: false
     /**
      * Answer an ack that names another driver or another correlation.
      *
@@ -176,6 +191,7 @@ export function createStubDriverState(): StubDriverState {
     retained: new Map(),
     modelBundles: new Map(),
     publications: new Map(),
+    resolutions: [],
     services: new Map(),
     activations: 0,
     deactivations: 0,
@@ -501,6 +517,14 @@ export function createStubRendererHalf(options: StubRuntimeOptions): StubRendere
       if (options.windowId)
         state.services.set(options.windowId, injected)
 
+      // The host→driver half (D26): a seeded card copy or an arbitrated winner arrives here, is recorded in the
+      // driver's own history, and becomes the version its next publication continues from.
+      injected.prompt.onResolution(async (publication) => {
+        state.resolutions.push(publication)
+        state.publications.set(`${publication.modelId}/${publication.profileId}`, publication)
+        return ok(undefined)
+      })
+
       // A prompt-capable driver MUST publish at least once per model and profile once activated (D5).
       if (publishOnActivate) {
         for (const model of state.models.values()) {
@@ -545,6 +569,14 @@ export function createStubRendererHalf(options: StubRuntimeOptions): StubRendere
     },
 
     migrate(entry: ModelDriverLegacyHandoverEntry): ContractResult<ModelDriverLegacyHandoverReport> {
+      if (state.failures.migrate)
+        return { ok: false, error: state.failures.migrate }
+
+      // A driver that cannot keep the payload says so instead of failing: the model then stays legacy-shaped and
+      // the host writes no marker (D8).
+      if (state.failures.retain === false)
+        return ok({ retained: false, warnings: ['The fixture was told not to retain this handover'] })
+
       // Retain, never copy: the retained entry holds the *same* `Uint8Array` instances the handover carried,
       // which is what makes "move-import" observable rather than merely claimed (D-16).
       state.retained.set(entry.modelId, entry)

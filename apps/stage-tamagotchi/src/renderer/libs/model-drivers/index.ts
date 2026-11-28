@@ -1,3 +1,4 @@
+import type { HostWindowKind, ModelDriverAdapter } from '@proj-airi/stage-renderer-sdk'
 /**
  * The renderer half of the model-driver host (§4.1, §4.7).
  *
@@ -14,10 +15,11 @@
  * Any window running the app entry can serve a driver entry — a manager prefers a live renderer over starting a
  * new one (§4.3) — and the background window is only the fallback when no such window exists.
  */
-import type { HostWindowKind, ModelDriverAdapter } from '@proj-airi/stage-renderer-sdk'
+import type { HostPromptService } from '@proj-airi/stage-renderer-sdk/host'
 
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 import { createModelDriverAdapter } from '@proj-airi/stage-renderer-sdk'
+import { createHostPromptService } from '@proj-airi/stage-renderer-sdk/host'
 import { storage } from '@proj-airi/stage-ui/database/storage'
 
 import { createEventaHostClient } from './eventa-client'
@@ -31,6 +33,7 @@ export * from './storage'
 export type { ModelDriverAdapter } from '@proj-airi/stage-renderer-sdk'
 
 let adapter: ModelDriverAdapter | undefined
+let prompts: HostPromptService | undefined
 let starting: Promise<ModelDriverAdapter | undefined> | undefined
 
 /**
@@ -62,6 +65,21 @@ export function bootstrapModelDriverAdapter(options?: { windowKind?: HostWindowK
       loaders: driverLoaders,
       ...(options?.windowKind ? { windowKind: options.windowKind } : {}),
     })
+
+    // The prompt service is what a card and prompt assembly talk to: it reconciles a card snapshot with the store
+    // at activation, and an arbitration is handed back to the driver through this window's adapter (§5.4, D26).
+    // Built here rather than in a store so it shares this window's store instance — the same one the adapter
+    // publishes into.
+    const windowAdapter = adapter
+    prompts = createHostPromptService({
+      store: hostStorage.prompts,
+      resolution: {
+        deliver: (driverId, publication) => {
+          void windowAdapter.deliverPromptResolution(driverId, publication)
+        },
+      },
+    })
+
     return adapter
   })().catch((error) => {
     console.error('[model-drivers] Failed to start the renderer adapter:', error)
@@ -74,4 +92,9 @@ export function bootstrapModelDriverAdapter(options?: { windowKind?: HostWindowK
 /** The adapter, once `bootstrapModelDriverAdapter` has resolved. */
 export function modelDriverAdapter(): ModelDriverAdapter | undefined {
   return adapter
+}
+
+/** The window's prompt service, once the adapter has started. */
+export function modelDriverPrompts(): HostPromptService | undefined {
+  return prompts
 }

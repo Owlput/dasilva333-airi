@@ -21,6 +21,7 @@ import { defineInvoke } from '@moeru/eventa'
 
 import {
   modelDriverCueSettledEventa,
+  modelDriverDeliverPromptResolutionInvokeEventa,
   modelDriverEntryResultInvokeEventa,
   modelDriverIdentifyInvokeEventa,
   modelDriverManagerMessageEventa,
@@ -54,6 +55,7 @@ export function createEventaHostClient(context: RendererEventContext): HostClien
   const setEnabled = defineInvoke(context, modelDriverSetEnabledInvokeEventa)
   const sendEntryResult = defineInvoke(context, modelDriverEntryResultInvokeEventa)
   const sendManagerMessage = defineInvoke(context, modelDriverManagerMessageInvokeEventa)
+  const deliverPromptResolution = defineInvoke(context, modelDriverDeliverPromptResolutionInvokeEventa)
 
   return {
     identify,
@@ -68,6 +70,7 @@ export function createEventaHostClient(context: RendererEventContext): HostClien
     submitCue,
     sendManagerMessage,
     sendEntryResult,
+    deliverPromptResolution,
     onCueSettled: handler =>
       context.on(modelDriverCueSettledEventa, (event) => {
         if (event?.body)

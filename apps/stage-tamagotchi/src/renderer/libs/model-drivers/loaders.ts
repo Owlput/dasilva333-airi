@@ -6,17 +6,32 @@
  * audited, a `specifier → import` map cannot be forged by a manager, and an unknown specifier is a refusal with a
  * readable reason instead of a dynamic import of something unchecked.
  *
- * Phase 1 has one entry, the stub fixture, and only a development build has it at all (§4.8). A real driver adds
- * its six subpaths here when its package lands (Phase 3+); its `mount`/`panels`/`picker` components join the same
- * table in Phase 2 when the host has frames to put them in.
+ * Phase 1 had one entry — the stub provider — because the only renderer entry a window ever hosted was the
+ * provider half. Phase 2 adds the three surfaces it mounts: the **mount** component, the **panels** declarations
+ * and the **picker** component. They come from the fixture's `./testing/components` subpath rather than
+ * `./testing` because they import Vue, and the SDK's Node suites import `./testing`.
  *
- * The interface itself — `DriverLoaderTable` and the module shape it resolves — is the contract package's
+ * A real driver adds its six subpaths here when its package lands (Phase 3+); its specifiers join
+ * `shared/model-driver-specifiers.ts` at the same time, which is what keeps main's static table and this one from
+ * drifting.
+ *
+ * The interface itself — `DriverLoaderTable` and the module shapes it resolves — is the contract package's
  * (`@proj-airi/stage-renderer-sdk`, `host/loaders.ts`). What a build ships is app policy; what a table *is* is
  * not.
  */
 import type { DriverLoaderTable, DriverProviderModule } from '@proj-airi/stage-renderer-sdk'
 
-import { STUB_PROVIDER_SPECIFIER } from '../../../shared/model-driver-specifiers'
+import {
+  STUB_MOUNT_SPECIFIER,
+  STUB_PANEL_SPECIFIER,
+  STUB_PICKER_SPECIFIER,
+  STUB_PROVIDER_SPECIFIER,
+} from '../../../shared/model-driver-specifiers'
+
+/** The fixture's renderer components, loaded lazily so a production build never fetches them. */
+function stubComponents() {
+  return import('@proj-airi/stage-renderer-sdk/testing/components')
+}
 
 /**
  * The first-party loader table.
@@ -26,13 +41,26 @@ import { STUB_PROVIDER_SPECIFIER } from '../../../shared/model-driver-specifiers
  */
 export function firstPartyDriverLoaders(options: { includeStub: boolean }): DriverLoaderTable {
   const providers = new Map<string, () => Promise<DriverProviderModule>>()
+  const mounts = new Map<string, () => Promise<import('@proj-airi/stage-renderer-sdk').RendererMountComponentModule>>()
+  const panels = new Map<string, () => Promise<import('@proj-airi/stage-renderer-sdk').DriverPanelsModule>>()
+  const pickers = new Map<string, () => Promise<import('@proj-airi/stage-renderer-sdk').ModelPickerComponentModule>>()
 
-  if (options.includeStub)
+  if (options.includeStub) {
     providers.set(STUB_PROVIDER_SPECIFIER, () => import('./stub-entry'))
+    mounts.set(STUB_MOUNT_SPECIFIER, async () => (await stubComponents()).stubMountModule)
+    panels.set(STUB_PANEL_SPECIFIER, async () => (await stubComponents()).stubPanelsModule)
+    pickers.set(STUB_PICKER_SPECIFIER, async () => (await stubComponents()).stubPickerModule)
+  }
 
   return {
     resolveProvider: specifier => providers.get(specifier),
+    resolveMount: specifier => mounts.get(specifier),
+    resolvePanels: specifier => panels.get(specifier),
+    resolvePicker: specifier => pickers.get(specifier),
     providers: () => [...providers.keys()],
+    mounts: () => [...mounts.keys()],
+    panels: () => [...panels.keys()],
+    pickers: () => [...pickers.keys()],
   }
 }
 

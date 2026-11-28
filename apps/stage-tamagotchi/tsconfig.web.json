@@ -16,6 +16,15 @@
       "@proj-airi/stage-renderer-sdk": [
         "../../../../packages/stage-renderer-sdk/src/index.ts"
       ],
+      "@proj-airi/stage-renderer-sdk/host": [
+        "../../../../packages/stage-renderer-sdk/src/host/index.ts"
+      ],
+      "@proj-airi/stage-renderer-sdk/testing": [
+        "../../../../packages/stage-renderer-sdk/src/host/testing/index.ts"
+      ],
+      "@proj-airi/stage-renderer-sdk/testing/components": [
+        "../../../../packages/stage-renderer-sdk/src/host/testing/stub-modules.ts"
+      ],
       "@proj-airi/stage-ui": [
         "../../packages/stage-ui/src/index.ts"
       ],

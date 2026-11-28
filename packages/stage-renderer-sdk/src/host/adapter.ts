@@ -43,8 +43,13 @@ import type {
   CueTransactionReceipt,
   CueWithdrawalReport,
   CueWithdrawalRequest,
-} from '../contract/cues'
-import type { HostLogger, HostStorageInterface, ModelPromptPublication } from '../contract/host-services'
+  ModelPickerComponent,
+  ModelPickerComponentModule,
+  RendererMountComponent,
+  RendererMountComponentModule,
+} from '../contract'
+import type { ModelDriverPanelDeclaration } from '../contract/components'
+import type { HostLogger, HostServices, HostStorageInterface, ModelPromptPublication } from '../contract/host-services'
 import type { ModelSummary } from '../contract/references'
 import type { EntrypointRequest, EntrypointResolution, MountRegistrationResult } from '../contract/registry'
 import type {
@@ -57,12 +62,14 @@ import type {
   RendererMountSurfaceKind,
 } from '../contract/shared'
 import type { HostClient, ModelDriverEntryRequest, ModelDriverHostState } from './client'
-import type { DriverEntryStartOptions, DriverLoaderTable, DriverProviderEntry } from './loaders'
+import type { PointerHub } from './core/pointer'
+import type { DriverEntryStartOptions, DriverLoaderTable, DriverPanelsModule, DriverProviderEntry } from './loaders'
 import type { PromptSink, WindowStorage } from './storage'
 
 import { HostWindowKind } from '../contract/host-services'
 import { ModelDriverEntryKind } from '../contract/registry'
 import { ContractFailureCode } from '../contract/shared'
+import { createPointerHub } from './core/pointer'
 import { createConsoleLogger } from './logging'
 import { createDriverWindowServices } from './services'
 import { createDriverStorage, createDriverStorageHub } from './storage'
@@ -127,6 +134,44 @@ export interface ModelDriverAdapter {
   ensureEntry: (driverId: ModelDriverId) => Promise<ContractResult<void>>
   /** The provider entries running in this window, by driver. */
   entries: () => Map<ModelDriverId, DriverProviderEntry>
+  /**
+   * The `HostServices` container this window activated one driver with.
+   *
+   * Panels and pickers receive it as a prop (`ModelDriverPanelProps.services`), and they are usually mounted
+   * from a different window than the mount they edit — so the only object that can hand out the right
+   * container is the adapter that built it. Absent until the driver's entry has started in this window.
+   */
+  servicesFor: (driverId: ModelDriverId) => HostServices | undefined
+  /**
+   * Import the mount component the manager named for one address (§5.2 step 2).
+   *
+   * The manager chooses and this imports; `null` means the driver ships no mount for that address, which is a
+   * value (the surface renders nothing) rather than a failure. An unknown specifier is `invalid-entrypoint`.
+   */
+  mountComponent: (input: {
+    driverId: ModelDriverId
+    surface: RendererMountSurfaceKind
+    purpose: RendererMountPurpose
+  }) => Promise<ContractResult<RendererMountComponent | null>>
+  /** The driver's panel declarations, or an empty list when it ships none (§5.6). */
+  panelDeclarations: (driverId: ModelDriverId) => Promise<ContractResult<ModelDriverPanelDeclaration[]>>
+  /** The driver's model picker component, or `null` when it ships none (§5.6). */
+  pickerComponent: (driverId: ModelDriverId) => Promise<ContractResult<ModelPickerComponent | null>>
+  /**
+   * This window's pointer hub (P2-D16, exit criterion 6).
+   *
+   * The host UI that owns a mount's element measures that element and feeds raw events here; the renderer receives
+   * them already in its own box's coordinates through `services.pointer`. One hub per window, keyed by the mount id
+   * the registry issued, so two mounts of the same driver in one window cannot see each other's input.
+   */
+  pointer: PointerHub
+  /**
+   * Hand a pair the user arbitrated back to the driver that owns it (§5.4, D26).
+   *
+   * The store and the card were already written by the caller; this is the driver's bookkeeping half, addressed
+   * to the window running its entry.
+   */
+  deliverPromptResolution: (driverId: ModelDriverId, publication: ModelPromptPublication) => Promise<ContractResult<{ delivered: number }>>
   dispose: () => void
 }
 
@@ -136,6 +181,25 @@ export async function createModelDriverAdapter(options: ModelDriverAdapterOption
 
   const unsubscribe: Array<() => void> = []
   const entries = new Map<ModelDriverId, DriverProviderEntry>()
+  /**
+   * The services each driver's entry was activated with, by driver.
+   *
+   * Kept beside `entries` rather than on `DriverProviderEntry`, because the entry is the driver's object and the
+   * container is the host's: a panel or picker receives the container as a prop and must not have to reach into
+   * the driver's module to find it.
+   */
+  const services = new Map<ModelDriverId, HostServices>()
+
+  /**
+   * This window's pointer route (P2-D16).
+   *
+   * One per adapter rather than per driver: a mount id is unique in a window, and the host UI that measures a box does
+   * not know or care which driver's component it contains. Every driver's container receives the same service, so a
+   * panel and a mount of the same driver cannot disagree about where the pointer is.
+   */
+  const pointer = createPointerHub({
+    onError: (mountId, error) => logger.warn('model-drivers', `A pointer handler for \`${mountId}\` threw`, error),
+  })
 
   /**
    * The handlers drivers registered for a resolved prompt, by driver.
@@ -282,12 +346,14 @@ export async function createModelDriverAdapter(options: ModelDriverAdapterOption
           },
           logger,
           windowKind: options.windowKind ?? HostWindowKind.UNKNOWN,
+          pointer: pointer.service,
         }),
         send: (message) => {
           void client.sendManagerMessage({ driverId, message })
         },
       }
 
+      services.set(driverId, startOptions.services)
       const entry = await module.startProviderEntry(startOptions)
       entries.set(driverId, entry)
       return { ok: true, value: entry }
@@ -353,6 +419,121 @@ export async function createModelDriverAdapter(options: ModelDriverAdapterOption
     void startEntry(request)
   }))
 
+  // --- renderer entries: mount, panels, picker (§5.2 step 2, §5.6) ---------------------------------
+
+  /**
+   * Ask the manager which specifier an entry kind resolves to.
+   *
+   * `null` is the manager saying "this driver ships none of that", which is a value: the host shows no UI there
+   * rather than substituting a default.
+   */
+  const entrySpecifier = async (request: EntrypointRequest): Promise<ContractResult<string | null>> => {
+    const resolved = await client.resolveEntrypoint(request)
+    if (!resolved.ok)
+      return resolved
+    return { ok: true, value: resolved.value === null ? null : resolved.value.specifier }
+  }
+
+  const invalidEntrypoint = (message: string): { ok: false, error: { code: ContractFailureCode, message: string } } => ({
+    ok: false,
+    error: { code: ContractFailureCode.INVALID_ENTRYPOINT, message },
+  })
+
+  const mountComponent = async (input: {
+    driverId: ModelDriverId
+    surface: RendererMountSurfaceKind
+    purpose: RendererMountPurpose
+  }): Promise<ContractResult<RendererMountComponent | null>> => {
+    const specifier = await entrySpecifier({
+      driverId: input.driverId,
+      kind: ModelDriverEntryKind.MOUNT,
+      surface: input.surface,
+      purpose: input.purpose,
+    })
+    if (!specifier.ok)
+      return specifier
+    if (specifier.value === null)
+      return { ok: true, value: null }
+
+    // The adapter imports what the manager named, through this window's build-time table. It makes no decision.
+    const load = loaders.resolveMount(specifier.value)
+    if (!load)
+      return invalidEntrypoint(`This build has no mount loader for \`${specifier.value}\``)
+
+    try {
+      const module: RendererMountComponentModule = await load()
+      return { ok: true, value: module.default }
+    }
+    catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: ContractFailureCode.INVALID_ENTRYPOINT,
+          message: `The mount module \`${specifier.value}\` failed to load: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      }
+    }
+  }
+
+  const panelDeclarations = async (driverId: ModelDriverId): Promise<ContractResult<ModelDriverPanelDeclaration[]>> => {
+    const specifier = await entrySpecifier({ driverId, kind: ModelDriverEntryKind.PANELS })
+    if (!specifier.ok)
+      return specifier
+    if (specifier.value === null)
+      return { ok: true, value: [] }
+
+    const load = loaders.resolvePanels(specifier.value)
+    if (!load)
+      return invalidEntrypoint(`This build has no panels loader for \`${specifier.value}\``)
+
+    try {
+      const module: DriverPanelsModule = await load()
+      // Two shapes are allowed, because a driver may need its own state to name its tabs: a constant list, or a
+      // function it computes lazily. A module that has neither is a declaration bug, not an empty driver.
+      const declarations = 'declarations' in module
+        ? await module.declarations()
+        : module.default
+      if (!Array.isArray(declarations))
+        return invalidEntrypoint(`The panels module \`${specifier.value}\` did not resolve a declaration list`)
+      return { ok: true, value: declarations }
+    }
+    catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: ContractFailureCode.INVALID_ENTRYPOINT,
+          message: `The panels module \`${specifier.value}\` failed to load: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      }
+    }
+  }
+
+  const pickerComponent = async (driverId: ModelDriverId): Promise<ContractResult<ModelPickerComponent | null>> => {
+    const specifier = await entrySpecifier({ driverId, kind: ModelDriverEntryKind.PICKER })
+    if (!specifier.ok)
+      return specifier
+    if (specifier.value === null)
+      return { ok: true, value: null }
+
+    const load = loaders.resolvePicker(specifier.value)
+    if (!load)
+      return invalidEntrypoint(`This build has no picker loader for \`${specifier.value}\``)
+
+    try {
+      const module: ModelPickerComponentModule = await load()
+      return { ok: true, value: module.default }
+    }
+    catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: ContractFailureCode.INVALID_ENTRYPOINT,
+          message: `The picker module \`${specifier.value}\` failed to load: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      }
+    }
+  }
+
   unsubscribe.push(client.onManagerMessage((payload) => {
     entries.get(payload.driverId)?.onMessage(payload.message)
   }))
@@ -392,6 +573,10 @@ export async function createModelDriverAdapter(options: ModelDriverAdapterOption
     },
 
     async unregisterMount(mountId) {
+      // Released before the host is asked, because the element this window was measuring is already going away: a
+      // subscription kept for it would be a listener on a box nothing measures. The host's answer does not change
+      // that (P2-D16).
+      pointer.release(mountId)
       const result = await client.unregisterMount({ mountId })
       if (!result.ok)
         logger.warn('model-drivers', `Could not unregister mount \`${mountId}\`: ${result.error.message}`)
@@ -427,16 +612,28 @@ export async function createModelDriverAdapter(options: ModelDriverAdapterOption
 
     entries: () => entries,
 
+    servicesFor: driverId => services.get(driverId),
+
+    mountComponent,
+    panelDeclarations,
+    pickerComponent,
+
+    deliverPromptResolution: (driverId, publication) => client.deliverPromptResolution({ driverId, publication }),
+
+    pointer,
+
     dispose() {
       for (const stop of unsubscribe.splice(0))
         stop()
       for (const entry of entries.values())
         entry.dispose?.()
       entries.clear()
+      services.clear()
       promptResolutions.clear()
       waiting.clear()
       earlySettlements.clear()
       observers.clear()
+      pointer.dispose()
     },
   }
 

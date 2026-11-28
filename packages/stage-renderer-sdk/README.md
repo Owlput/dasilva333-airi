@@ -9,8 +9,11 @@ today, and anything else later).
 > `isContractCompatible`. Phase 1 moved the renderer adapter here (`src/host/`, P1-D24): it has no
 > transport of its own and is written against `HostClient`, which the desktop app satisfies over
 > its typed IPC and a Web/Pocket build will satisfy in-process. It also moved the host here (P1-D27), so the
-> package has three entries: `.` for the contract and adapter, `./host` for the host core and the host service
-> that turns it into the operations a host process exposes, and `./testing` for the stub driver and harness.
+> package has four entries: `.` for the contract and adapter, `./host` for the host core and the host service
+> that turns it into the operations a host process exposes, `./testing` for the stub driver and harness, and
+> `./testing/components` for the fixture's Vue components (kept apart so the Node suites never load Vue).
+> Phase 2 added the prompt service, the avatar table and the speech frame bus to `./host`, and the host UI to
+> `stage-ui`; its choices are in [`DECISIONS-PHASE2.md`](./DECISIONS-PHASE2.md).
 > This release is **first-party only**: the
 > package stays `private` and source-only; third-party distribution is deferred until the contract and
 > renderer host are stable. See "Deliberate non-goals".
@@ -124,7 +127,7 @@ The emitted events from the mount are interpreted by AIRI.
 | `src/host/client.ts` | AIRI (renderer) | the adapter's client interface to the host's services (`identify`, mounts, readiness, cues, entry points, host state, the manager channel) plus the four value shapes it carries, so a renderer needs no transport |
 | `src/host/adapter.ts` | AIRI (renderer) | the per-window adapter: identity resolved once, mount registration, the cue channel with its settlement buffer, entry start/reuse/ensure, the per-driver storage namespaces composed from the window's primitives, and `dispose`. Takes `{ client, storage, prompts, loaders }` and nothing app-specific |
 | `src/host/loaders.ts` | AIRI | the loader-table interface: a specifier becomes a module only through a table the build owns, and an unknown specifier is `invalid-entrypoint` |
-| `src/host/services.ts` | AIRI | the `HostServices` container a driver is activated with, including the two members that are deliberately inert until a host surface exists |
+| `src/host/services.ts` | AIRI | the `HostServices` container a driver is activated with, including the two members that are inert by default (`pointer` without a hub, `theme`) and the option that makes `pointer` real in a window that hosts mounts |
 | `src/host/storage.ts` | AIRI (renderer) | the window's storage primitives (`WindowStorage`: get, set, remove, a prefix scan — driver-agnostic and reusable), the prompt sink, and the one function that composes a driver's namespace from them (`createDriverStorage`) with its in-window `watch` hub |
 | `src/host/logging.ts` | AIRI | the default `HostLogger` (console, `[driver]`-prefixed) and the silent one the host core uses when no logger is given, so an embedder needs no logging dependency |
 | `src/host/core/registry.ts` | AIRI (host) | the driver registry: declarations read before any manager code, one manager per enabled driver, the row cache and enable flags, `requestRenderer` and its reuse/fallback order, entry resolution, the persisted snapshot |
@@ -136,6 +139,10 @@ The emitted events from the mount are interpreted by AIRI.
 | `src/host/service.ts` | AIRI (host) | the host service: the operations a host process exposes (`registerMount`, `submitCue`, `pullRows`, `setEnabled`, the entry relay, manager messages) plus the `state.json` debounce and the window-closed/shutdown ordering, written against transport, window, state and scheduler ports |
 | `src/host/testing/stub-driver.ts`, `src/host/testing/harness.ts` | AIRI (fixture) | the stub driver (manifest, manager, runtime, provider, mount, panels, picker, the full migration surface) and the harness every host suite drives |
 | `src/host/testing/in-process.ts`, `src/host/testing/stub-entry.ts` | AIRI (fixture) | the in-process host — the real service and one real adapter per window joined by a loopback transport — and the stub's provider entry with the session it creates; what `src/host/in-process.test.ts` drives |
+| `src/host/testing/stub-components.ts`, `src/host/testing/stub-modules.ts` | AIRI (fixture) | the fixture's render-function mount/panel/picker components and the module shapes the loader table resolves; the `./testing/components` subpath, so `./testing` stays Vue-free |
+| `src/host/core/prompt-service.ts`, `src/host/core/binding.ts` | AIRI (host) | the prompt service (publication, reconciliation, arbitration, `onResolution` delivery) and the eight-row avatar table with the card-facing helpers |
+| `src/host/speech.ts` | AIRI (host) | the speech frame bus: observation only, latest-wins, with the Stage-Mate sidecar relay as the single documented main crossing |
+| `src/host/core/pointer.ts` | AIRI (renderer host) | the one pointer conversion: a mount's box measured at dispatch time, per-mount addressing by registry id, no clamping or DPR scaling, and a throwing renderer contained rather than fatal |
 | `scripts/run-suites.mjs`, `scripts/suite-assertions.mjs` | CI / local | the fallback that executes the suites where `vitest` cannot start — no Vite, no esbuild, no child process: suite discovery, the module-resolution hooks, and the small `describe`/`it`/`expect` subset. It reads nothing outside this package, which is why it lives here and not in the repository's `scripts/` |
 
 ## Deliberate non-goals

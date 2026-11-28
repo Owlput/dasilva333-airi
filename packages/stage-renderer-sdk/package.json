@@ -18,7 +18,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./host": "./src/host/index.ts",
-    "./testing": "./src/host/testing/index.ts"
+    "./testing": "./src/host/testing/index.ts",
+    "./testing/components": "./src/host/testing/stub-modules.ts"
   },
   "scripts": {
     "test": "vitest run",

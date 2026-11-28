@@ -718,9 +718,15 @@ type DisplayModel = DisplayModelFile | DisplayModelURL | DisplayModelCloud
 The contract in [`packages/stage-renderer-sdk`](../packages/stage-renderer-sdk/README.md) moves the
 model domain out of `display-models.ts`: AIRI keeps only records about *named models* and *profiles*,
 and each driver keeps its own bytes and settings under its own namespace. The keys below are the
-contract's persisted layout — the shape Phase 0 froze — and **no source in this tree writes them yet**;
-Phase 1 (`packages/stage-renderer-sdk/src/host`, `packages/stage-ui/src/libs/model-drivers`) starts writing them,
-and the legacy keys above keep working beside them until Phase 8.
+contract's persisted layout — the shape Phase 0 froze. Phase 1 writes the prompt and record keys from the
+host core, and Phase 2 adds their *card-facing* writers: `packages/stage-ui/src/libs/model-drivers/prompt.ts`
+seeds and arbitrates the prompt key, `binding.ts` writes the card's `extensions.airi.avatar` (no storage key —
+it is card data), and `migration.ts` schedules the marker writes it commits through its ports. The legacy keys
+above keep working beside them until Phase 8.
+
+**Phase 2 adds no key of its own**, and that is deliberate: a migration attempt is not recorded in web storage
+because resume reads the *driver's* provenance through `findImportedModel`, and a prompt conflict is re-derived
+from the two copies AIRI already holds rather than stored as a flag (P2-D10, P2-D1).
 
 | Key | Type | Notes |
 | :--- | :--- | :--- |

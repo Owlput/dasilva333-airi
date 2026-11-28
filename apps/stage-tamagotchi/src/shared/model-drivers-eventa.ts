@@ -140,6 +140,18 @@ export const modelDriverManagerMessageInvokeEventa = defineInvokeEventa<
   { driverId: ModelDriverId, message: unknown }
 >('eventa:invoke:model-drivers:manager:message')
 
+/**
+ * Hand an arbitrated prompt back to the driver that owns it (§5.4, D26).
+ *
+ * The renderer that ran the arbitration has already written the store and the card; this asks main to deliver the
+ * resolved pair to the window running that driver's entry, which is why it is addressed by driver and answers with
+ * how many windows actually received it. `delivered: 0` is a readable failure, not a silent success.
+ */
+export const modelDriverDeliverPromptResolutionInvokeEventa = defineInvokeEventa<
+  ModelDriverResult<{ delivered: number }>,
+  { driverId: ModelDriverId, publication: ModelPromptPublication }
+>('eventa:invoke:model-drivers:prompt:deliver')
+
 // -------------------------------------------------------------------------------------------------
 // Main -> renderer
 // -------------------------------------------------------------------------------------------------

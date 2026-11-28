@@ -40,12 +40,14 @@ import { app, BrowserWindow, ipcMain, webContents } from 'electron'
 
 import {
   modelDriverCueSettledEventa,
+  modelDriverDeliverPromptResolutionInvokeEventa,
   modelDriverEntryResultInvokeEventa,
   modelDriverIdentifyInvokeEventa,
   modelDriverManagerMessageEventa,
   modelDriverManagerMessageInvokeEventa,
   modelDriverMountReadinessInvokeEventa,
   modelDriverOpenEntryEventa,
+  modelDriverPromptResolutionEventa,
   modelDriverPullRowsInvokeEventa,
   modelDriverRegisterMountInvokeEventa,
   modelDriverResolveEntrypointInvokeEventa,
@@ -199,6 +201,11 @@ export function createModelDriverHostService(options: ModelDriverHostServiceOpti
           driverId: message.driverId,
           message: message.message,
         }))
+      case 'prompt-resolution':
+        return emitToWindow(windowId, context => context.emit(modelDriverPromptResolutionEventa, {
+          driverId: message.driverId,
+          publication: message.publication,
+        }))
     }
   }
 
@@ -305,6 +312,14 @@ export function createModelDriverHostService(options: ModelDriverHostServiceOpti
       return noWindow('manager message')
 
     return service.managerMessage(windowId, payload)
+  })
+
+  defineInvokeHandler(options.context, modelDriverDeliverPromptResolutionInvokeEventa, async (payload, handlerOptions) => {
+    const windowId = senderWindowId(handlerOptions)
+    if (!windowId)
+      return noWindow('prompt resolution')
+
+    return service.deliverPromptResolution(windowId, payload)
   })
 
   // ---------------------------------------------------------------------------------------------

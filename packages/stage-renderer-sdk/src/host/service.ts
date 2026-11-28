@@ -28,6 +28,7 @@ import type {
   HostLogger,
   ManagerChannel,
   ModelDriverId,
+  ModelPromptPublication,
   ModelSummary,
   MountId,
   MountRegistrationResult,
@@ -77,6 +78,14 @@ export type ModelDriverHostPush
       purpose?: RendererMountPurpose
     }
     | { kind: 'manager-message', driverId: ModelDriverId, message: unknown }
+    /**
+     * A publication the user arbitrated, on its way back to the driver that owns the prompt (§5.4, D26).
+     *
+     * Addressed by driver because only the window running that driver's entry can deliver it to
+     * `HostPromptService.onResolution`. It carries no ack: the host has already written the store and the card,
+     * and the driver's bookkeeping failing is logged rather than retried.
+     */
+    | { kind: 'prompt-resolution', driverId: ModelDriverId, publication: ModelPromptPublication }
 
 export interface ModelDriverHostTransport {
   /** Deliver one message to one window. `false` means it did not land — a closed window, or a dead context. */
@@ -139,6 +148,19 @@ export interface ModelDriverHostService {
   entryResult: (windowId: string, payload: { requestId: string, error?: { message: string } }) => Promise<ContractResult<void>>
   /** A message the manager sent down its channel, attributed to the window that sent it. */
   managerMessage: (windowId: string, payload: { driverId: ModelDriverId, message: unknown }) => Promise<ContractResult<void>>
+  /**
+   * Hand an arbitrated publication back to the driver that owns it (§5.4, D26).
+   *
+   * The caller is the window that ran the arbitration (its card and store write already committed); this delivers
+   * the pair to every window holding a manager channel for that driver, which in practice is the one running its
+   * entry. `delivered: 0` is not an error the user can act on — it means no window is running the driver right
+   * now — but it is reported rather than swallowed, because "the driver never heard about the decision" is a
+   * fact a diagnostics surface should be able to show.
+   */
+  deliverPromptResolution: (windowId: string, payload: {
+    driverId: ModelDriverId
+    publication: ModelPromptPublication
+  }) => Promise<ContractResult<{ delivered: number }>>
 }
 
 const DEFAULT_ENTRY_TIMEOUT_MS = 10_000
@@ -490,6 +512,39 @@ export function createModelDriverHostService(options: ModelDriverHostServiceOpti
       }
 
       return okVoid()
+    },
+
+    async deliverPromptResolution(_windowId, payload) {
+      // Two kinds of window can run a driver's code, and neither implies the other (P1-D19): the one the manager
+      // opened a channel to, and the one holding a mount — a surface starts its own entry with `ensureEntry`, so a
+      // window can run the driver without any manager channel ever existing for it. Both are addressed by driver.
+      const channelWindows = [...channels.entries()]
+        .filter(([, channel]) => channel.driverId === payload.driverId)
+        .map(([key]) => key.slice(0, key.indexOf('\u0000')))
+      const mountWindows = (await mounts.findBy({ modelDriverId: payload.driverId }))
+        .map(mount => mount.windowId)
+
+      // Addressed by driver, not broadcast: a window that does not run this driver's entry has nothing to hand
+      // the pair to, and the adapter drops it if it does arrive (it is a missing capability, not an error).
+      let delivered = 0
+      for (const target of new Set([...channelWindows, ...mountWindows])) {
+        const landed = transport.push(target, {
+          kind: 'prompt-resolution',
+          driverId: payload.driverId,
+          publication: payload.publication,
+        })
+        if (landed)
+          delivered += 1
+      }
+
+      if (delivered === 0) {
+        return fail(
+          ContractFailureCode.DRIVER_UNAVAILABLE,
+          `No window is running \`${payload.driverId}\`, so the resolved prompt could not be handed back to it`,
+        )
+      }
+
+      return { ok: true, value: { delivered } }
     },
   }
 }

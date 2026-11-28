@@ -11,7 +11,7 @@
 import type { DriverEntryStartOptions, DriverProviderEntry, ModelDriverId } from '@proj-airi/stage-renderer-sdk'
 import type { StubModel, StubWindowSession } from '@proj-airi/stage-renderer-sdk/testing'
 
-import { startStubProviderEntry } from '@proj-airi/stage-renderer-sdk/testing'
+import { registerStubWindowSession, startStubProviderEntry } from '@proj-airi/stage-renderer-sdk/testing'
 
 export type { StubWindowSession } from '@proj-airi/stage-renderer-sdk/testing'
 
@@ -32,6 +32,10 @@ export function startProviderEntry(options: DriverEntryStartOptions): DriverProv
     models: [DEMO_MODEL],
     onSession(session) {
       sessions.set(options.driverId, session)
+      // The fixture's own mount/panel/picker components read the SDK's per-window session registry, which is the
+      // only bridge they have to this entry: an SDK module cannot import an app module. Registering in both maps
+      // is deliberate — the app's is the route's handle, the SDK's is the components'.
+      registerStubWindowSession(session)
       for (const listener of [...listeners])
         listener(options.driverId)
     },

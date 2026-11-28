@@ -91,6 +91,7 @@
     "@proj-airi/nan0-runtime": "workspace:^",
     "@proj-airi/pipelines-audio": "workspace:^",
     "@proj-airi/server-sdk": "workspace:^",
+    "@proj-airi/stage-renderer-sdk": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/stage-ui-live2d": "workspace:^",
     "@proj-airi/stage-ui-mmd": "workspace:^",

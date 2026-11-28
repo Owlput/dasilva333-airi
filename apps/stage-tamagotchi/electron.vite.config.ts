@@ -116,7 +116,9 @@ export default defineConfig({
         '@proj-airi/i18n-bundle': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src', 'dist-lite', 'messages.mjs')),
         '@proj-airi/server-runtime': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-runtime', 'src')),
         // Source-only workspace packages (no build step, `exports` point at `src/*.ts`). They are bundled into
-        // main rather than externalized; the `/testing` entry has to be matched before the package root.
+        // main rather than externalized; the `/testing` entry has to be matched before the package root, and
+        // `/testing/components` before `/testing` (it is the Vue half of the fixture, a separate subpath).
+        '@proj-airi/stage-renderer-sdk/testing/components': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'stub-modules.ts')),
         '@proj-airi/stage-renderer-sdk/testing': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'index.ts')),
         '@proj-airi/stage-renderer-sdk/host': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'index.ts')),
         '@proj-airi/stage-renderer-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'index.ts')),
@@ -211,8 +213,9 @@ export default defineConfig({
     resolve: {
       conditions: ['browser', 'import', 'default'],
       alias: [
-        // Source-only workspace packages, same reason as in `main`. The `/testing` and `/host` entries are
-        // matched before the package root.
+        // Source-only workspace packages, same reason as in `main`. The `/testing/components`, `/testing` and
+        // `/host` entries are matched before the package root.
+        { find: '@proj-airi/stage-renderer-sdk/testing/components', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'stub-modules.ts')) },
         { find: '@proj-airi/stage-renderer-sdk/testing', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'testing', 'index.ts')) },
         { find: '@proj-airi/stage-renderer-sdk/host', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'host', 'index.ts')) },
         { find: '@proj-airi/stage-renderer-sdk', replacement: resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-renderer-sdk', 'src', 'index.ts')) },

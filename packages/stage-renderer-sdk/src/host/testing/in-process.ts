@@ -187,6 +187,7 @@ export async function createInProcessHost(options: InProcessHostOptions = {}): P
       submitCue: request => service.submitCue(windowId, request.envelope, request.options),
       sendManagerMessage: payload => service.managerMessage(windowId, payload),
       sendEntryResult: payload => service.entryResult(windowId, payload),
+      deliverPromptResolution: payload => service.deliverPromptResolution(windowId, payload),
       onCueSettled: handler => subscribe(settlements, handler),
       onOpenEntry: handler => subscribe(entryRequests, handler),
       onManagerMessage: handler => subscribe(managerMessages, handler),
@@ -212,6 +213,11 @@ export async function createInProcessHost(options: InProcessHostOptions = {}): P
           }
           return
         }
+        if (push.kind === 'prompt-resolution') {
+          for (const handler of [...promptResolutions])
+            handler({ driverId: push.driverId, publication: push.publication })
+          return
+        }
         for (const handler of [...managerMessages])
           handler({ driverId: push.driverId, message: push.message })
       })
@@ -233,7 +239,15 @@ export async function createInProcessHost(options: InProcessHostOptions = {}): P
           }),
         })
       },
+      // The harness has no Vue: it proves the protocol, and the fixture's component half lives behind the
+      // `./testing/components` subpath so a Node suite never loads it.
+      resolveMount: () => undefined,
+      resolvePanels: () => undefined,
+      resolvePicker: () => undefined,
       providers: () => [STUB_PROVIDER_SPECIFIER],
+      mounts: () => [],
+      panels: () => [],
+      pickers: () => [],
     }
 
     const prompts = createPromptStore(storage)

@@ -104,6 +104,17 @@ export interface HostClient {
   submitCue: (request: { envelope: CueEnvelopeInput, options?: CueSendOptions }) => Promise<ContractResult<ModelDriverSubmitAck>>
   /** One driver-protocol message to the manager. Opaque to the host. */
   sendManagerMessage: (payload: { driverId: ModelDriverId, message: unknown }) => Promise<ContractResult<void>>
+  /**
+   * Hand an arbitrated prompt back to the driver that owns it (§5.4, P1-D26).
+   *
+   * The renderer that ran the arbitration writes the store and the card; this is how the *driver* learns what
+   * AIRI now holds, so its own version history agrees and its next publication continues from that version. The
+   * host addresses the window running that driver's entry; a window with no such entry has nothing to deliver to.
+   */
+  deliverPromptResolution: (payload: {
+    driverId: ModelDriverId
+    publication: ModelPromptPublication
+  }) => Promise<ContractResult<{ delivered: number }>>
   /** Answer the entry request the host pushed. */
   sendEntryResult: (payload: { requestId: string, error?: ModelDriverFailure }) => Promise<ContractResult<void>>
   onCueSettled: (handler: (settlement: { nonce: number, result: ContractResult<CueAck> }) => void) => () => void

@@ -19,14 +19,19 @@
  * `@proj-airi/stage-renderer-sdk/testing` exports the stub driver and the harness. They are not part of a
  * production build, which is why they are a second subpath rather than part of this one.
  */
+export * from './core/binding'
 export * from './core/broker'
 export * from './core/host'
 export * from './core/ids'
 export * from './core/keys'
 export * from './core/mounts'
+export * from './core/pointer'
+export * from './core/prompt-service'
 export * from './core/prompts'
 export * from './core/records'
 export * from './core/registry'
 export * from './core/storage'
+export * from './loaders'
 export * from './logging'
 export * from './service'
+export * from './speech'

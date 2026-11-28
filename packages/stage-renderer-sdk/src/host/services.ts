@@ -8,9 +8,10 @@
  *
  * What is deliberately inert, and why:
  *
- *   - `pointer` — the pointer conversion lives with a renderer stage's overlays, which is host UI rather than
- *     contract; a synthetic stream before there is a box to convert against would move a mount's hit testing
- *     into the wrong coordinate space;
+ *   - `pointer` — **unless the host passes one** (`createPointerHub`, P2-D16). The conversion belongs with the UI that
+ *     owns a mount's element, because only that UI can measure it, so the default here is a subscription that is
+ *     accepted and never called. An adapter that hosts mounts supplies its window's hub and this member becomes the
+ *     real route; a container built without one is honest about having no pointer instead of inventing coordinates;
  *   - `theme` — the accent hue and the dark flag come from an application's settings store, which this package
  *     does not have. A driver that tints by theme reads zeros, which is the documented "missing optional
  *     service is a reduction in capability" case rather than a crash.
@@ -41,13 +42,20 @@ export interface DriverWindowServicesOptions {
   prompt: HostPromptService
   logger: HostLogger
   windowKind: HostWindowKind
+  /**
+   * This window's pointer route, when it has one (P2-D16).
+   *
+   * Omitted by a host that mounts nothing and cannot measure a box; the inert subscription below is then the honest
+   * answer rather than a stream of coordinates no element produced.
+   */
+  pointer?: RendererPointerService
   /** Overrides the contract revision, for a test that wants to prove a mismatched driver is refused. */
   contract?: ModelDriverContractVersion
 }
 
 export function createDriverWindowServices(options: DriverWindowServicesOptions): HostServices {
-  const pointer: RendererPointerService = {
-    // A subscription naming a mount is accepted and never called: the adapter has no pointer route.
+  const pointer: RendererPointerService = options.pointer ?? {
+    // A container built without a hub is accepted and never called: there is no box to convert against.
     subscribe: () => () => {},
   }
 

@@ -13,7 +13,7 @@
  * plumbing: identity caching, the settlement buffer, the entry lifecycle and the message round trip.
  */
 import type { CueAck, CueEnvelopeInput, CueWithdrawalReport } from '../contract/cues'
-import type { HostServices, ModelPromptPublication } from '../contract/host-services'
+import type { HostServices, ModelPromptPublication, RendererPointerEvent } from '../contract/host-services'
 import type { DriverInfo } from '../contract/references'
 import type { ContractResult, ModelDriverId } from '../contract/shared'
 import type { HostClient, ModelDriverHostState, ModelDriverSubmitAck } from './client'
@@ -23,16 +23,18 @@ import type { WindowStorage } from './storage'
 import { describe, expect, it } from 'vitest'
 
 import { CueKind, CueSource } from '../contract/cues'
+import { RendererPointerPhase } from '../contract/host-services'
 import { DriverStatus } from '../contract/references'
-import {
-  RendererMountPurpose,
-  RendererMountReadinessState,
-  RendererMountSurfaceKind,
-} from '../contract/shared'
+import { ModelDriverEntryKind } from '../contract/registry'
+import { ContractFailureCode, RendererMountPurpose, RendererMountReadinessState, RendererMountSurfaceKind } from '../contract/shared'
 import { createModelDriverAdapter } from './adapter'
 
 const DRIVER_ID: ModelDriverId = 'ai.moeru.airi.test.adapter'
 const PROVIDER_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testProvider'
+const MOUNT_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testMount'
+const PANELS_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testPanels'
+const PICKER_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testPicker'
+const UNKNOWN_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#notInThisBuild'
 
 const SURFACE = RendererMountSurfaceKind.ACTING
 const PURPOSE = RendererMountPurpose.ACTING
@@ -134,7 +136,13 @@ function ack(handled: boolean, nonce = 1): ContractResult<CueAck> {
  * matter: a settlement is pushed rather than returned, and an entry request is answered by the window rather
  * than by the call.
  */
-function createFakeHost(options: { settleAtAccept?: boolean, settleOnPush?: boolean, refuseReadiness?: boolean } = {}) {
+function createFakeHost(options: {
+  settleAtAccept?: boolean
+  settleOnPush?: boolean
+  refuseReadiness?: boolean
+  /** Override what the manager answers for one entry kind; `null` means "this driver ships none". */
+  entrypoints?: Partial<Record<ModelDriverEntryKind, string | null>>
+} = {}) {
   const calls = {
     identify: 0,
     registerMount: [] as Array<{ driverId: string, surface: RendererMountSurfaceKind, purpose: RendererMountPurpose }>,
@@ -142,6 +150,7 @@ function createFakeHost(options: { settleAtAccept?: boolean, settleOnPush?: bool
     submitCue: [] as CueEnvelopeInput[],
     managerMessages: [] as unknown[],
     entryResults: [] as Array<{ requestId: string, error?: { code: string, message: string } }>,
+    promptResolutions: [] as Array<{ driverId: string, publication: ModelPromptPublication }>,
   }
 
   let mounts = 0
@@ -182,8 +191,23 @@ function createFakeHost(options: { settleAtAccept?: boolean, settleOnPush?: bool
       return { ok: true, value: { kind: 'abort', count: 0, results: [] } as unknown as CueWithdrawalReport }
     },
 
-    async resolveEntrypoint() {
-      return { ok: true, value: { specifier: PROVIDER_SPECIFIER } }
+    async resolveEntrypoint(request) {
+      const declared = options.entrypoints?.[request.kind]
+      if (declared === null)
+        return { ok: true, value: null }
+      if (declared !== undefined)
+        return { ok: true, value: { specifier: declared } }
+
+      switch (request.kind) {
+        case ModelDriverEntryKind.MOUNT:
+          return { ok: true, value: { specifier: MOUNT_SPECIFIER } }
+        case ModelDriverEntryKind.PANELS:
+          return { ok: true, value: { specifier: PANELS_SPECIFIER } }
+        case ModelDriverEntryKind.PICKER:
+          return { ok: true, value: { specifier: PICKER_SPECIFIER } }
+        default:
+          return { ok: true, value: { specifier: PROVIDER_SPECIFIER } }
+      }
     },
 
     async hostState() {
@@ -222,6 +246,14 @@ function createFakeHost(options: { settleAtAccept?: boolean, settleOnPush?: bool
     async sendEntryResult(payload) {
       calls.entryResults.push(payload)
       return { ok: true, value: undefined }
+    },
+
+    async deliverPromptResolution(payload) {
+      calls.promptResolutions.push(payload)
+      const handlers = [...promptResolutionHandlers]
+      for (const handler of handlers)
+        handler(payload)
+      return { ok: true, value: { delivered: handlers.length } }
     },
 
     onCueSettled(handler) {
@@ -271,6 +303,12 @@ async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {})
   const host = createFakeHost(options)
   const driver = createProviderModule()
   const memory = createMemoryWindowStorage()
+  // The four renderer entries a driver ships, as this build would map them. The components are opaque objects:
+  // what the adapter owes is *the module the manager named*, not a rendering.
+  const mountComponent = { name: 'TestMount' }
+  const pickerComponent = { name: 'TestPicker' }
+  const panels = [{ id: 'test-panel', label: 'Test panel', component: async () => ({ default: { name: 'TestPanel' } }) }]
+
   const adapter = await createModelDriverAdapter({
     client: host.client,
     storage: memory.store,
@@ -283,9 +321,15 @@ async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {})
     loaders: {
       providers: () => [PROVIDER_SPECIFIER],
       resolveProvider: specifier => (specifier === PROVIDER_SPECIFIER ? async () => driver.module : undefined),
+      mounts: () => [MOUNT_SPECIFIER],
+      resolveMount: specifier => (specifier === MOUNT_SPECIFIER ? async () => ({ default: mountComponent as never }) : undefined),
+      panels: () => [PANELS_SPECIFIER],
+      resolvePanels: specifier => (specifier === PANELS_SPECIFIER ? async () => ({ declarations: () => panels as never }) : undefined),
+      pickers: () => [PICKER_SPECIFIER],
+      resolvePicker: specifier => (specifier === PICKER_SPECIFIER ? async () => ({ default: pickerComponent as never }) : undefined),
     },
   })
-  return { memory, host, adapter, driver }
+  return { memory, host, adapter, driver, mountComponent, pickerComponent, panels }
 }
 
 function envelope(): CueEnvelopeInput {
@@ -450,6 +494,119 @@ describe('model driver adapter', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(driver.resolutions).toHaveLength(1)
+  })
+
+  it('imports the mount, panels and picker entries the manager named', async () => {
+    const { adapter, mountComponent, pickerComponent, panels } = await createAdapter()
+
+    const mount = await adapter.mountComponent({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
+    expect(mount.ok).toBe(true)
+    if (mount.ok)
+      expect(mount.value).toBe(mountComponent as never)
+
+    const declarations = await adapter.panelDeclarations(DRIVER_ID)
+    expect(declarations.ok).toBe(true)
+    if (declarations.ok)
+      expect(declarations.value).toEqual(panels as never)
+
+    const picker = await adapter.pickerComponent(DRIVER_ID)
+    expect(picker.ok).toBe(true)
+    if (picker.ok)
+      expect(picker.value).toBe(pickerComponent as never)
+  })
+
+  it('treats "this driver ships no such entry" as a value, not a failure', async () => {
+    const { adapter } = await createAdapter({
+      entrypoints: { [ModelDriverEntryKind.MOUNT]: null, [ModelDriverEntryKind.PICKER]: null },
+    })
+
+    const mount = await adapter.mountComponent({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
+    expect(mount).toEqual({ ok: true, value: null })
+
+    const picker = await adapter.pickerComponent(DRIVER_ID)
+    expect(picker).toEqual({ ok: true, value: null })
+  })
+
+  it('refuses an entry specifier this build cannot resolve as invalid-entrypoint', async () => {
+    const { adapter } = await createAdapter({ entrypoints: { [ModelDriverEntryKind.MOUNT]: UNKNOWN_SPECIFIER } })
+
+    const mount = await adapter.mountComponent({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
+    expect(mount.ok).toBe(false)
+    if (!mount.ok)
+      expect(mount.error.code).toBe(ContractFailureCode.INVALID_ENTRYPOINT)
+  })
+
+  it('exposes the services a panel or picker is mounted with, once the entry has started', async () => {
+    const { adapter, driver } = await createAdapter()
+    expect(adapter.servicesFor(DRIVER_ID)).toBeUndefined()
+
+    await adapter.ensureEntry(DRIVER_ID)
+
+    const services = adapter.servicesFor(DRIVER_ID)
+    expect(services).toBe(driver.started[0]?.services)
+    // The panel prop and the driver's activation see one container, not two shapes of the same thing.
+    expect(services?.modelDriverId).toBe(DRIVER_ID)
+  })
+
+  it('converts this window\'s pointer events into the box of the mount they happened in', async () => {
+    const { adapter } = await createAdapter()
+    await adapter.ensureEntry(DRIVER_ID)
+
+    const services = adapter.servicesFor(DRIVER_ID)
+    expect(services).toBeDefined()
+    if (!services)
+      return
+
+    // Two mounts in one window is exactly the case a single global coordinate space breaks (exit criterion 6).
+    adapter.pointer.setBox('mount_a', { left: 100, top: 50 })
+    adapter.pointer.setBox('mount_b', { left: 0, top: 0 })
+    const first: RendererPointerEvent[] = []
+    const second: RendererPointerEvent[] = []
+    services.pointer.subscribe('mount_a', event => first.push(event))
+    services.pointer.subscribe('mount_b', event => second.push(event))
+
+    adapter.pointer.dispatch('mount_a', {
+      phase: RendererPointerPhase.MOVE,
+      pointerId: 7,
+      clientX: 130,
+      clientY: 80,
+      pointerType: 'mouse',
+    })
+
+    expect(first).toHaveLength(1)
+    expect(first[0]?.point).toEqual({ x: 30, y: 30 })
+    expect(second).toHaveLength(0)
+
+    // Unmounting releases the subscription with the element, so a later event for that id reaches nobody.
+    await adapter.unregisterMount('mount_a')
+    adapter.pointer.dispatch('mount_a', { phase: RendererPointerPhase.MOVE, pointerId: 7, clientX: 130, clientY: 80 })
+    expect(first).toHaveLength(1)
+  })
+
+  it('asks the host to deliver an arbitrated publication, and reports how many windows heard it', async () => {
+    const { host, adapter, driver } = await createAdapter()
+    await adapter.ensureEntry(DRIVER_ID)
+
+    const publication: ModelPromptPublication = {
+      modelDriverId: DRIVER_ID,
+      modelId: 'model_fixture',
+      profileId: 'profile_fixture',
+      text: 'Arbitrated.',
+      tokens: [],
+      version: 9,
+      publishedAt: 2_000,
+    }
+
+    const result = await adapter.deliverPromptResolution(DRIVER_ID, publication)
+    expect(result.ok).toBe(true)
+    if (result.ok)
+      expect(result.value.delivered).toBe(1)
+
+    // The fake host loops the delivery straight back, which is what the real service does over IPC: the driver's own
+    // handler is the thing that records the decision (P1-D26).
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(host.calls.promptResolutions).toHaveLength(1)
+    expect(driver.resolutions.at(-1)?.publication.version).toBe(9)
   })
 
   it('stops listening once disposed', async () => {

@@ -54,7 +54,7 @@ The five groups below organize navigation. Historical “Phase” labels do not 
 
 ## 3. Domain skill catalog
 
-The catalog contains 70 discoverable skills. Desktop chatbox and interaction pipelines retain their entry points and load focused references; reference files are not additional skills.
+The catalog contains 73 discoverable skills. Desktop chatbox and interaction pipelines retain their entry points and load focused references; reference files are not additional skills.
 
 ### 🟢 Phase 1: Core Plumbing & Infrastructure
 
@@ -181,6 +181,11 @@ The catalog contains 70 discoverable skills. Desktop chatbox and interaction pip
 - **Target Domain**: RWKV-7 G1 RNN model execution, `@cryscan/web-rwkv-wasm` runtime, `.prefab` CBOR quantization pipeline, offline weight conversion, OPFS caching, and cleanroom verification harness.
 - **Key Paths**: `packages/stage-ui/src/workers/web-rwkv/`, `packages/stage-ui/src/libs/inference/adapters/web-rwkv.ts`, `packages/stage-pages/src/pages/settings/providers/chat/web-rwkv.vue`, `scripts/tests/rwkv-harness/`, `docs/design-web-rwkv-quantization-architecture.md`, `docs/project-rwkv-cleanroom-harness-plan.md`.
 - **Content**: RWKV-7 G1 architecture, `Session.from_prefab` instant boot and zero-degradation offline CBOR quantization, single-slot OPFS model cache, Hugging Face prefab distribution (`dasilva333/rwkv7-g1-webgpu-prefabs`), and maintenance tools (`convert_safetensors.py`, `bake-prefab.sh`, `verify-prefab.mjs`).
+
+#### 2.16 `airi-model-driver-host`
+- **Target Domain**: The RFC 0002 **stage-driver host** — what AIRI decides and persists while rendering moves off `RendererStage`: mount host and surfaces, registry-issued mount ids, prompt publication/reconciliation/arbitration, the card `avatar` binding table, speech frames as observation, the user-requested migration gate, and the architecture guards.
+- **Key Paths**: `packages/stage-renderer-sdk/src/host/` (`adapter.ts`, `client.ts`, `loaders.ts`, `service.ts`, `core/`, `testing/`, `speech.ts`), `packages/stage-ui/src/components/scenes/MountHost.vue`, `packages/stage-ui/src/components/scenarios/settings/model-drivers/`, `packages/stage-ui/src/libs/model-drivers/{binding,prompt,migration}.ts`, `apps/stage-tamagotchi/src/main/services/model-drivers/`, `apps/stage-tamagotchi/src/renderer/libs/model-drivers/`, `scripts/assert-model-driver-guards.mjs`, `packages/stage-renderer-sdk/DECISIONS-PHASE{0,1,2}.md`, `packages/stage-renderer-sdk/VRM-SPIKE.md`.
+- **Content**: Phase 0–2 decisions (D1–D18, P1-D*, P2-D*), the main/renderer split and `HostClient` port, registry-issued mount ids, acceptance-vs-settlement, the load-on-ready rule, the prompt's two homes and `max + 1` arbitration, `{}`≡absent avatar states, the migration storage gate and resume-by-provenance, the shrink-only guard allowlist, and the local pitfalls (address-scoped channels, self-started entries, `rows` vs `model-list-changed`, Vue-free `./testing`). **Disambiguation**: contract *shapes* and driver-side implementation are `airi-character-rendering`/`airi-stage-ui-surfaces`; this is the host half.
 
 ---
 

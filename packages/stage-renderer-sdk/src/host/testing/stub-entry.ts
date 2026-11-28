@@ -48,6 +48,29 @@ export interface StubProviderEntryOptions {
   publishEmpty?: boolean
 }
 
+/**
+ * The stub session this module instance's window hosts, by driver.
+ *
+ * **Only the fixture's Vue components read this**, through `registerStubWindowSession` called by the app's
+ * per-window entry. It is deliberately not populated by `startStubProviderEntry`, because the in-process harness
+ * runs two "windows" in one module instance and an automatically populated map would let the second overwrite the
+ * first (P1-D29). A real window's module instance is per window, which is what makes the map correct there.
+ */
+const windowSessions = new Map<ModelDriverId, StubWindowSession>()
+
+export function registerStubWindowSession(session: StubWindowSession): () => void {
+  windowSessions.set(session.driverId, session)
+  return () => {
+    if (windowSessions.get(session.driverId) === session)
+      windowSessions.delete(session.driverId)
+  }
+}
+
+/** The session this window's entry created, for a component that has to reach it. */
+export function stubWindowSession(driverId: ModelDriverId): StubWindowSession | undefined {
+  return windowSessions.get(driverId)
+}
+
 /** One driver's window half, ready to answer the manager. */
 export function startStubProviderEntry(options: StubProviderEntryOptions): DriverProviderEntry {
   const state = createStubDriverState()

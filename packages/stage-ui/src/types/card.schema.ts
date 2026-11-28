@@ -317,6 +317,31 @@ const AiriExtensionSchema = looseObject({
     autoCueMotions: optional(boolean()),
     compiledWhitelist: optional(CharacterCueAllowlistSchema),
   })),
+  /**
+   * The new-path model binding (RFC 0002, plan §4.5, D4).
+   *
+   * Additive beside the frozen `modules.displayModelId`, and **the empty object is a normal state**: a card with
+   * `avatar: {}` has no new-path binding, exactly like a card with no `avatar` at all. The three ids are required
+   * together — a partial object is rejected at load or import rather than completed from the legacy field — and
+   * `prompt` is a complete portable snapshot of the driver's publication, text and tokens together, so neither can
+   * travel without the other.
+   *
+   * Kept `looseObject`-free on purpose: this is a shape the contract validates, and a permissive schema here would
+   * be a second, weaker definition of it.
+   */
+  avatar: optional(object({
+    driverId: optional(string()),
+    modelId: optional(string()),
+    profileId: optional(string()),
+    prompt: optional(object({
+      modelId: string(),
+      profileId: string(),
+      text: string(),
+      tokens: array(string()),
+      version: number(),
+      publishedAt: number(),
+    })),
+  })),
   outfits: optional(array(AiriOutfitSchema)),
   artistry: optional(looseObject({
     provider: optional(string()),
