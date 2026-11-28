@@ -12,7 +12,7 @@ import type { PromptConflict } from '@proj-airi/stage-renderer-sdk/host'
 import { PromptReconciliation as Outcome } from '@proj-airi/stage-renderer-sdk/host'
 import { describe, expect, it } from 'vitest'
 
-import { arbitrateModelPromptForCard, reconcileModelPromptForCard, resolveModelPromptForCard } from './prompt'
+import { arbitrateModelPromptForCard, bindCardModel, reconcileModelPromptForCard, resolveModelPromptForCard } from './prompt'
 
 const BINDING = { driverId: 'ai.moeru.airi.test.stub', modelId: 'model_a', profileId: 'profile_a' }
 
@@ -125,5 +125,47 @@ describe('arbitration', () => {
       conflict: { device: DEVICE, card: CARD },
     })
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('binding a pair', () => {
+  const MODEL_B = { driverId: BINDING.driverId, modelId: 'model_b', profileId: 'profile_b' }
+
+  it('drops the previous model\'s snapshot when the pair changes, so no foreign text is carried over', async () => {
+    const next = await bindCardModel({ card: card(), binding: MODEL_B })
+    const avatar = next.extensions?.airi?.avatar as { modelId: string, prompt?: unknown }
+    expect(avatar.modelId).toBe('model_b')
+    expect(avatar.prompt).toBeUndefined()
+  })
+
+  it('keeps a card-only snapshot when the same pair is rebound', async () => {
+    const next = await bindCardModel({ card: card(), binding: BINDING })
+    const avatar = next.extensions?.airi?.avatar as { prompt?: { version: number } }
+    expect(avatar.prompt?.version).toBe(7)
+  })
+
+  it('fills the snapshot from the store when the store has a pair for the new binding', async () => {
+    const service = fakeService({
+      reconcile: async () => ({
+        outcome: Outcome.STORE,
+        publication: { ...DEVICE, ...MODEL_B, modelDriverId: MODEL_B.driverId },
+      }),
+    })
+
+    const next = await bindCardModel({ card: card(), binding: MODEL_B, service })
+    const avatar = next.extensions?.airi?.avatar as { prompt?: { modelId: string, version: number } }
+    expect(avatar.prompt?.modelId).toBe('model_b')
+    expect(avatar.prompt?.version).toBe(4)
+  })
+
+  it('binds anyway when the prompt store cannot be reached, because binding is the primary action', async () => {
+    const service = fakeService({
+      reconcile: async () => {
+        throw new Error('the IPC hop never answered')
+      },
+    })
+
+    const next = await bindCardModel({ card: card(), binding: MODEL_B, service })
+    expect((next.extensions?.airi?.avatar as { modelId: string }).modelId).toBe('model_b')
   })
 })

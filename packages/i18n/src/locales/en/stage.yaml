@@ -53,3 +53,22 @@ startup:
   timeout: Startup timed out after 10 seconds.
   continue-without-model: Continue without avatar
   retry: Retry
+model-drivers:
+  prompt-arbitration:
+    title: Two different model prompts
+    character-generic: This character's
+    description: '{character} card and this device disagree about the model prompt.
+      Neither is newer in a way this app can trust, so it is asking you. Until
+      you choose, no model prompt is used for this character.'
+    device-heading: On this device
+    version: version {version} · published {date}
+    nothing-published: Nothing has been published for this character on this device.
+    nothing-published-body: (nothing published on this device)
+    tokens: 'Tokens: {tokens}'
+    tokens-none: (none)
+    use-device: Use this device's copy
+    card-heading: From the card
+    use-card: Use the card's copy
+    footnote: Your choice is written as a new version — one above both — and handed back
+      to the driver so its own record of the prompt agrees. The copy you did not
+      choose stays in the driver's history, not here.

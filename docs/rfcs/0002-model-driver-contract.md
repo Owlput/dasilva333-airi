@@ -201,6 +201,11 @@ undo another.
 
 The driver MUST NOT leave a partially written model when a commit fails.
 
+**Where the driver's half lives.** Both calls are the driver's `import` entry — `createImportEntry({ services })`
+returning `probe`, whose result carries `confirmImport` — resolved through `ModelDriverManager.resolveEntrypoint`
+with `ModelDriverEntryKind.IMPORT` and imported by the adapter's loader table, exactly like the mount, panels and
+picker entries. AIRI's import panel calls it; no manager method, host service or separate transport is involved.
+
 ### 5.4 Builtin models
 
 A driver MAY ship models of its own: presets, samples, a default it can create on demand.
@@ -341,8 +346,10 @@ presents them however its format warrants, and owns everything about the choice.
 tells it which character is being served and which model that character currently uses, and receives
 a model and a profile on user-confirmed choice.
 
-Only imported identities may be returned. A picker MAY list builtin models and MAY let the user
-choose one, but it MUST import it first and return the imported pair.
+Only imported identities may be returned. A picker MAY list builtin models and MAY let the user choose one, but it
+MUST NOT import it itself: it passes the files it has to the `requestImport` callback it is given (absent when the
+host has no import surface), which probes them with the originating driver's `import` entry, and only the imported
+pair may be returned.
 
 AIRI also provides a picker of its own, for models that are unavailable for a driver reason (§7.3).
 It lists what AIRI holds rows for, warns when the chosen model cannot be loaded, and writes the
@@ -874,7 +881,7 @@ the application imports the package yet.
 | `RequestRendererResult` / `RendererRequestRefusal` | The four host-owned refusal reasons (`window-unavailable`, `entry-failed`, `driver-disabled`, `shutting-down`), so a driver never invents one. |
 | `ManagerChannel` | The opaque manager↔window message pair (`send`/`onMessage`). The host transports it and does not interpret it; the pair `(window, driver)` is the whole authentication. |
 | `MountId` + `HostRegistryClient.registerMount` | Mount identities are **issued by the registry**, never minted by a renderer. A mount is unaddressable between creation and the answer, and readiness does not begin before it. |
-| `ModelDriverEntryKind` + `EntrypointRequest` + `EntrypointResolution` | `ModelDriverManager.resolveEntrypoint` answers which module implements `provider`/`mount`/`panels`/`picker` for a given surface and purpose, and `null` for a kind the driver does not ship. |
+| `ModelDriverEntryKind` + `EntrypointRequest` + `EntrypointResolution` | `ModelDriverManager.resolveEntrypoint` answers which module implements `provider`/`mount`/`panels`/`picker`/`import` for a given surface and purpose, and `null` for a kind the driver does not ship. The kind is the only distinction between them, and the adapter's loader table is keyed by it. |
 | `LegacyRestorePayload` | The data path for a revert: one model's retained pre-contract entry, carrying the **legacy identity** the legacy record is recreated under. |
 | `PendingModelPayload` | A payload the user did not confirm: AIRI's record, with **no `modelId` and no `profileId`**, so it cannot construct a `LoadCue` and `pending-import` is not a model state. This supersedes the `pending-import` row of §5.1: a state that only exists inside a transaction was a fifth value every reader had to handle, while a payload with no identity is not a model at all. |
 | `isContractCompatible` + `compatibility.ts` | The compatibility predicate, with a readable rejection. A pre-1.0 revision must match the host minor exactly, which is what refuses a `0.0.x` manifest. |
@@ -909,10 +916,13 @@ it.
 ### A1.3 The declaration, and where the rest of the code lives
 
 §6.1 is now literal. `ModelDriverEntryPoints` is `{ manager: string }` and nothing else; a declaration
-that also names `provider`, `mount`, `panels` or `picker` is refused by `validateManifest`, because that
+that also names `provider`, `mount`, `panels`, `picker` or `import` is refused by `validateManifest`, because that
 is the shape that lets a DOM-free process pull renderer code into main. Everything else is resolved at
 the moment a window needs it (§6.5), by the manager, and imported by the adapter through its own loader
-table. `capabilities.interactionModes` (§6.4) and `capabilities.prompt` (§10.4, D5) join the capability
+table. The kind set is those five entries and `ModelDriverEntryKind` is the only distinction between them: the
+loader table is keyed by kind, and what a module exports is the contract's answer per kind — a component for
+`mount`/`picker`, declarations for `panels`, `startProviderEntry` for `provider`, `createImportEntry` for `import`.
+`capabilities.interactionModes` (§6.4) and `capabilities.prompt` (§10.4, D5) join the capability
 key set, which a probe must report completely.
 
 ### A1.4 Mounts, readiness and queries

@@ -750,6 +750,21 @@ Two more pieces live outside web storage:
   app's `local:` prefix); `keys()` is scoped to one driver and `watch` fans out inside one window only —
   there is no cross-window relay. AIRI never reads these keys and never interprets their values.
 
+  The first real driver's layout (Phase 3, Live2D), relative to that namespace:
+
+  | Key | Type | Notes |
+  | :--- | :--- | :--- |
+  | `model/{modelId}` | `StoredLive2DModel` | Name, `byteSize`, `settingsFile`, profiles, the parsed expression/motion/hit-area catalog the provider reports as capabilities, and `preview` — a small WebP data URL written by the first mount that rendered the model (P3-D21). Absent means nobody has seen the model yet, not a blank image. |
+  | `model/{modelId}/bytes` | base64 string | The imported `.zip`. **Base64, not bytes**: the host's storage port JSON-serializes values, so a `Uint8Array` would silently arrive as numeric-keyed object. A binary setter belongs to the Phase 7 transfer work. |
+  | `model/{modelId}/profile/{profileId}` | `StoredLive2DProfile` | `{ profileId, name, body }`; the body is driver-defined and opaque to AIRI (D-9). Live2D's body is `{ scale?, offsetX?, offsetY?, anchorY?, opacity?, expression? }`, applied by the driver's view and clamped on read. |
+  | `model/{modelId}/profile/{profileId}/prompt` | `StoredLive2DPrompt` | `{ text, tokens, version, publishedAt }` — the driver's **own** copy of the prompt it published, and its version history pointer. AIRI's copy lives at `local:model-drivers/prompt/{driverId}/{modelId}/{profileId}` (above); the two are compared, never merged, and an arbitrated pair is written back here through `prompt.onResolution` so the driver's next publication is strictly newer. |
+  | `legacy/{modelId}` | `StoredLive2DLegacyEntry` | The retained pre-contract entry for a migrated model (P3-D20): `legacyModelId`, `meta`, `settings`, `values`, `placement`, `outfits`, `prompt`, `url`, and the files/assets as base64. Written by the driver's `migrate`, read back by `restoreLegacy`. **Only the byte payload** moves into `model/{modelId}/bytes` at import; the metadata stays so a revert can name the legacy identity again. |
+
+  Removing a model removes its bytes, every profile body and every stored prompt under it, **and its retained
+  `legacy/{modelId}` entry** (an explicit delete leaves nothing to revert to); removing a profile removes that
+  profile's body and prompt. `purge` removes every key in the namespace. These keys are
+  **not** part of AIRI's backup until the driver's `driverTransfer` bundle lands.
+
 ### 3.3 Stickers
 
 | Attribute | Value |

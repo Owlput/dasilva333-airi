@@ -20,7 +20,7 @@ import type { HostClient, ModelDriverHostState, ModelDriverSubmitAck } from './c
 import type { DriverProviderModule } from './loaders'
 import type { WindowStorage } from './storage'
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { CueKind, CueSource } from '../contract/cues'
 import { RendererPointerPhase } from '../contract/host-services'
@@ -34,6 +34,7 @@ const PROVIDER_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testProvider'
 const MOUNT_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testMount'
 const PANELS_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testPanels'
 const PICKER_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testPicker'
+const IMPORT_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#testImport'
 const UNKNOWN_SPECIFIER = '@proj-airi/stage-renderer-sdk/host#notInThisBuild'
 
 const SURFACE = RendererMountSurfaceKind.ACTING
@@ -215,6 +216,8 @@ function createFakeHost(options: {
           return { ok: true, value: { specifier: PANELS_SPECIFIER } }
         case ModelDriverEntryKind.PICKER:
           return { ok: true, value: { specifier: PICKER_SPECIFIER } }
+        case ModelDriverEntryKind.IMPORT:
+          return { ok: true, value: { specifier: IMPORT_SPECIFIER } }
         default:
           return { ok: true, value: { specifier: PROVIDER_SPECIFIER } }
       }
@@ -324,6 +327,9 @@ async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {},
   const mountComponent = { name: 'TestMount' }
   const pickerComponent = { name: 'TestPicker' }
   const panels = [{ id: 'test-panel', label: 'Test panel', component: async () => ({ default: { name: 'TestPanel' } }) }]
+  const importEntry = {
+    probe: async () => ({ ok: true as const, value: { confidence: 1, parts: [], confirmImport: async () => ({ ok: true as const, value: { entries: [] } }) } }),
+  }
 
   const adapter = await createModelDriverAdapter({
     client: host.client,
@@ -336,17 +342,31 @@ async function createAdapter(options: Parameters<typeof createFakeHost>[0] = {},
       },
     },
     loaders: {
-      providers: () => [PROVIDER_SPECIFIER],
-      resolveProvider: specifier => (specifier === PROVIDER_SPECIFIER ? async () => driver.module : undefined),
-      mounts: () => [MOUNT_SPECIFIER],
-      resolveMount: specifier => (specifier === MOUNT_SPECIFIER ? async () => ({ default: mountComponent as never }) : undefined),
-      panels: () => [PANELS_SPECIFIER],
-      resolvePanels: specifier => (specifier === PANELS_SPECIFIER ? async () => ({ declarations: () => panels as never }) : undefined),
-      pickers: () => [PICKER_SPECIFIER],
-      resolvePicker: specifier => (specifier === PICKER_SPECIFIER ? async () => ({ default: pickerComponent as never }) : undefined),
+      resolve: (kind, specifier) => {
+        if (kind === ModelDriverEntryKind.PROVIDER && specifier === PROVIDER_SPECIFIER)
+          return async () => driver.module
+        if (kind === ModelDriverEntryKind.MOUNT && specifier === MOUNT_SPECIFIER)
+          return async () => ({ default: mountComponent as never })
+        if (kind === ModelDriverEntryKind.PANELS && specifier === PANELS_SPECIFIER)
+          return async () => ({ declarations: () => panels as never })
+        if (kind === ModelDriverEntryKind.PICKER && specifier === PICKER_SPECIFIER)
+          return async () => ({ default: pickerComponent as never })
+        if (kind === ModelDriverEntryKind.IMPORT && specifier === IMPORT_SPECIFIER)
+          return async () => ({ createImportEntry: () => importEntry })
+        return undefined
+      },
+      specifiers: (kind) => {
+        switch (kind) {
+          case ModelDriverEntryKind.PROVIDER: return [PROVIDER_SPECIFIER]
+          case ModelDriverEntryKind.MOUNT: return [MOUNT_SPECIFIER]
+          case ModelDriverEntryKind.PANELS: return [PANELS_SPECIFIER]
+          case ModelDriverEntryKind.PICKER: return [PICKER_SPECIFIER]
+          case ModelDriverEntryKind.IMPORT: return [IMPORT_SPECIFIER]
+        }
+      },
     },
   })
-  return { memory, host, adapter, driver, mountComponent, pickerComponent, panels }
+  return { memory, host, adapter, driver, mountComponent, pickerComponent, panels, importEntry }
 }
 
 function envelope(): CueEnvelopeInput {
@@ -365,6 +385,22 @@ describe('model driver adapter', () => {
     expect(await adapter.windowId()).toBe('w7')
     expect(await adapter.windowId()).toBe('w7')
     expect(host.calls.identify).toBe(1)
+  })
+
+  it('mints model and profile identities itself, and never repeats one', async () => {
+    const { adapter } = await createAdapter()
+
+    const firstModel = adapter.mintModelId()
+    const firstProfile = adapter.mintProfileId()
+    expect(firstModel).toMatch(/^model_/)
+    expect(firstProfile).toMatch(/^profile_/)
+
+    // Synchronous, like the contract's authority: a commit is built in one step, never awaited for an id.
+    const modelIds = new Set([firstModel, adapter.mintModelId(), adapter.mintModelId()])
+    const profileIds = new Set([firstProfile, adapter.mintProfileId()])
+    expect(modelIds.size).toBe(3)
+    expect(profileIds.size).toBe(2)
+    expect(firstModel === firstProfile).toBe(false)
   })
 
   it('registers a mount and keeps the id the host issued', async () => {
@@ -513,8 +549,8 @@ describe('model driver adapter', () => {
     expect(driver.resolutions).toHaveLength(1)
   })
 
-  it('imports the mount, panels and picker entries the manager named', async () => {
-    const { adapter, mountComponent, pickerComponent, panels } = await createAdapter()
+  it('imports the mount, panels, picker and import entries the manager named', async () => {
+    const { adapter, mountComponent, pickerComponent, panels, importEntry } = await createAdapter()
 
     const mount = await adapter.mountComponent({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
     expect(mount.ok).toBe(true)
@@ -530,11 +566,35 @@ describe('model driver adapter', () => {
     expect(picker.ok).toBe(true)
     if (picker.ok)
       expect(picker.value).toBe(pickerComponent as never)
+
+    // One kind, one path: the import entry is loaded by the same call as the three above, and what it exports is
+    // the only difference.
+    const importEntryResult = await adapter.importEntry(DRIVER_ID)
+    expect(importEntryResult.ok).toBe(true)
+    if (importEntryResult.ok)
+      expect(importEntryResult.value).toBe(importEntry as never)
+  })
+
+  it('builds the import entry with the same container the provider would be activated with', async () => {
+    const { adapter } = await createAdapter()
+    expect(adapter.servicesFor(DRIVER_ID)).toBeUndefined()
+
+    const entry = await adapter.importEntry(DRIVER_ID)
+    expect(entry.ok).toBe(true)
+    if (entry.ok)
+      expect(typeof entry.value?.probe).toBe('function')
+
+    // An import does not start a provider, but it still writes through this window's one container for the driver.
+    expect(adapter.servicesFor(DRIVER_ID)?.modelDriverId).toBe(DRIVER_ID)
   })
 
   it('treats "this driver ships no such entry" as a value, not a failure', async () => {
     const { adapter } = await createAdapter({
-      entrypoints: { [ModelDriverEntryKind.MOUNT]: null, [ModelDriverEntryKind.PICKER]: null },
+      entrypoints: {
+        [ModelDriverEntryKind.MOUNT]: null,
+        [ModelDriverEntryKind.PICKER]: null,
+        [ModelDriverEntryKind.IMPORT]: null,
+      },
     })
 
     const mount = await adapter.mountComponent({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
@@ -542,6 +602,9 @@ describe('model driver adapter', () => {
 
     const picker = await adapter.pickerComponent(DRIVER_ID)
     expect(picker).toEqual({ ok: true, value: null })
+
+    const importEntry = await adapter.importEntry(DRIVER_ID)
+    expect(importEntry).toEqual({ ok: true, value: null })
   })
 
   it('refuses an entry specifier this build cannot resolve as invalid-entrypoint', async () => {
@@ -643,7 +706,16 @@ describe('model driver adapter', () => {
   })
 
   it('warns instead of throwing when the host cannot release a mount', async () => {
-    const logger: HostLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    // A recording logger rather than a mock: the fallback runner has no `vi`, and what matters is the warning text.
+    const warnings: string[] = []
+    const logger: HostLogger = {
+      debug: () => {},
+      info: () => {},
+      warn: (_scope, ...args) => {
+        warnings.push(args.map(String).join(' '))
+      },
+      error: () => {},
+    }
     const { adapter } = await createAdapter({ failUnregister: true }, logger)
     const registered = await adapter.registerMount({ driverId: DRIVER_ID, surface: SURFACE, purpose: PURPOSE })
     if (!registered.ok)
@@ -651,12 +723,10 @@ describe('model driver adapter', () => {
 
     // Unmounting is what happens when a window is already going away, so a refusal must not become an exception in
     // the unmount path: the subscription is released either way, and the failure is reported as a warning.
-    await expect(adapter.unregisterMount(registered.mountId)).resolves.toBeUndefined()
+    expect(await adapter.unregisterMount(registered.mountId)).toBeUndefined()
 
-    expect(logger.warn).toHaveBeenCalledWith(
-      'model-drivers',
-      expect.stringContaining(`Could not unregister mount \`${registered.mountId}\``),
-    )
+    expect(warnings.length).toBe(1)
+    expect(warnings[0]).toContain(`Could not unregister mount \`${registered.mountId}\``)
   })
 
   it('resolves an entrypoint through the host and does not decide for it', async () => {

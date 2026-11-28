@@ -28,42 +28,39 @@ import {
  * than rendering. Every declared specifier still has an entry, which is the startup check §4.7 asks for.
  */
 function createFixtureTable(): DriverLoaderTable {
-  const modules = new Map<string, () => Promise<never>>()
+  const modules = new Map<ModelDriverEntryKind, Map<string, () => Promise<never>>>()
 
-  const register = (specifier: string) => {
-    modules.set(specifier, async () => ({} as never))
+  const register = (kind: ModelDriverEntryKind, specifier: string) => {
+    const forKind = modules.get(kind) ?? new Map<string, () => Promise<never>>()
+    forKind.set(specifier, async () => ({} as never))
+    modules.set(kind, forKind)
   }
-  register(STUB_PROVIDER_SPECIFIER)
-  register(STUB_MOUNT_SPECIFIER)
-  register(STUB_PANEL_SPECIFIER)
-  register(STUB_PICKER_SPECIFIER)
+  register(ModelDriverEntryKind.PROVIDER, STUB_PROVIDER_SPECIFIER)
+  register(ModelDriverEntryKind.MOUNT, STUB_MOUNT_SPECIFIER)
+  register(ModelDriverEntryKind.PANELS, STUB_PANEL_SPECIFIER)
+  register(ModelDriverEntryKind.PICKER, STUB_PICKER_SPECIFIER)
 
-  const resolve = (specifier: string) => modules.get(specifier)
   return {
-    resolveProvider: resolve,
-    resolveMount: resolve,
-    resolvePanels: resolve,
-    resolvePicker: resolve,
-    providers: () => [STUB_PROVIDER_SPECIFIER],
-    mounts: () => [STUB_MOUNT_SPECIFIER],
-    panels: () => [STUB_PANEL_SPECIFIER],
-    pickers: () => [STUB_PICKER_SPECIFIER],
+    resolve: (kind, specifier) => modules.get(kind)?.get(specifier),
+    specifiers: kind => [...(modules.get(kind)?.keys() ?? [])],
   }
 }
 
 describe('entry resolution', () => {
   it('has a loader for every specifier the fixture declares', () => {
     const table = createFixtureTable()
-    expect(table.providers()).toEqual([STUB_PROVIDER_SPECIFIER])
-    expect(table.mounts()).toEqual([STUB_MOUNT_SPECIFIER])
-    expect(table.panels()).toEqual([STUB_PANEL_SPECIFIER])
-    expect(table.pickers()).toEqual([STUB_PICKER_SPECIFIER])
+    expect(table.specifiers(ModelDriverEntryKind.PROVIDER)).toEqual([STUB_PROVIDER_SPECIFIER])
+    expect(table.specifiers(ModelDriverEntryKind.MOUNT)).toEqual([STUB_MOUNT_SPECIFIER])
+    expect(table.specifiers(ModelDriverEntryKind.PANELS)).toEqual([STUB_PANEL_SPECIFIER])
+    expect(table.specifiers(ModelDriverEntryKind.PICKER)).toEqual([STUB_PICKER_SPECIFIER])
 
-    for (const specifier of [STUB_PROVIDER_SPECIFIER, STUB_MOUNT_SPECIFIER, STUB_PANEL_SPECIFIER, STUB_PICKER_SPECIFIER]) {
-      expect(table.resolveProvider(specifier)).toBeDefined()
-      expect(table.resolveMount(specifier)).toBeDefined()
-      expect(table.resolvePanels(specifier)).toBeDefined()
-      expect(table.resolvePicker(specifier)).toBeDefined()
+    for (const [kind, specifier] of [
+      [ModelDriverEntryKind.PROVIDER, STUB_PROVIDER_SPECIFIER],
+      [ModelDriverEntryKind.MOUNT, STUB_MOUNT_SPECIFIER],
+      [ModelDriverEntryKind.PANELS, STUB_PANEL_SPECIFIER],
+      [ModelDriverEntryKind.PICKER, STUB_PICKER_SPECIFIER],
+    ] as const) {
+      expect(table.resolve(kind, specifier)).toBeDefined()
     }
   })
 

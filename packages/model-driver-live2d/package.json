@@ -1,0 +1,48 @@
+{
+  "name": "@proj-airi/model-driver-live2d",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live2D stage driver for Project AIRI (RFC 0002)",
+  "author": {
+    "name": "Moeru AI Project AIRI Team",
+    "email": "airi@moeru.ai",
+    "url": "https://github.com/moeru-ai"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moeru-ai/airi.git",
+    "directory": "packages/model-driver-live2d"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts",
+    "./manager": "./src/manager.ts",
+    "./provider": "./src/provider.ts",
+    "./mount": "./src/mount/index.ts",
+    "./panels": "./src/panels/index.ts",
+    "./picker": "./src/picker/index.ts",
+    "./import": "./src/import.ts",
+    "./locales": "./src/locales/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@pixi/app": "^6.5.10",
+    "@pixi/extensions": "^6.5.10",
+    "@pixi/text": "^6.5.10",
+    "@pixi/ticker": "^6.5.10",
+    "@proj-airi/stage-renderer-sdk": "workspace:^",
+    "jszip": "^3.10.1",
+    "pixi-live2d-display": "^0.4.0",
+    "vue": "catalog:",
+    "vue-i18n": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "catalog:vitest",
+    "vue-tsc": "^3.1.8"
+  }
+}

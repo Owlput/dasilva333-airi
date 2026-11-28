@@ -389,6 +389,83 @@ pages:
     emotions:
       title: Emotion Calibration
       description: Calibrate emotion mappings and acting directives for the active avatar.
+    model-drivers:
+      dialog:
+        title: Choose a model for this character
+        description: The model driver owns the list, the profiles and the import; the
+          character keeps the choice.
+        source-driver: Driver's picker
+        source-airi: AIRI's model list
+        loading: Asking the host which drivers can be chosen…
+        cancel: Cancel
+        error:
+          no-drivers: No enabled model driver can be chosen here.
+          no-character: There is no character to bind this model to.
+          update-failed: The character could not be updated.
+      airi-picker:
+        unavailable: The character's current model is unavailable ({reason}). You can
+          bind another model now; the binding is a reference, and replacing it
+          costs nothing the character cannot re-bind.
+        intro: These are the models AIRI holds a record for. Binding one does not import
+          it, and a model this device cannot load is still listed — choosing it
+          would only make the character unavailable until a driver can serve it.
+        filter-placeholder: Filter models…
+        loading: Reading the driver's model list…
+        empty: This driver reports no imported models.
+        refresh: Refresh
+        cancel: Cancel
+        current: current
+      driver-picker:
+        loading: Starting the driver's picker…
+        no-picker: Driver `{driverId}` ships no model picker.
+        import-title: Import a model
+      reason:
+        driver-unknown: The driver that renders this model is not installed.
+        driver-disabled: The driver that renders this model is disabled.
+        driver-error: The driver failed to start.
+        model-missing: The driver no longer holds this model.
+        profile-missing: The driver does not have the profile this binding names.
+        runtime-error: The model could not be rendered right now.
+      unavailable:
+        unbound:
+          title: No model yet
+          body: This character has not been given a model. Choose one to give it a body.
+          action: Choose a model
+        legacy:
+          title: Using the legacy model
+          body: This character still renders through the old renderer. It works; migrating
+            moves it to the driver and keeps it working.
+          action: Migrate
+        legacy-unavailable:
+          title: Model unavailable
+          body: The renderer that served this model has been removed. The character itself
+            is fine — migrate it now to give it a body again.
+          action: Migrate now
+        bound:
+          title: Model unavailable
+          body: The model could not be rendered right now. The binding is intact; try
+            again, or open the model controls.
+          action: Model controls
+        model-missing:
+          title: Model unavailable
+          body: The driver no longer holds this model. The character is fine; import the
+            model or choose another.
+          action: Import or choose a model
+        driver-missing:
+          title: Driver unavailable
+          body: The driver that renders this model is disabled or not installed. Enable it
+            to show the model again.
+          action: Enable driver
+        profile-missing:
+          title: Profile missing
+          body: This binding names a profile the driver does not have, so the character
+            cannot be rendered as configured. Choose a profile.
+          action: Choose a profile
+        invalid:
+          title: Binding is inconsistent
+          body: The card names some, but not all, of the ids a model binding needs.
+            Re-bind the character to a model.
+          action: Re-bind
   scene:
     title: Stage Backgrounds
     description: Customize virtual backdrops and stage wallpaper images for your characters.
