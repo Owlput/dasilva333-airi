@@ -82,6 +82,10 @@ Both are asserted in Phase 6's automated harness against a fake backend, per §9
 2. Mount identity, readiness and addressing are the host's, and a driver never constructs an id.
 3. Profiles, prompts, storage and capture are shapes a driver can satisfy without the host learning its format.
 4. Two mounts of one driver are independent, which is the obligation a singleton would silently break.
+5. **Not that the host surfaces are placed.** The panel, picker, arbitration and migration frames are built and their
+   logic is tested, but nothing a user can reach mounts them until the first driver is migrated, which is Phase 3's
+   Spine (P2-D18). The spike route is the only path that mounts a driver in Phase 2, and it mounts the *mount*, not the
+   frames.
 
 ## 6. The 2026-11-28 run
 

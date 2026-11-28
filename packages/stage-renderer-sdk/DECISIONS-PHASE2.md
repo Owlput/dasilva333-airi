@@ -196,16 +196,19 @@ executed: the main bundle assertion (Phase 1) and the speech transport suite (th
 `MountHost`, `DriverPanelHost`, `DriverPickerHost`, `AiriModelPicker`, `UnavailableModelView`,
 `PromptArbitrationDialog` and `MigrationScreen` carry their copy inline. The repository rule is that translations
 live in `packages/i18n`, and this is a deliberate, recorded deviation rather than an oversight: adding keys needs
-the yaml manager and ten locales, and none of these surfaces is reachable by a user in Phase 2 (the only route that
-mounts them is the dev spike). **Before the first format cutover (Phase 3) the keys must be added**, or these
-surfaces ship untranslated.
+the yaml manager and ten locales, and none of these surfaces is reachable by a user in Phase 2 — the six frames have
+no importer at all (P2-D18), and the dev spike mounts the mount, not the frames. **The keys land in the same change
+that mounts the surfaces (P2-D18), before the first format cutover.** The order is placement → copy census → keys →
+cutover, because translating sentences about a panel with no declarations, a picker with no rows and an unavailable
+model with no model is speculation about what the sentence has to say.
 
 ### P2-D13 — Web/Pocket in-process hosts are still deferred, now for the same reason as before
 
 P1-D13 deferred them to Phase 2 because nothing consumed them. Phase 2 built the *host UI* that would consume them,
-but that UI is mounted by Electron's dev route only, and both web apps' typechecks are outside the surface this
-session could run (no `node_modules`). The host UI is platform-neutral by construction — it takes the adapter as a
-prop and never imports Electron — so the remaining work is composition, next to the surface that needs it.
+but that UI is mounted by nothing a user can reach — the dev route mounts the *mount*, and the six frames have no
+importer (P2-D18) — and neither web app's typecheck was run in this session.
+The host UI is platform-neutral by construction — it takes the adapter as a prop and never imports Electron — so the
+remaining work is composition, next to the surface that needs it.
 
 **Rules out:** claiming §4.1's Web/Pocket row is literal. It is deferred a second time, explicitly.
 
@@ -219,6 +222,12 @@ ack, `occupiesPoint`/`hitTest` reachability, profiles as outfits, prompt publica
 **The spike reports two obligations as unproven by the fixture, not as failures.** The stub never emits
 `hit-area-change` or `animation-finished`, so D-3 and D-2 are confirmed by the contract and remain driver work; the
 spike cannot certify a shape it never exercises. Everything else it can reach, it reaches through the real host.
+
+**Pressed by hand on 2026-11-28: `Pass`** ([`VRM-SPIKE.md`](./VRM-SPIKE.md) §6). Five surfaces in one window, ids
+`mount_11`…`mount_15`, D-1/D-1b/D-4/D-4b/D-9/D-10/D-13 all `pass`, D-2/D-3 `attention` for the reason above. The press
+is what found the `MountHost` deep-`ref` bug — no surface had rendered a driver mount before this page — so the item
+is recorded as executed rather than owed, and the run's other two findings (three of the page's own checks were not
+evidence, and a probe whose observable cannot change) are in that section.
 
 ### P2-D15 — What this session could and could not execute
 
@@ -257,9 +266,16 @@ executed:
   this tree, not merely carried forward;
 - **the architecture guards**: `node scripts/assert-model-driver-guards.mjs` green over 1,995 files (7 guards).
 
-What is **owed and not claimed**: `vitest` itself (the sandbox blocks it, so the fallback runner remains the evidence
-for every suite above), `node scripts/audit-test-catalog.mjs` (it shells out through `cmd.exe`, denied here), and the
-VRM spike page by hand. The plan's §5.8 evidence table records each criterion's state against exactly this list.
+What was **owed and not claimed** at the time of that run has since been retired, all three of it: the dependencies
+were installed, so `vitest` runs — the confined sandbox still denies the `esbuild` service spawn, so a run there needs
+a one-shot escalation, and the fallback runner remains the no-child-process path; `node
+scripts/audit-test-catalog.mjs` runs and reports **206 catalogued paths, 0 missing, 9 uncatalogued (all pre-existing)**;
+and the VRM spike page was pressed by hand (P2-D14, [`VRM-SPIKE.md`](./VRM-SPIKE.md) §6). At the close of the phase the
+SDK stands at **22 suites / 321 tests** — the five added later are `compatibility.test.ts`, `host/core/mounts.test.ts`,
+`host/loaders.test.ts`, `host/services.test.ts` and `index.test.ts`, with existing suites grown rather than duplicated —
+and SDK coverage is 84.70/77.97/81.54/84.41 (statements/branches/functions/lines). The guards were re-run over 2,071
+files, still 7 and still green. The plan's §5.8 evidence table records each criterion's state against exactly this
+list.
 
 ### P2-D16 — Pointer input: one conversion, in the window that owns the element
 
@@ -338,4 +354,47 @@ mistyped channel name fails a test instead of hanging an invoke nobody made in d
 push transport (`emitTo` → `createContext(ipcMain, window)`) are still Electron-bound and unpinned; they are small, and
 pinning them would mean mocking `BrowserWindow`, which is a worse trade than leaving them to the manual smoke list.
 The app suite remains the honest boundary: the table is tested, the process plumbing is reviewed.
+
+---
+
+## Closing the phase
+
+### P2-D18 — The six host surfaces are built but unplaced, and placement waits for a migrated driver
+
+`DriverPanelHost`, `DriverPickerHost`, `AiriModelPicker`, `UnavailableModelView`, `PromptArbitrationDialog` and
+`MigrationScreen` exist, are typed against the contract, and are referenced by nothing: a repository-wide search finds
+them in one comment in `MountHost.vue` and one doc comment in `contract/references.ts`, and in no importer. Phase 2's
+exit criterion 3 says a panel renders in settings and the strip popover, so this is the criterion the phase **does not
+meet as written** — the choice is to mount them now or to say so and schedule it. It is scheduled.
+
+**Why not now.** A panel is an answer to a driver's declarations and a picker is an answer to a manager's rows, and the
+repository has neither yet:
+
+1. **There is no library to render.** The only driver in the repository is the stub, and its rows are seeds that die
+   with the process. A panel is a renderer of one driver's declarations and a picker is a puller of one manager's rows;
+   with no declarations and no rows, mounting them proves that Vue can render a list of zero.
+2. **The placement questions need a declaration set to have a non-arbitrary answer** — which of the two sites (Settings
+   → Data, the strip popover) gets the panel for a given driver, whether a driver's panels are tabbed or stacked, and
+   how "unavailable model" reads when the substitute cannot be offered. Guessing those against a fixture means guessing
+   again when the first real driver arrives, and the second guess is a rewrite.
+3. **The frames are the least-tested part of the phase, by construction.** `VRM-SPIKE.md` §6 records that no surface
+   had ever rendered a driver mount before the spike page — and that is how the `MountHost` deep-`ref` bug survived to
+   the end of the phase. The chrome that hosts a *panel* inherits that risk and has had no equivalent press.
+4. **The i18n census cannot be done honestly before placement.** See P2-D12: the keys land with the surfaces.
+
+**The trigger, so this does not become an open-ended deferral.** Placement happens when **at least one driver is
+migrated** — ported to the contract and its legacy library migrated, which is Phase 3's Spine: declarations and rows
+then exist, and the unavailable-model path has a real "unavailable" to render. Placement, the i18n keys for all seven
+surfaces and the first pointer subscription through `MountHost`'s listeners (criterion 6's DOM half) land in that one
+change, before that driver's cutover.
+
+**What this rules out.** Claiming item 3 is met because the files exist — §5.8 states the opposite and points here.
+Deleting the components to make the tree look tidy: they are tested against the contract and are the phase's
+deliverable. And treating the dev spike's five `MountHost`s as placement: that route exercises the mount path, not the
+frames.
+
+**Risk accepted, explicitly.** The components' props have only ever been supplied by the fixture's components and
+checked by `tsc`. The first placement may find an API mismatch of the same class as the `MountHost` bug. That is the
+cheaper order: against a real driver, the mismatch shows up as a driver that cannot render, not as a second fixture
+that agrees with itself.
 

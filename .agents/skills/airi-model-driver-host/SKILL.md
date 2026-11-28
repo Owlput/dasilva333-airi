@@ -33,7 +33,7 @@ Read the source of truth before changing behaviour:
 | Stub driver, harness, in-process host, fixture components | `src/host/testing/` (`./testing` is Vue-free; components are `./testing/components`) |
 | Electron resources (windows, IPC, `state.json`) | `apps/stage-tamagotchi/src/main/services/model-drivers/`, `src/shared/model-drivers-eventa.ts` |
 | Renderer wiring and loader table | `apps/stage-tamagotchi/src/renderer/libs/model-drivers/` |
-| Host UI: mount, panels, picker, migration, arbitration | `packages/stage-ui/src/components/scenes/MountHost.vue`, `components/scenarios/settings/model-drivers/` |
+| Host UI: mount, panels, picker, migration, arbitration | `packages/stage-ui/src/components/scenes/MountHost.vue`, `components/scenarios/settings/model-drivers/` (**all six frames are built and unit-tested but have no importer** — placement waits until the first driver is migrated, Phase 3's Spine, P2-D18; only the dev spike route mounts anything) |
 | Card binding and prompt seam, migration service | `packages/stage-ui/src/libs/model-drivers/{binding,prompt,migration}.ts` |
 | Guards | `scripts/assert-model-driver-guards.mjs`, `scripts/architecture-guards/legacy-patterns.json`, `scripts/assert-main-dom-free.mjs` |
 
@@ -97,7 +97,7 @@ change that fixes its violation (the check fails on a stale entry).
 
 ```bash
 # the contract, adapter, host core, host service, host UI logic and the fixture
-pnpm -F @proj-airi/stage-renderer-sdk test      # 17 suites / 269 tests
+pnpm -F @proj-airi/stage-renderer-sdk test      # 22 suites / 321 tests
 pnpm -F @proj-airi/stage-renderer-sdk typecheck
 pnpm -F @proj-airi/stage-ui typecheck
 pnpm -F @proj-airi/stage-tamagotchi typecheck   # node + web (vue-tsc)
@@ -143,3 +143,6 @@ the shared background window, and the dev routes (`/devtools/model-driver-stub`,
   transport means a second client (P2-D17).
 - A Vue prop declared as bare `String`/`Object` resolves to `string`/`Record<string, any>`, so a component whose
   contract wants an enum or `HostServices` silently becomes unassignable — use `PropType<T>` (P2-D17).
+- The six host frames have no importer until the first driver is migrated (Phase 3's Spine, P2-D18). So "a panel renders
+  in settings" is not a verified statement yet, and the dev spike's five `MountHost`s mount the *mount*, not the frames —
+  an empty panel list looks identical to a working one.
