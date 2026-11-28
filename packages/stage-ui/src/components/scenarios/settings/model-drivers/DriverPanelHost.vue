@@ -50,7 +50,7 @@ const activeId = ref<string>()
 const body = shallowRef<unknown>()
 const error = ref<string>()
 
-const services = computed<HostServices | undefined>(() => props.adapter.servicesFor(props.driverId))
+const services = ref<HostServices>()
 
 const panelProps = computed<ModelDriverPanelProps | undefined>(() => {
   if (!services.value)
@@ -95,6 +95,9 @@ async function load() {
   const entry = await props.adapter.ensureEntry(props.driverId)
   if (!entry.ok)
     error.value = entry.error.message
+  // `servicesFor` answers from a plain map, so it is read after the entry started rather than in a computed: the map is
+  // not reactive, and a computed that read it before would cache "no services" for this frame's whole life.
+  services.value = props.adapter.servicesFor(props.driverId)
 
   const resolved = await props.adapter.panelDeclarations(props.driverId)
   if (!resolved.ok) {

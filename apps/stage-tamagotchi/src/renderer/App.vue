@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import type { HostPromptService } from '@proj-airi/stage-renderer-sdk/host'
+
 import type { StartupMilestoneId, StartupMilestoneStatus } from '../shared/eventa'
+import type { ModelDriverAdapter } from './libs/model-drivers'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
@@ -7,6 +10,7 @@ import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/com
 import { debug } from '@proj-airi/stage-shared'
 import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { getGPUCoordinator } from '@proj-airi/stage-ui/libs/inference'
+import { provideModelDriverHost } from '@proj-airi/stage-ui/libs/model-drivers/host'
 import { useSharedAnalyticsStore } from '@proj-airi/stage-ui/stores/analytics'
 import { useBackupStore } from '@proj-airi/stage-ui/stores/backup'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
@@ -30,7 +34,7 @@ import { useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings/con
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { useTheme } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { toast, Toaster } from 'vue-sonner'
@@ -64,6 +68,7 @@ import {
   pluginProtocolListProviders,
   pluginProtocolListProvidersEventName,
 } from '../shared/eventa'
+import { bootstrapModelDriverAdapter, modelDriverPrompts } from './libs/model-drivers'
 import { useServerChannelSettingsStore } from './stores/settings/server-channel'
 import { useStageWindowLifecycleStore } from './stores/stage-window-lifecycle'
 import { builtinTools } from './stores/tools/builtin'
@@ -80,6 +85,24 @@ const router = useRouter()
 const route = useRoute()
 const cardStore = useAiriCardStore()
 const { activeCard } = storeToRefs(cardStore)
+
+/**
+ * The window's model-driver host, provided once for every host surface below this app (§4.1, P2-D18).
+ *
+ * The adapter is started **after the first paint** and filled in when it resolves, so a slow driver entry never
+ * delays the shell, and a surface that mounted first re-renders when it appears. A window that cannot host driver code
+ * (web, pocket) leaves it undefined and every surface keeps its legacy path — the honest answer, not an error.
+ */
+const modelDriverHost = shallowRef<ModelDriverAdapter>()
+/** The same bootstrap builds the prompt service; a bind-time reconciliation needs it (§5.4). */
+const modelDriverPromptsRef = shallowRef<HostPromptService>()
+provideModelDriverHost({ adapter: modelDriverHost, prompts: modelDriverPromptsRef })
+onMounted(() => {
+  void bootstrapModelDriverAdapter().then((adapter) => {
+    modelDriverHost.value = adapter ?? undefined
+    modelDriverPromptsRef.value = modelDriverPrompts()
+  })
+})
 const chatSessionStore = useChatSessionStore()
 const serverChannelStore = useModsServerChannelStore()
 const characterOrchestratorStore = useCharacterOrchestratorStore()

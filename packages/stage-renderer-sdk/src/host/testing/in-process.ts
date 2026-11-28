@@ -19,7 +19,7 @@ import type { ModelDriverAdapter } from '../adapter'
 import type { HostClient, ModelDriverEntryRequest, ModelDriverHostState } from '../client'
 import type { PromptStore } from '../core/prompts'
 import type { DriverStateSnapshot, DriverTableEntry } from '../core/registry'
-import type { DriverLoaderTable } from '../loaders'
+import type { DriverEntryStartOptions, DriverLoaderTable } from '../loaders'
 import type { ModelDriverHostPush, ModelDriverHostService } from '../service'
 import type { WindowStorage } from '../storage'
 import type { StubDriverState, StubModel } from './stub-driver'
@@ -226,11 +226,11 @@ export async function createInProcessHost(options: InProcessHostOptions = {}): P
     // The loader table is per window, because the provider module it resolves is where a window's session is
     // created: the specifier is the same string in every window, and the closure is what keeps them apart.
     const loaders: DriverLoaderTable = {
-      resolveProvider: (specifier) => {
-        if (specifier !== STUB_PROVIDER_SPECIFIER)
+      resolve: (kind, specifier) => {
+        if (kind !== ModelDriverEntryKind.PROVIDER || specifier !== STUB_PROVIDER_SPECIFIER)
           return undefined
         return async () => ({
-          startProviderEntry: entry => startStubProviderEntry({
+          startProviderEntry: (entry: DriverEntryStartOptions) => startStubProviderEntry({
             ...entry,
             models,
             onSession: (created) => {
@@ -241,13 +241,7 @@ export async function createInProcessHost(options: InProcessHostOptions = {}): P
       },
       // The harness has no Vue: it proves the protocol, and the fixture's component half lives behind the
       // `./testing/components` subpath so a Node suite never loads it.
-      resolveMount: () => undefined,
-      resolvePanels: () => undefined,
-      resolvePicker: () => undefined,
-      providers: () => [STUB_PROVIDER_SPECIFIER],
-      mounts: () => [],
-      panels: () => [],
-      pickers: () => [],
+      specifiers: kind => (kind === ModelDriverEntryKind.PROVIDER ? [STUB_PROVIDER_SPECIFIER] : []),
     }
 
     const prompts = createPromptStore(storage)

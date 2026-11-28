@@ -12,7 +12,14 @@ import type { Component } from 'vue'
 
 import type { HostServices } from './host-services'
 import type { CharacterId, ModelId, ModelProfileId } from './model'
-import type { ModelDriverId, RendererMountReadinessState, RendererMountSurfaceKind } from './shared'
+import type { ModelProbeInput, ModelProbeResult } from './provider'
+import type {
+  ContractResult,
+  MaybePromise,
+  ModelDriverId,
+  RendererMountReadinessState,
+  RendererMountSurfaceKind,
+} from './shared'
 
 /** The host chrome a driver panel can be mounted into. */
 export enum ModelDriverPanelHostSurface {
@@ -158,8 +165,10 @@ export interface ModelSelection {
  * control strip) without duplicating per-format UI.
  *
  * A picker owns everything about the choice: listing the driver's models, listing profile variants
- * of one model, importing a file or a builtin, editing or deleting a profile. AIRI only mounts it
- * and receives a `select` emit.
+ * of one model, editing or deleting a profile. It does **not** import: when the user wants something
+ * the driver can present but AIRI does not hold, it calls the host-supplied `requestImport` callback
+ * with the files it has, and the host opens the same import panel any other import uses. AIRI mounts
+ * the picker, supplies that callback, and receives `select`.
  */
 export interface ModelPickerProps {
   /** The character being served, so the picker can mark its current choice. */
@@ -168,6 +177,19 @@ export interface ModelPickerProps {
   currentModelId?: ModelId
   /** The profile the character currently uses, when it has one. */
   currentProfileId?: ModelProfileId
+  /**
+   * Open the host's import surface with these files, resolving when that surface closes.
+   *
+   * **Absent means this host has no import surface for this driver.** A picker must not offer "add a model"
+   * without it, and it never imports on its own: it hands the files over and the promise is its only signal that
+   * the dialog is gone. Syncing what was imported is the driver's own business — re-read its storage, or watch a
+   * key it already holds; the host deliberately relays nothing.
+   *
+   * A callback rather than a prop/emit pair, because this direction of communication is host-to-driver and does
+   * not need Vue: the same contract can be implemented by a picker that is not a Vue component, and the picker
+   * interface should not grow a member for every host chrome detail.
+   */
+  requestImport?: (request: ModelImportRequest) => Promise<void>
   /** The same service container the driver receives at activation. */
   services: HostServices
 }
@@ -176,14 +198,31 @@ export interface ModelPickerProps {
  * What a picker reports.
  *
  * `select` carries **imported** ids only. A builtin model — a preset the driver ships — may be
- * listed and may be chosen, but the picker has to import it first (`probe` → `confirmImport`, with
- * the Adapter minting `modelId`/`profileId`) and then emit the imported pair. AIRI has no way to
- * reference a builtin, so emitting one would be a reference it could never resolve again.
+ * listed and may be chosen, but it must be imported first, and the picker does not do that itself:
+ * it hands the files to `requestImport`, the host opens its import panel, and the imported pair comes
+ * back as a `select`. AIRI has no way to reference a builtin, so emitting one would be a reference it
+ * could never resolve again.
  */
 export interface ModelPickerEmits {
   select: (selection: ModelSelection) => void
   /** The user closed the picker without choosing. */
   cancel: () => void
+}
+
+/**
+ * The input a picker hands to the host's import flow.
+ *
+ * The files are the picker's to obtain — from its own `<input type="file">`, a drop target, or a builtin it can
+ * materialize — because a driver's picker is a component in the host window and a `File` only comes from user
+ * chrome. What it may not do is write, mint or commit them.
+ */
+export interface ModelImportRequest {
+  /**
+   * The input, exactly as the picker has it: a single archive, or a model together with the files it references.
+   *
+   * One set for the whole request, like `ModelProbeInput.files`: the host does not split it, and neither does AIRI.
+   */
+  files: File[]
 }
 
 /**
@@ -197,6 +236,46 @@ export type ModelPickerComponent = Component<ModelPickerProps>
 /** What the picker entry resolves to; `default` is what the host mounts. */
 export interface ModelPickerComponentModule {
   default: ModelPickerComponent
+}
+
+/**
+ * The driver's import surface: the code a host import panel calls to read one input and to commit what it read.
+ *
+ * It is the module `ModelDriverEntryKind.IMPORT` addresses, and nothing more special than that: the manager names
+ * a specifier, the adapter imports it through its loader table, and the host calls the functions it exports. There
+ * is no second kind of entry, no separate transport and no host-side import method — the kind is the only
+ * distinction between this and a mount.
+ *
+ * The split with the host is the one §5.3 draws: the host owns the dialog (the input, merging what several drivers
+ * report, ordering by confidence, the confirmation) and the driver owns its format (reading the input, writing the
+ * bytes, settling each committed part). Hence a module of functions rather than a component: the driver has no
+ * opinion about the chrome, and a driver-rendered dialog could not be merged with another driver's.
+ */
+export interface ModelImportEntry {
+  /**
+   * Inspect one input and report the models inside it.
+   *
+   * Writes nothing: the answer is a description plus the callback that commits (C21). It is the same
+   * `ModelProbeResult` a provider returns, because a driver has exactly one answer to "what is in this input" —
+   * the provider's `probe` and this entry must agree, and both settle parts under host-minted ids.
+   */
+  probe: (input: ModelProbeInput) => MaybePromise<ContractResult<ModelProbeResult>>
+}
+
+/** What the host passes when it builds an import entry. */
+export interface ModelImportEntryOptions {
+  /**
+   * The window's container for this driver, so a probe reads and a commit writes inside the driver's own namespace.
+   *
+   * The same container a panel, a picker and the provider receive — the import is not a special case that gets a
+   * second one.
+   */
+  services: HostServices
+}
+
+/** What the import entry module exports. */
+export interface ModelImportEntryModule {
+  createImportEntry: (options: ModelImportEntryOptions) => ModelImportEntry | Promise<ModelImportEntry>
 }
 
 /**

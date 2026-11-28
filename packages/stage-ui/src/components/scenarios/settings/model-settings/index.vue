@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DisplayModel } from '../../../../stores/display-models'
 
+import { ModelDriverPanelHostSurface, RendererMountReadinessState, RendererMountSurfaceKind } from '@proj-airi/stage-renderer-sdk'
 import { useMmd } from '@proj-airi/stage-ui-mmd/stores'
 import { useSpine } from '@proj-airi/stage-ui-spine/stores'
 import { Button, Callout } from '@proj-airi/ui'
@@ -9,7 +10,12 @@ import { storeToRefs } from 'pinia'
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import DriverModelDialog from '../model-drivers/DriverModelDialog.vue'
+import DriverPanelHost from '../model-drivers/DriverPanelHost.vue'
+
 import { useIdleAnimations } from '../../../../composables'
+import { readCardBinding } from '../../../../libs/model-drivers/binding'
+import { useModelDriverHost } from '../../../../libs/model-drivers/host'
 import { useAiriCardStore } from '../../../../stores/modules'
 import { useSettings } from '../../../../stores/settings'
 import { usePositioningStore } from '../../../../stores/settings/positioning'
@@ -97,6 +103,16 @@ const computedYOffset = computed(() => {
 
 const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+
+/**
+ * The new path's entry point in settings: the driver's own picker, mounted by the host dialog that writes the
+ * binding. Hidden in a window with no adapter (web, pocket), where no driver can run yet — the legacy controls above
+ * are the only model choice that window can offer.
+ */
+const driverHost = useModelDriverHost()
+const driverAdapter = computed(() => driverHost?.adapter.value)
+const driverPickerOpen = ref(false)
+const currentBinding = computed(() => activeCard.value ? readCardBinding(activeCard.value).binding : undefined)
 
 const { resolveActiveIdleAnimations } = useIdleAnimations()
 
@@ -329,6 +345,37 @@ function handleOffsetChange(offset: { x: number, y: number }) {
           </Button>
         </ModelAssignmentModal>
       </div>
+
+      <div v-if="driverAdapter" class="w-full flex gap-2">
+        <Button variant="secondary" class="flex-1" @click="driverPickerOpen = true">
+          Choose Driver Model...
+        </Button>
+      </div>
+
+      <DriverModelDialog
+        v-if="driverAdapter"
+        v-model:open="driverPickerOpen"
+        :adapter="driverAdapter"
+        :character-id="activeCardId"
+        :current-model-id="currentBinding?.modelId"
+        :current-profile-id="currentBinding?.profileId"
+      />
+
+      <!--
+        The driver's own panels for this character's model (P2-D18, P3-D15). This is the first place one is reachable
+        outside the dev route: a settings window with no stage still has the container the panels edit through, and
+        they are the only authoring surface for the appearance and the prompt.
+      -->
+      <DriverPanelHost
+        v-if="driverAdapter && currentBinding"
+        :adapter="driverAdapter"
+        :driver-id="currentBinding.driverId"
+        :model-id="currentBinding.modelId"
+        :profile-id="currentBinding.profileId"
+        :surface="RendererMountSurfaceKind.PREVIEW"
+        :host-surface="ModelDriverPanelHostSurface.SETTINGS"
+        :readiness="RendererMountReadinessState.UNMOUNTED"
+      />
 
       <Live2D
         v-if="stageModelRenderer === 'live2d'"

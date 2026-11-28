@@ -15,6 +15,7 @@
  */
 import type { ContractResult, ModelPromptPublication } from '@proj-airi/stage-renderer-sdk'
 import type {
+  AvatarBinding,
   HostPromptService,
   PromptArbitrationWinner,
   PromptBinding,
@@ -27,7 +28,7 @@ import type { CardAvatarCarrier } from './binding'
 import { ContractFailureCode } from '@proj-airi/stage-renderer-sdk'
 import { PromptReconciliation as Outcome } from '@proj-airi/stage-renderer-sdk/host'
 
-import { readCardBinding, withCardPromptSnapshot } from './binding'
+import { readCardBinding, withCardBinding, withCardBindingCleared, withCardPromptSnapshot } from './binding'
 
 /** What `buildSystemPrompt` injects for a migrated binding, and nothing else. */
 export interface ModelPromptAssembly {
@@ -122,6 +123,42 @@ export async function reconcileModelPromptForCard(input: {
     ...(result.publication ? { publication: result.publication } : {}),
     ...(result.conflict ? { conflict: result.conflict } : {}),
     ...(result.raise !== undefined ? { raise: result.raise } : {}),
+  }
+}
+
+/**
+ * Bind a card to a pair, and reconcile its prompt snapshot in the same write (§5.4, P3-D17 step 5).
+ *
+ * The snapshot rule is the one `withCardBinding` cannot decide on its own: a rebind to a *different* model must not
+ * carry the previous model's text, while a same-pair rebind must not drop a card-only snapshot before the store has
+ * been asked about it. So the old snapshot is cleared only when the pair actually changes, and reconciliation — which
+ * seeds the store from a card-only snapshot and refreshes a stale one — runs on the result.
+ *
+ * Reconciliation is best-effort: binding is the primary action and must land even when the prompt store cannot be
+ * reached from this window. A failure leaves the card bound with whatever snapshot the rules above produced, and the
+ * activation reconciliation of §5.4 can still repair it later.
+ */
+export async function bindCardModel(input: {
+  card: CardAvatarCarrier
+  binding: AvatarBinding
+  service?: HostPromptService
+}): Promise<CardAvatarCarrier> {
+  const previous = readCardBinding(input.card).binding
+  const samePair = Boolean(previous
+    && previous.driverId === input.binding.driverId
+    && previous.modelId === input.binding.modelId
+    && previous.profileId === input.binding.profileId)
+
+  const base = samePair ? input.card : withCardBindingCleared(input.card)
+  const bound = withCardBinding(base, input.binding)
+  if (!input.service)
+    return bound
+
+  try {
+    return (await reconcileModelPromptForCard({ service: input.service, card: bound })).card
+  }
+  catch {
+    return bound
   }
 }
 

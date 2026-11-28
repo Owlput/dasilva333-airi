@@ -11,6 +11,7 @@ import { useElectronWindowResizeStateEvent } from '@proj-airi/electron-vueuse'
 import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { alignSpokenSentences, createPlaybackManager, createSpeechPipeline } from '@proj-airi/pipelines-audio'
+import { CueKind, CueSource, RendererMountPurpose, RendererMountSurfaceKind } from '@proj-airi/stage-renderer-sdk'
 import { debug } from '@proj-airi/stage-shared'
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { useMmd } from '@proj-airi/stage-ui-mmd'
@@ -32,6 +33,8 @@ import { containsExplicitActToken, normalizeStrideText, useAutonomousCues } from
 import { useTurnPacing } from '../../composables/use-turn-pacing'
 import { llmInferenceEndToken } from '../../constants'
 import { EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { readCardBinding } from '../../libs/model-drivers/binding'
+import { useModelDriverHost } from '../../libs/model-drivers/host'
 import { getSpeechBusContext, speechSegmentPlaybackEvent } from '../../services/speech/bus'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useChatOrchestratorStore } from '../../stores/chat'
@@ -192,6 +195,15 @@ watch([mouthOpenSize, nowSpeaking], ([mouth, speaking]) => {
 
 const cardStore = useAiriCardStore()
 const { activeCard } = storeToRefs(cardStore)
+/**
+ * The new path's cue channel (§5.5, P3-D18/P3-D19).
+ *
+ * When the active card carries a driver binding, its expressions belong to that driver: the token travels verbatim and
+ * the driver projects it, so this window sends an `ActCue` instead of reaching into a legacy renderer store. A window
+ * with no adapter (web, pocket) keeps the legacy route below untouched.
+ */
+const driverHost = useModelDriverHost()
+const driverAdapter = computed(() => driverHost?.adapter.value)
 const speechStore = useSpeechStore()
 const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice, activeSpeechVoiceId, pitch } = storeToRefs(speechStore)
 const { activeProvider: activeChatProvider } = storeToRefs(consciousnessStore)
@@ -265,6 +277,27 @@ const emotionsQueue = createQueue<EmotionPayload>({
             triggerExpr({ name: emotionName, weight: intensity, durationMs: (duration ?? 2.5) * 1000 })
           })
         }).catch(() => {})
+      }
+
+      // A bound character's expression is the driver's to perform (P3-D19): the token travels verbatim, the driver
+      // projects it against its own catalogue, and an unperformable one is refused there as `unknown-key`. Returning
+      // here is what keeps the same character from being driven by the legacy store as well.
+      const binding = activeCard.value ? readCardBinding(activeCard.value).binding : undefined
+      const cueAdapter = driverAdapter.value
+      if (binding && cueAdapter) {
+        const actKind = ctx.data.kind === 'motion' ? 'motion' : 'emotion'
+        void cueAdapter.cues.send({
+          cues: [{ kind: CueKind.ACT, actToken: `<|ACT:${actKind}="${emotionName}"|>` }],
+          source: CueSource.HOST,
+          // A new expression replaces the one before it: an ACT token is a direction, not an additive layer.
+          override: true,
+          target: {
+            modelDriverId: binding.driverId,
+            surface: RendererMountSurfaceKind.STAGE,
+            purpose: RendererMountPurpose.STAGE,
+          },
+        })
+        return
       }
 
       if (stageModelRenderer.value === 'vrm') {

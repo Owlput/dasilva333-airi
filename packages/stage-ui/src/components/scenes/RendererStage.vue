@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import type { RendererMountReadinessState } from '@proj-airi/stage-renderer-sdk'
+import type { PromptConflict } from '@proj-airi/stage-renderer-sdk/host'
+
+import { RendererMountReadinessState as Readiness, RendererMountPurpose, RendererMountSurfaceKind } from '@proj-airi/stage-renderer-sdk'
 import { debug } from '@proj-airi/stage-shared'
 import { Live2DScene, useLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene, useMmd } from '@proj-airi/stage-ui-mmd'
@@ -8,13 +12,20 @@ import { useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 
+import DriverModelDialog from '../scenarios/settings/model-drivers/DriverModelDialog.vue'
+import PromptArbitrationDialog from '../scenarios/settings/model-drivers/PromptArbitrationDialog.vue'
+import UnavailableModelView from '../scenarios/settings/model-drivers/UnavailableModelView.vue'
 import DatingSimOverlay from './DatingSimOverlay.vue'
 import HeadTetheredCanvas2D from './HeadTetheredCanvas2D.vue'
 import HeadTetheredCaption from './HeadTetheredCaption.vue'
 import HeadTetheredRadialMenu from './HeadTetheredRadialMenu.vue'
+import MountHost from './MountHost.vue'
 
 import { useIdleAnimations } from '../../composables'
 import { useLive2DStageAmbientMotion } from '../../features/motions/live2d'
+import { useCardAvatarState } from '../../libs/model-drivers/avatar-state'
+import { useModelDriverHost } from '../../libs/model-drivers/host'
+import { arbitrateModelPromptForCard, reconcileModelPromptForCard } from '../../libs/model-drivers/prompt'
 import { useBackgroundStore } from '../../stores/background'
 import { useDatingSimStore } from '../../stores/dating-sim'
 import { useAiriCardStore } from '../../stores/modules'
@@ -80,7 +91,9 @@ const mmdViewerRef = ref<InstanceType<typeof MMDScene>>()
 
 const settingsStore = useSettings()
 const vhackStore = useVHackStore()
-const { activeCard } = storeToRefs(useAiriCardStore())
+const cardStore = useAiriCardStore()
+const { activeCard, activeCardId } = storeToRefs(cardStore)
+const { updateCard } = cardStore
 const {
   stageModelRenderer,
   stageViewControlsEnabled,
@@ -111,6 +124,110 @@ const { previewExpression } = storeToRefs(mmdStore)
 const { resolveActiveIdleAnimations } = useIdleAnimations()
 const live2dActiveModelId = computed(() => stageModelRenderer.value === 'live2d' ? stageModelSelected.value : undefined)
 useLive2DStageAmbientMotion({ modelId: live2dActiveModelId })
+
+/**
+ * The new path, when this card has one (§5.6).
+ *
+ * A card that carries `extensions.airi.avatar` is rendered by the driver that owns it — not by the legacy scene
+ * selected from `modules.displayModelId`, which stays frozen (D10) and is only what an *unbound* card renders. The
+ * two branches are mutually exclusive on purpose: a card can hold both fields during the reversal window, and
+ * rendering both would draw the character twice.
+ *
+ * The classification is `resolveAvatarState`, fed with facts this window gathered: a bound card whose model the
+ * driver no longer holds (row 5) or whose profile it never had (row 7) renders the unavailable view, not an empty
+ * mount and not the frozen legacy model.
+ */
+const driverHost = useModelDriverHost()
+const driverAdapter = computed(() => driverHost?.adapter.value)
+/** The same window's prompt store; activation reconciliation needs it (§5.4). */
+const promptService = computed(() => driverHost?.prompts.value)
+
+const avatar = useCardAvatarState({
+  card: () => activeCard.value,
+  adapter: () => driverAdapter.value,
+  // Every format's legacy branch is still in this build (D9), so a card without a binding still has something to draw.
+  legacyRendererAvailable: () => true,
+})
+
+/** Whether this card is on the new path at all — `avatar` present, valid or not. */
+const newPath = computed(() => Boolean(avatar.read.value?.binding || avatar.read.value?.invalid))
+const driverId = computed(() => avatar.read.value?.binding?.driverId)
+/** The pair the mount is addressed with; a stable object, so an unrelated card write cannot re-send the load. */
+const driverModelKey = computed(() => {
+  const binding = avatar.read.value?.binding
+  return binding ? `${binding.driverId}\u0000${binding.modelId}\u0000${binding.profileId}` : ''
+})
+const driverModel = ref<{ modelId: string, profileId: string } | null>(null)
+const driverPickerOpen = ref(false)
+
+/**
+ * The card a prompt conflict is standing on, and the conflict itself (§5.4).
+ *
+ * A disagreement between this device's publication and the card's snapshot is detected here — at activation, when
+ * the mount has a model loaded — and arbitrated by the user. Nothing is injected while it stands, and nothing is
+ * written until they choose.
+ */
+const promptConflict = ref<PromptConflict>()
+/** The binding whose prompt has already been reconciled, so a re-render cannot reconcile the same pair twice. */
+let reconciledFor: string | undefined
+
+// Keep the mount's model object keyed by the pair itself: `MountHost` watches its `model` prop by identity, so a
+// fresh object on every card write would make it re-send the `LoadCue` for a model that never changed.
+watch(driverModelKey, () => {
+  const binding = avatar.read.value?.binding
+  driverModel.value = binding ? { modelId: binding.modelId, profileId: binding.profileId } : null
+  // A different binding is a different prompt: forget the reconciliation, so the next activation asks again.
+  reconciledFor = undefined
+  promptConflict.value = undefined
+}, { immediate: true })
+
+/**
+ * Reconcile once per binding, after the mount has a model (§5.4, D5).
+ *
+ * A seed (the card was the only copy) or a store-newer pair rewrites the card; a conflict rewrites nothing and opens
+ * the arbitration surface. A failure is not shown: the next activation retries, and the card is usable either way.
+ */
+async function reconcilePromptAtActivation(): Promise<void> {
+  const service = promptService.value
+  const card = activeCard.value
+  const target = activeCardId.value
+  const identity = driverModel.value ? `${driverModel.value.modelId}/${driverModel.value.profileId}` : undefined
+  if (!service || !card || !target || !identity || reconciledFor === identity)
+    return
+
+  reconciledFor = identity
+  const result = await reconcileModelPromptForCard({ service, card })
+  if (result.card !== card)
+    await updateCard(target, { extensions: result.card.extensions })
+  if (result.conflict && result.raise)
+    promptConflict.value = result.conflict
+}
+
+/** The user's choice: one new version, the card snapshot, and the pair handed back to the driver through the service. */
+async function resolvePromptConflict(winner: 'device' | 'card'): Promise<void> {
+  const service = promptService.value
+  const card = activeCard.value
+  const conflict = promptConflict.value
+  if (!service || !card || !conflict)
+    return
+
+  const result = await arbitrateModelPromptForCard({ service, card, winner, conflict })
+  if (result.ok)
+    await updateCard(activeCardId.value, { extensions: result.value.card.extensions })
+  promptConflict.value = undefined
+}
+
+/**
+ * A driver mount's readiness becomes this stage's mounted state, exactly as a legacy scene's `v-model:state` does —
+ * the ready broadcast other windows wait on must not depend on which path drew the character.
+ */
+function onDriverMountState(state: RendererMountReadinessState) {
+  if (state !== Readiness.MODEL_LOADED)
+    return
+  componentState.value = 'mounted'
+  // Activation is the one moment the card and the store are compared; the mount has a model, so the pair exists.
+  void reconcilePromptAtActivation().catch(() => {})
+}
 
 const { data: stageModelQuery, post: postStageModelReady } = useBroadcastChannel<string, string>({ name: 'airi-stage-model-ready' })
 watch(componentState, (state) => {
@@ -451,109 +568,110 @@ defineExpose({
     @pointerdown="onStagePointerDown"
     @contextmenu="onStageContextMenu"
   >
-    <Live2DScene
-      v-if="stageModelRenderer === 'live2d'"
-      ref="live2dSceneRef"
-      v-model:state="componentState"
-      :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
-      :model-src="stageModelSelectedUrl"
-      :model-id="stageModelSelected"
-      :model-file="stageModelSelectedFile"
-      :focus-at="focusAt"
-      :mouth-open-size="mouthOpenSize"
-      :paused="paused"
-      :x-offset="xOffset"
-      :y-offset="yOffset"
-      :scale="scale"
-      :disable-focus-at="live2dDisableFocus"
-      :follow-speed="live2dFollowSpeed"
-      :theme-colors-hue="themeColorsHue"
-      :theme-colors-hue-dynamic="themeColorsHueDynamic"
-      :live2d-idle-animation-enabled="live2dIdleAnimationEnabled"
-      :live2d-auto-blink-enabled="live2dAutoBlinkEnabled"
-      :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
-      :live2d-shadow-enabled="live2dShadowEnabled"
-      :live2d-max-fps="live2dMaxFps"
-      :idle-animations="resolvedIdleAnimations"
-      :draggable="effectiveDraggable"
-      :interaction-mode="vrmStore.interactionMode === 'tactile' ? 'tactile' : 'orbit'"
-      @scale-change="(val) => emits('scaleChange', val)"
-      @offset-change="(val) => emits('offsetChange', val)"
-      @hit-area-hover="(val) => emits('hitAreaHover', val)"
-    />
-    <ThreeScene
-      v-if="stageModelRenderer === 'vrm' && stageModelSelectedUrl"
-      v-slot
-      ref="vrmViewerRef"
-      v-model:state="componentState"
-      :mouth-open-size="mouthOpenSize"
-      :model-src="stageModelSelectedUrl"
-      :model-identity="stageModelSelected"
-      :idle-animation="props.vrmActiveAnimation"
-      :idle-animations="resolvedIdleAnimations"
-      :idle-cycle-enabled="props.vrmEffectiveIdleCycleEnabled"
-      :render-scale-override="isWindowResizing ? reducedRenderScale : undefined"
-      :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
-      :paused="paused"
-      :show-axes="false"
-      :current-audio-source="currentAudioSource"
-      :scale="scale !== undefined ? Number(scale) : undefined"
-      :x-offset="xOffset !== undefined ? Number(xOffset) : undefined"
-      :y-offset="yOffset !== undefined ? Number(yOffset) : undefined"
-      :draggable="effectiveDraggable"
-      @error="console.error"
-      @binary-loaded="vhackStore.setSourceArrayBuffer"
-      @finished="emits('animationFinished')"
-      @play-status="(status) => emits('animationPlayStatus', status)"
-      @scale-change="(val) => emits('scaleChange', val)"
-      @offset-change="(val) => emits('offsetChange', val)"
-    />
-    <SpineScene
-      v-if="stageModelRenderer === 'spine'"
-      ref="spineViewerRef"
-      v-model:state="componentState"
-      :model-src="stageModelSelectedUrl"
-      :model-id="stageModelSelected"
-      :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
-      :paused="paused"
-      :interaction-mode="vrmStore.interactionMode === 'tactile' ? 'tactile' : 'orbit'"
-      :x-offset="xOffset"
-      :y-offset="yOffset"
-      :scale="scale !== undefined ? Number(scale) : undefined"
-      :default-mix-duration="spineDefaultMixDuration"
-      :idle-animation-enabled="spineIdleAnimationEnabled"
-      :max-fps="spineMaxFps"
-      :render-scale="spineRenderScale"
-      :draggable="effectiveDraggable"
-      :idle-animations="resolvedIdleAnimations"
-      :mouth-open-size="mouthOpenSize"
-      @scale-change="(val) => emits('scaleChange', val)"
-      @offset-change="(val) => emits('offsetChange', val)"
-      @hit-area-hover="(val) => emits('hitAreaHover', val)"
-    />
-    <MMDScene
-      v-if="stageModelRenderer === 'mmd' && stageModelSelectedUrl"
-      v-slot
-      ref="mmdViewerRef"
-      v-model:state="componentState"
-      :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
-      :model-src="stageModelSelectedUrl"
-      :paused="paused"
-      :mouth-open-size="mouthOpenSize"
-      :texture-map="mmdTextureMap"
-      :scale="scale !== undefined ? Number(scale) : undefined"
-      :position-x="xOffset !== undefined ? Number(xOffset) : undefined"
-      :position-y="yOffset !== undefined ? Number(yOffset) : undefined"
-      :interaction-mode="vrmStore.interactionMode"
-      :idle-animations="resolvedIdleAnimations"
-      :draggable="effectiveDraggable"
-      :cursor-position="focusAt"
-      :preview-expression="previewExpression || undefined"
-      @error="console.error"
-      @scale-change="(val) => emits('scaleChange', val)"
-      @offset-change="(val) => emits('offsetChange', val)"
-    />
-    <!--
+    <template v-if="!newPath">
+      <Live2DScene
+        v-if="stageModelRenderer === 'live2d'"
+        ref="live2dSceneRef"
+        v-model:state="componentState"
+        :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
+        :model-src="stageModelSelectedUrl"
+        :model-id="stageModelSelected"
+        :model-file="stageModelSelectedFile"
+        :focus-at="focusAt"
+        :mouth-open-size="mouthOpenSize"
+        :paused="paused"
+        :x-offset="xOffset"
+        :y-offset="yOffset"
+        :scale="scale"
+        :disable-focus-at="live2dDisableFocus"
+        :follow-speed="live2dFollowSpeed"
+        :theme-colors-hue="themeColorsHue"
+        :theme-colors-hue-dynamic="themeColorsHueDynamic"
+        :live2d-idle-animation-enabled="live2dIdleAnimationEnabled"
+        :live2d-auto-blink-enabled="live2dAutoBlinkEnabled"
+        :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
+        :live2d-shadow-enabled="live2dShadowEnabled"
+        :live2d-max-fps="live2dMaxFps"
+        :idle-animations="resolvedIdleAnimations"
+        :draggable="effectiveDraggable"
+        :interaction-mode="vrmStore.interactionMode === 'tactile' ? 'tactile' : 'orbit'"
+        @scale-change="(val) => emits('scaleChange', val)"
+        @offset-change="(val) => emits('offsetChange', val)"
+        @hit-area-hover="(val) => emits('hitAreaHover', val)"
+      />
+      <ThreeScene
+        v-if="stageModelRenderer === 'vrm' && stageModelSelectedUrl"
+        v-slot
+        ref="vrmViewerRef"
+        v-model:state="componentState"
+        :mouth-open-size="mouthOpenSize"
+        :model-src="stageModelSelectedUrl"
+        :model-identity="stageModelSelected"
+        :idle-animation="props.vrmActiveAnimation"
+        :idle-animations="resolvedIdleAnimations"
+        :idle-cycle-enabled="props.vrmEffectiveIdleCycleEnabled"
+        :render-scale-override="isWindowResizing ? reducedRenderScale : undefined"
+        :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
+        :paused="paused"
+        :show-axes="false"
+        :current-audio-source="currentAudioSource"
+        :scale="scale !== undefined ? Number(scale) : undefined"
+        :x-offset="xOffset !== undefined ? Number(xOffset) : undefined"
+        :y-offset="yOffset !== undefined ? Number(yOffset) : undefined"
+        :draggable="effectiveDraggable"
+        @error="console.error"
+        @binary-loaded="vhackStore.setSourceArrayBuffer"
+        @finished="emits('animationFinished')"
+        @play-status="(status) => emits('animationPlayStatus', status)"
+        @scale-change="(val) => emits('scaleChange', val)"
+        @offset-change="(val) => emits('offsetChange', val)"
+      />
+      <SpineScene
+        v-if="stageModelRenderer === 'spine'"
+        ref="spineViewerRef"
+        v-model:state="componentState"
+        :model-src="stageModelSelectedUrl"
+        :model-id="stageModelSelected"
+        :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
+        :paused="paused"
+        :interaction-mode="vrmStore.interactionMode === 'tactile' ? 'tactile' : 'orbit'"
+        :x-offset="xOffset"
+        :y-offset="yOffset"
+        :scale="scale !== undefined ? Number(scale) : undefined"
+        :default-mix-duration="spineDefaultMixDuration"
+        :idle-animation-enabled="spineIdleAnimationEnabled"
+        :max-fps="spineMaxFps"
+        :render-scale="spineRenderScale"
+        :draggable="effectiveDraggable"
+        :idle-animations="resolvedIdleAnimations"
+        :mouth-open-size="mouthOpenSize"
+        @scale-change="(val) => emits('scaleChange', val)"
+        @offset-change="(val) => emits('offsetChange', val)"
+        @hit-area-hover="(val) => emits('hitAreaHover', val)"
+      />
+      <MMDScene
+        v-if="stageModelRenderer === 'mmd' && stageModelSelectedUrl"
+        v-slot
+        ref="mmdViewerRef"
+        v-model:state="componentState"
+        :class="['min-w-50% <lg:full', 'h-full w-full flex-1']"
+        :model-src="stageModelSelectedUrl"
+        :paused="paused"
+        :mouth-open-size="mouthOpenSize"
+        :texture-map="mmdTextureMap"
+        :scale="scale !== undefined ? Number(scale) : undefined"
+        :position-x="xOffset !== undefined ? Number(xOffset) : undefined"
+        :position-y="yOffset !== undefined ? Number(yOffset) : undefined"
+        :interaction-mode="vrmStore.interactionMode"
+        :idle-animations="resolvedIdleAnimations"
+        :draggable="effectiveDraggable"
+        :cursor-position="focusAt"
+        :preview-expression="previewExpression || undefined"
+        @error="console.error"
+        @scale-change="(val) => emits('scaleChange', val)"
+        @offset-change="(val) => emits('offsetChange', val)"
+      />
+      <!--
       Head-tethered caption plank — in-scene comic speech bubble that follows
       the model's head pose. Live2D-only in MVP. Lives outside the model
       components so it stays alive across their remounts; the adapter hooks
@@ -563,13 +681,59 @@ defineExpose({
       resolved PIXI app. HeadTetheredCaption polls `live2dApp()` lazily to
       cope with the canvas booting after the model.
     -->
-    <HeadTetheredCaption
-      v-if="stageModelRenderer === 'live2d' && settingsStore.headTetheredCaptionEnabled"
-      :live2d-scene-ref="live2dSceneRef"
+      <HeadTetheredCaption
+        v-if="stageModelRenderer === 'live2d' && settingsStore.headTetheredCaptionEnabled"
+        :live2d-scene-ref="live2dSceneRef"
+      />
+      <HeadTetheredCanvas2D
+        v-if="(stageModelRenderer === 'vrm' || stageModelRenderer === 'mmd' || stageModelRenderer === 'spine') && settingsStore.headTetheredCaptionEnabled"
+        :scene-ref="stageModelRenderer === 'vrm' ? vrmViewerRef : stageModelRenderer === 'mmd' ? mmdViewerRef : spineViewerRef"
+      />
+    </template>
+    <template v-else>
+      <!--
+        The new path: one driver mount, addressed by the card's binding. A card can hold both `avatar` and the frozen
+        `modules.displayModelId` during the reversal window, so this branch and the legacy one are exclusive — the
+        character is drawn once.
+      -->
+      <MountHost
+        v-if="driverAdapter && driverId && driverModel && avatar.state.value?.renders"
+        :adapter="driverAdapter"
+        :driver-id="driverId"
+        :surface="RendererMountSurfaceKind.STAGE"
+        :purpose="RendererMountPurpose.STAGE"
+        :character-id="activeCardId"
+        :model="driverModel"
+        :visible="showModel"
+        :paused="paused"
+        @state-change="onDriverMountState"
+      />
+      <div v-else-if="avatar.state.value" class="h-full w-full flex items-center justify-center">
+        <UnavailableModelView :state="avatar.state.value" @action="driverPickerOpen = true" />
+      </div>
+    </template>
+
+    <DriverModelDialog
+      v-if="driverAdapter"
+      v-model:open="driverPickerOpen"
+      :adapter="driverAdapter"
+      :character-id="activeCardId"
+      :current-model-id="driverModel?.modelId"
+      :current-profile-id="driverModel?.profileId"
+      :unavailable-reason="avatar.state.value?.reason"
+      @bound="avatar.refresh()"
     />
-    <HeadTetheredCanvas2D
-      v-if="(stageModelRenderer === 'vrm' || stageModelRenderer === 'mmd' || stageModelRenderer === 'spine') && settingsStore.headTetheredCaptionEnabled"
-      :scene-ref="stageModelRenderer === 'vrm' ? vrmViewerRef : stageModelRenderer === 'mmd' ? mmdViewerRef : spineViewerRef"
+
+    <!--
+      Prompt arbitration (§5.4): while a conflict stands nothing is injected, so this is the only way to resolve it.
+      Rendered by the stage because activation is where the disagreement is detected; the dialog owns its overlay,
+      so this branch says nothing about how a modal looks.
+    -->
+    <PromptArbitrationDialog
+      v-if="promptConflict"
+      :character-name="activeCard?.name"
+      :conflict="promptConflict"
+      @resolve="resolvePromptConflict"
     />
     <DatingSimOverlay />
     <StickerStack />

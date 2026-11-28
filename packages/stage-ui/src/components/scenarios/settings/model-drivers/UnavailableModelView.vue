@@ -5,42 +5,50 @@
  * The one rule this view exists to keep: **a missing model is not an error, a missing profile is.** Rows 1, 2, 3, 5
  * and 6 are states with an action; rows 7 and 8 are the two the user has to resolve, and only row 7 is one the
  * driver itself reports. Nothing here invents a reason: the caller passes the state the table produced.
+ *
+ * The copy is one key per column per state (`{state}.title`, `.body`, `.action`) rather than a sentence chosen in
+ * code, because these strings are the vocabulary three surfaces share — the stage, the character settings page and
+ * the card editor — and a state added to the table without copy is exactly the drift the shared keys prevent.
  */
 import type { AvatarStateResult } from '@proj-airi/stage-renderer-sdk/host'
 
+import { AvatarState } from '@proj-airi/stage-renderer-sdk/host'
 import { Button } from '@proj-airi/ui'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   state: AvatarStateResult
   characterName?: string
-  /** Whether the legacy renderer for this format is still in the build, for row 2 vs row 3's copy. */
-  legacyRendererAvailable?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'action'): void
 }>()
 
+const { t } = useI18n()
+
+/** The states with their own copy; `bound` covers a render that failed for a reason of its own. */
+const copyStates = [
+  AvatarState.UNBOUND,
+  AvatarState.LEGACY,
+  AvatarState.LEGACY_UNAVAILABLE,
+  AvatarState.MODEL_MISSING,
+  AvatarState.DRIVER_MISSING,
+  AvatarState.PROFILE_MISSING,
+  AvatarState.INVALID,
+  AvatarState.BOUND,
+] as const
+
 const copy = computed(() => {
-  switch (props.state.state) {
-    case 'unbound':
-      return { title: 'No model yet', body: 'This character has not been given a model. Choose one to give it a body.', action: 'Choose a model' }
-    case 'legacy':
-      return { title: 'Using the legacy model', body: 'This character still renders through the old renderer. It works; migrating moves it to the driver and keeps it working.', action: 'Migrate' }
-    case 'legacy-unavailable':
-      return { title: 'Model unavailable', body: 'The renderer that served this model has been removed. The character itself is fine — migrate it now to give it a body again.', action: 'Migrate now' }
-    case 'model-missing':
-      return { title: 'Model unavailable', body: 'The driver no longer holds this model. The character is fine; import the model or choose another.', action: 'Import or choose a model' }
-    case 'driver-missing':
-      return { title: 'Driver unavailable', body: 'The driver that renders this model is disabled or not installed. Enable it to show the model again.', action: 'Enable driver' }
-    case 'profile-missing':
-      return { title: 'Profile missing', body: 'This binding names a profile the driver does not have, so the character cannot be rendered as configured. Choose a profile.', action: 'Choose a profile' }
-    case 'invalid':
-      return { title: 'Binding is inconsistent', body: 'The card names some, but not all, of the ids a model binding needs. Re-bind the character to a model.', action: 'Re-bind' }
-    case 'bound':
-    default:
-      return { title: 'Model unavailable', body: 'The model could not be rendered right now. The binding is intact; try again, or open the model controls.', action: 'Model controls' }
+  const known = (copyStates as readonly string[]).includes(props.state.state)
+    ? props.state.state
+    : AvatarState.BOUND
+  const base = `settings.pages.models.model-drivers.unavailable.${known}`
+  return {
+    title: t(`${base}.title`),
+    body: t(`${base}.body`),
+    action: t(`${base}.action`),
   }
 })
 </script>

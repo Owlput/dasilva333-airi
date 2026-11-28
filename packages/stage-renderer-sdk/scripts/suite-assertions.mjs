@@ -156,6 +156,12 @@ export function expect(actual, hint) {
     toBeGreaterThanOrEqual: value => check(actual >= value, `expected ${label(actual)} to be >= ${label(value)}`),
     toBeLessThan: value => check(actual < value, `expected ${label(actual)} to be less than ${label(value)}`),
     toBeLessThanOrEqual: value => check(actual <= value, `expected ${label(actual)} to be <= ${label(value)}`),
+    // Vitest/Jest semantics: `|actual - expected| < 10^-precision / 2`. Here because a driver suite compares fitted
+    // geometry, which is float maths and legitimately never exactly equal.
+    toBeCloseTo: (expected, precision = 2) => check(
+      typeof actual === 'number' && Math.abs(actual - expected) < 0.5 * 10 ** -precision,
+      `expected ${label(actual)} to be close to ${label(expected)} (±${0.5 * 10 ** -precision})`,
+    ),
     toBeInstanceOf: constructor => check(actual instanceof constructor, `expected ${label(actual)} to be a ${constructor.name}`),
     toHaveProperty: (path) => {
       const keys = Array.isArray(path) ? path : String(path).split('.')

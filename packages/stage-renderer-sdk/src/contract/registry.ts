@@ -120,12 +120,17 @@ export interface RegistryHandle {
 /**
  * Which of a driver's renderer modules is being asked for (C15).
  *
- * The set is fixed by the contract revision and mirrors the six subpaths a first-party driver ships:
- * an implementation is one module per kind, and a driver that does not ship one of the optional kinds
- * answers "no entry" rather than the host substituting a default.
+ * This enum is **the only distinction** between the modules a driver ships. Every one of them is addressed the
+ * same way: `EntrypointRequest` names a kind and an address, the manager answers with one specifier, and the
+ * adapter imports it through its loader table. Nothing in the host takes a different path because a module
+ * exports functions instead of a component, or because it is about import instead of display.
+ *
+ * The set is fixed by the contract revision and mirrors the subpaths a first-party driver ships: an implementation
+ * is one module per kind, and a driver that does not ship one of the optional kinds answers "no entry" rather
+ * than the host substituting a default.
  */
 export enum ModelDriverEntryKind {
-  /** The module exporting `activate`, whose result is the `ModelDriverRuntime`. */
+  /** The module exporting `startProviderEntry`; it returns the `DriverProviderEntry` the manager talks to. */
   PROVIDER = 'provider',
   /** The module exporting the mount component. */
   MOUNT = 'mount',
@@ -133,6 +138,8 @@ export enum ModelDriverEntryKind {
   PANELS = 'panels',
   /** The module exporting the model picker component. */
   PICKER = 'picker',
+  /** The module exporting `createImportEntry`, the host import panel's driver half (§5.3). */
+  IMPORT = 'import',
 }
 
 /**

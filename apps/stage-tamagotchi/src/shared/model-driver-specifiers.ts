@@ -25,3 +25,20 @@ export const STUB_PROVIDER_SPECIFIER = '@proj-airi/stage-renderer-sdk/testing#st
 export const STUB_MOUNT_SPECIFIER = '@proj-airi/stage-renderer-sdk/testing#stubMount'
 export const STUB_PANEL_SPECIFIER = '@proj-airi/stage-renderer-sdk/testing#stubPanels'
 export const STUB_PICKER_SPECIFIER = '@proj-airi/stage-renderer-sdk/testing#stubPicker'
+
+/**
+ * The first real driver (Phase 3).
+ *
+ * These strings are the driver package's subpaths, not the fixture's `#fragment` form: each is an `exports` entry
+ * in `@proj-airi/model-driver-live2d/package.json`, and the manager answers exactly these from
+ * `resolveEntrypoint`. They are listed here, beside the stub's, so main's static table and the renderer's loader
+ * table cannot drift (plan §4.7).
+ */
+export const LIVE2D_DRIVER_ID = 'ai.moeru.airi.live2d'
+export const LIVE2D_MANIFEST_SPECIFIER = '@proj-airi/model-driver-live2d/manifest'
+export const LIVE2D_MANAGER_SPECIFIER = '@proj-airi/model-driver-live2d/manager'
+export const LIVE2D_PROVIDER_SPECIFIER = '@proj-airi/model-driver-live2d/provider'
+export const LIVE2D_MOUNT_SPECIFIER = '@proj-airi/model-driver-live2d/mount'
+export const LIVE2D_PANELS_SPECIFIER = '@proj-airi/model-driver-live2d/panels'
+export const LIVE2D_PICKER_SPECIFIER = '@proj-airi/model-driver-live2d/picker'
+export const LIVE2D_IMPORT_SPECIFIER = '@proj-airi/model-driver-live2d/import'

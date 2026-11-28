@@ -6,19 +6,22 @@
  * unknown specifier is a refusal with a readable reason (`invalid-entrypoint`) instead of a dynamic import of
  * something unchecked.
  *
- * The table is an interface here and a constant in the app: which specifiers a build ships is host policy, not
- * contract. A test supplies a table that maps its fixture; a driver package adds its six subpaths to the app's
- * table when it lands.
+ * **One table, one lookup.** `ModelDriverEntryKind` is the only distinction: `resolve` names a kind and a
+ * specifier and answers the loader for that module, whatever the module exports. The table does not branch on
+ * the kind, and neither does the adapter; what each kind's module must export is stated by the contract
+ * (`DriverProviderModule` below, and `RendererMountComponentModule`, `ModelDriverPanelComponentModule`,
+ * `ModelPickerComponentModule`, `ModelImportEntryModule`), and the adapter checks it at the boundary.
  *
- * **Four kinds, one table (Phase 2).** Phase 1 needed only `provider`, because the only renderer entry a window
- * ever hosted was the provider half. The mount, panels and picker entries arrive with the host surfaces that
- * mount them (§5.2, §5.6), and they belong here for the same reason: this stays the only renderer-side place a
- * driver package is named.
+ * The table is an interface here and a constant in the app: which specifiers a build ships is host policy, not
+ * contract. A test supplies a table that maps its fixture; a driver package adds its subpaths to the app's
+ * table when it lands.
  */
-import type { ModelDriverPanelDeclaration, ModelPickerComponentModule } from '../contract/components'
+import type { ModelDriverPanelDeclaration } from '../contract/components'
 import type { HostServices } from '../contract/host-services'
-import type { RendererMountComponentModule } from '../contract/renderer-mount'
+import type { ModelDriverEntryKind } from '../contract/registry'
 import type { ModelDriverId } from '../contract/shared'
+
+import { ModelDriverEntryKind as EntryKind } from '../contract/registry'
 
 export interface DriverEntryStartOptions {
   driverId: ModelDriverId
@@ -48,45 +51,34 @@ export type DriverPanelsModule
   = | { declarations: () => ModelDriverPanelDeclaration[] | Promise<ModelDriverPanelDeclaration[]> }
     | { default: ModelDriverPanelDeclaration[] }
 
+/** One entry module, loaded on demand. Its export shape is the contract's, per kind. */
+export type DriverEntryModuleLoader = () => Promise<unknown>
+
 export interface DriverLoaderTable {
   /**
-   * Resolve one provider specifier, or `undefined` when this build does not ship it.
+   * Resolve one kind's specifier to the module loader this build ships, or `undefined` when it ships none.
    *
    * `undefined` is the adapter's `invalid-entrypoint`: a manager naming a module the build does not contain is a
-   * declaration bug, never a fallback to another entry.
+   * declaration bug, never a fallback to another entry. The kind is passed through so a table can be keyed by it
+   * without any per-kind member.
    */
-  resolveProvider: (specifier: string) => (() => Promise<DriverProviderModule>) | undefined
-  /** Resolve one mount component specifier. */
-  resolveMount: (specifier: string) => (() => Promise<RendererMountComponentModule>) | undefined
-  /** Resolve one panels specifier. */
-  resolvePanels: (specifier: string) => (() => Promise<DriverPanelsModule>) | undefined
-  /** Resolve one picker component specifier. */
-  resolvePicker: (specifier: string) => (() => Promise<ModelPickerComponentModule>) | undefined
-  /** Every provider specifier this build can run, for the startup check §4.7 asks for. */
-  providers: () => string[]
-  /** Every mount specifier this build can run. */
-  mounts: () => string[]
-  /** Every panels specifier this build can run. */
-  panels: () => string[]
-  /** Every picker specifier this build can run. */
-  pickers: () => string[]
+  resolve: (kind: ModelDriverEntryKind, specifier: string) => DriverEntryModuleLoader | undefined
+  /** Every specifier this build can run for one kind, for the startup check §4.7 asks for. */
+  specifiers: (kind: ModelDriverEntryKind) => string[]
 }
 
 /**
- * A table with no renderer entries of its own beyond the providers it is given.
+ * A table with no modules of its own beyond the providers it is given.
  *
  * Used by the in-process harness and by a test that only cares about one entry kind. It is deliberately not a
  * default in the adapter: "what does this build ship" stays the embedder's answer (P1-D24).
  */
-export function providerOnlyLoaderTable(resolveProvider: DriverLoaderTable['resolveProvider'], providers: string[]): DriverLoaderTable {
+export function providerOnlyLoaderTable(
+  resolveProvider: (specifier: string) => DriverEntryModuleLoader | undefined,
+  providers: string[],
+): DriverLoaderTable {
   return {
-    resolveProvider,
-    resolveMount: () => undefined,
-    resolvePanels: () => undefined,
-    resolvePicker: () => undefined,
-    providers: () => providers,
-    mounts: () => [],
-    panels: () => [],
-    pickers: () => [],
+    resolve: (kind, specifier) => (kind === EntryKind.PROVIDER ? resolveProvider(specifier) : undefined),
+    specifiers: kind => (kind === EntryKind.PROVIDER ? providers : []),
   }
 }

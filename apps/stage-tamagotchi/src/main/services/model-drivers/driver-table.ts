@@ -6,18 +6,21 @@
  * package cannot become executable merely by existing on disk. The declarations are read (and validated)
  * before the managers are loaded, which is what makes "declare before you run" true rather than aspirational.
  *
- * **Phase 1 ships the stub driver only.** The four real drivers arrive one per phase from Phase 3 onward,
- * each with its own `manifest`/`manager` subpath; adding one here is the whole of the registration step.
+ * **Phase 1 shipped the stub driver only. Phase 3 adds the first real driver, Live2D.** The remaining formats
+ * arrive one per phase; adding one is the whole of the registration step.
  *
  * The stub is dev-only. It is a fixture — a complete fake of the other half of the contract, now part of the
  * SDK's `./testing` subpath (P1-D27) — and shipping it as a production driver would put a model list nobody
- * asked for in front of a user.
+ * asked for in front of a user. A real driver is registered unconditionally.
  */
 import type { DriverTableEntry } from '@proj-airi/stage-renderer-sdk/host'
 
 import { ModelDriverEntryKind } from '@proj-airi/stage-renderer-sdk'
 
 import {
+  LIVE2D_DRIVER_ID,
+  LIVE2D_MANAGER_SPECIFIER,
+  LIVE2D_MANIFEST_SPECIFIER,
   STUB_DRIVER_ID,
   STUB_MANAGER_SPECIFIER,
   STUB_MANIFEST_SPECIFIER,
@@ -28,7 +31,29 @@ import {
 } from '../../../shared/model-driver-specifiers'
 
 export function firstPartyDriverTable(options: { includeStub: boolean }): DriverTableEntry[] {
-  return options.includeStub ? [stubDriverEntry()] : []
+  return [
+    live2dDriverEntry(),
+    ...(options.includeStub ? [stubDriverEntry()] : []),
+  ]
+}
+
+/**
+ * The real Live2D driver.
+ *
+ * Both loaders stay lazy: reading the declaration must not execute the manager module, and main never imports the
+ * renderer half at all — the manager names the provider/mount specifiers and a renderer's loader table resolves
+ * them (D2).
+ */
+function live2dDriverEntry(): DriverTableEntry {
+  return {
+    driverId: LIVE2D_DRIVER_ID,
+    manifestSpecifier: LIVE2D_MANIFEST_SPECIFIER,
+    managerSpecifier: LIVE2D_MANAGER_SPECIFIER,
+
+    loadManifest: async () => (await import('@proj-airi/model-driver-live2d/manifest')).LIVE2D_MANIFEST,
+
+    loadManager: async () => (await import('@proj-airi/model-driver-live2d/manager')).createManager,
+  }
 }
 
 function stubDriverEntry(): DriverTableEntry {

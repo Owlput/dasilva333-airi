@@ -13,7 +13,6 @@ import { routes } from 'vue-router/auto-routes'
 
 import App from './App.vue'
 
-import { bootstrapModelDriverAdapter } from './libs/model-drivers'
 import { i18n } from './modules/i18n'
 
 import '@unocss/reset/tailwind.css'
@@ -63,9 +62,3 @@ createApp(App)
   .use(i18n)
   .use(Tres)
   .mount('#app')
-
-// NOTICE: Every window that runs the app entry can serve a driver's provider entry, which is what lets a
-// manager reuse a live renderer instead of starting the shared background window (§4.3). It is started after the
-// app mounts so a slow driver entry never delays the first paint, and it is not awaited: a window that cannot
-// host driver code still renders everything else.
-void bootstrapModelDriverAdapter()

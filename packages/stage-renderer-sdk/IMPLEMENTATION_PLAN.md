@@ -736,7 +736,7 @@ Rules that follow from it:
 | :--- | :--- | :--- |
 | 1 | `MountHost.vue` (stage-ui) registers every mount through the adapter, imports the manager-named component and passes only the contract props. `mountComponent`/`panelDeclarations`/`pickerComponent` asserted in `adapter.test.ts` (five new cases: the three kinds imported, "ships none" as `null`, an unknown specifier as `invalid-entrypoint`, `servicesFor` before and after the entry). The five-surface live mount was **pressed by hand on 2026-11-28** (`VRM-SPIKE.md` §6): five registry-issued ids in one window, `mount_11`…`mount_15`, with D-1/D-1b/D-4/D-4b/D-9/D-10/D-13 `pass` | executed (suites and the page) |
 | 2 | Addressing, `NO_TARGET`, drop and window-gone were Phase 1's; this phase adds the withdrawal cases unchanged and the capture-in-ack case in `stub-driver.test.ts` (a capture cue settles with `mime` and bytes). Illegal readiness transitions are rejected by `setReadiness` and surfaced by `MountHost` as `load-failed` | executed |
-| 3 | `DriverPanelHost.vue` (declarations, host chrome, `services`, prompt-fault state), `DriverPickerHost.vue` (`select` carries an imported pair), `AiriModelPicker.vue` (rows from a manager pull, warns and binds anyway), `UnavailableModelView.vue` (the §5.6 table as copy and action). The `avatar` table itself is `core/binding.test.ts` (11 cases, one per row plus the rules) and `binding.test.ts` in stage-ui. All six components exist (`PromptArbitrationDialog.vue` and `MigrationScreen.vue` belong to items 5 and 9), and **none of the six has an importer anywhere in the repository**: the frames are typed against the contract and the table passes, but nothing a user can reach mounts them. Placement is deferred until at least one driver is migrated (`P2-D18`) | table and frames executed; components built, **unplaced** (`P2-D18`) |
+| 3 | `DriverPanelHost.vue` (declarations, host chrome, `services`, prompt-fault state), `DriverPickerHost.vue` (`select` carries an imported pair), `AiriModelPicker.vue` (rows from a manager pull, warns and binds anyway), `UnavailableModelView.vue` (the §5.6 table as copy and action). The `avatar` table itself is `core/binding.test.ts` (11 cases, one per row plus the rules) and `binding.test.ts` in stage-ui. All six components exist (`PromptArbitrationDialog.vue` and `MigrationScreen.vue` belong to items 5 and 9), and the placement that was deferred here is now mostly done: `DriverPanelHost`, `DriverPickerHost`, `AiriModelPicker` (as the binding dialog's fallback source) and `PromptArbitrationDialog` are reachable from a real surface, `MigrationScreen` is not (`P3-D18`, `P3-D22`) | table and frames executed; five of the six placed (`P3-D22`) |
 | 4 | A stub publication reaches the store through the adapter's prompt sink (`in-process.test.ts`, Phase 1); `prompt-flow.test.ts` adds the card-only seed, the empty publication kept as a value (`prompt-service.test.ts`) and the non-migrated format still reading `acting.modelExpressionPrompt` (nothing in this phase writes that field — guard 9's allowlist proves it) | executed |
 | 5 | `prompt-service.test.ts` (12 cases: every row of the table, seeding with text *and* tokens, store-newer refresh, card-newer conflict, equal-version conflict, `raise` once per pair, foreign snapshot, arbitration with `max + 1` for both winners, state-for) and `prompt-flow.test.ts` (3 cases through the real host: the seed reaches the driver, the arbitration is recorded by the driver, no window is reported as `delivered: 0`) | executed |
 | 6 | `pointer.test.ts` (14 cases) plus one adapter case: one conversion per mount from the element the surface draws in, the box read per dispatch (a moved mount converts correctly), two mounts side by side each seeing their own coordinates and never each other's, negative/over-range points preserved, an unknown mount accepted and never called, release on unmount, a throwing renderer contained, and every field of the translated event. `MountHost.vue` installs capture-phase listeners and registers the element's box; `services.pointer` is the adapter's hub, so a driver receives it at activation. The press installed these listeners on five real elements, but no event has traversed them: the stub never subscribes to the hub | executed (hub, wiring, listener install); the DOM half is carried with `P2-D18` |
@@ -894,6 +894,104 @@ Order: **Spine → MMD → Live2D → VRM**. Each phase adds one driver, runs th
 - Remove the host re-export `packages/stage-ui/src/stores/live2d.ts` only in Phase 8.
 
 **Exit:** load/ACT/caption/hit edges/capture/occupiesPoint; profiles survive; settings window restart; rows answer through a manager pull; the migration round trip works; the legacy path still works; retention written.
+
+**Implementation status — Live2D-first slice (2026-11-28, not yet at the exit above).** On the user's direction
+Phase 3 starts with Live2D rather than Spine, and the driver lives in its own package
+`packages/model-driver-live2d/` instead of `stage-ui-live2d/src/driver/`; `packages/stage-ui-live2d` is frozen and
+imported by nothing new. Shipped in the slice:
+
+- `./manifest` (contract `0.1`, `capabilityDiscovery: static`; declares `probe`, `previewModel`, `profiles`, `prompt`,
+  `panels`, `deactivate`, `purge`, `occupiesPoint`, `hitTest`, `stopAll`, `dispose`, `migration` — no transfer or
+  interaction mode), `./manager` (all five renderer entry kinds), `./provider` (storage, probe/import, prompt
+  publication and resolution, cue fan-out to mounts, `queryMount`/`commandMount`, `migrate`/`restoreLegacy`),
+  `./mount` (per-instance Pixi view: load, ACT/expression/motion, gaze, caption, reset, capture, one-shot thumbnail,
+  `occupiesPoint`/`hitTest`, edge-triggered `hit-area-change`), `./legacy` (retention for a revert), `./act` (token
+  projection), `./panels` (appearance, prompt, capabilities), `./picker` (lists the driver's models and
+  profiles, proposes an existing pair only on the user's explicit selection action, and calls the host-supplied
+  `requestImport({ files })` callback, which resolves when the import panel closes; a row shows the model's real
+  thumbnail once some mount has rendered it, and a deterministic tone until then) and `./import`
+  (`createImportEntry`, the driver half of the host import panel). The mount measures its own box; nothing reaches
+  into a host canvas.
+- **Profiles** are `{ scale?, offsetX?, offsetY?, anchorY?, opacity?, expression? }` with the fit maths in one pure
+  `computeFit`; the view applies that body after `load`, on a `PROFILE` cue, on `ResetScope.PROFILE` and on
+  `ResetScope.ALL`, and a `persistent: false` cue is a try-on that is applied but not adopted. Live edits arrive
+  through `storage.watch`, not through a cue per slider move.
+- **Prompts** are generated from the catalogue (expressions/motions/hit areas, with the exact
+  `<|ACT:emotion="…"|>` / `<|ACT:motion="…"|>` tokens), stored per model **and profile**, authored in the prompt
+  panel, and published at activation, at import commit and on profile creation. An arbitrated pair is recorded
+  through `prompt.onResolution` rather than republished.
+- Driver storage is `model/{id}` (record + catalog), `model/{id}/bytes` (base64, because the host's storage port
+  JSON-serializes values), `model/{id}/profile/{profileId}` (the appearance body) and
+  `model/{id}/profile/{profileId}/prompt`; documented in `docs/data-catalog.md`.
+- **Import is a fifth entry kind, not a manager method.** `ModelDriverEntryKind.IMPORT` resolves to
+  `LIVE2D_IMPORT_SPECIFIER`; the adapter imports it through its loader table and `importEntry(driverId)` builds it
+  with this window's container. The loader table is now kind-keyed and single-path (`resolve`/`specifiers`), so a
+  module's export shape — component, declarations, provider entry, import factory — is contract typing, not a
+  separate code path. `ModelImportPanel.vue` (stage-ui) is the host dialog: it asks every import-capable driver,
+  merges by confidence, shows findings, asks the **adapter** (`mintModelId`/`mintProfileId`) for one id pair per
+  confirmed part and commits; the driver only reads its format and writes under the ids it is given. `ModelDriverManager` and `HostServices` gained nothing.
+- App wiring: the shared specifier list, main's static table, the renderer loader table (all five kinds) and the dev
+  route `/devtools/model-driver-live2d`, which mounts the host import panel, the driver's **own picker and panels**
+  around one `MountHost` over one adapter. `DriverPickerHost` opens that same panel when the picker calls
+  `requestImport` (offered only when `importEntry` answers), and selects the committed pair.
+- **The real stage renders the new path (P3-D18).** `App.vue` starts the window's adapter after first paint and
+  provides it through `provideModelDriverHost`; `RendererStage.vue` branches on the active card: a card that parses to
+  an `AvatarBinding` is drawn by a `MountHost` for that driver, a card without one keeps the legacy branch untouched,
+  and the two are exclusive so a card holding both fields during the reversal window cannot be drawn twice. The
+  verdict is `resolveAvatarState` over host facts — driver status from `hostState()`, model and profile from a
+  `pullRows()` for the binding's ids (`libs/model-drivers/avatar-state.ts`), so a model the driver no longer holds
+  renders `UnavailableModelView` rather than an empty mount. `DriverModelDialog` is the one mounted binding write:
+  it mounts the chosen driver's picker, offers the import fork through the same frame, and persists
+  `extensions.airi.avatar` with `withCardBinding`; it is reached from Settings → Model and from the stage's
+  unavailable view, and `modules.displayModelId` is never touched.
+- **ACT tokens are executed by the driver (P3-D19).** The manifest declares `CueKind.ACT`; `./act` projects a token
+  against the stored catalogue (`emotion` → expression, `motion` → `group#index`, anything else `unknown-key`) and the
+  mount applies the same code path an `ExpressionCue`/`MotionCue` uses, including `animation-finished` echoing the
+  transaction. The host side is one rule: `ControlStripHost` sends an `ActCue` when the active card is bound and this
+  window has an adapter, and its legacy four-way store dispatch runs only otherwise — the same condition the stage uses
+  to pick what renders, so one character is never driven twice.
+- **Migration retains and restores (P3-D20).** `migrate` writes the handover under `legacy/{modelId}` (bytes base64),
+  answers `retained: true`, names every member it will not interpret in `unused`, and is a no-op on replay; a different
+  legacy id under the same minted `modelId` is `model-id-conflict`. `restoreLegacy` answers the legacy id plus the same
+  opaque members, preferring the imported row's bytes over the retained copy, and refuses with `asset-missing` when
+  there is no retained origin. `remove` deletes the retained entry with the model.
+- **The driver makes the thumbnail its rows carry (P3-D21).** `previewModel: true`; the first mount that renders a
+  model calls `capturePreview` (a fitted WebP square, not the full-resolution capture ack) and writes it onto the
+  model's record through `writeModelPreview`, which touches one field and never creates a record for a model that is
+  gone. The row then carries `preview`, so the picker shows a real image and falls back to a deterministic tone only
+  for a model nobody has seen yet.
+- **Binding writes the prompt snapshot it follows (§5.4).** `bindCardModel` (`libs/model-drivers/prompt.ts`) clears a
+  snapshot that belonged to a different pair instead of carrying it across, keeps a card-only one on a same-pair rebind
+  so it can seed the store, and then reconciles through the window's `HostPromptService` — which the app provides beside
+  the adapter (`provideModelDriverHost({ adapter, prompts })`). A store that cannot be reached leaves the card bound with
+  whatever the snapshot rules produced; binding is the primary action and reconciliation can rerun at activation.
+- **One boundary rule, recorded during review:** a driver surface never mints a model/profile identity and never
+  commits an import the host did not ask for. The picker selects among the models the driver already holds; the
+  host's import panel is the only importer (probe → minted ids → commit → bind), and the driver supplies the code
+  that reads its format and the writes that follow. Recorded as P3-D12; decisions and environment notes are in
+  [`DECISIONS-PHASE3.md`](./DECISIONS-PHASE3.md).
+
+Still open, in the order the exit criterion names them: the **import that consumes a retained entry** (the contract
+already says `confirmImport`'s `input` is absent "for a migration that retained its payload by reference", but the only
+way to obtain `confirmImport` today is a `probe` over files the host no longer holds — the candidate is a
+`ModelProbeInput.retainedModelId` that makes the driver probe its own retained bytes, which is a contract addition and a
+decision still to take), the host-side migration ports (legacy collector, `buildHandover`, the one commit transaction,
+markers) and the `MigrationScreen` placement, transfer, **speech frames** (deferred by the user on 2026-11-28: the
+contract puts them at plugin level, and `HostServices` deliberately carries none, so the driver half needs either a
+recorded amendment or the plugin path — not started), an interaction mode, capability discovery beyond the stored
+catalogue, and the English copy still left in the host frames (`DriverPanelHost` chrome, `ModelImportPanel`,
+`MountHost`'s failure line, and the driver's static panel labels) — P3-D22 names each one.
+`PromptArbitrationDialog` and `AiriModelPicker` are placed as of 2026-11-28: the stage raises the dialog at
+activation, and the binding dialog offers AIRI's own list when a driver reports `no-picker` — the two frames' keys
+landed with them, and the Live2D driver's own records ship inside its package (`./locales`, `model-drivers.live2d.*`)
+for the app to merge, which discharges P2-D12 for the placed surfaces (P3-D22, P3-D23).
+`DriverPanelHost` is placed in Settings → Model for a bound character; the panels were already built and are the
+authoring surface for appearance and prompt.
+The panels/picker/prompt/profile slice closed on 2026-11-28 and is recorded in P3-D12…D15; the import surface and the
+two event orders are P3-D16 and P3-D17; where the new path renders and who binds it is P3-D18; ACT and migration
+retention are P3-D19 and P3-D20; picker placement and the i18n pass are P3-D22, and where a driver's records live is
+P3-D23.
+
 
 ### 6.4 Phase 6 — VRM
 
