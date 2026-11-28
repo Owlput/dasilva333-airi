@@ -11,6 +11,7 @@ import type {
   ElectronMcpToolDescriptor,
 } from '../../../../shared/eventa'
 
+import { mkdirSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -90,7 +91,18 @@ function stringifyError(error: unknown) {
 }
 
 function getConfigPath() {
-  return join(app.getPath('appData'), 'airi', 'mcp.json')
+  const preferredDir = join(app.getPath('appData'), 'airi')
+  try {
+    mkdirSync(preferredDir, { recursive: true })
+    return join(preferredDir, 'mcp.json')
+  }
+  catch {
+    // NOTICE: `%APPDATA%\airi` is a legacy shared location that some environments
+    // refuse to create (confined shells, redirected profiles, damaged ACLs). Keep MCP
+    // configuration inside the profile that startup already proved writable instead of
+    // failing every MCP operation with EPERM.
+    return join(app.getPath('userData'), 'mcp.json')
+  }
 }
 
 function parseQualifiedToolName(name: string) {

@@ -169,7 +169,7 @@
     "crossws": "^0.4.4",
     "csstype": "^3.2.3",
     "drizzle-orm": "^0.45.1",
-    "electron": "40.8.0",
+    "electron": "45.5.0",
     "electron-builder": "^26.8.1",
     "electron-updater": "^6.8.3",
     "electron-vite": "5.0.0",

@@ -84,6 +84,17 @@ function isElectronBroken(electronDir, distDir) {
 }
 
 function ensureElectron() {
+  // NOTICE: Electron 42 stopped downloading its binary from `postinstall` and
+  // Electron 43 removed `ELECTRON_SKIP_BINARY_DOWNLOAD`, so upstream the flag no
+  // longer suppresses anything. `nix/package.nix` still sets it because the Nix
+  // build has no network at install time and supplies the runtime through
+  // electron-builder's `electronDist` instead. Honour the same contract here so
+  // the Nix build does not start trying to download in its sandbox.
+  if (env.ELECTRON_SKIP_BINARY_DOWNLOAD) {
+    console.log('[AIRI] ELECTRON_SKIP_BINARY_DOWNLOAD is set; skipping Electron binary repair.')
+    return
+  }
+
   let electronPkgPath
   try {
     electronPkgPath = require.resolve('electron/package.json')
@@ -114,7 +125,10 @@ function ensureElectron() {
   if (isElectronBroken(electronDir, distDir)) {
     console.warn('[AIRI] Electron binary runtime is missing or in uninstalled state.')
     console.warn(`[AIRI] Electron package dir: ${electronDir} (platform binary: ${getPlatformPath()})`)
-    console.warn(`[AIRI] env: ELECTRON_SKIP_BINARY_DOWNLOAD=${env.ELECTRON_SKIP_BINARY_DOWNLOAD ?? '<unset>'} ELECTRON_OVERRIDE_DIST_PATH=${env.ELECTRON_OVERRIDE_DIST_PATH ?? '<unset>'} npm_config_platform=${env.npm_config_platform ?? '<unset>'} npm_config_arch=${env.npm_config_arch ?? '<unset>'}`)
+    // NOTICE: `npm_config_platform`/`npm_config_arch` stopped driving the
+    // download in Electron 42; the on-demand installer reads
+    // `ELECTRON_INSTALL_PLATFORM`/`ELECTRON_INSTALL_ARCH` instead.
+    console.warn(`[AIRI] env: ELECTRON_OVERRIDE_DIST_PATH=${env.ELECTRON_OVERRIDE_DIST_PATH ?? '<unset>'} ELECTRON_INSTALL_PLATFORM=${env.ELECTRON_INSTALL_PLATFORM ?? '<unset>'} ELECTRON_INSTALL_ARCH=${env.ELECTRON_INSTALL_ARCH ?? '<unset>'}`)
     snapshotDist('before repair')
     console.warn('[AIRI] Triggering automatic repair via electron/install.js...')
 

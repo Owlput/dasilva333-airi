@@ -161,6 +161,9 @@ recovery_artifacts/
 recovery/
 personal_airi/
 
+# Local dev user-data fallback (see resolveWritableUserDataDir in stage-tamagotchi main)
+**/.dev-userdata/
+
 # Swift / SPM
 .build/
 **/CoreLLMKit/.build/

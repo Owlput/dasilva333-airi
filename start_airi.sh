@@ -27,6 +27,15 @@ if [ -z "${AIRI_USER_DATA_DIR:-}" ]; then
   fi
 fi
 
+# Dev profile lives inside the workspace by default: the OS "roaming app data"
+# location may be unwritable, and Electron creates the userData directory inside
+# requestSingleInstanceLock(), which kills the process (0xFFFF7003) instead of
+# reporting the failure. Pre-set AIRI_USER_DATA_DIR to use a different profile.
+if [ -z "${AIRI_USER_DATA_DIR:-}" ]; then
+  AIRI_USER_DATA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apps/stage-tamagotchi/.dev-userdata"
+  export AIRI_USER_DATA_DIR
+fi
+
 if [ -n "${AIRI_USER_DATA_DIR:-}" ]; then
   export APP_USER_DATA_PATH="$AIRI_USER_DATA_DIR"
   mkdir -p "$AIRI_USER_DATA_DIR"

@@ -16,4 +16,16 @@ call pnpm -F @proj-airi/stage-tamagotchi exec electron-builder --win --dir
 
 echo Starting unpacked production application...
 set ELECTRON_RUN_AS_NODE=
-start "" "apps\stage-tamagotchi\dist\win-unpacked\airi.exe"
+:: NOTICE: see start_airi.bat - host sandbox init fails without this.
+set ELECTRON_DISABLE_SANDBOX=1
+
+:: electron-builder names the binary after win.executableName (airi-dasilva333),
+:: not after package.json "name" (airi). Fall back to the old name for stale dists.
+set "APP_EXE=apps\stage-tamagotchi\dist\win-unpacked\airi-dasilva333.exe"
+if not exist "%APP_EXE%" set "APP_EXE=apps\stage-tamagotchi\dist\win-unpacked\airi.exe"
+if not exist "%APP_EXE%" (
+    echo [ERROR] Unpacked executable not found under apps\stage-tamagotchi\dist\win-unpacked.
+    pause
+    exit /b 1
+)
+start "" "%APP_EXE%"

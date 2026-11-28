@@ -10,6 +10,13 @@ packages:
   - '!**/dist/**'
   - '!apps/stage-mate/mate-engine/**'
 overrides:
+  # NOTICE: @electron/rebuild resolves a native module's ABI from node-abi, and
+  # node-abi 4.24.0 (the version the lockfile pinned) only knows up to Electron
+  # 40. Electron 45.5.0 is ABI 150 there. Without this, `electron-builder
+  # install-app-deps` aborts with "Could not detect abi for version 45.5.0 and
+  # runtime electron". Scoped to @electron/rebuild so prebuild-install's own
+  # node-abi@3 stays untouched.
+  '@electron/rebuild>node-abi': ^4.43.0
   array-flatten: npm:@nolyfill/array-flatten@^1.0.44
   axios: npm:feaxios@^0.0.23
   is-core-module: npm:@nolyfill/is-core-module@^1.0.39
@@ -86,7 +93,7 @@ catalog:
   d3-selection: ^3.0.0
   d3-zoom: ^3.0.0
   drizzle-valibot: ^0.4.2
-  electron: 40.8.0
+  electron: 45.5.0
   electron-builder: ^26.8.1
   electron-updater: ^6.8.3
   electron-vite: 5.0.0

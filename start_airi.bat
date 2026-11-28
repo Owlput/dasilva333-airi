@@ -25,6 +25,18 @@ call pnpm run build:packages
 echo [2/2] Starting Tamagotchi on Port %PORT_NUM%...
 set AIRI_RENDERER_PORT=%PORT_NUM%
 set ELECTRON_RUN_AS_NODE=
+:: NOTICE: Chromium's Windows sandbox fails to initialise on this host
+:: (0x80000003 / STATUS_BREAKPOINT at process start, before any JS runs).
+:: Electron reads ELECTRON_DISABLE_SANDBOX on every platform, in
+:: ElectronMainDelegate::BasicStartupComplete, which is what start_airi.sh
+:: has been doing on Linux. Delete this line once the host issue is found.
+set ELECTRON_DISABLE_SANDBOX=1
+:: NOTICE: keep the dev profile inside the workspace. The default lives under
+:: %APPDATA%, which Electron creates inside requestSingleInstanceLock() and kills
+:: the process over (0xFFFF7003) when that path is not writable. Pre-set
+:: AIRI_USER_DATA_DIR to use a different profile.
+if not defined AIRI_USER_DATA_DIR set "AIRI_USER_DATA_DIR=%~dp0apps\stage-tamagotchi\.dev-userdata"
+echo [profile] %AIRI_USER_DATA_DIR%
 
 
 :: Try to use local config if it exists, otherwise use default

@@ -12,5 +12,20 @@ echo [2/2] Starting Tamagotchi on Port %PORT_NUM%...
 set AIRI_RENDERER_PORT=%PORT_NUM%
 set AIRI_FORCE_HIGH_PERFORMANCE_GPU=1
 set ELECTRON_RUN_AS_NODE=
+:: NOTICE: see start_airi.bat - host sandbox init fails without this.
+set ELECTRON_DISABLE_SANDBOX=1
+:: NOTICE: see start_airi.bat - keep the dev profile inside the workspace.
+if not defined AIRI_USER_DATA_DIR set "AIRI_USER_DATA_DIR=%~dp0apps\stage-tamagotchi\.dev-userdata"
+echo [profile] %AIRI_USER_DATA_DIR%
+
+:: Ensure electron path is configured
+call node apps\stage-tamagotchi\scripts\ensure-electron.js
+
 :: Note: This uses the local config shim that is gitignored to force the renderer port.
-call pnpm -F @proj-airi/stage-tamagotchi exec electron-vite dev --config electron.vite.config.local.ts
+:: The shim is a personal override, so it is optional - without it `--config` would
+:: point at a file that does not exist and electron-vite would refuse to start.
+if exist "apps\stage-tamagotchi\electron.vite.config.local.ts" (
+    call pnpm -F @proj-airi/stage-tamagotchi exec electron-vite dev --config electron.vite.config.local.ts
+) else (
+    call pnpm -F @proj-airi/stage-tamagotchi exec electron-vite dev
+)

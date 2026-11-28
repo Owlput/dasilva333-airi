@@ -7,6 +7,7 @@ import type {
   StartupSnapshot,
 } from '../shared/eventa'
 
+import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { env, platform, stderr, stdout } from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -160,6 +161,47 @@ function installStreamErrorGuards() {
   stderr?.on('error', guard)
 }
 
+// NOTICE: Electron resolves *and creates* the userData directory inside
+// `app.requestSingleInstanceLock()` (ProcessSingleton). When that directory cannot be
+// created — a confined shell, a redirected profile, damaged ACLs, a policy-blocked
+// `%APPDATA%` — the write failure becomes a Chromium CHECK(), so the process dies
+// natively (crashpad reports 0xFFFF7003) instead of throwing an error we could catch.
+// Resolve a writable location before the lock so the app degrades to a local profile
+// instead of silently disappearing.
+function resolveWritableUserDataDir(requested: string | undefined): string | undefined {
+  const candidates = [
+    requested,
+    join(app.getPath('appData'), app.getName()),
+    join(app.getAppPath(), '.dev-userdata'),
+    join(app.getPath('temp'), 'airi-userdata'),
+  ].filter((dir): dir is string => Boolean(dir))
+
+  for (const dir of candidates) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      return dir
+    }
+    catch {
+      // Try the next candidate; the first writable one wins.
+    }
+  }
+
+  return undefined
+}
+
+const requestedUserDataDir = env.AIRI_USER_DATA_DIR?.trim() || env.APP_USER_DATA_PATH?.trim()
+const resolvedUserDataDir = resolveWritableUserDataDir(requestedUserDataDir)
+if (!resolvedUserDataDir) {
+  console.error('[main] No writable userData directory. Set AIRI_USER_DATA_DIR to a writable path.')
+  app.exit(1)
+}
+else {
+  app.setPath('userData', resolvedUserDataDir)
+  if (requestedUserDataDir && resolvedUserDataDir !== requestedUserDataDir) {
+    console.warn(`[main] AIRI_USER_DATA_DIR "${requestedUserDataDir}" is not writable, using "${resolvedUserDataDir}" instead.`)
+  }
+}
+
 // TODO: once we refactored eventa to support window-namespaced contexts,
 // we can remove the setMaxListeners call below since eventa will be able to dispatch and
 // manage events within eventa's context system.
@@ -220,11 +262,6 @@ if (forceHighPerformanceGpu) {
   app.commandLine.appendSwitch('enable-gpu-rasterization')
   app.commandLine.appendSwitch('ignore-gpu-blocklist')
   console.log('[AIRI] High-performance GPU overrides enabled via AIRI_FORCE_HIGH_PERFORMANCE_GPU=1')
-}
-
-const appUserDataPath = env.AIRI_USER_DATA_DIR?.trim() || env.APP_USER_DATA_PATH?.trim()
-if (appUserDataPath) {
-  app.setPath('userData', appUserDataPath)
 }
 
 // Perform seamless one-time migration of existing legacy user data if needed

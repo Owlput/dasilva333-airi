@@ -13,6 +13,11 @@ echo [2/2] Starting Tamagotchi on Port %PORT_NUM%...
 set AIRI_RENDERER_PORT=%PORT_NUM%
 set AIRI_FORCE_HIGH_PERFORMANCE_GPU=1
 set ELECTRON_RUN_AS_NODE=
+:: NOTICE: see start_airi.bat - host sandbox init fails without this.
+set ELECTRON_DISABLE_SANDBOX=1
+:: NOTICE: see start_airi.bat - keep the dev profile inside the workspace.
+if not defined AIRI_USER_DATA_DIR set "AIRI_USER_DATA_DIR=%~dp0apps\stage-tamagotchi\.dev-userdata"
+echo [profile] %AIRI_USER_DATA_DIR%
 
 :: Ensure electron path is configured
 call node apps\stage-tamagotchi\scripts\ensure-electron.js
